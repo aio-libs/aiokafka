@@ -246,3 +246,51 @@ class TestAIOKafkaClinet(unittest.TestCase):
         # This should not raise
         self.loop.run_until_complete(
             client.ensure_topic_exists('topic_noleaders', timeout=1))
+
+    @mock.patch('aiokafka.client.KafkaProtocol')
+    def test_get_leader_for_partitions_reloads_metadata(self, protocol):
+        "Get leader for partitions reload metadata if it is not available"
+
+        @asyncio.coroutine
+        def recv(request_id):
+            return b'response'
+
+        mocked_conns = {('broker_1', 4567): mock.MagicMock()}
+        mocked_conns[('broker_1', 4567)].recv.side_effect = recv
+        client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
+        client._conns = mocked_conns
+
+        brokers = [
+            BrokerMetadata(0, 'broker_1', 4567),
+            BrokerMetadata(1, 'broker_2', 5678)
+        ]
+
+        topics = [
+            TopicMetadata('topic_no_partitions', NO_LEADER, [])
+        ]
+        protocol.decode_metadata_response.return_value = MetadataResponse(
+            brokers, topics)
+
+        self.loop.run_until_complete(client.load_metadata_for_topics())
+
+        # topic metadata is loaded but empty
+        self.assertDictEqual({}, client._topics_to_brokers)
+
+        topics = [
+            TopicMetadata('topic_one_partition', NO_ERROR, [
+                PartitionMetadata('topic_no_partition',
+                                  0, 0, [0, 1], [0, 1], NO_ERROR)
+            ])
+        ]
+        protocol.decode_metadata_response.return_value = MetadataResponse(
+            brokers, topics)
+
+        # calling _get_leader_for_partition (from any broker aware request)
+        # will try loading metadata again for the same topic
+        leader = self.loop.run_until_complete(client._get_leader_for_partition(
+            'topic_one_partition', 0))
+
+        self.assertEqual(brokers[0], leader)
+        self.assertDictEqual({
+            TopicAndPartition('topic_one_partition', 0): brokers[0]},
+            client._topics_to_brokers)
