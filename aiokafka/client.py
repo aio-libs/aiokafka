@@ -1,7 +1,6 @@
 import asyncio
 import binascii
 import collections
-import copy
 import functools
 import logging
 import time
@@ -155,8 +154,8 @@ class AIOKafkaClient:
         payloads_by_broker = collections.defaultdict(list)
 
         for payload in payloads:
-            leader = self._get_leader_for_partition(payload.topic,
-                                                    payload.partition)
+            leader = yield from self._get_leader_for_partition(
+                payload.topic, payload.partition)
 
             payloads_by_broker[leader].append(payload)
             original_keys.append((payload.topic, payload.partition))
@@ -219,21 +218,6 @@ class AIOKafkaClient:
     def close(self):
         for conn in self._conns.values():
             conn.close()
-
-    def copy(self):
-        """
-        Create an inactive copy of the client object
-        A reinit() has to be done on the copy before it can be used again
-        """
-        c = copy.deepcopy(self)
-        for key in c.conns:
-            c.conns[key] = self.conns[key].copy()
-        return c
-
-    @asyncio.coroutine
-    def reinit(self):
-        for conn in self.conns.values():
-            yield from conn.reinit()
 
     def reset_topic_metadata(self, *topics):
         for topic in topics:

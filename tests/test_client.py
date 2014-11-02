@@ -6,7 +6,10 @@ from kafka.common import (KafkaUnavailableError, BrokerMetadata, TopicMetadata,
                           PartitionMetadata, TopicAndPartition,
                           LeaderNotAvailableError,
                           UnknownTopicOrPartitionError,
-                          MetadataResponse, KafkaTimeoutError)
+                          MetadataResponse, KafkaTimeoutError,
+                          ProduceRequest)
+
+from kafka.protocol import create_message
 
 
 NO_ERROR = 0
@@ -334,7 +337,6 @@ class TestAIOKafkaClinet(unittest.TestCase):
     @mock.patch('aiokafka.client.KafkaProtocol')
     def test_get_leader_exceptions_when_noleader(self, protocol):
 
-
         @asyncio.coroutine
         def recv(request_id):
             return b'response'
@@ -398,3 +400,88 @@ class TestAIOKafkaClinet(unittest.TestCase):
             client._get_leader_for_partition('topic_noleader', 0)))
         self.assertEqual(brokers[1], self.loop.run_until_complete(
             client._get_leader_for_partition('topic_noleader', 1)))
+
+    @mock.patch('aiokafka.client.KafkaProtocol')
+    def test_send_produce_request_raises_when_noleader(self, protocol):
+        """Send producer request raises LeaderNotAvailableError
+           if leader is not available"""
+
+        @asyncio.coroutine
+        def recv(request_id):
+            return b'response'
+
+        mocked_conns = {('broker_1', 4567): mock.MagicMock()}
+        mocked_conns[('broker_1', 4567)].recv.side_effect = recv
+        client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
+        client._conns = mocked_conns
+
+        brokers = [
+            BrokerMetadata(0, 'broker_1', 4567),
+            BrokerMetadata(1, 'broker_2', 5678)
+        ]
+
+        topics = [
+            TopicMetadata('topic_noleader', NO_ERROR, [
+                PartitionMetadata('topic_noleader', 0, -1, [], [],
+                                  NO_LEADER),
+                PartitionMetadata('topic_noleader', 1, -1, [], [],
+                                  NO_LEADER),
+            ]),
+        ]
+        protocol.decode_metadata_response.return_value = MetadataResponse(
+            brokers, topics)
+
+        self.loop.run_until_complete(client.load_metadata_for_topics())
+
+        requests = [ProduceRequest(
+            "topic_noleader", 0,
+            [create_message("a"), create_message("b")])]
+
+        with self.assertRaises(LeaderNotAvailableError):
+            self.loop.run_until_complete(client.send_produce_request(requests))
+
+    @mock.patch('aiokafka.client.KafkaProtocol')
+    def test_send_produce_request_raises_when_topic_unknown(self, protocol):
+
+        @asyncio.coroutine
+        def recv(request_id):
+            return b'response'
+
+        mocked_conns = {('broker_1', 4567): mock.MagicMock()}
+        mocked_conns[('broker_1', 4567)].recv.side_effect = recv
+        client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
+        client._conns = mocked_conns
+
+        brokers = [
+            BrokerMetadata(0, 'broker_1', 4567),
+            BrokerMetadata(1, 'broker_2', 5678)
+        ]
+
+        topics = [
+            TopicMetadata('topic_doesnt_exist',
+                          UNKNOWN_TOPIC_OR_PARTITION, []),
+        ]
+        protocol.decode_metadata_response.return_value = MetadataResponse(
+            brokers, topics)
+
+        self.loop.run_until_complete(client.load_metadata_for_topics())
+
+        requests = [ProduceRequest(
+            "topic_doesnt_exist", 0,
+            [create_message("a"), create_message("b")])]
+
+        with self.assertRaises(UnknownTopicOrPartitionError):
+            self.loop.run_until_complete(client.send_produce_request(requests))
+
+    # def test_timeout(self):
+    #     def _timeout(*args, **kwargs):
+    #         timeout = args[1]
+    #         sleep(timeout)
+    #         raise socket.timeout
+
+    #     with patch.object(socket, "create_connection", side_effect=_timeout):
+
+    #         with Timer() as t:
+    #             with self.assertRaises(ConnectionError):
+    #                 KafkaConnection("nowhere", 1234, 1.0)
+    #         self.assertGreaterEqual(t.interval, 1.0)

@@ -14,6 +14,10 @@ class AIOKafkaConnection:
             loop = asyncio.get_event_loop()
         self._loop = loop
 
+    def _connect(self):
+        self._reader, self._writer = yield from asyncio.open_connection(
+            self.host, self.port, loop=self._loop)
+
     def __repr__(self):
         return "<KafkaConnection host={0.host} port={0.port}>".format(self)
 
@@ -28,14 +32,14 @@ class AIOKafkaConnection:
     @asyncio.coroutine
     def send(self, request_id, payload):
         if self._writer is None:
-            yield from self.reinit()
+            yield from self._connect()
 
         self._writer.write(payload)
 
     @asyncio.coroutine
     def recv(self, request_id):
         if self._reader is None:
-            yield from self.reinit()
+            yield from self._connect()
 
         try:
             resp = yield from self._reader.readexactly(4)
@@ -48,18 +52,7 @@ class AIOKafkaConnection:
             self._reader = self._writer = None
             raise
 
-    def copy(self):
-        c = copy.deepcopy(self)
-        c._reader = c._writer = None
-        return c
-
     def close(self):
         if self._reader:
             self._writer.close()
             self._reader = self._writer = None
-
-    def reinit(self):
-        if self._reader:
-            self.close()
-        self._reader, self._writer = yield from asyncio.open_connection(
-            self.host, self.port, loop=self._loop)
