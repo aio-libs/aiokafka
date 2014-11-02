@@ -3,7 +3,6 @@ import binascii
 import collections
 import copy
 import functools
-import itertools
 import logging
 import time
 
@@ -25,7 +24,6 @@ log = logging.getLogger('aiokafka')
 class AIOKafkaClient:
 
     CLIENT_ID = b"aiokafka-python"
-    ID_GEN = itertools.count()
 
     def __init__(self, hosts, client_id=CLIENT_ID,
                  timeout=DEFAULT_SOCKET_TIMEOUT_SECONDS,
@@ -43,6 +41,7 @@ class AIOKafkaClient:
         if loop is None:
             loop = asyncio.get_event_loop()
         self._loop = loop
+        self._request_id = 0
 
     @property
     def hosts(self):
@@ -98,7 +97,10 @@ class AIOKafkaClient:
         """
         Generate a new correlation id
         """
-        return next(self.ID_GEN)
+        self._request_id += 1
+        if self._request_id > 0x7fffffff:
+            self._request_id = 0
+        return self._request_id
 
     @asyncio.coroutine
     def _send_broker_unaware_request(self, payloads, encoder_fn, decoder_fn):

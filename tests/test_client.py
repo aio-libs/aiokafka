@@ -94,4 +94,4 @@ class TestAIOKafkaClinet(unittest.TestCase):
                                                 decoder_fn=lambda x: x))
 
         self.assertEqual(b'valid response', resp)
-        mocked_conns[('kafka02', 9092)].recv.assert_called_with(0)
+        self.assertTrue(mocked_conns[('kafka02', 9092)].recv.called)
