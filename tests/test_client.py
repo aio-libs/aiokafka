@@ -64,3 +64,34 @@ class TestAIOKafkaClinet(unittest.TestCase):
                                              b'fake encoded message')
 
         self.loop.run_until_complete(go())
+
+    def test_send_broker_unaware_request(self):
+        'Tests that call works when at least one of the host is available'
+
+        mocked_conns = {
+            ('kafka01', 9092): mock.MagicMock(),
+            ('kafka02', 9092): mock.MagicMock(),
+            ('kafka03', 9092): mock.MagicMock()
+        }
+        # inject KafkaConnection side effects
+        mocked_conns[('kafka01', 9092)].send.side_effect = RuntimeError(
+            "kafka01 went away (unittest)")
+
+        @asyncio.coroutine
+        def recv(request_id):
+            return b'valid response'
+
+        mocked_conns[('kafka02', 9092)].recv.side_effect = recv
+        mocked_conns[('kafka03', 9092)].send.side_effect = RuntimeError(
+            "kafka03 went away (unittest)")
+
+        client = AIOKafkaClient('kafka01:9092,kafka02:9092', loop=self.loop)
+        client._conns = mocked_conns
+
+        resp = self.loop.run_until_complete(
+            client._send_broker_unaware_request(payloads=[b'fake request'],
+                                                encoder_fn=mock.MagicMock(),
+                                                decoder_fn=lambda x: x))
+
+        self.assertEqual(b'valid response', resp)
+        mocked_conns[('kafka02', 9092)].recv.assert_called_with(1)
