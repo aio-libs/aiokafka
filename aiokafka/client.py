@@ -364,6 +364,13 @@ class AIOKafkaClient:
         return (yield from self._send_broker_unaware_request(
             payloads, encoder, decoder))
 
+    def _build_resp(self, resps):
+        out = []
+        for resp in resps:
+            self._raise_on_response_error(resp)
+            out.append(resp)
+        return out
+
     @asyncio.coroutine
     def send_produce_request(self, payloads=(), *, acks=1, timeout=1000):
         """
@@ -400,11 +407,7 @@ class AIOKafkaClient:
         resps = yield from self._send_broker_aware_request(
             payloads, encoder, decoder)
 
-        out = []
-        for resp in resps:
-            self._raise_on_response_error(resp)
-            out.append(resp)
-        return out
+        return self._build_resp(resps)
 
     @asyncio.coroutine
     def send_fetch_request(self, payloads=(),
@@ -424,11 +427,7 @@ class AIOKafkaClient:
             payloads, encoder,
             KafkaProtocol.decode_fetch_response)
 
-        out = []
-        for resp in resps:
-            self._raise_on_response_error(resp)
-            out.append(resp)
-        return out
+        return self._build_resp(resps)
 
     @asyncio.coroutine
     def send_offset_request(self, payloads=()):
@@ -437,11 +436,7 @@ class AIOKafkaClient:
             KafkaProtocol.encode_offset_request,
             KafkaProtocol.decode_offset_response)
 
-        out = []
-        for resp in resps:
-            self._raise_on_response_error(resp)
-            out.append(resp)
-        return out
+        return self._build_resp(resps)
 
     @asyncio.coroutine
     def send_offset_commit_request(self, group, payloads=()):
@@ -451,11 +446,7 @@ class AIOKafkaClient:
         resps = yield from self._send_broker_aware_request(
             payloads, encoder, decoder)
 
-        out = []
-        for resp in resps:
-            self._raise_on_response_error(resp)
-            out.append(resp)
-        return out
+        return self._build_resp(resps)
 
     def send_offset_fetch_request(self, group, payloads=()):
 
@@ -464,8 +455,4 @@ class AIOKafkaClient:
         decoder = KafkaProtocol.decode_offset_fetch_response
         resps = self._send_broker_aware_request(payloads, encoder, decoder)
 
-        out = []
-        for resp in resps:
-            self._raise_on_response_error(resp)
-            out.append(resp)
-        return out
+        return self._build_resp(resps)
