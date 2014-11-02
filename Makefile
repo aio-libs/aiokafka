@@ -14,7 +14,7 @@ vtest: flake
 
 cov cover coverage:
 	nosetests -s --with-cover --cover-html --cover-branches $(FLAGS) --cover-package aiokafka ./tests/
-	echo "open file://`pwd`/coverage/index.html"
+	echo "open file://`pwd`/cover/index.html"
 
 clean:
 	rm -rf `find . -name __pycache__`
@@ -28,6 +28,8 @@ clean:
 	rm -f .coverage
 	rm -rf coverage
 	rm -rf build
+	rm -rf cover
+	rm -rf dist
 
 doc:
 	cd docs && make html
