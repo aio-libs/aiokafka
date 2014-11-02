@@ -3,13 +3,16 @@ import copy
 import struct
 
 
-class KafkaConnection:
+class AIOKafkaConnection:
     HEADER = struct.Struct('>i')
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, *, loop=None):
         self._host = host
         self._port = port
         self._reader = self._writer = None
+        if loop is None:
+            loop = asyncio.get_event_loop()
+        self._loop = loop
 
     def __repr__(self):
         return "<KafkaConnection host={0.host} port={0.port}>".format(self)
@@ -59,4 +62,4 @@ class KafkaConnection:
         if self._reader:
             self.close()
         self._reader, self._writer = yield from asyncio.open_connection(
-            self.host, self.port)
+            self.host, self.port, loop=self._loop)

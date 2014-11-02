@@ -1,27 +1,35 @@
 import asyncio
+import binascii
 import collections
+import copy
+import functools
 import itertools
 import logging
+import time
+
 from kafka.conn import DEFAULT_SOCKET_TIMEOUT_SECONDS, collect_hosts
 from kafka.common import (TopicAndPartition, BrokerMetadata,
                           ConnectionError, FailedPayloadsError,
                           KafkaTimeoutError, KafkaUnavailableError,
                           LeaderNotAvailableError,
                           UnknownTopicOrPartitionError,
-                          NotLeaderForPartitionError)
+                          NotLeaderForPartitionError,
+                          check_error)
+from kafka import KafkaProtocol
 
-from .conn import KafkaConnection
+from .conn import AIOKafkaConnection
 
 log = logging.getLogger('aiokafka')
 
 
-class KafkaClient:
+class AIOKafkaClient:
 
     CLIENT_ID = b"aiokafka-python"
     ID_GEN = itertools.count()
 
     def __init__(self, hosts, client_id=CLIENT_ID,
-                 timeout=DEFAULT_SOCKET_TIMEOUT_SECONDS):
+                 timeout=DEFAULT_SOCKET_TIMEOUT_SECONDS,
+                 *, loop=None):
         self._client_id = client_id
         self._timeout = timeout
         self._hosts = collect_hosts(hosts)
@@ -32,14 +40,16 @@ class KafkaClient:
         self._topic_partitions = {}  # topic -> partition -> PartitionMetadata
 
         # self.load_metadata_for_topics()
+        if loop is None:
+            loop = asyncio.get_event_loop()
+        self._loop = loop
 
-    @asyncio.coroutine
     def _get_conn(self, host, port):
         "Get or create a connection to a broker using host and port"
         host_key = (host, port)
         if host_key not in self._conns:
             self._conns[host_key] = KafkaConnection(
-                host, port)
+                host, port, loop=self._loop)
         return self._conns[host_key]
 
     @asyncio.coroutine
@@ -154,21 +164,22 @@ class KafkaClient:
         # For each broker, send the list of request payloads
         for broker, payloads in payloads_by_broker.items():
             conn = self._get_conn(broker.host.decode('utf-8'), broker.port)
-            requestId = self._next_id()
-            request = encoder_fn(client_id=self.client_id,
-                                 correlation_id=requestId, payloads=payloads)
+            request_id = self._next_id()
+            request = encoder_fn(client_id=self._client_id,
+                                 correlation_id=request_id, payloads=payloads)
 
             failed = False
             # Send the request, recv the response
             try:
-                conn.send(requestId, request)
+                yield from conn.send(request_id, request)
                 if decoder_fn is None:
                     continue
                 try:
-                    response = conn.recv(requestId)
+                    response = yield from conn.recv(request_id)
                 except ConnectionError as e:
                     log.warning("Could not receive response to request [%s] "
-                                "from server %s: %s", binascii.b2a_hex(request), conn, e)
+                                "from server %s: %s",
+                                binascii.b2a_hex(request), conn, e)
                     failed = True
             except ConnectionError as e:
                 log.warning("Could not send request [%s] to server %s: %s",
@@ -194,8 +205,299 @@ class KafkaClient:
 
     def _raise_on_response_error(self, resp):
         try:
-            kafka.common.check_error(resp)
+            check_error(resp)
         except (UnknownTopicOrPartitionError, NotLeaderForPartitionError):
             self.reset_topic_metadata(resp.topic)
             raise
 
+    def close(self):
+        for conn in self._conns.values():
+            conn.close()
+
+    def copy(self):
+        """
+        Create an inactive copy of the client object
+        A reinit() has to be done on the copy before it can be used again
+        """
+        c = copy.deepcopy(self)
+        for key in c.conns:
+            c.conns[key] = self.conns[key].copy()
+        return c
+
+    @asyncio.coroutine
+    def reinit(self):
+        for conn in self.conns.values():
+            yield from conn.reinit()
+
+    def reset_topic_metadata(self, *topics):
+        for topic in topics:
+            try:
+                partitions = self._topic_partitions[topic]
+            except KeyError:
+                continue
+
+            for partition in partitions:
+                self._topics_to_brokers.pop(
+                    TopicAndPartition(topic, partition),
+                    None)
+
+            del self._topic_partitions[topic]
+
+    def reset_all_metadata(self):
+        self._topics_to_brokers.clear()
+        self._topic_partitions.clear()
+
+    def has_metadata_for_topic(self, topic):
+        return (topic in self._topic_partitions and
+                len(self._topic_partitions[topic]) > 0)
+
+    def get_partition_ids_for_topic(self, topic):
+        if topic not in self._topic_partitions:
+            return None
+
+        return list(self._topic_partitions[topic])
+
+    @asyncio.coroutine
+    def ensure_topic_exists(self, topic, *, timeout=30):
+        start_time = time.monotonic()
+
+        while not self.has_metadata_for_topic(topic):
+            if time.monotonic() > start_time + timeout:
+                raise KafkaTimeoutError(
+                    "Unable to create topic {0}".format(topic))
+            try:
+                yield from self.load_metadata_for_topics(topic)
+            except LeaderNotAvailableError:
+                pass
+            except UnknownTopicOrPartitionError:
+                # Server is not configured to auto-create
+                # retrying in this case will not help
+                raise
+            yield from asyncio.sleep(.5, loop=self._loop)
+
+    @asyncio.coroutine
+    def load_metadata_for_topics(self, *topics):
+        """
+        Fetch broker and topic-partition metadata from the server,
+        and update internal data:
+        broker list, topic/partition list, and topic/parition -> broker map
+
+        This method should be called after receiving any error
+
+        @param: *topics (optional)
+        If a list of topics is provided, the metadata refresh will be limited
+        to the specified topics only.
+
+        Exceptions:
+        ----------
+        If the broker is configured to not auto-create topics,
+        expect UnknownTopicOrPartitionError for topics that don't exist
+
+        If the broker is configured to auto-create topics,
+        expect LeaderNotAvailableError for new topics
+        until partitions have been initialized.
+
+        Exceptions *will not* be raised in a full refresh (i.e. no topic list)
+        In this case, error codes will be logged as errors
+
+        Partition-level errors will also not be raised here
+        (a single partition w/o a leader, for example)
+        """
+        resp = yield from self.send_metadata_request(topics)
+
+        log.debug("Broker metadata: %s", resp.brokers)
+        log.debug("Topic metadata: %s", resp.topics)
+
+        self._brokers = dict([(broker.nodeId, broker)
+                              for broker in resp.brokers])
+
+        for topic_metadata in resp.topics:
+            topic = topic_metadata.topic
+            partitions = topic_metadata.partitions
+
+            self.reset_topic_metadata(topic)
+
+            # Errors expected for new topics
+            try:
+                check_error(topic_metadata)
+            except (UnknownTopicOrPartitionError,
+                    LeaderNotAvailableError) as e:
+
+                # Raise if the topic was passed in explicitly
+                if topic in topics:
+                    raise
+
+                # Otherwise, just log a warning
+                log.error("Error loading topic metadata for %s: %s",
+                          topic, type(e))
+                continue
+
+            self._topic_partitions[topic] = {}
+            for partition_metadata in partitions:
+                partition = partition_metadata.partition
+                leader = partition_metadata.leader
+
+                self._topic_partitions[topic][partition] = partition_metadata
+
+                # Populate topics_to_brokers dict
+                topic_part = TopicAndPartition(topic, partition)
+
+                # Check for partition errors
+                try:
+                    check_error(partition_metadata)
+
+                # If No Leader, topics_to_brokers topic_partition -> None
+                except LeaderNotAvailableError:
+                    log.error('No leader for topic %s partition %d',
+                              topic, partition)
+                    self._topics_to_brokers[topic_part] = None
+                    continue
+
+                # If Known Broker, topic_partition -> BrokerMetadata
+                if leader in self.brokers:
+                    self._topics_to_brokers[topic_part] = self._brokers[leader]
+
+                # If Unknown Broker, fake BrokerMetadata so we dont lose the id
+                # (not sure how this could happen.
+                # server could be in bad state)
+                else:
+                    self._topics_to_brokers[topic_part] = BrokerMetadata(
+                        leader, None, None
+                    )
+
+    @asyncio.coroutine
+    def send_metadata_request(self, payloads=()):
+
+        encoder = KafkaProtocol.encode_metadata_request
+        decoder = KafkaProtocol.decode_metadata_response
+
+        return (yield from self._send_broker_unaware_request(
+            payloads, encoder, decoder))
+
+    @asyncio.coroutine
+    def send_produce_request(self, payloads=[], *, acks=1, timeout=1000):
+        """
+        Encode and send some ProduceRequests
+
+        ProduceRequests will be grouped by (topic, partition) and then
+        sent to a specific broker. Output is a list of responses in the
+        same order as the list of payloads specified
+
+        Params
+        ======
+        payloads: list of ProduceRequest
+        fail_on_error: boolean, should we raise an Exception if we
+                       encounter an API error?
+        callback: function, instead of returning the ProduceResponse,
+                  first pass it through this function
+
+        Return
+        ======
+        list of ProduceResponse or callback(ProduceResponse), in the
+        order of input payloads
+        """
+
+        encoder = functools.partial(
+            KafkaProtocol.encode_produce_request,
+            acks=acks,
+            timeout=timeout)
+
+        if acks == 0:
+            decoder = None
+        else:
+            decoder = KafkaProtocol.decode_produce_response
+
+        resps = yield from self._send_broker_aware_request(
+            payloads, encoder, decoder)
+
+        out = []
+        for resp in resps:
+            if fail_on_error is True:
+                self._raise_on_response_error(resp)
+
+            if callback is not None:
+                out.append(callback(resp))
+            else:
+                out.append(resp)
+        return out
+
+    def send_fetch_request(self, payloads=[], fail_on_error=True,
+                           callback=None, max_wait_time=100, min_bytes=4096):
+        """
+        Encode and send a FetchRequest
+
+        Payloads are grouped by topic and partition so they can be pipelined
+        to the same brokers.
+        """
+
+        encoder = functools.partial(KafkaProtocol.encode_fetch_request,
+                          max_wait_time=max_wait_time,
+                          min_bytes=min_bytes)
+
+        resps = self._send_broker_aware_request(
+            payloads, encoder,
+            KafkaProtocol.decode_fetch_response)
+
+        out = []
+        for resp in resps:
+            if fail_on_error is True:
+                self._raise_on_response_error(resp)
+
+            if callback is not None:
+                out.append(callback(resp))
+            else:
+                out.append(resp)
+        return out
+
+    def send_offset_request(self, payloads=[], fail_on_error=True,
+                            callback=None):
+        resps = self._send_broker_aware_request(
+            payloads,
+            KafkaProtocol.encode_offset_request,
+            KafkaProtocol.decode_offset_response)
+
+        out = []
+        for resp in resps:
+            if fail_on_error is True:
+                self._raise_on_response_error(resp)
+            if callback is not None:
+                out.append(callback(resp))
+            else:
+                out.append(resp)
+        return out
+
+    def send_offset_commit_request(self, group, payloads=[],
+                                   fail_on_error=True, callback=None):
+        encoder = functools.partial(KafkaProtocol.encode_offset_commit_request,
+                          group=group)
+        decoder = KafkaProtocol.decode_offset_commit_response
+        resps = self._send_broker_aware_request(payloads, encoder, decoder)
+
+        out = []
+        for resp in resps:
+            if fail_on_error is True:
+                self._raise_on_response_error(resp)
+
+            if callback is not None:
+                out.append(callback(resp))
+            else:
+                out.append(resp)
+        return out
+
+    def send_offset_fetch_request(self, group, payloads=[],
+                                  fail_on_error=True, callback=None):
+
+        encoder = functools.partial(KafkaProtocol.encode_offset_fetch_request,
+                          group=group)
+        decoder = KafkaProtocol.decode_offset_fetch_response
+        resps = self._send_broker_aware_request(payloads, encoder, decoder)
+
+        out = []
+        for resp in resps:
+            if fail_on_error is True:
+                self._raise_on_response_error(resp)
+            if callback is not None:
+                out.append(callback(resp))
+            else:
+                out.append(resp)
+        return out
