@@ -15,7 +15,7 @@ from kafka.common import (TopicAndPartition, BrokerMetadata,
                           UnknownTopicOrPartitionError,
                           NotLeaderForPartitionError,
                           check_error)
-from kafka import KafkaProtocol
+from kafka.protocol import KafkaProtocol
 
 from .conn import AIOKafkaConnection
 
@@ -44,11 +44,15 @@ class AIOKafkaClient:
             loop = asyncio.get_event_loop()
         self._loop = loop
 
+    @property
+    def hosts(self):
+        return self._hosts
+
     def _get_conn(self, host, port):
         "Get or create a connection to a broker using host and port"
         host_key = (host, port)
         if host_key not in self._conns:
-            self._conns[host_key] = KafkaConnection(
+            self._conns[host_key] = AIOKafkaConnection(
                 host, port, loop=self._loop)
         return self._conns[host_key]
 
@@ -375,7 +379,7 @@ class AIOKafkaClient:
             payloads, encoder, decoder))
 
     @asyncio.coroutine
-    def send_produce_request(self, payloads=[], *, acks=1, timeout=1000):
+    def send_produce_request(self, payloads=(), *, acks=1, timeout=1000):
         """
         Encode and send some ProduceRequests
 
@@ -412,17 +416,13 @@ class AIOKafkaClient:
 
         out = []
         for resp in resps:
-            if fail_on_error is True:
-                self._raise_on_response_error(resp)
-
-            if callback is not None:
-                out.append(callback(resp))
-            else:
-                out.append(resp)
+            self._raise_on_response_error(resp)
+            out.append(resp)
         return out
 
-    def send_fetch_request(self, payloads=[], fail_on_error=True,
-                           callback=None, max_wait_time=100, min_bytes=4096):
+    @asyncio.coroutine
+    def send_fetch_request(self, payloads=(),
+                           *, max_wait_time=100, min_bytes=4096):
         """
         Encode and send a FetchRequest
 
@@ -431,73 +431,55 @@ class AIOKafkaClient:
         """
 
         encoder = functools.partial(KafkaProtocol.encode_fetch_request,
-                          max_wait_time=max_wait_time,
-                          min_bytes=min_bytes)
+                                    max_wait_time=max_wait_time,
+                                    min_bytes=min_bytes)
 
-        resps = self._send_broker_aware_request(
+        resps = yield from self._send_broker_aware_request(
             payloads, encoder,
             KafkaProtocol.decode_fetch_response)
 
         out = []
         for resp in resps:
-            if fail_on_error is True:
-                self._raise_on_response_error(resp)
-
-            if callback is not None:
-                out.append(callback(resp))
-            else:
-                out.append(resp)
+            self._raise_on_response_error(resp)
+            out.append(resp)
         return out
 
-    def send_offset_request(self, payloads=[], fail_on_error=True,
-                            callback=None):
-        resps = self._send_broker_aware_request(
+    @asyncio.coroutine
+    def send_offset_request(self, payloads=()):
+        resps = yield from self._send_broker_aware_request(
             payloads,
             KafkaProtocol.encode_offset_request,
             KafkaProtocol.decode_offset_response)
 
         out = []
         for resp in resps:
-            if fail_on_error is True:
-                self._raise_on_response_error(resp)
-            if callback is not None:
-                out.append(callback(resp))
-            else:
-                out.append(resp)
+            self._raise_on_response_error(resp)
+            out.append(resp)
         return out
 
-    def send_offset_commit_request(self, group, payloads=[],
-                                   fail_on_error=True, callback=None):
+    @asyncio.coroutine
+    def send_offset_commit_request(self, group, payloads=()):
         encoder = functools.partial(KafkaProtocol.encode_offset_commit_request,
-                          group=group)
+                                    group=group)
         decoder = KafkaProtocol.decode_offset_commit_response
-        resps = self._send_broker_aware_request(payloads, encoder, decoder)
+        resps = yield from self._send_broker_aware_request(
+            payloads, encoder, decoder)
 
         out = []
         for resp in resps:
-            if fail_on_error is True:
-                self._raise_on_response_error(resp)
-
-            if callback is not None:
-                out.append(callback(resp))
-            else:
-                out.append(resp)
+            self._raise_on_response_error(resp)
+            out.append(resp)
         return out
 
-    def send_offset_fetch_request(self, group, payloads=[],
-                                  fail_on_error=True, callback=None):
+    def send_offset_fetch_request(self, group, payloads=()):
 
         encoder = functools.partial(KafkaProtocol.encode_offset_fetch_request,
-                          group=group)
+                                    group=group)
         decoder = KafkaProtocol.decode_offset_fetch_response
         resps = self._send_broker_aware_request(payloads, encoder, decoder)
 
         out = []
         for resp in resps:
-            if fail_on_error is True:
-                self._raise_on_response_error(resp)
-            if callback is not None:
-                out.append(callback(resp))
-            else:
-                out.append(resp)
+            self._raise_on_response_error(resp)
+            out.append(resp)
         return out
