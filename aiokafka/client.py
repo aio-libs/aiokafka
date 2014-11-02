@@ -360,7 +360,7 @@ class AIOKafkaClient:
                     continue
 
                 # If Known Broker, topic_partition -> BrokerMetadata
-                if leader in self.brokers:
+                if leader in self._brokers:
                     self._topics_to_brokers[topic_part] = self._brokers[leader]
 
                 # If Unknown Broker, fake BrokerMetadata so we dont lose the id

@@ -105,17 +105,12 @@ class TestAIOKafkaClinet(unittest.TestCase):
         self.assertEqual(b'valid response', resp)
         self.assertTrue(mocked_conns[('kafka02', 9092)].recv.called)
 
-    @mock.patch('kafka.client.KafkaProtocol')
+    @mock.patch('aiokafka.client.KafkaProtocol')
     def test_load_metadata(self, protocol):
 
         @asyncio.coroutine
         def recv(request_id):
             return b'response'
-
-        mocked_conns = {('broker_1', 4567): mock.MagicMock()}
-        mocked_conns[('broker_1', 4567)].recv.side_effect = recv
-        client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
-        client._conns = mocked_conns
 
         brokers = [
             BrokerMetadata(0, 'broker_1', 4567),
@@ -142,6 +137,11 @@ class TestAIOKafkaClinet(unittest.TestCase):
         ]
         protocol.decode_metadata_response.return_value = MetadataResponse(
             brokers, topics)
+
+        mocked_conns = {('broker_1', 4567): mock.MagicMock()}
+        mocked_conns[('broker_1', 4567)].recv.side_effect = recv
+        client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
+        client._conns = mocked_conns
 
         self.loop.run_until_complete(client.load_metadata_for_topics())
         self.assertDictEqual({
