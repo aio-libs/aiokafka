@@ -6,7 +6,7 @@ from kafka.common import (KafkaUnavailableError, BrokerMetadata, TopicMetadata,
                           PartitionMetadata, TopicAndPartition,
                           LeaderNotAvailableError,
                           UnknownTopicOrPartitionError,
-                          MetadataResponse)
+                          MetadataResponse, KafkaTimeoutError)
 
 
 NO_ERROR = 0
@@ -112,6 +112,11 @@ class TestAIOKafkaClinet(unittest.TestCase):
         def recv(request_id):
             return b'response'
 
+        mocked_conns = {('broker_1', 4567): mock.MagicMock()}
+        mocked_conns[('broker_1', 4567)].recv.side_effect = recv
+        client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
+        client._conns = mocked_conns
+
         brokers = [
             BrokerMetadata(0, 'broker_1', 4567),
             BrokerMetadata(1, 'broker_2', 5678)
@@ -138,11 +143,6 @@ class TestAIOKafkaClinet(unittest.TestCase):
         protocol.decode_metadata_response.return_value = MetadataResponse(
             brokers, topics)
 
-        mocked_conns = {('broker_1', 4567): mock.MagicMock()}
-        mocked_conns[('broker_1', 4567)].recv.side_effect = recv
-        client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
-        client._conns = mocked_conns
-
         self.loop.run_until_complete(client.load_metadata_for_topics())
         self.assertDictEqual({
             TopicAndPartition('topic_1', 0): brokers[1],
@@ -165,3 +165,84 @@ class TestAIOKafkaClinet(unittest.TestCase):
         # This should not raise
         self.loop.run_until_complete(
             client.load_metadata_for_topics('topic_no_leader'))
+
+    @mock.patch('aiokafka.client.KafkaProtocol')
+    def test_has_metadata_for_topic(self, protocol):
+
+        @asyncio.coroutine
+        def recv(request_id):
+            return b'response'
+
+        mocked_conns = {('broker_1', 4567): mock.MagicMock()}
+        mocked_conns[('broker_1', 4567)].recv.side_effect = recv
+        client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
+        client._conns = mocked_conns
+
+        brokers = [
+            BrokerMetadata(0, 'broker_1', 4567),
+            BrokerMetadata(1, 'broker_2', 5678)
+        ]
+
+        topics = [
+            TopicMetadata('topic_still_creating', NO_LEADER, []),
+            TopicMetadata('topic_doesnt_exist',
+                          UNKNOWN_TOPIC_OR_PARTITION, []),
+            TopicMetadata('topic_noleaders', NO_ERROR, [
+                PartitionMetadata('topic_noleaders', 0, -1, [], [], NO_LEADER),
+                PartitionMetadata('topic_noleaders', 1, -1, [], [], NO_LEADER),
+            ]),
+        ]
+        protocol.decode_metadata_response.return_value = MetadataResponse(
+            brokers, topics)
+
+        self.loop.run_until_complete(client.load_metadata_for_topics())
+
+        # Topics with no partitions return False
+        self.assertFalse(client.has_metadata_for_topic('topic_still_creating'))
+        self.assertFalse(client.has_metadata_for_topic('topic_doesnt_exist'))
+
+        # Topic with partition metadata, but no leaders return True
+        self.assertTrue(client.has_metadata_for_topic('topic_noleaders'))
+
+    @mock.patch('aiokafka.client.KafkaProtocol')
+    def test_ensure_topic_exists(self, protocol):
+
+        @asyncio.coroutine
+        def recv(request_id):
+            return b'response'
+
+        mocked_conns = {('broker_1', 4567): mock.MagicMock()}
+        mocked_conns[('broker_1', 4567)].recv.side_effect = recv
+        client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
+        client._conns = mocked_conns
+
+        brokers = [
+            BrokerMetadata(0, 'broker_1', 4567),
+            BrokerMetadata(1, 'broker_2', 5678)
+        ]
+
+        topics = [
+            TopicMetadata('topic_still_creating', NO_LEADER, []),
+            TopicMetadata('topic_doesnt_exist',
+                          UNKNOWN_TOPIC_OR_PARTITION, []),
+            TopicMetadata('topic_noleaders', NO_ERROR, [
+                PartitionMetadata('topic_noleaders', 0, -1, [], [], NO_LEADER),
+                PartitionMetadata('topic_noleaders', 1, -1, [], [], NO_LEADER),
+            ]),
+        ]
+        protocol.decode_metadata_response.return_value = MetadataResponse(
+            brokers, topics)
+
+        self.loop.run_until_complete(client.load_metadata_for_topics())
+
+        with self.assertRaises(UnknownTopicOrPartitionError):
+            self.loop.run_until_complete(
+                client.ensure_topic_exists('topic_doesnt_exist', timeout=1))
+
+        with self.assertRaises(KafkaTimeoutError):
+            self.loop.run_until_complete(
+                client.ensure_topic_exists('topic_still_creating', timeout=1))
+
+        # This should not raise
+        self.loop.run_until_complete(
+            client.ensure_topic_exists('topic_noleaders', timeout=1))
