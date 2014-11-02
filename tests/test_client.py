@@ -2,7 +2,16 @@ import asyncio
 import unittest
 from unittest import mock
 from aiokafka.client import AIOKafkaClient
-from kafka.common import KafkaUnavailableError
+from kafka.common import (KafkaUnavailableError, BrokerMetadata, TopicMetadata,
+                          PartitionMetadata, TopicAndPartition,
+                          LeaderNotAvailableError,
+                          UnknownTopicOrPartitionError,
+                          MetadataResponse)
+
+
+NO_ERROR = 0
+UNKNOWN_TOPIC_OR_PARTITION = 3
+NO_LEADER = 5
 
 
 class TestAIOKafkaClinet(unittest.TestCase):
@@ -95,3 +104,64 @@ class TestAIOKafkaClinet(unittest.TestCase):
 
         self.assertEqual(b'valid response', resp)
         self.assertTrue(mocked_conns[('kafka02', 9092)].recv.called)
+
+    @mock.patch('kafka.client.KafkaProtocol')
+    def test_load_metadata(self, protocol):
+
+        @asyncio.coroutine
+        def recv(request_id):
+            return b'response'
+
+        mocked_conns = {('broker_1', 4567): mock.MagicMock()}
+        mocked_conns[('broker_1', 4567)].recv.side_effect = recv
+        client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
+        client._conns = mocked_conns
+
+        brokers = [
+            BrokerMetadata(0, 'broker_1', 4567),
+            BrokerMetadata(1, 'broker_2', 5678)
+        ]
+
+        topics = [
+            TopicMetadata('topic_1', NO_ERROR, [
+                PartitionMetadata('topic_1', 0, 1, [1, 2], [1, 2], NO_ERROR)
+            ]),
+            TopicMetadata('topic_noleader', NO_ERROR, [
+                PartitionMetadata('topic_noleader', 0, -1, [], [],
+                                  NO_LEADER),
+                PartitionMetadata('topic_noleader', 1, -1, [], [],
+                                  NO_LEADER),
+            ]),
+            TopicMetadata('topic_no_partitions', NO_LEADER, []),
+            TopicMetadata('topic_unknown', UNKNOWN_TOPIC_OR_PARTITION, []),
+            TopicMetadata('topic_3', NO_ERROR, [
+                PartitionMetadata('topic_3', 0, 0, [0, 1], [0, 1], NO_ERROR),
+                PartitionMetadata('topic_3', 1, 1, [1, 0], [1, 0], NO_ERROR),
+                PartitionMetadata('topic_3', 2, 0, [0, 1], [0, 1], NO_ERROR)
+            ])
+        ]
+        protocol.decode_metadata_response.return_value = MetadataResponse(
+            brokers, topics)
+
+        self.loop.run_until_complete(client.load_metadata_for_topics())
+        self.assertDictEqual({
+            TopicAndPartition('topic_1', 0): brokers[1],
+            TopicAndPartition('topic_noleader', 0): None,
+            TopicAndPartition('topic_noleader', 1): None,
+            TopicAndPartition('topic_3', 0): brokers[0],
+            TopicAndPartition('topic_3', 1): brokers[1],
+            TopicAndPartition('topic_3', 2): brokers[0]},
+            client._topics_to_brokers)
+
+        # if we ask for metadata explicitly, it should raise errors
+        with self.assertRaises(LeaderNotAvailableError):
+            self.loop.run_until_complete(
+                client.load_metadata_for_topics('topic_no_partitions'))
+
+        with self.assertRaises(UnknownTopicOrPartitionError):
+            self.loop.run_until_complete(
+                client.load_metadata_for_topics('topic_unknown'))
+
+        # This should not raise
+        self.loop.run_until_complete(
+            client.load_metadata_for_topics('topic_no_leader'))
