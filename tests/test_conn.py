@@ -32,5 +32,21 @@ class ConnTest(unittest.TestCase):
     def test_recv(self):
         conn = KafkaConnection('localhost', 1234)
         conn._reader = mock.Mock()
+
+        rets = [(4, KafkaConnection.HEADER.pack(6)),
+                (6, b'dataok')]
+        idx = 0
+
+        @asyncio.coroutine
+        def readexactly(n):
+            nonlocal idx
+            self.assertEqual(rets[idx][0], n)
+            ret = rets[idx][1]
+            idx += 1
+            return ret
+
+        conn._reader.readexactly.side_effect = readexactly
+
         self.loop.run_until_complete(conn.recv(123))
-        conn._writer.write.assert_called_with(b'data')
+
+        self.assertEqual(2, idx)
