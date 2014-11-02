@@ -263,7 +263,7 @@ class AIOKafkaClient:
                 # Server is not configured to auto-create
                 # retrying in this case will not help
                 raise
-            yield from asyncio.sleep(.5, loop=self._loop)
+            yield from asyncio.sleep(0.5, loop=self._loop)
 
     @asyncio.coroutine
     def load_metadata_for_topics(self, *topics):
