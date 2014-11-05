@@ -473,6 +473,18 @@ class TestAIOKafkaClinet(unittest.TestCase):
         with self.assertRaises(UnknownTopicOrPartitionError):
             self.loop.run_until_complete(client.send_produce_request(requests))
 
+    def test__next_id(self):
+        client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
+        self.assertEqual(0, client._request_id)
+        self.assertEqual(1, client._next_id())
+        self.assertEqual(1, client._request_id)
+
+    def test__next_id_overflow(self):
+        client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
+        client._request_id = 0x7fffffffff
+        self.assertEqual(0, client._next_id())
+        self.assertEqual(0, client._request_id)
+
     # def test_timeout(self):
     #     def _timeout(*args, **kwargs):
     #         timeout = args[1]
