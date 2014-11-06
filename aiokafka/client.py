@@ -448,11 +448,13 @@ class AIOKafkaClient:
 
         return self._build_resp(resps)
 
+    @asyncio.coroutine
     def send_offset_fetch_request(self, group, payloads=()):
 
         encoder = functools.partial(KafkaProtocol.encode_offset_fetch_request,
                                     group=group)
         decoder = KafkaProtocol.decode_offset_fetch_response
-        resps = self._send_broker_aware_request(payloads, encoder, decoder)
+        resps = yield from self._send_broker_aware_request(
+            payloads, encoder, decoder)
 
         return self._build_resp(resps)
