@@ -23,7 +23,7 @@ class AIOProducer:
     ACK_AFTER_LOCAL_WRITE = 1       # Send response after it is written to log
     ACK_AFTER_CLUSTER_COMMIT = -1   # Send response after data is committed
 
-    def __init__(self, client, req_acks, ack_timeout, codec=None):
+    def __init__(self, client, *, req_acks, ack_timeout, codec=None):
         self._client = client
         self._req_acks = req_acks
         self._ack_timeout = ack_timeout
@@ -74,7 +74,7 @@ class SimpleAIOProducer(AIOProducer):
         0 before cycling through each partition
     """
 
-    def __init__(self, client,
+    def __init__(self, client, *,
                  req_acks=AIOProducer.ACK_AFTER_LOCAL_WRITE,
                  ack_timeout=1000,
                  codec=None,
@@ -82,7 +82,8 @@ class SimpleAIOProducer(AIOProducer):
 
         self._partition_cycles = {}
         self._random_start = random_start
-        super().__init__(client, req_acks, ack_timeout, codec)
+        super().__init__(client, req_acks=req_acks, ack_timeout=ack_timeout,
+                         codec=codec)
 
     @asyncio.coroutine
     def _next_partition(self, topic):
@@ -128,13 +129,14 @@ class KeyedAIOProducer(AIOProducer):
         0 before cycling through each partition
     """
 
-    def __init__(self, client, partitioner=None,
+    def __init__(self, client, *, partitioner=None,
                  req_acks=AIOProducer.ACK_AFTER_LOCAL_WRITE,
                  ack_timeout=1000, codec=None):
 
         self._partitioner_class = partitioner or HashedPartitioner
         self._partitioners = {}
-        super().__init__(client, req_acks, ack_timeout, codec)
+        super().__init__(client, req_acks=req_acks, ack_timeout=ack_timeout,
+                         codec=codec)
 
     @asyncio.coroutine
     def _next_partition(self, topic, key):

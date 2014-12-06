@@ -24,9 +24,10 @@ class AIOKafkaClient:
 
     CLIENT_ID = b"aiokafka-python"
 
-    def __init__(self, hosts, client_id=CLIENT_ID,
+    def __init__(self, hosts, *,
+                 client_id=CLIENT_ID,
                  timeout=DEFAULT_SOCKET_TIMEOUT_SECONDS,
-                 *, loop=None):
+                 loop=None):
         self._client_id = client_id
         self._timeout = timeout
         self._hosts = collect_hosts(hosts)
