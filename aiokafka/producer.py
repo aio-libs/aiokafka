@@ -3,7 +3,8 @@ import logging
 import random
 from itertools import cycle
 
-import kafka.protocol as protocol
+from kafka.protocol import (CODEC_NONE, CODEC_SNAPPY, CODEC_GZIP, ALL_CODECS,
+                            create_message_set)
 from kafka import HashedPartitioner
 from kafka.common import UnsupportedCodecError, ProduceRequest
 
@@ -13,15 +14,14 @@ __all__ = ['AIOProducer', 'SimpleAIOProducer', 'KeyedAIOProducer']
 
 log = logging.getLogger("aiokafka.producer")
 
+CODEC_SNAPPY, CODEC_GZIP  # For pyflakes check
+
 
 class AIOProducer:
 
     ACK_NOT_REQUIRED = 0            # No ack is required
     ACK_AFTER_LOCAL_WRITE = 1       # Send response after it is written to log
     ACK_AFTER_CLUSTER_COMMIT = -1   # Send response after data is committed
-    # possible message codecs
-    CODEC_SNAPPY = protocol.CODEC_SNAPPY
-    CODEC_GZIP = protocol.CODEC_GZIP
 
     def __init__(self, client, req_acks, ack_timeout, codec=None):
         self._client = client
@@ -29,24 +29,24 @@ class AIOProducer:
         self._ack_timeout = ack_timeout
 
         if codec is None:
-            codec = protocol.CODEC_NONE
-        elif codec not in protocol.ALL_CODECS:
+            codec = CODEC_NONE
+        elif codec not in ALL_CODECS:
             raise UnsupportedCodecError("Codec 0x%02x unsupported" % codec)
         self._codec = codec
 
     @asyncio.coroutine
-    def _send_messages(self, topic, partition, *msg, key=None):
+    def _send(self, topic, partition, *msgs, key=None):
 
-        if not isinstance(msg, (list, tuple)):
-            raise TypeError("msg is not a list or tuple!")
+        if not isinstance(msgs, (list, tuple)):
+            raise TypeError("msgs is not a list or tuple!")
 
-        if any(not isinstance(m, bytes) for m in msg):
+        if any(not isinstance(m, bytes) for m in msgs):
             raise TypeError("all produce message payloads must be type bytes")
 
         if key is not None and not isinstance(key, bytes):
             raise TypeError("the key must be type bytes")
 
-        messages = protocol.create_message_set(msg, self._codec, key)
+        messages = create_message_set(msgs, self._codec, key)
         req = ProduceRequest(topic, partition, messages)
         try:
             resp = yield from self._client.send_produce_request(
@@ -101,9 +101,9 @@ class SimpleAIOProducer(AIOProducer):
         return next(self._partition_cycles[topic])
 
     @asyncio.coroutine
-    def send_messages(self, topic, msg, *msgs):
+    def send(self, topic, *msgs):
         partition = yield from self._next_partition(topic)
-        resp = yield from self._send_messages(topic, partition, msg, *msgs)
+        resp = yield from self._send(topic, partition, *msgs)
         return resp
 
     def __repr__(self):
@@ -150,10 +150,9 @@ class KeyedAIOProducer(AIOProducer):
         return partitioner.partition(key, partition_ids)
 
     @asyncio.coroutine
-    def send_messages(self, topic, key, msg, *msgs):
+    def send(self, topic, key, *msgs):
         partition = yield from self._next_partition(topic, key)
-        return (yield from self._send_messages(topic, partition, msg, *msgs,
-                                               key=key))
+        return (yield from self._send(topic, partition, *msgs, key=key))
 
     def __repr__(self):
         return '<KeyedAIOProducer req_acks={} partitioner={!r}>'.format(
