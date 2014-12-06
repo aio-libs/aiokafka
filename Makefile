@@ -14,7 +14,7 @@ vtest: flake
 
 cov cover coverage:
 	nosetests -s --with-cover --cover-html --cover-branches $(FLAGS) --cover-package aiokafka ./tests/
-	echo "open file://`pwd`/cover/index.html"
+	@echo "open file://`pwd`/cover/index.html"
 
 clean:
 	rm -rf `find . -name __pycache__`
@@ -32,7 +32,7 @@ clean:
 	rm -rf dist
 
 doc:
-	cd docs && make html
-	echo "open file://`pwd`/docs/_build/html/index.html"
+	make -C docs html
+	@echo "open file://`pwd`/docs/_build/html/index.html"
 
 .PHONY: all flake test vtest cov clean doc

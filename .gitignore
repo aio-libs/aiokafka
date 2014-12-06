@@ -1,4 +1,4 @@
-# Byte-compiled / optimized / DLL files
+># Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 
@@ -56,3 +56,5 @@ target/
 
 # PyCharm
 .idea
+
+kafka_2*
