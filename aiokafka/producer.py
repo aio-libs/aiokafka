@@ -59,6 +59,21 @@ class AIOProducer:
 
 
 class SimpleAIOProducer(AIOProducer):
+    """A simple, round-robin producer. Each message goes to exactly one
+    partition
+
+    Params:
+    ------
+    :param client: the aiokafka client instance to use
+    :param req_acks: ``bool'', a value indicating the acknowledgements that
+        the server must receive before responding to the request
+    :param ack_timeout: ``int``, value (in milliseconds) indicating a timeout
+        for waiting for an acknowledgement
+    :param random_start: ``bool``, if true, randomize the initial partition
+        which the the first message block will be published to, otherwise
+        if false, the first message block will always publish  to partition
+        0 before cycling through each partition
+    """
 
     def __init__(self, client,
                  req_acks=AIOProducer.ACK_AFTER_LOCAL_WRITE,
@@ -66,25 +81,25 @@ class SimpleAIOProducer(AIOProducer):
                  codec=None,
                  random_start=False):
 
-        self.partition_cycles = {}
-        self.random_start = random_start
+        self._partition_cycles = {}
+        self._random_start = random_start
         super().__init__(client, req_acks, ack_timeout, codec)
 
     @asyncio.coroutine
     def _next_partition(self, topic):
 
-        if topic not in self.partition_cycles:
+        if topic not in self._partition_cycles:
             if not self._client.has_metadata_for_topic(topic):
                 yield from self._client.load_metadata_for_topics(topic)
 
             partition_ids = self._client.get_partition_ids_for_topic(topic)
-            self.partition_cycles[topic] = cycle(partition_ids)
+            self._partition_cycles[topic] = cycle(partition_ids)
 
             # Randomize the initial partition that is returned
-            if self.random_start:
+            if self._random_start:
                 for _ in range(random.randint(0, len(partition_ids)-1)):
-                    next(self.partition_cycles[topic])
-        return next(self.partition_cycles[topic])
+                    next(self._partition_cycles[topic])
+        return next(self._partition_cycles[topic])
 
     @asyncio.coroutine
     def send_messages(self, topic, msg, *msgs):
@@ -93,10 +108,29 @@ class SimpleAIOProducer(AIOProducer):
         return resp
 
     def __repr__(self):
-        return '<SimpleProducer>'
+        return '<SimpleAIOProducer req_acks={}>'.format(self._req_acks)
 
 
 class KeyedAIOProducer(AIOProducer):
+    """A producer which distributes messages to partitions based on the key
+
+    Params:
+    ------
+
+    :param client: the aiokafka client instance to use
+
+    :param partitioner: partitioner class that will be used to get the
+        partition to send the message to. Must be derived from ``Partitioner``
+
+    :param req_acks: ``bool'', a value indicating the acknowledgements that
+        the server must receive before responding to the request
+    :param ack_timeout: ``int``, value (in milliseconds) indicating a timeout
+        for waiting for an acknowledgement
+    :param random_start: ``bool``, if true, randomize the initial partition
+        which the the first message block will be published to, otherwise
+        if false, the first message block will always publish  to partition
+        0 before cycling through each partition
+    """
 
     def __init__(self, client, partitioner=None,
                  req_acks=AIOProducer.ACK_AFTER_LOCAL_WRITE,
@@ -126,4 +160,5 @@ class KeyedAIOProducer(AIOProducer):
         return (yield from self._send_messages(topic, partition, msg, key=key))
 
     def __repr__(self):
-        return '<KeyedProducer>'
+        return '<KeyedAIOProducer req_acks={} partitioner={!r}>'.format(
+            self._req_acks, self._partitioner_class)
