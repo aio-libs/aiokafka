@@ -5,7 +5,7 @@ from kafka.common import MetadataResponse
 from kafka.protocol import KafkaProtocol
 
 from aiokafka.conn import AIOKafkaConnection
-from tests.fixtures import ZookeeperFixture, KafkaFixture
+from .fixtures import ZookeeperFixture, KafkaFixture
 
 
 class ConnTest(unittest.TestCase):
