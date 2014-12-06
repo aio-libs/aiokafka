@@ -1,10 +1,10 @@
 import asyncio
 import logging
 import random
-
 from itertools import cycle
+
+import kafka.protocol as protocol
 from kafka import HashedPartitioner
-from kafka.protocol import CODEC_NONE, ALL_CODECS, create_message_set
 from kafka.common import UnsupportedCodecError, ProduceRequest
 
 
@@ -19,24 +19,23 @@ class AIOProducer:
     ACK_NOT_REQUIRED = 0            # No ack is required
     ACK_AFTER_LOCAL_WRITE = 1       # Send response after it is written to log
     ACK_AFTER_CLUSTER_COMMIT = -1   # Send response after data is committed
+    # possible message codecs
+    CODEC_SNAPPY = protocol.CODEC_SNAPPY
+    CODEC_GZIP = protocol.CODEC_GZIP
 
-    DEFAULT_ACK_TIMEOUT = 1000
-
-    def __init__(self, client, req_acks=ACK_AFTER_LOCAL_WRITE,
-                 ack_timeout=DEFAULT_ACK_TIMEOUT, codec=None):
+    def __init__(self, client, req_acks, ack_timeout, codec=None):
         self._client = client
         self._req_acks = req_acks
         self._ack_timeout = ack_timeout
 
         if codec is None:
-            codec = CODEC_NONE
-        elif codec not in ALL_CODECS:
+            codec = protocol.CODEC_NONE
+        elif codec not in protocol.ALL_CODECS:
             raise UnsupportedCodecError("Codec 0x%02x unsupported" % codec)
         self._codec = codec
 
     @asyncio.coroutine
-    def _send_messages(self, topic, partition, *msg, **kwargs):
-        key = kwargs.pop('key', None)
+    def _send_messages(self, topic, partition, *msg, key=None):
 
         if not isinstance(msg, (list, tuple)):
             raise TypeError("msg is not a list or tuple!")
@@ -47,7 +46,7 @@ class AIOProducer:
         if key is not None and not isinstance(key, bytes):
             raise TypeError("the key must be type bytes")
 
-        messages = create_message_set(msg, self._codec, key)
+        messages = protocol.create_message_set(msg, self._codec, key)
         req = ProduceRequest(topic, partition, messages)
         try:
             resp = yield from self._client.send_produce_request(
@@ -62,14 +61,14 @@ class SimpleAIOProducer(AIOProducer):
     """A simple, round-robin producer. Each message goes to exactly one
     partition
 
-    Params:
-    ------
-    :param client: the aiokafka client instance to use
-    :param req_acks: ``bool'', a value indicating the acknowledgements that
+    client: the aiokafka client instance to use
+    req_acks: a value indicating the acknowledgements that
         the server must receive before responding to the request
-    :param ack_timeout: ``int``, value (in milliseconds) indicating a timeout
+    ack_timeout: ``int``, value (in milliseconds) indicating a timeout
         for waiting for an acknowledgement
-    :param random_start: ``bool``, if true, randomize the initial partition
+    codec: a valued indicating message compression codec, by default no
+        compression used.
+    random_start: ``bool``, if true, randomize the initial partition
         which the the first message block will be published to, otherwise
         if false, the first message block will always publish  to partition
         0 before cycling through each partition
@@ -77,7 +76,7 @@ class SimpleAIOProducer(AIOProducer):
 
     def __init__(self, client,
                  req_acks=AIOProducer.ACK_AFTER_LOCAL_WRITE,
-                 ack_timeout=AIOProducer.DEFAULT_ACK_TIMEOUT,
+                 ack_timeout=1000,
                  codec=None,
                  random_start=False):
 
@@ -114,19 +113,16 @@ class SimpleAIOProducer(AIOProducer):
 class KeyedAIOProducer(AIOProducer):
     """A producer which distributes messages to partitions based on the key
 
-    Params:
-    ------
-
-    :param client: the aiokafka client instance to use
-
-    :param partitioner: partitioner class that will be used to get the
+    client: the aiokafka client instance to use
+    partitioner: partitioner class that will be used to get the
         partition to send the message to. Must be derived from ``Partitioner``
-
-    :param req_acks: ``bool'', a value indicating the acknowledgements that
+    req_acks: a value indicating the acknowledgements that
         the server must receive before responding to the request
-    :param ack_timeout: ``int``, value (in milliseconds) indicating a timeout
+    ack_timeout: ``int``, value (in milliseconds) indicating a timeout
         for waiting for an acknowledgement
-    :param random_start: ``bool``, if true, randomize the initial partition
+    codec: a valued indicating message compression codec, by default no
+        compression used.
+    random_start: ``bool``, if true, randomize the initial partition
         which the the first message block will be published to, otherwise
         if false, the first message block will always publish  to partition
         0 before cycling through each partition
@@ -134,8 +130,7 @@ class KeyedAIOProducer(AIOProducer):
 
     def __init__(self, client, partitioner=None,
                  req_acks=AIOProducer.ACK_AFTER_LOCAL_WRITE,
-                 ack_timeout=AIOProducer.DEFAULT_ACK_TIMEOUT,
-                 codec=None):
+                 ack_timeout=1000, codec=None):
 
         self._partitioner_class = partitioner or HashedPartitioner
         self._partitioners = {}
@@ -155,9 +150,10 @@ class KeyedAIOProducer(AIOProducer):
         return partitioner.partition(key, partition_ids)
 
     @asyncio.coroutine
-    def send(self, topic, key, msg):
+    def send_messages(self, topic, key, msg, *msgs):
         partition = yield from self._next_partition(topic, key)
-        return (yield from self._send_messages(topic, partition, msg, key=key))
+        return (yield from self._send_messages(topic, partition, msg, *msgs,
+                                               key=key))
 
     def __repr__(self):
         return '<KeyedAIOProducer req_acks={} partitioner={!r}>'.format(
