@@ -1,15 +1,19 @@
 import asyncio
 import unittest
 from unittest import mock
-from aiokafka.client import AIOKafkaClient
 from kafka.common import (KafkaUnavailableError, BrokerMetadata, TopicMetadata,
                           PartitionMetadata, TopicAndPartition,
                           LeaderNotAvailableError,
                           UnknownTopicOrPartitionError,
-                          MetadataResponse, KafkaTimeoutError,
-                          ProduceRequest)
+                          MetadataResponse, ProduceRequest, FetchRequest,
+                          OffsetCommitRequest, OffsetFetchRequest,
+                          KafkaTimeoutError)
 
 from kafka.protocol import create_message
+
+from aiokafka.client import AIOKafkaClient
+from .fixtures import ZookeeperFixture, KafkaFixture
+from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
 NO_ERROR = 0
@@ -497,3 +501,53 @@ class TestAIOKafkaClinet(unittest.TestCase):
     #             with self.assertRaises(ConnectionError):
     #                 KafkaConnection("nowhere", 1234, 1.0)
     #         self.assertGreaterEqual(t.interval, 1.0)
+
+
+class TestKafkaClientIntegration(KafkaIntegrationTestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.zk = ZookeeperFixture.instance()
+        cls.server = KafkaFixture.instance(0, cls.zk.host, cls.zk.port)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.close()
+        cls.zk.close()
+
+    @run_until_complete
+    def test_consume_none(self):
+        fetch = FetchRequest(self.topic, 0, 0, 1024)
+        (fetch_resp,) = yield from self.client.send_fetch_request([fetch])
+        self.assertEquals(fetch_resp.error, 0)
+        self.assertEquals(fetch_resp.topic, self.topic)
+        self.assertEquals(fetch_resp.partition, 0)
+
+        messages = list(fetch_resp.messages)
+        self.assertEquals(len(messages), 0)
+
+    @run_until_complete
+    def test_ensure_topic_exists(self):
+
+        # assume that self.topic was created by setUp
+        # if so, this should succeed
+        yield from self.client.ensure_topic_exists(self.topic, timeout=1)
+
+        # ensure_topic_exists should fail with KafkaTimeoutError
+        with self.assertRaises(KafkaTimeoutError):
+            yield from self.client.ensure_topic_exists(
+                b"this_topic_doesnt_exist", timeout=0)
+
+    def test_commit_fetch_offsets(self):
+
+        req = OffsetCommitRequest(self.topic, 0, 42, b"metadata")
+        (resp,) = yield from self.client.send_offset_commit_request(b"group",
+                                                                    [req])
+        self.assertEquals(resp.error, 0)
+
+        req = OffsetFetchRequest(self.topic, 0)
+        (resp,) = yield from self.client.send_offset_fetch_request(b"group",
+                                                                   [req])
+        self.assertEquals(resp.error, 0)
+        self.assertEquals(resp.offset, 42)
+        self.assertEquals(resp.metadata, b"")  # Metadata isn't stored for now

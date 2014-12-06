@@ -1,0 +1,25 @@
+language: python
+
+python:
+    - 3.3
+    - 3.4
+env:
+    matrix:
+    # - KAFKA_VERSION=0.8.1.1 SCALA_VERSION=2.8.0
+    - KAFKA_VERSION=0.8.1.1 SCALA_VERSION=2.10
+
+
+before_install:
+    - sudo apt-get install libsnappy-dev
+    - wget -N https://archive.apache.org/dist/kafka/${KAFKA_VERSION}/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz
+    - echo "Extracting kafka binaries for ${KAFKA_VERSION}"
+    - tar xzvf kafka_${SCALA_VERSION}-${KAFKA_VERSION}.t*
+
+install:
+    - pip install flake8
+    - pip install nose
+    - pip install git+https://github.com/mumrah/kafka-python.git@master
+    - pip install .
+
+script:
+  - make test
