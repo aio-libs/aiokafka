@@ -21,12 +21,12 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     topic = b'produce_topic'
 
     @classmethod
-    def setUpClass(cls):  # noqa
+    def setUpClass(cls):
         cls.zk = ZookeeperFixture.instance()
         cls.server = KafkaFixture.instance(0, cls.zk.host, cls.zk.port)
 
     @classmethod
-    def tearDownClass(cls):  # noqa
+    def tearDownClass(cls):
         cls.server.close()
         cls.zk.close()
 
@@ -107,7 +107,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         yield from self.assert_produce_request([create_gzip_message(msgs2)],
                                                start_offset + 50000, 50000, )
 
-    # SimpleProducer Tests   #
+    # SimpleProducer Tests
 
     @run_until_complete
     def test_simple_producer(self):
@@ -124,17 +124,17 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         resp = yield from producer.send_messages(self.topic, self.msg("three"))
         self.assert_produce_response(resp, start_offset1)
 
-        self.assert_fetch_offset_coro(0, start_offset0,
-                                      [self.msg("one"), self.msg("two")])
-        self.assert_fetch_offset_coro(1, start_offset1, [self.msg("three")])
+        self.assert_fetch_offset(0, start_offset0,
+                                 [self.msg("one"), self.msg("two")])
+        self.assert_fetch_offset(1, start_offset1, [self.msg("three")])
 
         # Goes back to the first partition because there's only two partitions
         resp = yield from producer.send_messages(self.topic, self.msg("four"),
                                                  self.msg("five"))
         self.assert_produce_response(resp, start_offset0 + 2)
-        self.assert_fetch_offset_coro(0, start_offset0,
-                                      [self.msg("one"), self.msg("two"),
-                                       self.msg("four"), self.msg("five")])
+        self.assert_fetch_offset(0, start_offset0,
+                                 [self.msg("one"), self.msg("two"),
+                                  self.msg("four"), self.msg("five")])
 
     @run_until_complete
     def test_produce__new_topic_fails_with_reasonable_error(self):
@@ -175,6 +175,42 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(resp3[0].partition, 0)
 
     @run_until_complete
+    def test_acks_none(self):
+        start_offset0 = yield from self.current_offset(self.topic, 0)
+
+        producer = SimpleAIOProducer(
+            self.client, req_acks=SimpleAIOProducer.ACK_NOT_REQUIRED)
+        resp = yield from producer.send_messages(self.topic, self.msg("one"))
+        self.assertEquals(len(resp), 0)
+
+        self.assert_fetch_offset(0, start_offset0, [self.msg("one")])
+
+    @run_until_complete
+    def test_acks_local_write(self):
+        start_offset0 = yield from self.current_offset(self.topic, 0)
+
+        producer = SimpleAIOProducer(
+            self.client, req_acks=SimpleAIOProducer.ACK_AFTER_LOCAL_WRITE)
+        resp = yield from producer.send_messages(self.topic, self.msg("one"))
+
+        self.assert_produce_response(resp, start_offset0)
+        self.assert_fetch_offset(0, start_offset0, [self.msg("one")])
+
+    @run_until_complete
+    def test_acks_cluster_commit(self):
+        start_offset0 = yield from self.current_offset(self.topic, 0)
+
+        producer = SimpleAIOProducer(
+            self.client,
+            req_acks=SimpleAIOProducer.ACK_AFTER_CLUSTER_COMMIT)
+
+        resp = yield from producer.send_messages(self.topic, self.msg("one"))
+        self.assert_produce_response(resp, start_offset0)
+        self.assert_fetch_offset(0, start_offset0, [self.msg("one")])
+
+    # KeyedAIOProducer Tests
+
+    @run_until_complete
     def test_round_robin_partitioner(self):
         start_offset0 = yield from self.current_offset(self.topic, 0)
         start_offset1 = yield from self.current_offset(self.topic, 1)
@@ -195,10 +231,10 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assert_produce_response(resp3, start_offset0 + 1)
         self.assert_produce_response(resp4, start_offset1 + 1)
 
-        self.assert_fetch_offset_coro(0, start_offset0,
-                                      [self.msg("one"), self.msg("three")])
-        self.assert_fetch_offset_coro(1, start_offset1,
-                                      [self.msg("two"), self.msg("four")])
+        self.assert_fetch_offset(0, start_offset0,
+                                 [self.msg("one"), self.msg("three")])
+        self.assert_fetch_offset(1, start_offset1,
+                                 [self.msg("two"), self.msg("four")])
 
     @run_until_complete
     def test_hashed_partitioner(self):
@@ -231,42 +267,10 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             offsets[k] += 1
             messages[k].append(msg)
 
-        self.assert_fetch_offset_coro(0, start_offset0, messages[0])
-        self.assert_fetch_offset_coro(1, start_offset1, messages[1])
+        self.assert_fetch_offset(0, start_offset0, messages[0])
+        self.assert_fetch_offset(1, start_offset1, messages[1])
 
-    @run_until_complete
-    def test_acks_none(self):
-        start_offset0 = yield from self.current_offset(self.topic, 0)
-
-        producer = SimpleAIOProducer(
-            self.client, req_acks=SimpleAIOProducer.ACK_NOT_REQUIRED)
-        resp = yield from producer.send_messages(self.topic, self.msg("one"))
-        self.assertEquals(len(resp), 0)
-
-        self.assert_fetch_offset_coro(0, start_offset0, [self.msg("one")])
-
-    @run_until_complete
-    def test_acks_local_write(self):
-        start_offset0 = yield from self.current_offset(self.topic, 0)
-
-        producer = SimpleAIOProducer(
-            self.client, req_acks=SimpleAIOProducer.ACK_AFTER_LOCAL_WRITE)
-        resp = yield from producer.send_messages(self.topic, self.msg("one"))
-
-        self.assert_produce_response(resp, start_offset0)
-        self.assert_fetch_offset_coro(0, start_offset0, [self.msg("one")])
-
-    @run_until_complete
-    def test_acks_cluster_commit(self):
-        start_offset0 = yield from self.current_offset(self.topic, 0)
-
-        producer = SimpleAIOProducer(
-            self.client,
-            req_acks=SimpleAIOProducer.ACK_AFTER_CLUSTER_COMMIT)
-
-        resp = yield from producer.send_messages(self.topic, self.msg("one"))
-        self.assert_produce_response(resp, start_offset0)
-        self.assert_fetch_offset_coro(0, start_offset0, [self.msg("one")])
+    # test helpers
 
     @asyncio.coroutine
     def assert_produce_request(self, messages, initial_offset, message_ct):
@@ -285,7 +289,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(resp[0].offset, initial_offset)
 
     @asyncio.coroutine
-    def assert_fetch_offset_coro(self, partition, start_offset, expected_msgs):
+    def assert_fetch_offset(self, partition, start_offset, expected_msgs):
         # There should only be one response message from the server.
         # This will throw an exception if there's more than one.
 
