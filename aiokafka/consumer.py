@@ -14,15 +14,14 @@ from kafka.common import (
 
 log = logging.getLogger("aiokafka")
 
-AUTO_COMMIT_MSG_COUNT = 10
-AUTO_COMMIT_INTERVAL = 1
 
+AUTO_COMMIT_MSG_COUNT = 100
+AUTO_COMMIT_INTERVAL = 5000
 FETCH_DEFAULT_BLOCK_TIMEOUT = 1
 FETCH_MAX_WAIT_TIME = 100
-FETCH_MIN_BYTES = 4096*10
-FETCH_BUFFER_SIZE_BYTES = 4096*10
+FETCH_MIN_BYTES = 4096
+FETCH_BUFFER_SIZE_BYTES = 4096
 MAX_FETCH_BUFFER_SIZE_BYTES = FETCH_BUFFER_SIZE_BYTES * 8
-
 ITER_TIMEOUT_SECONDS = 60
 NO_MESSAGES_WAIT_TIME_SECONDS = 0.1
 
@@ -37,11 +36,10 @@ class AIOConsumer(object):
                  auto_commit_every_t=AUTO_COMMIT_INTERVAL):
 
         self._client = client
-        self._loop = self._client._loop
+        self._loop = self._client.loop
 
         self._topic = topic
         self._group = group
-
         self._offsets = {}
 
         # Variables for handling offset commits
@@ -54,13 +52,7 @@ class AIOConsumer(object):
 
         self._partitions = partitions
 
-    @asyncio.coroutine
-    def _auto_committer(self):
 
-        while True:
-            yield from asyncio.sleep(self._auto_commit_every_t,
-                                     loop=self._loop)
-            yield from self.commit()
 
     @asyncio.coroutine
     def _connect(self):
@@ -72,30 +64,44 @@ class AIOConsumer(object):
             assert all(isinstance(x, numbers.Integral)
                        for x in self._partitions)
 
+        # Set up the auto-commit timer
+        if self._auto_commit is True and self._auto_commit_every_t is not None:
+            self._commit_task = asyncio.Task(self._auto_committer(), loop=self._loop)
+
+
         if self._auto_commit:
             yield from self.fetch_last_known_offsets(self._partitions)
         else:
             for partition in self._partitions:
                 self._offsets[partition] = 0
+        self._is_working = True
 
-        # Set up the auto-commit timer
-        if self._auto_commit is True and self._auto_commit_every_t is not None:
-            self._commit_task = asyncio.Task(
-                self._auto_committer(), loop=self._loop)
+    @asyncio.coroutine
+    def _auto_committer(self, now=False):
+
+        while True:
+            yield from asyncio.sleep(self._auto_commit_every_t,
+                                     loop=self._loop)
+            yield from self.commit()
+
 
     @asyncio.coroutine
     def fetch_last_known_offsets(self, partitions=None):
-        if not partitions:
-            partitions = self._client.get_partition_ids_for_topic(self._topic)
+        yield from self._client.load_metadata_for_topics(self._topic)
 
+        # if not partitions:
+        partitions = self._client.get_partition_ids_for_topic(self._topic)
         for partition in partitions:
             req = OffsetFetchRequest(self._topic, partition)
             try:
                 (resp,) = yield from self._client.send_offset_fetch_request(
                     self._group, [req])
+                partition_offset = resp.offset
             except UnknownTopicOrPartitionError:
-                resp = 0
-            self._offsets[partition] = resp
+                partition_offset = 0
+
+            self._offsets[partition] = partition_offset
+
 
         self._fetch_offsets = self._offsets.copy()
 
@@ -105,6 +111,7 @@ class AIOConsumer(object):
 
         # short circuit if nothing happened. This check is kept outside
         # to prevent un-necessarily acquiring a lock for checking the state
+
         if self._count_since_commit == 0:
             return
 
@@ -212,6 +219,12 @@ class SimpleAIOConsumer(AIOConsumer):
         # self.iter_timeout = iter_timeout
         self._queue = asyncio.Queue(loop=self._loop)
 
+        self._is_working = False
+
+    def __repr__(self):
+        return '<SimpleConsumer group=%s, topic=%s, partitions=%s>' % \
+            (self._group, self._topic, str(self._offsets.keys()))
+
     def provide_partition_info(self):
         """
         Indicates that partition info must be returned by the consumer_factory
@@ -267,13 +280,27 @@ class SimpleAIOConsumer(AIOConsumer):
         self._queue = asyncio.Queue(loop=self._loop)
 
     @asyncio.coroutine
-    def get_message(self, get_partition_info=None, update_offset=True):
-        msg = None
-        while msg is None:
-            msg = yield from self._get_message(
-                get_partition_info, update_offset)
+    def get_messages(self, count=1):
+        messages = []
+        new_offsets = {}
+        while count > 0:
+            result = yield from self._get_message(
+                get_partition_info=True, update_offset=False)
 
-        return msg
+            if not result:
+                continue
+            partition, message = result
+            if self._partition_info:
+                messages.append(result)
+            else:
+                messages.append(message)
+            new_offsets[partition] = message.offset + 1
+            count -= 1
+
+        self._offsets.update(new_offsets)
+        self._count_since_commit += len(messages)
+        yield from self._is_time_to_commit()
+        return messages
 
     @asyncio.coroutine
     def _get_message(self, get_partition_info=None, update_offset=True):
@@ -283,15 +310,12 @@ class SimpleAIOConsumer(AIOConsumer):
         If get_partition_info is True, returns (partition, message)
         If get_partition_info is False, returns message
         """
-
-        yield from self._fetch()
+        if self._queue.empty():
+            yield from self._fetch(1, 1000)
 
         if self._queue.empty():
             return None
         partition, message = self._queue.get_nowait()
-
-
-
 
         if update_offset:
             # Update partition offset
@@ -309,7 +333,7 @@ class SimpleAIOConsumer(AIOConsumer):
             return message
 
     @asyncio.coroutine
-    def _fetch(self):
+    def _fetch(self, min_bytes, wait_time):
         # Create fetch request payloads for all the partitions
         partitions = dict((p, self._buffer_size)
                       for p in self._fetch_offsets.keys())
@@ -324,8 +348,8 @@ class SimpleAIOConsumer(AIOConsumer):
             # Send request
             responses = yield from self._client.send_fetch_request(
                 requests,
-                max_wait_time=int(self._fetch_max_wait_time),
-                min_bytes=self._fetch_min_bytes)
+                max_wait_time=int(wait_time),
+                min_bytes=min_bytes)
 
             retry_partitions = {}
             for resp in responses:
@@ -359,8 +383,7 @@ class SimpleAIOConsumer(AIOConsumer):
             partitions = retry_partitions
 
     def fetch_messages(self, get_partition_info=None):
-        while True:
-            f = asyncio.async(self.get_message(get_partition_info),
+        while self._is_working:
+            f = asyncio.async(self.get_messages(1),
                               loop=self._loop)
             yield f
-
