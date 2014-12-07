@@ -52,22 +52,21 @@ class AIOConsumer(object):
 
         self._partitions = partitions
 
-
-
     @asyncio.coroutine
     def _connect(self):
         yield from self._client.load_metadata_for_topics(self._topic)
 
         if not self._partitions:
-            self._partitions = self._client.get_partition_ids_for_topic(self._topic)
+            self._partitions = self._client.get_partition_ids_for_topic(
+                self._topic)
         else:
             assert all(isinstance(x, numbers.Integral)
                        for x in self._partitions)
 
         # Set up the auto-commit timer
         if self._auto_commit is True and self._auto_commit_every_t is not None:
-            self._commit_task = asyncio.Task(self._auto_committer(), loop=self._loop)
-
+            self._commit_task = asyncio.Task(self._auto_committer(),
+                                             loop=self._loop)
 
         if self._auto_commit:
             yield from self.fetch_last_known_offsets(self._partitions)
@@ -83,7 +82,6 @@ class AIOConsumer(object):
             yield from asyncio.sleep(self._auto_commit_every_t,
                                      loop=self._loop)
             yield from self.commit()
-
 
     @asyncio.coroutine
     def fetch_last_known_offsets(self, partitions=None):
@@ -101,7 +99,6 @@ class AIOConsumer(object):
                 partition_offset = 0
 
             self._offsets[partition] = partition_offset
-
 
         self._fetch_offsets = self._offsets.copy()
 
@@ -136,11 +133,11 @@ class AIOConsumer(object):
 
             resps = yield from self._client.send_offset_commit_request(
                 self._group, reqs)
-            
+
             for resp in resps:
                 check_error(resp)
             self._count_since_commit = 0
-    
+
     @asyncio.coroutine
     def _is_time_to_commit(self):
         """
@@ -153,7 +150,7 @@ class AIOConsumer(object):
 
         if self._count_since_commit >= self._auto_commit_every_n:
             yield from self.commit()
-    
+
     @asyncio.coroutine
     def stop(self):
         if self._commit_task is not None:
@@ -335,8 +332,7 @@ class SimpleAIOConsumer(AIOConsumer):
     @asyncio.coroutine
     def _fetch(self, min_bytes, wait_time):
         # Create fetch request payloads for all the partitions
-        partitions = dict((p, self._buffer_size)
-                      for p in self._fetch_offsets.keys())
+        partitions = {p: self._buffer_size for p in self._fetch_offsets}
         while partitions:
             requests = []
 

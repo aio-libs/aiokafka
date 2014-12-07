@@ -143,7 +143,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @unittest.skip("not ported")
     @run_until_complete
     def test_offset_behavior__resuming_behavior(self):
-        import ipdb; ipdb.set_trace()
         msgs1 = yield from self.send_messages(0, range(0, 100))
         msgs2 = yield from self.send_messages(1, range(100, 200))
 
@@ -166,7 +165,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # 181-200
         output_msgs2 = yield from consumer2.get_messages(20)
 
-        self.assertAlmostEqual(set(available_msgs), set(output_msgs1 + output_msgs2))
+        self.assertAlmostEqual(set(available_msgs),
+                               set(output_msgs1 + output_msgs2))
         yield from consumer1.stop()
         yield from consumer2.stop()
 
@@ -184,6 +184,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.send_messages(0, ["x" * 1048])
         self.send_messages(1, ["x" * 1048])
 
-        consumer = self.consumer_factory(buffer_size=1024, max_buffer_size=2048)
+        consumer = self.consumer_factory(buffer_size=1024,
+                                         max_buffer_size=2048)
         messages = [message for message in consumer]
         self.assertEquals(len(messages), 2)

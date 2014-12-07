@@ -22,7 +22,7 @@ def run_until_complete(fun):
     def wrapper(test, *args, **kw):
         loop = test.loop
         ret = loop.run_until_complete(
-            asyncio.wait_for(fun(test, *args, **kw), 150, loop=loop))
+            asyncio.wait_for(fun(test, *args, **kw), 15, loop=loop))
         return ret
     return wrapper
 
