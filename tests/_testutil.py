@@ -6,7 +6,7 @@ import uuid
 from functools import wraps
 from kafka.common import OffsetRequest
 
-from aiokafka.client import AIOKafkaClient
+from aiokafka.client import connect
 
 
 __all__ = ['get_open_port', 'KafkaIntegrationTestCase']
@@ -43,7 +43,8 @@ class KafkaIntegrationTestCase(BaseTest):
         self.topic = b'aiokafka_test'
         super().setUp()
         hosts = ['{}:{}'.format(self.server.host, self.server.port)]
-        self.client = AIOKafkaClient(hosts, loop=self.loop)
+        self.client = self.loop.run_until_complete(
+            connect(hosts, loop=self.loop))
         self.loop.run_until_complete(
             self.client.ensure_topic_exists(self.topic))
         self._messages = {}

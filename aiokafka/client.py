@@ -20,6 +20,15 @@ from .conn import AIOKafkaConnection
 log = logging.getLogger('aiokafka')
 
 
+@asyncio.coroutine
+def connect(hosts, *, loop=None):
+    if loop is None:
+        loop = asyncio.get_event_loop()
+    client = AIOKafkaClient(hosts, loop=loop)
+    yield from client.load_metadata_for_topics()
+    return client
+
+
 class AIOKafkaClient:
 
     CLIENT_ID = b"aiokafka-python"
@@ -27,7 +36,7 @@ class AIOKafkaClient:
     def __init__(self, hosts, *,
                  client_id=CLIENT_ID,
                  timeout=DEFAULT_SOCKET_TIMEOUT_SECONDS,
-                 loop=None):
+                 loop):
         self._client_id = client_id
         self._timeout = timeout
         self._hosts = collect_hosts(hosts)
@@ -37,9 +46,6 @@ class AIOKafkaClient:
         self._topics_to_brokers = {}  # TopicAndPartition -> BrokerMetadata
         self._topic_partitions = {}  # topic -> partition -> PartitionMetadata
 
-        # self.load_metadata_for_topics()
-        if loop is None:
-            loop = asyncio.get_event_loop()
         self._loop = loop
         self._request_id = 0
 
