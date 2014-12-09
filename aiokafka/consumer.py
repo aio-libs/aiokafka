@@ -23,8 +23,6 @@ FETCH_MAX_WAIT_TIME = 100
 FETCH_MIN_BYTES = 4096
 FETCH_BUFFER_SIZE_BYTES = 4096
 MAX_FETCH_BUFFER_SIZE_BYTES = FETCH_BUFFER_SIZE_BYTES * 8
-ITER_TIMEOUT_SECONDS = 60
-NO_MESSAGES_WAIT_TIME_SECONDS = 0.1
 
 
 class AIOConsumer(object):
@@ -308,8 +306,8 @@ class SimpleAIOConsumer(AIOConsumer):
         If get_partition_info is False, returns message
         """
         if len(self._queue) == 0:
-            # TODO FIX THIS
-            yield from self._fetch(1, 1000)
+            # TODO: FIX THIS
+            yield from self._fetch(1, FETCH_DEFAULT_BLOCK_TIMEOUT*1000)
 
         if len(self._queue) == 0:
             return None
