@@ -1,5 +1,5 @@
 import asyncio
-import unittest
+from itertools import chain
 from aiokafka import SimpleAIOConsumer
 from kafka import create_message
 
@@ -140,7 +140,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEquals(message.message.value, huge_message)
         yield from big_consumer.stop()
 
-    @unittest.skip("not ported")
     @run_until_complete
     def test_offset_behavior__resuming_behavior(self):
         msgs1 = yield from self.send_messages(0, range(0, 100))
@@ -153,38 +152,16 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             auto_commit_every_n=20,
         )
 
-        # Grab the first 195 messages
-        output_msgs1 = yield from consumer1.get_messages(195)
+        output_msgs1 = yield from consumer1.get_messages(185)
 
-        # The total offset across both partitions should be at 180
         consumer2 = yield from self.consumer_factory(
             auto_commit_every_t=None,
             auto_commit_every_n=20,
         )
 
-        # 181-200
-        output_msgs2 = yield from consumer2.get_messages(20)
+        output_msgs2 = yield from consumer2.get_messages(15)
+        result = [x.message.value for x in chain(output_msgs1, output_msgs2)]
 
-        self.assertAlmostEqual(set(available_msgs),
-                               set(output_msgs1 + output_msgs2))
+        self.assertEqual(set(available_msgs), set(result))
         yield from consumer1.stop()
         yield from consumer2.stop()
-
-    # TODO: Make this a unit test -- should not require integration
-    @unittest.skip("not ported")
-    def test_fetch_buffer_size(self):
-        # Test parameters (see issue 135 / PR 136)
-        TEST_MESSAGE_SIZE = 1048
-        INIT_BUFFER_SIZE = 1024
-        MAX_BUFFER_SIZE = 2048
-        assert TEST_MESSAGE_SIZE > INIT_BUFFER_SIZE
-        assert TEST_MESSAGE_SIZE < MAX_BUFFER_SIZE
-        assert MAX_BUFFER_SIZE == 2 * INIT_BUFFER_SIZE
-
-        self.send_messages(0, ["x" * 1048])
-        self.send_messages(1, ["x" * 1048])
-
-        consumer = self.consumer_factory(buffer_size=1024,
-                                         max_buffer_size=2048)
-        messages = [message for message in consumer]
-        self.assertEquals(len(messages), 2)

@@ -1,4 +1,5 @@
 import asyncio
+from collections import deque
 
 import logging
 import numbers
@@ -51,6 +52,7 @@ class AIOConsumer(object):
         self._auto_commit_every_t = auto_commit_every_t
 
         self._partitions = partitions
+        self._commit_task = None
 
     @asyncio.coroutine
     def _connect(self):
@@ -76,7 +78,7 @@ class AIOConsumer(object):
         self._is_working = True
 
     @asyncio.coroutine
-    def _auto_committer(self, now=False):
+    def _auto_committer(self):
 
         while True:
             yield from asyncio.sleep(self._auto_commit_every_t,
@@ -108,7 +110,6 @@ class AIOConsumer(object):
 
         # short circuit if nothing happened. This check is kept outside
         # to prevent un-necessarily acquiring a lock for checking the state
-
         if self._count_since_commit == 0:
             return
 
@@ -213,8 +214,7 @@ class SimpleAIOConsumer(AIOConsumer):
         self._fetch_max_wait_time = FETCH_MAX_WAIT_TIME
         self._fetch_min_bytes = fetch_size_bytes
         self._fetch_offsets = self._offsets.copy()
-        # self.iter_timeout = iter_timeout
-        self._queue = asyncio.Queue(loop=self._loop)
+        self._queue = deque()
 
         self._is_working = False
 
@@ -274,7 +274,7 @@ class SimpleAIOConsumer(AIOConsumer):
             self._count_since_commit += 1
             yield from self.commit()
 
-        self._queue = asyncio.Queue(loop=self._loop)
+        self._queue = deque()
 
     @asyncio.coroutine
     def get_messages(self, count=1):
@@ -307,12 +307,13 @@ class SimpleAIOConsumer(AIOConsumer):
         If get_partition_info is True, returns (partition, message)
         If get_partition_info is False, returns message
         """
-        if self._queue.empty():
+        if len(self._queue) == 0:
+            # TODO FIX THIS
             yield from self._fetch(1, 1000)
 
-        if self._queue.empty():
+        if len(self._queue) == 0:
             return None
-        partition, message = self._queue.get_nowait()
+        partition, message = self._queue.popleft()
 
         if update_offset:
             # Update partition offset
@@ -355,7 +356,7 @@ class SimpleAIOConsumer(AIOConsumer):
                 try:
                     for message in resp.messages:
                         # Put the message in our queue
-                        self._queue.put_nowait((partition, message))
+                        self._queue.append((partition, message))
                         self._fetch_offsets[partition] = message.offset + 1
                 except ConsumerFetchSizeTooSmall:
                     if (self._max_buffer_size is not None and
@@ -377,9 +378,3 @@ class SimpleAIOConsumer(AIOConsumer):
                     # Stop iterating through this partition
                     log.debug("Done iterating over partition %s" % partition)
             partitions = retry_partitions
-
-    def fetch_messages(self, get_partition_info=None):
-        while self._is_working:
-            f = asyncio.async(self.get_messages(1),
-                              loop=self._loop)
-            yield f

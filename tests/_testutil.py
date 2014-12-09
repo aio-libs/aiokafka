@@ -1,12 +1,12 @@
 import asyncio
 import socket
 import string
+import random
 import unittest
 import uuid
 
 from functools import wraps
 from kafka.common import OffsetRequest
-import random
 
 from aiokafka.client import connect
 
