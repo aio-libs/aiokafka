@@ -15,7 +15,7 @@ from kafka.common import (TopicAndPartition, BrokerMetadata,
                           check_error)
 from kafka.protocol import KafkaProtocol
 
-from .conn import AIOKafkaConnection
+from .conn import create_connection
 
 log = logging.getLogger('aiokafka')
 
@@ -57,7 +57,7 @@ class AIOKafkaClient:
         "Get or create a connection to a broker using host and port"
         host_key = (host, port)
         if host_key not in self._conns:
-            self._conns[host_key] = AIOKafkaConnection(
+            self._conns[host_key] = yield from create_connection(
                 host, port, loop=self._loop)
         return self._conns[host_key]
 
@@ -117,13 +117,14 @@ class AIOKafkaClient:
         for (host, port) in self._hosts:
             request_id = self._next_id()
             try:
-                conn = self._get_conn(host, port)
+                conn = yield from self._get_conn(host, port)
                 request = encoder_fn(client_id=self._client_id,
                                      correlation_id=request_id,
                                      payloads=payloads)
 
-                yield from conn.send(request_id, request)
-                response = yield from conn.recv(request_id)
+                # yield from conn.send(request_id, request)
+                # response = yield from conn.recv(request_id)
+                response = yield from conn.execute(request_id, request)
                 return decoder_fn(response)
 
             except Exception as e:
@@ -175,24 +176,19 @@ class AIOKafkaClient:
 
         # For each broker, send the list of request payloads
         for broker, payloads in payloads_by_broker.items():
-            conn = self._get_conn(broker.host.decode('utf-8'), broker.port)
+            conn = yield from self._get_conn(broker.host.decode('utf-8'),
+                                             broker.port)
             request_id = self._next_id()
             request = encoder_fn(client_id=self._client_id,
                                  correlation_id=request_id, payloads=payloads)
-
             failed = False
-            # Send the request, recv the response
             try:
-                yield from conn.send(request_id, request)
-                if decoder_fn is None:
+                no_response = decoder_fn is None
+                response = yield from conn.execute(request_id, request,
+                                                   no_response)
+                if no_response:
                     continue
-                try:
-                    response = yield from conn.recv(request_id)
-                except ConnectionError as e:
-                    log.warning("Could not receive response to request [%s] "
-                                "from server %s: %s",
-                                binascii.b2a_hex(request), conn, e)
-                    failed = True
+
             except ConnectionError as e:
                 log.warning("Could not send request [%s] to server %s: %s",
                             binascii.b2a_hex(request), conn, e)
@@ -208,7 +204,6 @@ class AIOKafkaClient:
 
         if failed_payloads:
             raise FailedPayloadsError(failed_payloads)
-
         # Order the accumulated responses by the original key order
         return (acc[k] for k in original_keys) if acc else ()
 
