@@ -46,6 +46,9 @@ class Reader:
 
 @asyncio.coroutine
 def create_connection(host, port, *, loop=None):
+    """XXX"""
+    if loop is None:
+        loop = asyncio.get_event_loop()
     conn = AIOKafkaConnection(host, port, loop=loop)
     yield from conn._connect()
     return conn
@@ -112,8 +115,8 @@ class AIOKafkaConnection:
                     # ProtocolError is fatal
                     # so connection must be closed
 
-                    self._loop.call_soon(self.close, exc)
-                    raise
+                    self._loop.call_soon(self.close)
+                    return
                 else:
                     if raw_obj is False:
                         break
@@ -129,5 +132,4 @@ class AIOKafkaConnection:
                     else:
                         fut.set_result(raw_obj)
 
-        self._closing = True
         self._loop.call_soon(self.close, None)
