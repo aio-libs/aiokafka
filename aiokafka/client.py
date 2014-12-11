@@ -53,6 +53,10 @@ class AIOKafkaClient:
     def hosts(self):
         return self._hosts
 
+    @property
+    def loop(self):
+        return self._loop
+
     def _get_conn(self, host, port):
         "Get or create a connection to a broker using host and port"
         host_key = (host, port)

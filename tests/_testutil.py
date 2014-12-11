@@ -1,5 +1,7 @@
 import asyncio
 import socket
+import string
+import random
 import unittest
 import uuid
 
@@ -39,12 +41,19 @@ class BaseTest(unittest.TestCase):
 
 class KafkaIntegrationTestCase(BaseTest):
 
+    topic = None
+
     def setUp(self):
-        self.topic = b'aiokafka_test'
         super().setUp()
         hosts = ['{}:{}'.format(self.server.host, self.server.port)]
         self.client = self.loop.run_until_complete(
             connect(hosts, loop=self.loop))
+
+        if not self.topic:
+            topic = "%s-%s" % (self.id()[self.id().rindex(".") + 1:],
+                               random_string(10).decode('utf-8'))
+            self.topic = topic.encode('utf-8')
+
         self.loop.run_until_complete(
             self.client.ensure_topic_exists(self.topic))
         self._messages = {}
@@ -79,3 +88,8 @@ def get_open_port():
     port = sock.getsockname()[1]
     sock.close()
     return port
+
+
+def random_string(length):
+    s = "".join(random.choice(string.ascii_letters) for _ in range(length))
+    return s.encode('utf-8')
