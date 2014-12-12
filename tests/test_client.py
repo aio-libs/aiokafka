@@ -489,6 +489,16 @@ class TestAIOKafkaClinet(unittest.TestCase):
         self.assertEqual(0, client._next_id())
         self.assertEqual(0, client._request_id)
 
+    def test_close(self):
+        client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
+        m1 = mock.Mock()
+        m2 = mock.Mock()
+        client._conns = {('host1', 4567): m1, ('host2', 5678): m2}
+        client.close()
+        self.assertEqual({}, client._conns)
+        m1.close.assert_raises_with()
+        m2.close.assert_raises_with()
+
     # def test_timeout(self):
     #     def _timeout(*args, **kwargs):
     #         timeout = args[1]

@@ -229,6 +229,7 @@ class AIOKafkaClient:
     def close(self):
         for conn in self._conns.values():
             conn.close()
+        self._conns = {}
 
     def reset_topic_metadata(self, *topics):
         for topic in topics:
