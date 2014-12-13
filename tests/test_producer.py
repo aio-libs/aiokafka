@@ -1,5 +1,7 @@
 import asyncio
 import uuid
+import unittest
+from unittest import mock
 
 from kafka import (
     create_message, create_gzip_message, create_snappy_message,
@@ -8,7 +10,8 @@ from kafka import (
 from kafka.codec import has_snappy
 from kafka.common import (
     FetchRequest, ProduceRequest,
-    UnknownTopicOrPartitionError, LeaderNotAvailableError
+    UnknownTopicOrPartitionError, LeaderNotAvailableError,
+    UnsupportedCodecError
 )
 
 from .fixtures import ZookeeperFixture, KafkaFixture
@@ -16,6 +19,14 @@ from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 from aiokafka.producer import (SimpleAIOProducer, KeyedAIOProducer,
                                CODEC_SNAPPY, CODEC_GZIP)
+
+
+class TestKafkaProducer(unittest.TestCase):
+
+    def test_invalid_codec(self):
+        client = mock.Mock()
+        with self.assertRaises(UnsupportedCodecError):
+            SimpleAIOProducer(client, codec=123)
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):

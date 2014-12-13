@@ -21,7 +21,7 @@ UNKNOWN_TOPIC_OR_PARTITION = 3
 NO_LEADER = 5
 
 
-class TestAIOKafkaClinet(unittest.TestCase):
+class TestAIOKafkaClient(unittest.TestCase):
 
     def setUp(self):
         self.loop = asyncio.new_event_loop()
@@ -57,10 +57,13 @@ class TestAIOKafkaClinet(unittest.TestCase):
         }
 
         # inject KafkaConnection side effects
-        mocked_conns[('kafka01', 9092)].send.side_effect = RuntimeError(
-            "kafka01 went away (unittest)")
-        mocked_conns[('kafka02', 9092)].send.side_effect = RuntimeError(
-            "Kafka02 went away (unittest)")
+        fut1 = asyncio.Future(loop=self.loop)
+        fut1.set_exception(RuntimeError("kafka01 went away (unittest)"))
+        mocked_conns[('kafka01', 9092)].send.return_value = fut1
+
+        fut2 = asyncio.Future(loop=self.loop)
+        fut2.set_exception(RuntimeError("kafka02 went away (unittest)"))
+        mocked_conns[('kafka02', 9092)].send.return_value = fut2
 
         client = AIOKafkaClient(['kafka01:9092', 'kafka02:9092'],
                                 loop=self.loop)
@@ -76,8 +79,7 @@ class TestAIOKafkaClinet(unittest.TestCase):
                     decoder_fn=lambda x: x)
 
             for key, conn in mocked_conns.items():
-                conn.send.assert_called_with(mock.ANY,
-                                             b'fake encoded message')
+                conn.send.assert_called_with(b'fake encoded message')
 
         self.loop.run_until_complete(go())
 
@@ -90,16 +92,21 @@ class TestAIOKafkaClinet(unittest.TestCase):
             ('kafka03', 9092): mock.MagicMock()
         }
         # inject KafkaConnection side effects
-        mocked_conns[('kafka01', 9092)].send.side_effect = RuntimeError(
-            "kafka01 went away (unittest)")
+        fut = asyncio.Future(loop=self.loop)
+        fut.set_exception(RuntimeError("kafka01 went away (unittest)"))
+        mocked_conns[('kafka01', 9092)].send.return_value = fut
 
         @asyncio.coroutine
         def recv(request_id):
             return b'valid response'
 
-        mocked_conns[('kafka02', 9092)].recv.side_effect = recv
-        mocked_conns[('kafka03', 9092)].send.side_effect = RuntimeError(
-            "kafka03 went away (unittest)")
+        fut2 = asyncio.Future(loop=self.loop)
+        fut2.set_result(b'valid response')
+        mocked_conns[('kafka02', 9092)].send.return_value = fut2
+
+        fut3 = asyncio.Future(loop=self.loop)
+        fut3.set_exception(RuntimeError("kafka03 went away (unittest)"))
+        mocked_conns[('kafka03', 9092)].send.return_value = fut3
 
         client = AIOKafkaClient('kafka01:9092,kafka02:9092', loop=self.loop)
         client._conns = mocked_conns
@@ -110,7 +117,6 @@ class TestAIOKafkaClinet(unittest.TestCase):
                                                 decoder_fn=lambda x: x))
 
         self.assertEqual(b'valid response', resp)
-        self.assertTrue(mocked_conns[('kafka02', 9092)].recv.called)
 
     @mock.patch('aiokafka.client.KafkaProtocol')
     def test_load_metadata(self, protocol):
@@ -214,12 +220,10 @@ class TestAIOKafkaClinet(unittest.TestCase):
     @mock.patch('aiokafka.client.KafkaProtocol')
     def test_ensure_topic_exists(self, protocol):
 
-        @asyncio.coroutine
-        def recv(request_id):
-            return b'response'
-
         mocked_conns = {('broker_1', 4567): mock.MagicMock()}
-        mocked_conns[('broker_1', 4567)].recv.side_effect = recv
+        fut = asyncio.Future(loop=self.loop)
+        fut.set_result(b'response')
+        mocked_conns[('broker_1', 4567)].send.return_value = fut
         client = AIOKafkaClient(['broker_1:4567'], loop=self.loop)
         client._conns = mocked_conns
 
