@@ -420,7 +420,7 @@ class AIOKafkaClient:
 
     @asyncio.coroutine
     def send_fetch_request(self, payloads=(),
-                           *, max_wait_time=100, min_bytes=4096):
+                           *, max_wait_time=0.1, min_bytes=4096):
         """
         Encode and send a FetchRequest
 
@@ -429,7 +429,7 @@ class AIOKafkaClient:
         """
 
         encoder = functools.partial(KafkaProtocol.encode_fetch_request,
-                                    max_wait_time=max_wait_time,
+                                    max_wait_time=int(max_wait_time*1000),
                                     min_bytes=min_bytes)
 
         resps = yield from self._send_broker_aware_request(

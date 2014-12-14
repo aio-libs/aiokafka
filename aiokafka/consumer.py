@@ -16,16 +16,13 @@ from kafka.common import (
 log = logging.getLogger("aiokafka")
 
 
-AUTO_COMMIT_MSG_COUNT = 100
-AUTO_COMMIT_INTERVAL = 5000
-FETCH_DEFAULT_BLOCK_TIMEOUT = 1
-FETCH_MAX_WAIT_TIME = 100
-FETCH_MIN_BYTES = 4096
-FETCH_BUFFER_SIZE_BYTES = 4096
-MAX_FETCH_BUFFER_SIZE_BYTES = FETCH_BUFFER_SIZE_BYTES * 8
-
-
 class AIOConsumer(object):
+
+    AUTO_COMMIT_MSG_COUNT = 100
+    AUTO_COMMIT_INTERVAL = 5000
+    FETCH_DEFAULT_BLOCK_TIMEOUT = 1
+    FETCH_BUFFER_SIZE_BYTES = 4096
+    MAX_FETCH_BUFFER_SIZE_BYTES = FETCH_BUFFER_SIZE_BYTES * 8
 
     def __init__(self, client, group,
                  topic,
@@ -188,11 +185,11 @@ class SimpleAIOConsumer(AIOConsumer):
                  group, topic,
                  auto_commit=True,
                  partitions=None,
-                 auto_commit_every_n=AUTO_COMMIT_MSG_COUNT,
-                 auto_commit_every_t=AUTO_COMMIT_INTERVAL,
+                 auto_commit_every_n=AIOConsumer.AUTO_COMMIT_MSG_COUNT,
+                 auto_commit_every_t=AIOConsumer.AUTO_COMMIT_INTERVAL,
                  fetch_size_bytes=1024,
-                 buffer_size=FETCH_BUFFER_SIZE_BYTES,
-                 max_buffer_size=MAX_FETCH_BUFFER_SIZE_BYTES):
+                 buffer_size=AIOConsumer.FETCH_BUFFER_SIZE_BYTES,
+                 max_buffer_size=AIOConsumer.MAX_FETCH_BUFFER_SIZE_BYTES):
 
         super().__init__(
             client, group, topic,
@@ -209,8 +206,6 @@ class SimpleAIOConsumer(AIOConsumer):
         self._buffer_size = buffer_size
         self._max_buffer_size = max_buffer_size
         self._partition_info = False     # Do not return partition info in msgs
-        self._fetch_max_wait_time = FETCH_MAX_WAIT_TIME
-        self._fetch_min_bytes = fetch_size_bytes
         self._fetch_offsets = self._offsets.copy()
         self._queue = deque()
 
@@ -307,7 +302,7 @@ class SimpleAIOConsumer(AIOConsumer):
         """
         if len(self._queue) == 0:
             # TODO: FIX THIS
-            yield from self._fetch(1, FETCH_DEFAULT_BLOCK_TIMEOUT*1000)
+            yield from self._fetch(1, self.FETCH_DEFAULT_BLOCK_TIMEOUT)
 
         if len(self._queue) == 0:
             return None
@@ -343,7 +338,7 @@ class SimpleAIOConsumer(AIOConsumer):
             # Send request
             responses = yield from self._client.send_fetch_request(
                 requests,
-                max_wait_time=int(wait_time),
+                max_wait_time=wait_time,
                 min_bytes=min_bytes)
 
             retry_partitions = {}

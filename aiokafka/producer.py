@@ -75,7 +75,7 @@ class SimpleAIOProducer(AIOProducer):
 
     def __init__(self, client, *,
                  req_acks=AIOProducer.ACK_AFTER_LOCAL_WRITE,
-                 ack_timeout=1000,
+                 ack_timeout=1.0,
                  codec=None,
                  random_start=False):
 
@@ -130,7 +130,7 @@ class KeyedAIOProducer(AIOProducer):
 
     def __init__(self, client, *, partitioner=None,
                  req_acks=AIOProducer.ACK_AFTER_LOCAL_WRITE,
-                 ack_timeout=1000, codec=None):
+                 ack_timeout=1.0, codec=None):
 
         self._partitioner_class = partitioner or HashedPartitioner
         self._partitioners = {}
