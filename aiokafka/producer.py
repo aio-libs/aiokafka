@@ -37,14 +37,13 @@ class AIOProducer:
     @asyncio.coroutine
     def _send(self, topic, partition, *msgs, key=None):
 
-        if not isinstance(msgs, (list, tuple)):
-            raise TypeError("msgs is not a list or tuple!")
+        if any(not isinstance(m, (bytes, bytearray, memoryview))
+               for m in msgs):
+            raise TypeError("all produce message payloads must be byte-ish")
 
-        if any(not isinstance(m, bytes) for m in msgs):
-            raise TypeError("all produce message payloads must be type bytes")
-
-        if key is not None and not isinstance(key, bytes):
-            raise TypeError("the key must be type bytes")
+        if key is not None and not isinstance(key,
+                                              (bytes, bytearray, memoryview)):
+            raise TypeError("the key must be byte-ish")
 
         messages = create_message_set(msgs, self._codec, key)
         req = ProduceRequest(topic, partition, messages)
@@ -152,7 +151,7 @@ class KeyedAIOProducer(AIOProducer):
         return partitioner.partition(key, partition_ids)
 
     @asyncio.coroutine
-    def send(self, topic, key, *msgs):
+    def send(self, topic, *msgs, key):
         partition = yield from self._next_partition(topic, key)
         return (yield from self._send(topic, partition, *msgs, key=key))
 

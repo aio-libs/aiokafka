@@ -13,7 +13,7 @@ from ._testutil import get_open_port
 __all__ = ['Fixture', 'ZookeeperFixture', 'KafkaFixture']
 
 
-class Fixture(object):
+class Fixture:
 
     kafka_version = os.environ.get('KAFKA_VERSION', '0.8.1.1')
     scala_version = os.environ.get("SCALA_VERSION", '2.10')

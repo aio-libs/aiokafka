@@ -23,10 +23,30 @@ from aiokafka.producer import (SimpleAIOProducer, KeyedAIOProducer,
 
 class TestKafkaProducer(unittest.TestCase):
 
+    def setUp(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(None)
+
+    def tearDown(self):
+        self.loop.close()
+
     def test_invalid_codec(self):
         client = mock.Mock()
         with self.assertRaises(UnsupportedCodecError):
             SimpleAIOProducer(client, codec=123)
+
+    def test_send_non_byteish(self):
+        client = mock.Mock()
+        producer = SimpleAIOProducer(client)
+        with self.assertRaises(TypeError):
+            self.loop.run_until_complete(producer.send(b"topic", "text"))
+
+    def test_send_non_byteish_key(self):
+        client = mock.Mock()
+        producer = KeyedAIOProducer(client)
+        with self.assertRaises(TypeError):
+            self.loop.run_until_complete(
+                producer.send(b"topic", b"text", key=b'key'))
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
@@ -247,14 +267,18 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         producer = KeyedAIOProducer(self.client,
                                     partitioner=RoundRobinPartitioner)
-        resp1 = yield from producer.send(self.topic, self.key("key1"),
-                                         self.msg("one"))
-        resp2 = yield from producer.send(self.topic, self.key("key2"),
-                                         self.msg("two"))
-        resp3 = yield from producer.send(self.topic, self.key("key3"),
-                                         self.msg("three"))
-        resp4 = yield from producer.send(self.topic, self.key("key4"),
-                                         self.msg("four"))
+        resp1 = yield from producer.send(self.topic,
+                                         self.msg("one"),
+                                         key=self.key("key1"))
+        resp2 = yield from producer.send(self.topic,
+                                         self.msg("two"),
+                                         key=self.key("key2"))
+        resp3 = yield from producer.send(self.topic,
+                                         self.msg("three"),
+                                         key=self.key("key3"))
+        resp4 = yield from producer.send(self.topic,
+                                         self.msg("four"),
+                                         key=self.key("key4"))
 
         self.assert_produce_response(resp1, start_offset0 + 0)
         self.assert_produce_response(resp2, start_offset1 + 0)
@@ -272,16 +296,21 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         start_offset1 = yield from self.current_offset(self.topic, 1)
 
         producer = KeyedAIOProducer(self.client, partitioner=HashedPartitioner)
-        resp1 = yield from producer.send(self.topic, self.key("1"),
-                                         self.msg("one"))
-        resp2 = yield from producer.send(self.topic, self.key("2"),
-                                         self.msg("two"))
-        resp3 = yield from producer.send(self.topic, self.key("3"),
-                                         self.msg("three"))
-        resp4 = yield from producer.send(self.topic, self.key("3"),
-                                         self.msg("four"))
-        resp5 = yield from producer.send(self.topic, self.key("4"),
-                                         self.msg("five"))
+        resp1 = yield from producer.send(self.topic,
+                                         self.msg("one"),
+                                         key=self.key("1"),)
+        resp2 = yield from producer.send(self.topic,
+                                         self.msg("two"),
+                                         key=self.key("2"),)
+        resp3 = yield from producer.send(self.topic,
+                                         self.msg("three"),
+                                         key=self.key("3"))
+        resp4 = yield from producer.send(self.topic,
+                                         self.msg("four"),
+                                         key=self.key("3"))
+        resp5 = yield from producer.send(self.topic,
+                                         self.msg("five"),
+                                         key=self.key("4"),)
 
         offsets = {0: start_offset0, 1: start_offset1}
         messages = {0: [], 1: []}
