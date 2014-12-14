@@ -386,7 +386,7 @@ class AIOKafkaClient:
         return out
 
     @asyncio.coroutine
-    def send_produce_request(self, payloads=(), *, acks=1, timeout=1000):
+    def send_produce_request(self, payloads=(), *, acks=1, timeout=1.0):
         """
         Encode and send some ProduceRequests
 
@@ -397,21 +397,16 @@ class AIOKafkaClient:
         Params
         ======
         payloads: list of ProduceRequest
-        fail_on_error: boolean, should we raise an Exception if we
-                       encounter an API error?
-        callback: function, instead of returning the ProduceResponse,
-                  first pass it through this function
 
         Return
         ======
-        list of ProduceResponse or callback(ProduceResponse), in the
-        order of input payloads
+        list of ProduceResponse, in the order of input payloads
         """
 
         encoder = functools.partial(
             KafkaProtocol.encode_produce_request,
             acks=acks,
-            timeout=timeout)
+            timeout=int(timeout*1000))
 
         if acks == 0:
             decoder = None
