@@ -1,11 +1,13 @@
 import asyncio
 import unittest
 from unittest import mock
-from kafka.common import MetadataResponse
-from kafka.protocol import KafkaProtocol
+import functools
+from kafka.common import MetadataResponse, ProduceRequest
+from kafka.protocol import KafkaProtocol, create_message_set
 
 from aiokafka.conn import AIOKafkaConnection, create_conn
 from .fixtures import ZookeeperFixture, KafkaFixture
+from ._testutil import BaseTest, run_until_complete
 
 
 class ConnTest(unittest.TestCase):
@@ -55,14 +57,7 @@ class ConnTest(unittest.TestCase):
         self.assertEqual(2, idx)
 
 
-class ConnIntegrationTest(unittest.TestCase):
-
-    def setUp(self):
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(None)
-
-    def tearDown(self):
-        self.loop.close()
+class ConnIntegrationTest(BaseTest):
 
     @classmethod
     def setUpClass(cls):
@@ -74,10 +69,10 @@ class ConnIntegrationTest(unittest.TestCase):
         cls.server.close()
         cls.zk.close()
 
+    @run_until_complete
     def test_basic_connection_load_meta(self):
         host, port = self.server.host, self.server.port
-        conn = self.loop.run_until_complete(
-            create_conn(host, port, loop=self.loop))
+        conn = yield from create_conn(host, port, loop=self.loop)
 
         encoder = KafkaProtocol.encode_metadata_request
         decoder = KafkaProtocol.decode_metadata_response
@@ -87,15 +82,35 @@ class ConnIntegrationTest(unittest.TestCase):
         payloads = ()
         request = encoder(client_id=client_id, correlation_id=request_id,
                           payloads=payloads)
-        response = None
-
-        @asyncio.coroutine
-        def get_metadata():
-            fut = conn.send(request)
-            raw_response = yield from fut
-            nonlocal response
-            response = decoder(raw_response)
-            conn.close()
-
-        self.loop.run_until_complete(get_metadata())
+        fut = conn.send(request)
+        raw_response = yield from fut
+        response = decoder(raw_response)
+        conn.close()
         self.assertIsInstance(response, MetadataResponse)
+
+    @run_until_complete
+    def test_send_without_response(self):
+        """Imitate producer without acknowledge, in this case client produces
+        messages and kafka does not send response, and we make sure thate
+        futures do not stuck in queue forever"""
+
+        host, port = self.server.host, self.server.port
+        conn = yield from create_conn(host, port, loop=self.loop)
+
+        # prepare message
+        msgs = create_message_set([b'foo'], 0, None)
+        req = ProduceRequest(b'bar', 0, msgs)
+
+        encoder = functools.partial(
+            KafkaProtocol.encode_produce_request,
+            acks=0, timeout=int(10*1000))
+
+        request_id = 1
+        client_id = b"aiokafka-python"
+        request = encoder(client_id=client_id, correlation_id=request_id,
+                          payloads=[req])
+        # produce messages without acknowledge
+        for i in range(100):
+            conn.send(request, without_resp=True)
+        # make sure futures no stuck in queue
+        self.assertEqual(len(conn._requests), 0)

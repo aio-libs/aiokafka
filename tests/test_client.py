@@ -33,7 +33,7 @@ class TestAIOKafkaClient(unittest.TestCase):
     def test_init_with_list(self):
         client = AIOKafkaClient(
             ['kafka01:9092', 'kafka02:9092', 'kafka03:9092'], loop=self.loop)
-
+        self.assertTrue('KafkaClient' in client.__repr__())
         self.assertEqual(sorted({'kafka01': 9092,
                                  'kafka02': 9092,
                                  'kafka03': 9092}.items()),
@@ -552,6 +552,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
             yield from self.client.ensure_topic_exists(
                 b"this_topic_doesnt_exist", timeout=0)
 
+    @run_until_complete
     def test_commit_fetch_offsets(self):
 
         req = OffsetCommitRequest(self.topic, 0, 42, b"metadata")
