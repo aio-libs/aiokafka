@@ -12,6 +12,8 @@ from kafka.common import (
     check_error
 )
 
+__all__ = ['AIOConsumer', 'SimpleAIOConsumer']
+
 
 log = logging.getLogger("aiokafka")
 

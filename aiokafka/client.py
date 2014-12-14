@@ -17,6 +17,10 @@ from kafka.protocol import KafkaProtocol
 
 from .conn import create_conn
 
+
+__all__ = ['connect', 'AIOKafkaClient']
+
+
 log = logging.getLogger('aiokafka')
 
 
@@ -194,7 +198,8 @@ class AIOKafkaClient:
             # Send the request, recv the response
             try:
                 try:
-                    fut = conn.send(request)
+                    without_resp = decoder_fn is None
+                    fut = conn.send(request, without_resp=without_resp)
                     if decoder_fn is None:
                         continue
                     try:

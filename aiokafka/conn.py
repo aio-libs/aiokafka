@@ -2,6 +2,9 @@ import asyncio
 import struct
 
 
+__all__ = ['AIOKafkaConnection', 'create_conn']
+
+
 @asyncio.coroutine
 def create_conn(host, port, *, loop=None):
     if loop is None:
@@ -38,9 +41,12 @@ class AIOKafkaConnection:
     def port(self):
         return self._port
 
-    def send(self, payload):
+    def send(self, payload, without_resp=False):
         self._writer.write(payload)
         fut = asyncio.Future(loop=self._loop)
+        if without_resp:
+            fut.set_result(None)
+            return fut
         self._requests.append(fut)
         return fut
 
