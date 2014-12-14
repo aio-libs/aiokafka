@@ -62,6 +62,10 @@ class AIOKafkaClient:
                 host, port, loop=self._loop)
         return self._conns[host_key]
 
+    def _drop_conn(self, conn):
+        conn.close()
+        del self._conns[(conn.host, conn.port)]
+
     @asyncio.coroutine
     def _get_leader_for_partition(self, topic, partition):
         """
@@ -123,8 +127,12 @@ class AIOKafkaClient:
                                      correlation_id=request_id,
                                      payloads=payloads)
 
-                fut = conn.send(request)
-                response = yield from fut
+                try:
+                    fut = conn.send(request)
+                    response = yield from fut
+                except Exception:
+                    self._drop_conn(conn)
+                    raise
                 return decoder_fn(response)
 
             except Exception as e:
@@ -185,16 +193,22 @@ class AIOKafkaClient:
             failed = False
             # Send the request, recv the response
             try:
-                fut = conn.send(request)
-                if decoder_fn is None:
-                    continue
                 try:
-                    response = yield from fut
-                except ConnectionError as e:
-                    log.warning("Could not receive response to request [%s] "
-                                "from server %s: %s",
-                                binascii.b2a_hex(request), conn, e)
-                    failed = True
+                    fut = conn.send(request)
+                    if decoder_fn is None:
+                        continue
+                    try:
+                        response = yield from fut
+                    except ConnectionError as e:
+                        log.warning(
+                            "Could not receive response to request [%s] "
+                            "from server %s: %s",
+                            binascii.b2a_hex(request), conn, e)
+                        failed = True
+                        self._drop_conn(conn)
+                except Exception:
+                    self._drop_conn(conn)
+                    raise
             except ConnectionError as e:
                 log.warning("Could not send request [%s] to server %s: %s",
                             binascii.b2a_hex(request), conn, e)
