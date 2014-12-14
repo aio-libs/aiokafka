@@ -5,7 +5,7 @@ import functools
 import logging
 import time
 
-from kafka.conn import DEFAULT_SOCKET_TIMEOUT_SECONDS, collect_hosts
+from kafka.conn import collect_hosts
 from kafka.common import (TopicAndPartition, BrokerMetadata,
                           ConnectionError, FailedPayloadsError,
                           KafkaTimeoutError, KafkaUnavailableError,
@@ -33,12 +33,8 @@ class AIOKafkaClient:
 
     CLIENT_ID = b"aiokafka-python"
 
-    def __init__(self, hosts, *,
-                 client_id=CLIENT_ID,
-                 timeout=DEFAULT_SOCKET_TIMEOUT_SECONDS,
-                 loop):
+    def __init__(self, hosts, *, client_id=CLIENT_ID, loop):
         self._client_id = client_id
-        self._timeout = timeout
         self._hosts = collect_hosts(hosts)
 
         self._conns = {}
@@ -386,7 +382,7 @@ class AIOKafkaClient:
         return out
 
     @asyncio.coroutine
-    def send_produce_request(self, payloads=(), *, acks=1, timeout=1.0):
+    def send_produce_request(self, payloads=(), *, acks=1, ack_timeout=1.0):
         """
         Encode and send some ProduceRequests
 
@@ -406,7 +402,7 @@ class AIOKafkaClient:
         encoder = functools.partial(
             KafkaProtocol.encode_produce_request,
             acks=acks,
-            timeout=int(timeout*1000))
+            timeout=int(ack_timeout*1000))
 
         if acks == 0:
             decoder = None

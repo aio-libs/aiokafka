@@ -49,7 +49,7 @@ class AIOProducer:
         req = ProduceRequest(topic, partition, messages)
         try:
             resp = yield from self._client.send_produce_request(
-                [req], acks=self._req_acks, timeout=self._ack_timeout)
+                [req], acks=self._req_acks, ack_timeout=self._ack_timeout)
         except Exception:
             log.exception("Unable to send messages")
             raise
