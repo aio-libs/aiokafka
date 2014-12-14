@@ -79,7 +79,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         start_offset = yield from self.current_offset(self.topic, 0)
         msgs = [create_message(("Test message %d" % i).encode('utf-8'))
                 for i in range(10000)]
-        self.assert_produce_request(msgs, start_offset, 10000)
+        yield from self.assert_produce_request(msgs, start_offset, 10000)
 
     @run_until_complete
     def test_produce_many_gzip(self):
@@ -155,17 +155,19 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         resp = yield from producer.send(self.topic, self.msg("three"))
         self.assert_produce_response(resp, start_offset1)
 
-        self.assert_fetch_offset(0, start_offset0,
-                                 [self.msg("one"), self.msg("two")])
-        self.assert_fetch_offset(1, start_offset1, [self.msg("three")])
+        yield from self.assert_fetch_offset(0, start_offset0,
+                                            [self.msg("one"), self.msg("two")])
+        yield from self.assert_fetch_offset(1, start_offset1,
+                                            [self.msg("three")])
 
         # Goes back to the first partition because there's only two partitions
         resp = yield from producer.send(self.topic, self.msg("four"),
                                         self.msg("five"))
         self.assert_produce_response(resp, start_offset0 + 2)
-        self.assert_fetch_offset(0, start_offset0,
-                                 [self.msg("one"), self.msg("two"),
-                                  self.msg("four"), self.msg("five")])
+        yield from self.assert_fetch_offset(0, start_offset0,
+                                            [self.msg("one"), self.msg("two"),
+                                             self.msg("four"),
+                                             self.msg("five")])
 
     @run_until_complete
     def test_produce__new_topic_fails_with_reasonable_error(self):
@@ -212,7 +214,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             self.client, codec=CODEC_GZIP)
         resp = yield from producer.send(self.topic, self.msg("one"))
         self.assert_produce_response(resp, start_offset0)
-        self.assert_fetch_offset(0, start_offset0, [self.msg("one")])
+        yield from self.assert_fetch_offset(0, start_offset0,
+                                            [self.msg("one")])
 
     @run_until_complete
     def test_codec_snappy(self):
@@ -222,7 +225,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             self.client, codec=CODEC_SNAPPY)
         resp = yield from producer.send(self.topic, self.msg("one"))
         self.assert_produce_response(resp, start_offset0)
-        self.assert_fetch_offset(0, start_offset0, [self.msg("one")])
+        yield from self.assert_fetch_offset(0, start_offset0,
+                                            [self.msg("one")])
 
     @run_until_complete
     def test_acks_none(self):
@@ -232,8 +236,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             self.client, req_acks=SimpleAIOProducer.ACK_NOT_REQUIRED)
         resp = yield from producer.send(self.topic, self.msg("one"))
         self.assertEquals(len(resp), 0)
-
-        self.assert_fetch_offset(0, start_offset0, [self.msg("one")])
+        yield from self.assert_fetch_offset(0, start_offset0,
+                                            [self.msg("one")])
 
     @run_until_complete
     def test_acks_local_write(self):
@@ -244,7 +248,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         resp = yield from producer.send(self.topic, self.msg("one"))
 
         self.assert_produce_response(resp, start_offset0)
-        self.assert_fetch_offset(0, start_offset0, [self.msg("one")])
+        yield from self.assert_fetch_offset(0, start_offset0,
+                                            [self.msg("one")])
 
     @run_until_complete
     def test_acks_cluster_commit(self):
@@ -256,7 +261,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         resp = yield from producer.send(self.topic, self.msg("one"))
         self.assert_produce_response(resp, start_offset0)
-        self.assert_fetch_offset(0, start_offset0, [self.msg("one")])
+        yield from self.assert_fetch_offset(0, start_offset0,
+                                            [self.msg("one")])
 
     # KeyedAIOProducer Tests
 
@@ -285,10 +291,12 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assert_produce_response(resp3, start_offset0 + 1)
         self.assert_produce_response(resp4, start_offset1 + 1)
 
-        self.assert_fetch_offset(0, start_offset0,
-                                 [self.msg("one"), self.msg("three")])
-        self.assert_fetch_offset(1, start_offset1,
-                                 [self.msg("two"), self.msg("four")])
+        yield from self.assert_fetch_offset(0, start_offset0,
+                                            [self.msg("one"),
+                                             self.msg("three")])
+        yield from self.assert_fetch_offset(1, start_offset1,
+                                            [self.msg("two"),
+                                             self.msg("four")])
 
     @run_until_complete
     def test_hashed_partitioner(self):
@@ -326,8 +334,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             offsets[k] += 1
             messages[k].append(msg)
 
-        self.assert_fetch_offset(0, start_offset0, messages[0])
-        self.assert_fetch_offset(1, start_offset1, messages[1])
+        yield from self.assert_fetch_offset(0, start_offset0, messages[0])
+        yield from self.assert_fetch_offset(1, start_offset1, messages[1])
 
     # test helpers
 
