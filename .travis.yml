@@ -21,6 +21,10 @@ install:
     - pip install python-snappy
     - pip install git+https://github.com/mumrah/kafka-python.git@master
     - pip install .
+    - pip install coveralls
 
 script:
-  - make test
+  - make cov
+
+after_success:
+  - coveralls
