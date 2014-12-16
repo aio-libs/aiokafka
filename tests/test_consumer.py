@@ -81,18 +81,36 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     def test_simple_consumer_pending(self):
+        consumer = yield from self.consumer_factory()
+        # make sure that we start with no pending messages
+        initial_pending = yield from consumer.pending()
+        pending_part1 = yield from consumer.pending(partitions=[0])
+        pending_part2 = yield from consumer.pending(partitions=[1])
+        self.assertEqual(initial_pending, 0)
+        self.assertEqual(pending_part1, 0)
+        self.assertEqual(pending_part2, 0)
+
         # Produce 10 messages to partitions 0 and 1
         yield from self.send_messages(0, range(0, 10))
         yield from self.send_messages(1, range(10, 20))
 
-        consumer = yield from self.consumer_factory()
-
+        # make sure we have 20 pending message and 10 in each partition
         pending = yield from consumer.pending()
         self.assertEquals(pending, 20)
         pending_part1 = yield from consumer.pending(partitions=[0])
         pending_part2 = yield from consumer.pending(partitions=[1])
         self.assertEquals(pending_part1, 10)
         self.assertEquals(pending_part2, 10)
+
+        # move to last message, so one partition should have 1 pending
+        # message and other 0
+        yield from consumer.seek(-1, 2)
+        pending = yield from consumer.pending()
+        pending_part1 = yield from consumer.pending(partitions=[0])
+        pending_part2 = yield from consumer.pending(partitions=[1])
+        self.assertEqual(pending, 1)
+        self.assertEqual({0, 1}, {pending_part1, pending_part2})
+
         yield from consumer.stop()
 
     @run_until_complete
