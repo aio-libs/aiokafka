@@ -60,7 +60,8 @@ class AIOKafkaConnection:
                 resp = yield from self._reader.readexactly(size)
 
                 fut = self._requests.pop(0)
-                fut.set_result(resp)
+                if not fut.cancelled():
+                    fut.set_result(resp)
         except OSError as exc:
             fut = self._requests.pop(0)
             fut.set_exception(exc)

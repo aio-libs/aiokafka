@@ -1,6 +1,5 @@
 import asyncio
 import unittest
-from unittest import mock
 import functools
 from kafka.common import MetadataResponse, ProduceRequest
 from kafka.protocol import KafkaProtocol, create_message_set
@@ -27,34 +26,6 @@ class ConnTest(unittest.TestCase):
         self.assertTrue('KafkaConnection' in conn.__repr__())
         self.assertIsNone(conn._reader)
         self.assertIsNone(conn._writer)
-
-    def xtest_send(self):
-        conn = AIOKafkaConnection('localhost', 1234, loop=self.loop)
-        conn._writer = mock.Mock()
-        self.loop.run_until_complete(conn.send(b'data'))
-        conn._writer.write.assert_called_with(b'data')
-
-    def xtest_recv(self):
-        conn = AIOKafkaConnection('localhost', 1234, loop=self.loop)
-        conn._reader = mock.Mock()
-
-        rets = [(4, AIOKafkaConnection.HEADER.pack(6)),
-                (6, b'dataok')]
-        idx = 0
-
-        @asyncio.coroutine
-        def readexactly(n):
-            nonlocal idx
-            self.assertEqual(rets[idx][0], n)
-            ret = rets[idx][1]
-            idx += 1
-            return ret
-
-        conn._reader.readexactly.side_effect = readexactly
-
-        self.loop.run_until_complete(conn.recv(123))
-
-        self.assertEqual(2, idx)
 
 
 class ConnIntegrationTest(BaseTest):
@@ -114,3 +85,21 @@ class ConnIntegrationTest(BaseTest):
             conn.send(request, without_resp=True)
         # make sure futures no stuck in queue
         self.assertEqual(len(conn._requests), 0)
+
+    @run_until_complete
+    def test_send_cancelled(self):
+        host, port = self.server.host, self.server.port
+        conn = yield from create_conn(host, port, loop=self.loop)
+
+        encoder = KafkaProtocol.encode_metadata_request
+
+        request_id = 1
+        client_id = b"aiokafka-python"
+        payloads = ()
+        request = encoder(client_id=client_id, correlation_id=request_id,
+                          payloads=payloads)
+        fut = conn.send(request)
+        fut.cancel()
+        asyncio.sleep(0.1, loop=self.loop)
+        conn.close()
+        self.assertTrue(fut.cancelled())
