@@ -7,7 +7,6 @@ from kafka import (
     create_message, create_gzip_message, create_snappy_message,
     RoundRobinPartitioner, HashedPartitioner
 )
-from kafka.codec import has_snappy
 from kafka.common import (
     FetchRequest, ProduceRequest,
     UnknownTopicOrPartitionError, LeaderNotAvailableError,
@@ -107,18 +106,13 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     def test_produce_mixed(self):
         start_offset = yield from self.current_offset(self.topic, 0)
 
-        msg_count = 1 + 100
+        msg_count = 1 + 100 + 100
         messages = [
             create_message(b"Just a plain message"),
             create_gzip_message([
                 ("Gzipped %d" % i).encode('utf-8') for i in range(100)]),
-        ]
-
-        # All snappy integration tests fail with nosnappyjava
-        if False and has_snappy():
-            msg_count += 100
-            messages.append(
-                create_snappy_message(["Snappy %d" % i for i in range(100)]))
+            create_snappy_message([
+                b"Snappy " + bytes(i) for i in range(100)])]
 
         yield from self.assert_produce_request(messages, start_offset,
                                                msg_count)
