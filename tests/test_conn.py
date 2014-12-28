@@ -111,6 +111,6 @@ class ConnIntegrationTest(BaseTest):
                           payloads=[req])
         # produce messages without acknowledge
         for i in range(100):
-            conn.send(request, without_resp=True)
+            conn.send(request, no_ack=True)
         # make sure futures no stuck in queue
         self.assertEqual(len(conn._requests), 0)

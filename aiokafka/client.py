@@ -198,8 +198,8 @@ class AIOKafkaClient:
             # Send the request, recv the response
             try:
                 try:
-                    without_resp = decoder_fn is None
-                    fut = conn.send(request, without_resp=without_resp)
+                    no_ack = decoder_fn is None
+                    fut = conn.send(request, no_ack=no_ack)
                     if decoder_fn is None:
                         continue
                     try:

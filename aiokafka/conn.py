@@ -41,10 +41,10 @@ class AIOKafkaConnection:
     def port(self):
         return self._port
 
-    def send(self, payload, without_resp=False):
+    def send(self, payload, no_ack=False):
         self._writer.write(payload)
         fut = asyncio.Future(loop=self._loop)
-        if without_resp:
+        if no_ack:
             fut.set_result(None)
             return fut
         self._requests.append(fut)
