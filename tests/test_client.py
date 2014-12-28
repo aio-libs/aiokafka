@@ -96,10 +96,6 @@ class TestAIOKafkaClient(unittest.TestCase):
         fut.set_exception(RuntimeError("kafka01 went away (unittest)"))
         mocked_conns[('kafka01', 9092)].send.return_value = fut
 
-        @asyncio.coroutine
-        def recv(request_id):
-            return b'valid response'
-
         fut2 = asyncio.Future(loop=self.loop)
         fut2.set_result(b'valid response')
         mocked_conns[('kafka02', 9092)].send.return_value = fut2

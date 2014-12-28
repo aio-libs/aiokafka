@@ -36,23 +36,10 @@ class AIOProducer:
 
     @asyncio.coroutine
     def _send(self, topic, partition, *msgs, key=None):
-
-        if any(not isinstance(m, (bytes, bytearray, memoryview))
-               for m in msgs):
-            raise TypeError("all produce message payloads must be byte-ish")
-
-        if key is not None and not isinstance(key,
-                                              (bytes, bytearray, memoryview)):
-            raise TypeError("the key must be byte-ish")
-
         messages = create_message_set(msgs, self._codec, key)
         req = ProduceRequest(topic, partition, messages)
-        try:
-            resp = yield from self._client.send_produce_request(
-                [req], acks=self._req_acks, ack_timeout=self._ack_timeout)
-        except Exception:
-            log.exception("Unable to send messages")
-            raise
+        resp = yield from self._client.send_produce_request(
+            [req], acks=self._req_acks, ack_timeout=self._ack_timeout)
         return resp
 
 
@@ -96,12 +83,19 @@ class SimpleAIOProducer(AIOProducer):
 
             # Randomize the initial partition that is returned
             if self._random_start:
-                for _ in range(random.randint(0, len(partition_ids)-1)):
+                # start from 1, to guaranty that body of for loop will be
+                # executed at list once during tests.
+                for _ in range(random.randint(1, len(partition_ids))):
                     next(self._partition_cycles[topic])
         return next(self._partition_cycles[topic])
 
     @asyncio.coroutine
     def send(self, topic, *msgs):
+
+        if any(not isinstance(m, (bytes, bytearray, memoryview))
+               for m in msgs):
+            raise TypeError("all produce message payloads must be byte-ish")
+
         partition = yield from self._next_partition(topic)
         resp = yield from self._send(topic, partition, *msgs)
         return resp
@@ -152,6 +146,14 @@ class KeyedAIOProducer(AIOProducer):
 
     @asyncio.coroutine
     def send(self, topic, *msgs, key):
+        if any(not isinstance(m, (bytes, bytearray, memoryview))
+               for m in msgs):
+            raise TypeError("all produce message payloads must be byte-ish")
+
+        if key is not None and not isinstance(key,
+                                              (bytes, bytearray, memoryview)):
+            raise TypeError("the key must be byte-ish")
+
         partition = yield from self._next_partition(topic, key)
         return (yield from self._send(topic, partition, *msgs, key=key))
 
