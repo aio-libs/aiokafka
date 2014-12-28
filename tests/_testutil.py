@@ -11,7 +11,7 @@ from kafka.common import OffsetRequest
 from aiokafka.client import connect
 
 
-__all__ = ['get_open_port', 'KafkaIntegrationTestCase']
+__all__ = ['get_open_port', 'KafkaIntegrationTestCase', 'random_string']
 
 
 def run_until_complete(fun):
@@ -45,9 +45,9 @@ class KafkaIntegrationTestCase(BaseTest):
 
     def setUp(self):
         super().setUp()
-        hosts = ['{}:{}'.format(self.server.host, self.server.port)]
+        self.hosts = ['{}:{}'.format(self.server.host, self.server.port)]
         self.client = self.loop.run_until_complete(
-            connect(hosts, loop=self.loop))
+            connect(self.hosts, loop=self.loop))
 
         if not self.topic:
             topic = "%s-%s" % (self.id()[self.id().rindex(".") + 1:],

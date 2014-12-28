@@ -7,7 +7,6 @@ from kafka import (
     create_message, create_gzip_message, create_snappy_message,
     RoundRobinPartitioner, HashedPartitioner
 )
-from kafka.codec import has_snappy
 from kafka.common import (
     FetchRequest, ProduceRequest,
     UnknownTopicOrPartitionError, LeaderNotAvailableError,
@@ -19,6 +18,7 @@ from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 from aiokafka.producer import (SimpleAIOProducer, KeyedAIOProducer,
                                CODEC_SNAPPY, CODEC_GZIP)
+from aiokafka.client import AIOKafkaClient
 
 
 class TestKafkaProducer(unittest.TestCase):
@@ -37,16 +37,40 @@ class TestKafkaProducer(unittest.TestCase):
 
     def test_send_non_byteish(self):
         client = mock.Mock()
-        producer = SimpleAIOProducer(client)
+        sproducer = SimpleAIOProducer(client)
         with self.assertRaises(TypeError):
-            self.loop.run_until_complete(producer.send(b"topic", "text"))
+            self.loop.run_until_complete(sproducer.send(b"topic", "text"))
+
+        kproducer = KeyedAIOProducer(client)
+        with self.assertRaises(TypeError):
+            self.loop.run_until_complete(kproducer.send(b"topic", "text",
+                                                        key=b'key'))
 
     def test_send_non_byteish_key(self):
         client = mock.Mock()
         producer = KeyedAIOProducer(client)
         with self.assertRaises(TypeError):
-            self.loop.run_until_complete(
-                producer.send(b"topic", b"text", key=b'key'))
+            self.loop.run_until_complete(producer.send(b"topic", b"text",
+                                                       key='key'))
+
+    def test_simple_producer_ctor(self):
+        client = mock.Mock()
+        ack = SimpleAIOProducer.ACK_AFTER_LOCAL_WRITE
+        producer = SimpleAIOProducer(client, req_acks=ack)
+        name = producer.__class__.__name__
+        self.assertTrue(name in producer.__repr__())
+        self.assertEqual(producer._req_acks, ack)
+
+    def test_keyed_producer_ctor(self):
+        client = mock.Mock()
+        ack = KeyedAIOProducer.ACK_AFTER_LOCAL_WRITE
+
+        producer = KeyedAIOProducer(client,
+                                    partitioner=RoundRobinPartitioner,
+                                    req_acks=ack)
+        name = producer.__class__.__name__
+        self.assertTrue(name in producer.__repr__())
+        self.assertEqual(producer._req_acks, ack)
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
@@ -107,18 +131,13 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     def test_produce_mixed(self):
         start_offset = yield from self.current_offset(self.topic, 0)
 
-        msg_count = 1 + 100
+        msg_count = 1 + 100 + 100
         messages = [
             create_message(b"Just a plain message"),
             create_gzip_message([
                 ("Gzipped %d" % i).encode('utf-8') for i in range(100)]),
-        ]
-
-        # All snappy integration tests fail with nosnappyjava
-        if False and has_snappy():
-            msg_count += 100
-            messages.append(
-                create_snappy_message(["Snappy %d" % i for i in range(100)]))
+            create_snappy_message([
+                b"Snappy " + bytes(i) for i in range(100)])]
 
         yield from self.assert_produce_request(messages, start_offset,
                                                msg_count)
@@ -303,7 +322,10 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         start_offset0 = yield from self.current_offset(self.topic, 0)
         start_offset1 = yield from self.current_offset(self.topic, 1)
 
-        producer = KeyedAIOProducer(self.client, partitioner=HashedPartitioner)
+        # create client without preloaded metadata, and enforce
+        # metadata loading on first call of sent method
+        client = AIOKafkaClient(self.hosts, loop=self.loop)
+        producer = KeyedAIOProducer(client, partitioner=HashedPartitioner)
         resp1 = yield from producer.send(self.topic,
                                          self.msg("one"),
                                          key=self.key("1"),)
