@@ -1,6 +1,6 @@
 import asyncio
 import struct
-
+from kafka.common import ConnectionError
 
 __all__ = ['AIOKafkaConnection', 'create_conn']
 
@@ -63,8 +63,12 @@ class AIOKafkaConnection:
                 if not fut.cancelled():
                     fut.set_result(resp)
         except OSError as exc:
+            conn_exc = ConnectionError("Kafka at {0}:{1} went away".format(
+                self._host, self._port))
+            conn_exc.__cause__ = exc
+            conn_exc.__context__ = exc
             fut = self._requests.pop(0)
-            fut.set_exception(exc)
+            fut.set_exception(conn_exc)
             self.close()
 
     def close(self):
