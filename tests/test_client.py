@@ -11,7 +11,7 @@ from kafka.common import (KafkaUnavailableError, BrokerMetadata, TopicMetadata,
 
 from kafka.protocol import create_message
 
-from aiokafka.client import AIOKafkaClient
+from aiokafka.client import AIOKafkaClient, connect
 from .fixtures import ZookeeperFixture, KafkaFixture
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -524,6 +524,26 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
     def tearDownClass(cls):
         cls.server.close()
         cls.zk.close()
+
+    @run_until_complete
+    def test_connect_with_global_loop(self):
+        asyncio.set_event_loop(self.loop)
+        client = yield from connect(self.hosts)
+        self.assertIs(client._loop, self.loop)
+        client.close()
+
+    @run_until_complete
+    def test_clear_metadata(self):
+        num_topics_brokers = len(self.client._topics_to_brokers.keys())
+        num_topics_partitions = len(self.client._topic_partitions.keys())
+        self.assertTrue(num_topics_brokers >= 1)
+        self.assertTrue(num_topics_partitions >= 1)
+        self.client.reset_all_metadata()
+
+        num_topics_brokers = len(self.client._topics_to_brokers.keys())
+        num_topics_partitions = len(self.client._topic_partitions.keys())
+        self.assertTrue(num_topics_brokers == 0)
+        self.assertTrue(num_topics_partitions == 0)
 
     @run_until_complete
     def test_consume_none(self):
