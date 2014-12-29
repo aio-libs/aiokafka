@@ -534,16 +534,19 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     def test_clear_metadata(self):
-        num_topics_brokers = len(self.client._topics_to_brokers.keys())
-        num_topics_partitions = len(self.client._topic_partitions.keys())
-        self.assertTrue(num_topics_brokers >= 1)
-        self.assertTrue(num_topics_partitions >= 1)
+        # make sure that mapping topic/partition exists
+        for partition in self.client._topic_partitions[self.topic].values():
+            self.assertIsInstance(partition, PartitionMetadata)
+
+        # make sure that mapping TopicAndPartition to broker exists
+        key = TopicAndPartition(self.topic, 0)
+        self.assertIsInstance(self.client._topics_to_brokers[key],
+                              BrokerMetadata)
+
         self.client.reset_all_metadata()
 
-        num_topics_brokers = len(self.client._topics_to_brokers.keys())
-        num_topics_partitions = len(self.client._topic_partitions.keys())
-        self.assertTrue(num_topics_brokers == 0)
-        self.assertTrue(num_topics_partitions == 0)
+        self.assertEqual(self.client._topics_to_brokers, {})
+        self.assertEqual(self.client._topic_partitions, {})
 
     @run_until_complete
     def test_consume_none(self):
