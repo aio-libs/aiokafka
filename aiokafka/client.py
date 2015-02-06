@@ -12,7 +12,7 @@ from kafka.common import (TopicAndPartition, BrokerMetadata,
                           LeaderNotAvailableError,
                           UnknownTopicOrPartitionError,
                           NotLeaderForPartitionError,
-                          check_error)
+                          ReplicaNotAvailableError, check_error)
 from kafka.protocol import KafkaProtocol
 
 from .conn import create_conn
@@ -371,7 +371,12 @@ class AIOKafkaClient:
                               topic, partition)
                     self._topics_to_brokers[topic_part] = None
                     continue
-
+                # If one of the replicas is unavailable -- ignore
+                # this error code is provided for admin purposes only
+                # we never talk to replicas, only the leader
+                except ReplicaNotAvailableError:
+                    log.warning('Some (non-leader) replicas not available '
+                                'for topic %s partition %d', topic, partition)
                 # If Known Broker, topic_partition -> BrokerMetadata
                 if leader in self._brokers:
                     self._topics_to_brokers[topic_part] = self._brokers[leader]
