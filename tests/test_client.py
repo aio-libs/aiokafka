@@ -19,6 +19,7 @@ from ._testutil import KafkaIntegrationTestCase, run_until_complete
 NO_ERROR = 0
 UNKNOWN_TOPIC_OR_PARTITION = 3
 NO_LEADER = 5
+REPLICA_NOT_AVAILABLE = 9
 
 
 class TestAIOKafkaClient(unittest.TestCase):
@@ -147,6 +148,11 @@ class TestAIOKafkaClient(unittest.TestCase):
                 PartitionMetadata('topic_3', 0, 0, [0, 1], [0, 1], NO_ERROR),
                 PartitionMetadata('topic_3', 1, 1, [1, 0], [1, 0], NO_ERROR),
                 PartitionMetadata('topic_3', 2, 0, [0, 1], [0, 1], NO_ERROR)
+            ]),
+            TopicMetadata('topic_4', NO_ERROR, [
+                PartitionMetadata('topic_4', 0, 0, [0, 1], [0, 1], NO_ERROR),
+                PartitionMetadata('topic_4', 1, 1, [1, 0], [1, 0],
+                                  REPLICA_NOT_AVAILABLE),
             ])
         ]
         protocol.decode_metadata_response.return_value = MetadataResponse(
@@ -159,7 +165,9 @@ class TestAIOKafkaClient(unittest.TestCase):
             TopicAndPartition('topic_noleader', 1): None,
             TopicAndPartition('topic_3', 0): brokers[0],
             TopicAndPartition('topic_3', 1): brokers[1],
-            TopicAndPartition('topic_3', 2): brokers[0]},
+            TopicAndPartition('topic_3', 2): brokers[0],
+            TopicAndPartition('topic_4', 0): brokers[0],
+            TopicAndPartition('topic_4', 1): brokers[1]},
             client._topics_to_brokers)
 
         # if we ask for metadata explicitly, it should raise errors
@@ -174,6 +182,10 @@ class TestAIOKafkaClient(unittest.TestCase):
         # This should not raise
         self.loop.run_until_complete(
             client.load_metadata_for_topics('topic_no_leader'))
+
+        # This should not raise ReplicaNotAvailableError
+        self.loop.run_until_complete(
+            client.load_metadata_for_topics('topic_4'))
 
     @mock.patch('aiokafka.client.KafkaProtocol')
     def test_has_metadata_for_topic(self, protocol):
