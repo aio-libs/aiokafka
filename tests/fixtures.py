@@ -15,8 +15,8 @@ __all__ = ['Fixture', 'ZookeeperFixture', 'KafkaFixture']
 
 class Fixture:
 
-    kafka_version = os.environ.get('KAFKA_VERSION', '0.8.1.1')
-    scala_version = os.environ.get("SCALA_VERSION", '2.10')
+    kafka_version = os.environ.get('KAFKA_VERSION', '0.8.2.0')
+    scala_version = os.environ.get("SCALA_VERSION", '2.11')
 
     tests_root = os.environ.get('TESTS_ROOT',
                                 os.path.abspath(os.path.dirname(__file__)))
@@ -91,7 +91,7 @@ class ZookeeperFixture(Fixture):
         # Party!
         self.out("Starting...")
         self.child.start()
-        self.child.wait_for(r"Snapshotting")
+        self.child.wait_for(r"binding to port")
         self.out("Done!")
 
     def close(self):
@@ -183,8 +183,8 @@ class KafkaFixture(Fixture):
 
         if proc.wait() != 0:
             self.out("Failed to create Zookeeper chroot node")
-            self.out(proc.stdout)
-            self.out(proc.stderr)
+            self.out(proc.stdout.read())
+            self.out(proc.stderr.read())
             raise RuntimeError("Failed to create Zookeeper chroot node")
         self.out("Done!")
 

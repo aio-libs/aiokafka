@@ -7,7 +7,8 @@ env:
     matrix:
         - KAFKA_VERSION=0.8.1.1 SCALA_VERSION=2.10 PYTHONASYNCIODEBUG=1
         - KAFKA_VERSION=0.8.1.1 SCALA_VERSION=2.10 PYTHONASYNCIODEBUG=0
-
+        - KAFKA_VERSION=0.8.2.0 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
+        - KAFKA_VERSION=0.8.2.0 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=0
 
 before_install:
     - sudo apt-get install libsnappy-dev
@@ -19,7 +20,6 @@ install:
     - pip install flake8
     - pip install nose
     - pip install python-snappy
-    - pip install git+https://github.com/mumrah/kafka-python.git@master
     - pip install .
     - pip install coveralls
 
