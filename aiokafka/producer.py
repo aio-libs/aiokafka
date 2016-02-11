@@ -34,30 +34,6 @@ class AIOKafkaProducer(object):
     complete. The "all" setting will result in blocking on the full commit of
     the record, the slowest but most durable setting.
 
-    If the request fails, the producer can automatically retry, unless
-    'retries' is configured to 0. Enabling retries also opens up the
-    possibility of duplicates (see the documentation on message
-    delivery semantics for details:
-    http://kafka.apache.org/documentation.html#semantics
-    ).
-
-    The producer maintains buffers of unsent records for each partition. These
-    buffers are of a size specified by the 'batch_size' config. Making this
-    larger can result in more batching, but requires more memory (since we will
-    generally have one of these buffers for each active partition).
-
-    By default a buffer is available to send immediately even if there is
-    additional unused space in the buffer. However if you want to reduce the
-    number of requests you can set 'linger_ms' to something greater than 0.
-    This will instruct the producer to wait up to that number of milliseconds
-    before sending a request in hope that more records will arrive to fill up
-    the same batch. This is analogous to Nagle's algorithm in TCP. Note that
-    records that arrive close together in time will generally batch together
-    even with linger_ms=0 so under heavy load batching will occur regardless of
-    the linger configuration; however setting this to something larger than 0
-    can lead to fewer, more efficient requests when not under maximal load at
-    the cost of a small amount of latency.
-
     The key_serializer and value_serializer instruct how to turn the key and
     value objects the user provides into bytes.
 
@@ -104,38 +80,11 @@ class AIOKafkaProducer(object):
             Compression is of full batches of data, so the efficacy of batching
             will also impact the compression ratio (more batching means better
             compression). Default: None.
-        retries (int): Setting a value greater than zero will cause the client
-            to resend any record whose send fails with a potentially transient
-            error. Note that this retry is no different than if the client
-            resent the record upon receiving the error. Allowing retries will
-            potentially change the ordering of records because if two records
-            are sent to a single partition, and the first fails and is retried
-            but the second succeeds, then the second record may appear first.
-            Default: 0.
         batch_size (int): Requests sent to brokers will contain multiple
             batches, one for each partition with data available to be sent.
             A small batch size will make batching less common and may reduce
             throughput (a batch size of zero will disable batching entirely).
             Default: 16384
-        linger_ms (int): The producer groups together any records that arrive
-            in between request transmissions into a single batched request.
-            Normally this occurs only under load when records arrive faster
-            than they can be sent out. However in some circumstances the client
-            may want to reduce the number of requests even under moderate load.
-            This setting accomplishes this by adding a small amount of
-            artificial delay; that is, rather than immediately sending out a
-            record the producer will wait for up to the given delay to allow
-            other records to be sent so that the sends can be batched together.
-            This can be thought of as analogous to Nagle's algorithm in TCP.
-            This setting gives the upper bound on the delay for batching: once
-            we get batch_size worth of records for a partition it will be sent
-            immediately regardless of this setting, however if we have fewer
-            than this many bytes accumulated for this partition we will
-            'linger' for the specified time waiting for more records to show
-            up. This setting defaults to 0 (i.e. no delay). Setting linger_ms=5
-            would have the effect of reducing the number of requests sent but
-            would add up to 5ms of latency to records sent in the absense of
-            load. Default: 0.
         partitioner (callable): Callable used to determine which partition
             each message is assigned to. Called (after key serialization):
             partitioner(key_bytes, all_partitions, available_partitions).
@@ -144,9 +93,6 @@ class AIOKafkaProducer(object):
             messages with the same key are assigned to the same partition.
             When a key is None, the message is delivered to a random partition
             (filtered to partitions with available leaders only, if possible).
-        max_block_ms (int): Number of milliseconds to block during send()
-            when attempting to allocate additional memory before raising an
-            exception. Default: 60000.
         max_request_size (int): The maximum size of a request. This is also
             effectively a cap on the maximum record size. Note that the server
             has its own cap on record size which may be different from this.
@@ -157,20 +103,12 @@ class AIOKafkaProducer(object):
             which we force a refresh of metadata even if we haven't seen any
             partition leadership changes to proactively discover any new
             brokers or partitions. Default: 300000
-        retry_backoff_ms (int): Milliseconds to backoff when retrying on
-            errors. Default: 100.
         request_timeout_ms (int): Client request timeout in milliseconds.
             Default: 30000.
         receive_buffer_bytes (int): The size of the TCP receive buffer
             (SO_RCVBUF) to use when reading data. Default: 32768
         send_buffer_bytes (int): The size of the TCP send buffer
             (SO_SNDBUF) to use when sending data. Default: 131072
-        reconnect_backoff_ms (int): The amount of time in milliseconds to
-            wait before attempting to reconnect to a given host.
-            Default: 50.
-        max_in_flight_requests_per_connection (int): Requests are pipelined
-            to kafka brokers up to this number of maximum requests per
-            broker connection. Default: 5.
         api_version (str): specify which kafka API version to use.
             If set to 'auto', will attempt to infer the broker version by
             probing various APIs. Default: auto
@@ -186,24 +124,17 @@ class AIOKafkaProducer(object):
         'value_serializer': None,
         'acks': 1,
         'compression_type': None,
-        'retries': 0,
         'batch_size': 16384,
-        'linger_ms': 0,
         'partitioner': DefaultPartitioner(),
-        'connections_max_idle_ms': 600000, # not implemented yet
-        'max_block_ms': 60000,
         'max_request_size': 1048576,
         'metadata_max_age_ms': 300000,
-        'retry_backoff_ms': 100,
         'request_timeout_ms': 30000,
         'receive_buffer_bytes': 32768,
         'send_buffer_bytes': 131072,
-        'reconnect_backoff_ms': 50,
-        'max_in_flight_requests_per_connection': 5,
         'api_version': 'auto',
     }
 
-    PRODUCER_CLIENT_ID_SEQUENCE = 0
+    _PRODUCER_CLIENT_ID_SEQUENCE = 0
 
     def __init__(self, *, loop, **configs):
         log.debug("Starting the Kafka producer") # trace
@@ -215,10 +146,10 @@ class AIOKafkaProducer(object):
         # Only check for extra config keys in top-level class
         assert not configs, 'Unrecognized configs: %s' % configs
 
-        self.PRODUCER_CLIENT_ID_SEQUENCE += 1
+        self._PRODUCER_CLIENT_ID_SEQUENCE += 1
         if self.config['client_id'] is None:
             self.config['client_id'] = 'kafka-python-producer-%s' % \
-                self.PRODUCER_CLIENT_ID_SEQUENCE
+                self._PRODUCER_CLIENT_ID_SEQUENCE
 
         if self.config['acks'] == 'all':
             self.config['acks'] = -1

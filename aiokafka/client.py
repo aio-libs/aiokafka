@@ -28,11 +28,8 @@ class AIOKafkaClient:
         'bootstrap_servers': 'localhost',
         'client_id': 'kafka-python-' + __version__,
         'request_timeout_ms': 40000,
-        'reconnect_backoff_ms': 50,
-        'max_in_flight_requests_per_connection': 5,
         'receive_buffer_bytes': 32768,
         'send_buffer_bytes': 131072,
-        'retry_backoff_ms': 100,
         'metadata_max_age_ms': 300000,
     }
 
@@ -53,12 +50,6 @@ class AIOKafkaClient:
                 consumer group administration. Default: 'kafka-python-{version}'
             request_timeout_ms (int): Client request timeout in milliseconds.
                 Default: 40000.
-            reconnect_backoff_ms (int): The amount of time in milliseconds to
-                wait before attempting to reconnect to a given host.
-                Default: 50.
-            max_in_flight_requests_per_connection (int): Requests are pipelined
-                to kafka brokers up to this number of maximum requests per
-                broker connection. Default: 5.
             send_buffer_bytes (int): The size of the TCP send buffer
                 (SO_SNDBUF) to use when sending data. Default: 131072
             receive_buffer_bytes (int): The size of the TCP receive buffer
@@ -67,8 +58,6 @@ class AIOKafkaClient:
                 which we force a refresh of metadata even if we haven't seen any
                 partition leadership changes to proactively discover any new
                 brokers or partitions. Default: 300000
-            retry_backoff_ms (int): Milliseconds to backoff when retrying on
-                errors. Default: 100.
         """
         self.config = copy.copy(self.DEFAULT_CONFIG)
         for key in self.config:
