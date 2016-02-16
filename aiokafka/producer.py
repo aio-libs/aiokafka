@@ -105,10 +105,6 @@ class AIOKafkaProducer(object):
             brokers or partitions. Default: 300000
         request_timeout_ms (int): Client request timeout in milliseconds.
             Default: 30000.
-        receive_buffer_bytes (int): The size of the TCP receive buffer
-            (SO_RCVBUF) to use when reading data. Default: 32768
-        send_buffer_bytes (int): The size of the TCP send buffer
-            (SO_SNDBUF) to use when sending data. Default: 131072
         api_version (str): specify which kafka API version to use.
             If set to 'auto', will attempt to infer the broker version by
             probing various APIs. Default: auto
@@ -129,8 +125,6 @@ class AIOKafkaProducer(object):
         'max_request_size': 1048576,
         'metadata_max_age_ms': 300000,
         'request_timeout_ms': 30000,
-        'receive_buffer_bytes': 32768,
-        'send_buffer_bytes': 131072,
         'api_version': 'auto',
     }
 
@@ -217,7 +211,10 @@ class AIOKafkaProducer(object):
                 in cluster metadata
         """
         # add topic to metadata topic list if it is not there already.
-        yield from self.client.add_topic(topic)
+        self.client.add_topic(topic)
+        yield from self.client.force_metadata_update()
+        if topic not in self.client.cluster.topics():
+            raise UnknownTopicOrPartitionError()
         return self._metadata.partitions_for_topic(topic)
 
     def send(self, topic, value=None, key=None, partition=None):

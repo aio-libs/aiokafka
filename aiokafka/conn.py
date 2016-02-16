@@ -27,8 +27,6 @@ class AIOKafkaConnection:
     DEFAULT_CONFIG = {
         'client_id': 'kafka-python-' + __version__,
         'request_timeout_ms': 40000,
-        'receive_buffer_bytes': 32768,
-        'send_buffer_bytes': 131072,
         'api_version': (0, 8, 2),  # default to most restrictive
     }
 
@@ -52,13 +50,6 @@ class AIOKafkaConnection:
         future = asyncio.open_connection(self.host, self.port, loop=self._loop)
         self._reader, self._writer = yield from asyncio.wait_for(
             future, self._config['request_timeout_ms']/1000)
-        # setup socket options
-        self._writer.get_extra_info('socket').setsockopt(
-            socket.SOL_SOCKET, socket.SO_RCVBUF,
-            self._config['receive_buffer_bytes'])
-        self._writer.get_extra_info('socket').setsockopt(
-            socket.SOL_SOCKET, socket.SO_SNDBUF,
-            self._config['send_buffer_bytes'])
         self._read_task = asyncio.ensure_future(self._read(), loop=self._loop)
 
     def __repr__(self):
