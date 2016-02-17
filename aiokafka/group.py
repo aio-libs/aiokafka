@@ -575,6 +575,15 @@ class AIOKafkaConsumer(object):
 
     @asyncio.coroutine
     def get_message(self):
+        """
+        Get one message from Kafka
+        If no new messages occured, this method will wait it
+
+        Incompatible with get_fetched_messages() -- use one or the other
+
+        Returns:
+            instance of ConsumerRecord
+        """
         if not self._fetcher.initialized():
             yield from self._init_fetcher()
 
@@ -595,3 +604,18 @@ class AIOKafkaConsumer(object):
                 continue
 
             return msg
+
+    @asyncio.coroutine
+    def get_fetched_messages(self):
+        """
+        Get messages that was fetched from Kafka and not processed yet
+
+        Incompatible with get_message() -- use one or the other, not both.
+
+        Returns:
+            dict: {TopicPartition: [messages]}
+        """
+        if not self._fetcher.initialized():
+            yield from self._init_fetcher()
+
+        return self._fetcher.fetched_records()
