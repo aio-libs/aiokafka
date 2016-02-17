@@ -23,6 +23,7 @@ log = logging.getLogger('aiokafka')
 
 
 class AIOKafkaClient:
+    """This class implements interface for interact with Kafka cluster"""
 
     DEFAULT_CONFIG = {
         'bootstrap_servers': 'localhost',
@@ -78,6 +79,7 @@ class AIOKafkaClient:
 
     @asyncio.coroutine
     def bootstrap(self):
+        """Try to to bootstrap initial cluster metadata"""
         metadata_request = MetadataRequest([])
         hosts = collect_hosts(self.config['bootstrap_servers'])
         for host, port in hosts:
@@ -119,6 +121,8 @@ class AIOKafkaClient:
 
     @asyncio.coroutine
     def _md_synchronizer(self):
+        """routine (async task) for synchronize cluster metadata every
+        `metadata_max_age_ms` milliseconds"""
         while True:
             while True:
                 ttl = self.cluster.ttl() / 1000.0
@@ -129,6 +133,11 @@ class AIOKafkaClient:
             yield from self.force_metadata_update()
 
     def get_random_node(self):
+        """choice random node from known cluster brokers
+
+        Returns:
+            nodeId - identifier of broker
+        """
         nodeids = [b.nodeId for b in self.cluster.brokers()]
         if not nodeids:
             return None
@@ -136,6 +145,11 @@ class AIOKafkaClient:
 
     @asyncio.coroutine
     def force_metadata_update(self):
+        """Update cluster metadata
+
+        Returns:
+            True/False - metadata updated or not
+        """
         metadata_request = MetadataRequest(list(self._topics))
         nodeids = [b.nodeId for b in self.cluster.brokers()]
         random.shuffle(nodeids)

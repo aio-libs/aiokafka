@@ -22,6 +22,8 @@ def create_conn(host, port, *, loop=None, **config):
 
 
 class AIOKafkaConnection:
+    """Class for manage connection to Kafka node"""
+
     HEADER = struct.Struct('>i')
 
     DEFAULT_CONFIG = {
@@ -133,8 +135,8 @@ class AIOKafkaConnection:
                                    self, correlation_id, response)
                     fut.set_result(response)
         except OSError as exc:
-            conn_exc = Errors.ConnectionError("Connection at {0}:{1} broken".format(
-                self._host, self._port))
+            conn_exc = Errors.ConnectionError(
+                "Connection at {0}:{1} broken".format(self._host, self._port))
             conn_exc.__cause__ = exc
             conn_exc.__context__ = exc
             _, _, fut = self._requests.pop(0)
