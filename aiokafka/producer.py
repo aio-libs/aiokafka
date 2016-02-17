@@ -131,7 +131,7 @@ class AIOKafkaProducer(object):
     _PRODUCER_CLIENT_ID_SEQUENCE = 0
 
     def __init__(self, *, loop, **configs):
-        log.debug("Starting the Kafka producer") # trace
+        log.debug("Starting the Kafka producer")  # trace
         self.config = copy.copy(self._DEFAULT_CONFIG)
         for key in self.config:
             if key in configs:
@@ -264,8 +264,8 @@ class AIOKafkaProducer(object):
         log.debug("Sending (key=%s value=%s) to %s", key, value, tp)
         msg = Message(value_bytes, key=key_bytes)
         buf = MessageSetBuffer(io.BytesIO(),
-                         self.config['batch_size'],
-                         self.config['compression_type'])
+                               self.config['batch_size'],
+                               self.config['compression_type'])
         buf.append(0, msg)
         buf.close()
         request = ProduceRequest(

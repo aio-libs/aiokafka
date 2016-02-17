@@ -1,6 +1,5 @@
 import asyncio
 import struct
-import socket
 import logging
 import copy
 from kafka.common import ConnectionError
@@ -109,11 +108,10 @@ class AIOKafkaConnection:
 
                 recv_correlation_id, = self.HEADER.unpack(resp[:4])
 
-                correlation_id, resp_type, fut  = self._requests.pop(0)
-                if (self._config['api_version'] == (0, 8, 2) and
-                    resp_type is GroupCoordinatorResponse and
-                    correlation_id != 0 and
-                    recv_correlation_id == 0):
+                correlation_id, resp_type, fut = self._requests.pop(0)
+                if (self._config['api_version'] == (0, 8, 2)
+                        and resp_type is GroupCoordinatorResponse
+                        and correlation_id != 0 and recv_correlation_id == 0):
                     self.log.warning(
                         'Kafka 0.8.2 quirk -- GroupCoordinatorResponse'
                         ' coorelation id does not match request. This'
@@ -138,7 +136,7 @@ class AIOKafkaConnection:
                 self._host, self._port))
             conn_exc.__cause__ = exc
             conn_exc.__context__ = exc
-            _, _, fut  = self._requests.pop(0)
+            _, _, fut = self._requests.pop(0)
             fut.set_exception(conn_exc)
             self.close()
 

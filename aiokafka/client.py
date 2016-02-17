@@ -6,7 +6,7 @@ import random
 from kafka.conn import collect_hosts
 from kafka.common import (KafkaError,
                           NodeNotReadyError,
-                          UnknownTopicOrPartitionError,
+                          KafkaTimeoutError,
                           UnrecognizedBrokerVersion)
 from kafka.cluster import ClusterMetadata
 from kafka.protocol.metadata import MetadataRequest
@@ -28,8 +28,6 @@ class AIOKafkaClient:
         'bootstrap_servers': 'localhost',
         'client_id': 'kafka-python-' + __version__,
         'request_timeout_ms': 40000,
-        'receive_buffer_bytes': 32768,
-        'send_buffer_bytes': 131072,
         'metadata_max_age_ms': 300000,
     }
 
@@ -40,24 +38,20 @@ class AIOKafkaClient:
             bootstrap_servers: 'host[:port]' string (or list of 'host[:port]'
                 strings) that the consumer should contact to bootstrap initial
                 cluster metadata. This does not have to be the full node list.
-                It just needs to have at least one broker that will respond to a
+                It just needs to have at least one broker that will respond to
                 Metadata API Request. Default port is 9092. If no servers are
                 specified, will default to localhost:9092.
             client_id (str): a name for this client. This string is passed in
                 each request to servers and can be used to identify specific
                 server-side log entries that correspond to this client. Also
                 submitted to GroupCoordinator for logging with respect to
-                consumer group administration. Default: 'kafka-python-{version}'
+                consumer group administration. Default: 'kafka-python-{ver}'
             request_timeout_ms (int): Client request timeout in milliseconds.
                 Default: 40000.
-            send_buffer_bytes (int): The size of the TCP send buffer
-                (SO_SNDBUF) to use when sending data. Default: 131072
-            receive_buffer_bytes (int): The size of the TCP receive buffer
-                (SO_RCVBUF) to use when reading data. Default: 32768
             metadata_max_age_ms (int): The period of time in milliseconds after
-                which we force a refresh of metadata even if we haven't seen any
-                partition leadership changes to proactively discover any new
-                brokers or partitions. Default: 300000
+                which we force a refresh of metadata even if we haven't seen
+                any partition leadership changes to proactively discover any
+                new brokers or partitions. Default: 300000
         """
         self.config = copy.copy(self.DEFAULT_CONFIG)
         for key in self.config:
@@ -65,7 +59,7 @@ class AIOKafkaClient:
                 self.config[key] = configs[key]
 
         self.cluster = ClusterMetadata(**self.config)
-        self._topics = set() # empty set will fetch all topic metadata
+        self._topics = set()  # empty set will fetch all topic metadata
         self._conns = {}
         self._loop = loop
         self._sync_task = None
@@ -128,6 +122,12 @@ class AIOKafkaClient:
                 yield from asyncio.sleep(ttl, loop=self.loop)
             yield from self.force_metadata_update()
 
+    def get_random_node(self):
+        nodeids = [b.nodeId for b in self.cluster.brokers()]
+        if not nodeids:
+            return None
+        return random.choice(nodeids)
+
     @asyncio.coroutine
     def force_metadata_update(self):
         metadata_request = MetadataRequest(list(self._topics))
@@ -157,6 +157,32 @@ class AIOKafkaClient:
         return True
 
     @asyncio.coroutine
+    def fetch_all_metadata(self):
+        cluster_md = ClusterMetadata(**self.config)
+        metadata_request = MetadataRequest([])
+        nodeids = [b.nodeId for b in self.cluster.brokers()]
+        random.shuffle(nodeids)
+        for node_id in nodeids:
+            conn = yield from self._get_conn(node_id)
+            if conn is None:
+                continue
+            log.debug("Sending metadata request %s to %s",
+                      metadata_request, node_id)
+
+            try:
+                metadata = yield from conn.send(metadata_request)
+            except KafkaError as err:
+                log.error(
+                    'Unable to request metadata from node with id %s: %s',
+                    node_id, err)
+                continue
+
+            cluster_md.update_metadata(metadata)
+            break
+        else:
+            raise KafkaError('Unable to update metadata from %s', nodeids)
+        return cluster_md
+
     def add_topic(self, topic):
         """Add a topic to the list of topics tracked via metadata.
 
@@ -166,10 +192,17 @@ class AIOKafkaClient:
         if topic in self._topics:
             return
         self._topics.add(topic)
-        yield from self.force_metadata_update()
-        if topic not in self.cluster.topics():
-            self._topics.remove(topic)
-            raise UnknownTopicOrPartitionError()
+
+    def set_topics(self, topics):
+        """Set specific topics to track for metadata.
+
+        Arguments:
+            topics (list of str): topics to track
+        """
+        if set(topics).difference(self._topics):
+            self._topics = set(topics)
+            return asyncio.ensure_future(self.force_metadata_update())
+        return None
 
     @property
     def loop(self):
@@ -189,7 +222,7 @@ class AIOKafkaClient:
             broker = self.cluster.broker_metadata(node_id)
             assert broker, 'Broker id %s not in current metadata' % node_id
             log.debug("Initiating connection to node %s at %s:%s",
-                        node_id, broker.host, broker.port)
+                      node_id, broker.host, broker.port)
 
             self._conns[node_id] = yield from create_conn(
                 broker.host, broker.port, loop=self._loop, **self.config)
@@ -199,11 +232,12 @@ class AIOKafkaClient:
         else:
             return self._conns[node_id]
 
-    def _can_send_request(self, node_id):
-        if node_id not in self._conns:
+    @asyncio.coroutine
+    def ready(self, node_id):
+        conn = yield from self._get_conn(node_id)
+        if conn is None:
             return False
-        conn = self._conns[node_id]
-        return conn.connected()
+        return True
 
     @asyncio.coroutine
     def send(self, node_id, request):
@@ -214,7 +248,7 @@ class AIOKafkaClient:
             request (Struct): request object (not-encoded)
 
         Raises:
-            asyncio.TimeoutError
+            kafka.common.KafkaTimeoutError
             kafka.common.NodeNotReadyError
             kafka.commom.ConnectionError
             kafka.common.CorrelationIdError
@@ -222,7 +256,7 @@ class AIOKafkaClient:
         Returns:
             Future: resolves to Response struct
         """
-        if not self._can_send_request(node_id):
+        if not (yield from self.ready(node_id)):
             raise NodeNotReadyError(
                 "Attempt to send a request to node"
                 " which is not ready (node id {}).".format(node_id))
@@ -232,8 +266,14 @@ class AIOKafkaClient:
         if isinstance(request, ProduceRequest) and request.required_acks == 0:
             expect_response = False
 
-        return self._conns[node_id].send(
+        future = self._conns[node_id].send(
             request, expect_response=expect_response)
+        try:
+            result = yield from future
+        except asyncio.TimeoutError:
+            raise KafkaTimeoutError()
+        else:
+            return result
 
     def check_version(self, node_id=None):
         # FIXME
