@@ -152,10 +152,10 @@ class AIOKafkaProducer(object):
         self._metadata = self.client.cluster
 
         self._closed = False
-        log.debug("Kafka producer started")
 
     @asyncio.coroutine
     def start(self):
+        """Connect to Kafka cluster and check server version"""
         yield from self.client.bootstrap()
 
         # Check Broker Version if not set explicitly
@@ -170,9 +170,11 @@ class AIOKafkaProducer(object):
         if self.config['compression_type'] == 'lz4':
             assert self.config['api_version'] >= (0, 8, 2), \
                 'LZ4 Requires >= Kafka 0.8.2 Brokers'
+        log.debug("Kafka producer started")
 
     @asyncio.coroutine
     def stop(self):
+        """Close all connections to kafka cluser"""
         if self._closed:
             return
 
