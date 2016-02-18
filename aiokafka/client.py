@@ -13,7 +13,7 @@ from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.produce import ProduceRequest
 
 from aiokafka.conn import create_conn
-from aiokafka import ensure_future, __version__
+from aiokafka import ensure_future
 
 
 __all__ = ['AIOKafkaClient']
@@ -25,14 +25,9 @@ log = logging.getLogger('aiokafka')
 class AIOKafkaClient:
     """This class implements interface for interact with Kafka cluster"""
 
-    DEFAULT_CONFIG = {
-        'bootstrap_servers': 'localhost',
-        'client_id': 'kafka-python-' + __version__,
-        'request_timeout_ms': 40000,
-        'metadata_max_age_ms': 300000,
-    }
-
-    def __init__(self, *, loop, **configs):
+    def __init__(self, *, loop, bootstrap_servers='localhost',
+                 client_id='aiokafka', metadata_max_age_ms=300000,
+                 request_timeout_ms=40000):
         """Initialize an asynchronous kafka client
 
         Keyword Arguments:
@@ -54,12 +49,12 @@ class AIOKafkaClient:
                 any partition leadership changes to proactively discover any
                 new brokers or partitions. Default: 300000
         """
-        self.config = copy.copy(self.DEFAULT_CONFIG)
-        for key in self.config:
-            if key in configs:
-                self.config[key] = configs[key]
+        self._bootstrap_servers = bootstrap_servers
+        self._client_id = client_id
+        self._metadata_max_age_ms = metadata_max_age_ms
+        self._request_timeout_ms = request_timeout_ms
 
-        self.cluster = ClusterMetadata(**self.config)
+        self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
         self._topics = set()  # empty set will fetch all topic metadata
         self._conns = {}
         self._loop = loop
@@ -81,13 +76,14 @@ class AIOKafkaClient:
     def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
         metadata_request = MetadataRequest([])
-        hosts = collect_hosts(self.config['bootstrap_servers'])
+        hosts = collect_hosts(self._bootstrap_servers)
         for host, port in hosts:
             log.debug("Attempting to bootstrap via node at %s:%s", host, port)
 
             try:
                 bootstrap = yield from create_conn(
-                    host, port, loop=self._loop, **self.config)
+                    host, port, loop=self._loop, client_id=self._client_id,
+                    request_timeout_ms=self._request_timeout_ms)
             except (OSError, asyncio.TimeoutError) as err:
                 log.error('Unable connect to "%s:%s": %s', host, port, err)
                 continue
@@ -178,7 +174,8 @@ class AIOKafkaClient:
 
     @asyncio.coroutine
     def fetch_all_metadata(self):
-        cluster_md = ClusterMetadata(**self.config)
+        cluster_md = ClusterMetadata(
+            metadata_max_age_ms=self._metadata_max_age_ms)
         metadata_request = MetadataRequest([])
         nodeids = [b.nodeId for b in self.cluster.brokers()]
         random.shuffle(nodeids)
@@ -246,7 +243,9 @@ class AIOKafkaClient:
                       node_id, broker.host, broker.port)
 
             self._conns[node_id] = yield from create_conn(
-                broker.host, broker.port, loop=self._loop, **self.config)
+                    broker.host, broker.port, loop=self._loop,
+                    client_id=self._client_id,
+                    request_timeout_ms=self._request_timeout_ms)
         except (OSError, asyncio.TimeoutError) as err:
             log.error('Unable connect to node with id %s: %s', node_id, err)
             return None
@@ -296,6 +295,7 @@ class AIOKafkaClient:
         else:
             return result
 
+    @asyncio.coroutine
     def check_version(self, node_id=None):
         # FIXME
         """Attempt to guess the broker version"""
