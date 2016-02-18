@@ -113,62 +113,58 @@ class AIOKafkaProducer(object):
         Configuration parameters are described in more detail at
         https://kafka.apache.org/090/configuration.html#producerconfigs
     """
-    _DEFAULT_CONFIG = {
-        'bootstrap_servers': 'localhost',
-        'client_id': None,
-        'key_serializer': None,
-        'value_serializer': None,
-        'acks': 1,
-        'compression_type': None,
-        'batch_size': 16384,
-        'partitioner': DefaultPartitioner(),
-        'max_request_size': 1048576,
-        'metadata_max_age_ms': 300000,
-        'request_timeout_ms': 30000,
-        'api_version': 'auto',
-    }
-
     _PRODUCER_CLIENT_ID_SEQUENCE = 0
 
-    def __init__(self, *, loop, **configs):
-        log.debug("Starting the Kafka producer")  # trace
-        self.config = copy.copy(self._DEFAULT_CONFIG)
-        for key in self.config:
-            if key in configs:
-                self.config[key] = configs.pop(key)
-
-        # Only check for extra config keys in top-level class
-        assert not configs, 'Unrecognized configs: %s' % configs
+    def __init__(self, *, loop, bootstrap_servers='localhost',
+                 client_id=None,
+                 metadata_max_age_ms=300000, request_timeout_ms=40000,
+                 api_version='auto', acks=1,
+                 key_serializer=None, value_serializer=None,
+                 compression_type=None, batch_size=16384,
+                 partitioner=DefaultPartitioner(), max_request_size=1048576):
 
         self._PRODUCER_CLIENT_ID_SEQUENCE += 1
-        if self.config['client_id'] is None:
-            self.config['client_id'] = 'kafka-python-producer-%s' % \
+        if client_id is None:
+            client_id = 'aiokafka-producer-%s' % \
                 self._PRODUCER_CLIENT_ID_SEQUENCE
 
-        if self.config['acks'] == 'all':
-            self.config['acks'] = -1
+        if acks == 'all':
+            acks = -1
+        self._acks = acks
+        self._api_version = api_version
+        self._key_serializer = key_serializer
+        self._value_serializer = value_serializer
+        self._compression_type = compression_type
+        self._batch_size = batch_size
+        self._partitioner = partitioner
+        self._max_request_size = max_request_size
+        self._request_timeout_ms = request_timeout_ms
 
-        self.client = AIOKafkaClient(loop=loop, **self.config)
+        self.client = AIOKafkaClient(
+            loop=loop, bootstrap_servers=bootstrap_servers,
+            client_id=client_id, metadata_max_age_ms=metadata_max_age_ms,
+            request_timeout_ms=request_timeout_ms)
         self._metadata = self.client.cluster
 
         self._closed = False
 
     @asyncio.coroutine
     def start(self):
+        log.debug("Starting the Kafka producer")  # trace
         """Connect to Kafka cluster and check server version"""
         yield from self.client.bootstrap()
 
         # Check Broker Version if not set explicitly
-        if self.config['api_version'] == 'auto':
-            self.config['api_version'] = yield from self.client.check_version()
-        assert self.config['api_version'] in ('0.9', '0.8.2', '0.8.1', '0.8.0')
+        if self._api_version == 'auto':
+            self._api_version = yield from self.client.check_version()
+        assert self._api_version in ('0.9', '0.8.2', '0.8.1', '0.8.0')
 
         # Convert api_version config to tuple for easy comparisons
-        self.config['api_version'] = tuple(
-            map(int, self.config['api_version'].split('.')))
+        self._api_version = tuple(
+            map(int, self._api_version.split('.')))
 
-        if self.config['compression_type'] == 'lz4':
-            assert self.config['api_version'] >= (0, 8, 2), \
+        if self._compression_type == 'lz4':
+            assert self._api_version >= (0, 8, 2), \
                 'LZ4 Requires >= Kafka 0.8.2 Brokers'
         log.debug("Kafka producer started")
 
@@ -181,11 +177,11 @@ class AIOKafkaProducer(object):
         yield from self.client.close()
 
         try:
-            self.config['key_serializer'].close()
+            self._key_serializer.close()
         except AttributeError:
             pass
         try:
-            self.config['value_serializer'].close()
+            self._value_serializer.close()
         except AttributeError:
             pass
         self._closed = True
@@ -244,7 +240,7 @@ class AIOKafkaProducer(object):
         Returns:
             response from Kafka
         """
-        assert value is not None or self.config['api_version'] >= (0, 8, 1), (
+        assert value is not None or self._api_version >= (0, 8, 1), (
             'Null messages require kafka >= 0.8.1')
         assert not (value is None and key is None), \
             'Need at least one: key or value'
@@ -265,26 +261,25 @@ class AIOKafkaProducer(object):
 
         log.debug("Sending (key=%s value=%s) to %s", key, value, tp)
         msg = Message(value_bytes, key=key_bytes)
-        buf = MessageSetBuffer(io.BytesIO(),
-                               self.config['batch_size'],
-                               self.config['compression_type'])
+        buf = MessageSetBuffer(
+            io.BytesIO(), self._batch_size, self._compression_type)
         buf.append(0, msg)
         buf.close()
         request = ProduceRequest(
-            required_acks=self.config['acks'],
-            timeout=self.config['request_timeout_ms'],
+            required_acks=self._acks,
+            timeout=self._request_timeout_ms,
             topics=[(topic, [(partition, buf.buffer())])])
 
         response = yield from self.client.send(leader, request)
         return response
 
     def _serialize(self, topic, key, value):
-        if self.config['key_serializer']:
-            serialized_key = self.config['key_serializer'](key)
+        if self._key_serializer:
+            serialized_key = self._key_serializer(key)
         else:
             serialized_key = key
-        if self.config['value_serializer']:
-            serialized_value = self.config['value_serializer'](value)
+        if self._value_serializer:
+            serialized_value = self._value_serializer(value)
         else:
             serialized_value = value
 
@@ -293,7 +288,7 @@ class AIOKafkaProducer(object):
             message_size += len(serialized_key)
         if serialized_value is not None:
             message_size += len(serialized_value)
-        if message_size > self.config['max_request_size']:
+        if message_size > self._max_request_size:
             raise MessageSizeTooLargeError(
                 "The message is %d bytes when serialized which is larger than"
                 " the maximum request size you have configured with the"
@@ -311,6 +306,5 @@ class AIOKafkaProducer(object):
 
         all_partitions = list(self._metadata.partitions_for_topic(topic))
         available = list(self._metadata.available_partitions_for_topic(topic))
-        return self.config['partitioner'](serialized_key,
-                                          all_partitions,
-                                          available)
+        return self._partitioner(
+            serialized_key, all_partitions, available)

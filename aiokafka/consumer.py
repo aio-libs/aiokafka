@@ -5,12 +5,12 @@ import logging
 import numbers
 from itertools import zip_longest, repeat
 
-from kafka.common import (
-    OffsetRequest, OffsetCommitRequest, OffsetFetchRequest,
-    UnknownTopicOrPartitionError, FetchRequest,
-    ConsumerFetchSizeTooSmall, ConsumerNoMoreData,
-    check_error
-)
+#from kafka.common import (
+#    OffsetRequest, OffsetCommitRequest, OffsetFetchRequest,
+#    UnknownTopicOrPartitionError, FetchRequest,
+#    ConsumerFetchSizeTooSmall, ConsumerNoMoreData,
+#    check_error
+#)
 
 __all__ = ['AIOConsumer', 'SimpleAIOConsumer']
 

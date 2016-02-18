@@ -13,10 +13,13 @@ __all__ = ['AIOKafkaConnection', 'create_conn']
 
 
 @asyncio.coroutine
-def create_conn(host, port, *, loop=None, **config):
+def create_conn(host, port, *, loop=None, client_id='aiokafka',
+                request_timeout_ms=40000, api_version=(0,8,2)):
     if loop is None:
         loop = asyncio.get_event_loop()
-    conn = AIOKafkaConnection(host, port, loop=loop, **config)
+    conn = AIOKafkaConnection(
+        host, port, loop=loop, client_id=client_id,
+        request_timeout_ms=request_timeout_ms, api_version=api_version)
     yield from conn._connect()
     return conn
 
@@ -26,15 +29,10 @@ class AIOKafkaConnection:
 
     HEADER = struct.Struct('>i')
 
-    DEFAULT_CONFIG = {
-        'client_id': 'kafka-python-' + __version__,
-        'request_timeout_ms': 40000,
-        'api_version': (0, 8, 2),  # default to most restrictive
-    }
-
     log = logging.getLogger(__name__)
 
-    def __init__(self, host, port, *, loop, **config):
+    def __init__(self, host, port, *, loop, client_id='aiokafka',
+                 request_timeout_ms=40000, api_version=(0,8,2)):
         self._host = host
         self._port = port
         self._reader = self._writer = None
@@ -42,16 +40,15 @@ class AIOKafkaConnection:
         self._requests = []
         self._read_task = None
         self._correlation_id = 0
-        self._config = copy.copy(self.DEFAULT_CONFIG)
-        for key in self._config:
-            if key in config:
-                self._config[key] = config[key]
+        self._request_timeout = request_timeout_ms / 1000
+        self._api_version = api_version
+        self._client_id = client_id
 
     @asyncio.coroutine
     def _connect(self):
         future = asyncio.open_connection(self.host, self.port, loop=self._loop)
         self._reader, self._writer = yield from asyncio.wait_for(
-            future, self._config['request_timeout_ms']/1000, loop=self._loop)
+            future, self._request_timeout, loop=self._loop)
         self._read_task = ensure_future(self._read(), loop=self._loop)
 
     def __repr__(self):
@@ -69,8 +66,8 @@ class AIOKafkaConnection:
         correlation_id = self._next_correlation_id()
         header = RequestHeader(request,
                                correlation_id=correlation_id,
-                               client_id=self._config['client_id'])
-        message = b''.join([header.encode(), request.encode()])
+                               client_id=self._client_id)
+        message = header.encode() + request.encode()
         size = self.HEADER.pack(len(message))
         try:
             self._writer.write(size + message)
@@ -85,8 +82,7 @@ class AIOKafkaConnection:
             fut.set_result(None)
             return fut
         self._requests.append((correlation_id, request.RESPONSE_TYPE, fut))
-        return asyncio.wait_for(
-            fut, self._config['request_timeout_ms']/1000, loop=self._loop)
+        return asyncio.wait_for(fut, self._request_timeout, loop=self._loop)
 
     def connected(self):
         return self._reader and not self._reader.at_eof()
@@ -112,7 +108,7 @@ class AIOKafkaConnection:
                 recv_correlation_id, = self.HEADER.unpack(resp[:4])
 
                 correlation_id, resp_type, fut = self._requests.pop(0)
-                if (self._config['api_version'] == (0, 8, 2)
+                if (self._api_version == (0, 8, 2)
                         and resp_type is GroupCoordinatorResponse
                         and correlation_id != 0 and recv_correlation_id == 0):
                     self.log.warning(
