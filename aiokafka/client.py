@@ -81,7 +81,7 @@ class AIOKafkaClient:
             log.debug("Attempting to bootstrap via node at %s:%s", host, port)
 
             try:
-                bootstrap = yield from create_conn(
+                bootstrap_conn = yield from create_conn(
                     host, port, loop=self._loop, client_id=self._client_id,
                     request_timeout_ms=self._request_timeout_ms)
             except (OSError, asyncio.TimeoutError) as err:
@@ -89,11 +89,11 @@ class AIOKafkaClient:
                 continue
 
             try:
-                metadata = yield from bootstrap.send(metadata_request)
+                metadata = yield from bootstrap_conn.send(metadata_request)
             except KafkaError as err:
                 log.warning('Unable to request metadata from "%s:%s": %s',
                             host, port, err)
-                bootstrap.close()
+                bootstrap_conn.close()
                 continue
 
             self.cluster.update_metadata(metadata)
@@ -101,9 +101,9 @@ class AIOKafkaClient:
             # A cluster with no topics can return no broker metadata
             # in that case, we should keep the bootstrap connection
             if not len(self.cluster.brokers()):
-                self._conns['bootstrap'] = bootstrap
+                self._conns['bootstrap'] = bootstrap_conn
             else:
-                bootstrap.close()
+                bootstrap_conn.close()
 
             log.debug('Received cluster metadata: %s', self.cluster)
             break
