@@ -5,6 +5,7 @@ import random
 
 from kafka.conn import collect_hosts
 from kafka.common import (KafkaError,
+                          ConnectionError,
                           NodeNotReadyError,
                           KafkaTimeoutError,
                           UnrecognizedBrokerVersion)
@@ -13,7 +14,7 @@ from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.produce import ProduceRequest
 
 from aiokafka.conn import create_conn
-from aiokafka import ensure_future
+from aiokafka import ensure_future, __version__
 
 
 __all__ = ['AIOKafkaClient']
@@ -26,7 +27,7 @@ class AIOKafkaClient:
     """This class implements interface for interact with Kafka cluster"""
 
     def __init__(self, *, loop, bootstrap_servers='localhost',
-                 client_id='aiokafka', metadata_max_age_ms=300000,
+                 client_id='aiokafka-'+__version__, metadata_max_age_ms=300000,
                  request_timeout_ms=40000):
         """Initialize an asynchronous kafka client
 
@@ -60,6 +61,13 @@ class AIOKafkaClient:
         self._loop = loop
         self._sync_task = None
 
+    def __repr__(self):
+        return '<AIOKafkaClient client_id=%s>' % self._client_id
+
+    @property
+    def hosts(self):
+        return collect_hosts(self._bootstrap_servers)
+
     @asyncio.coroutine
     def close(self):
         if self._sync_task:
@@ -76,8 +84,7 @@ class AIOKafkaClient:
     def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
         metadata_request = MetadataRequest([])
-        hosts = collect_hosts(self._bootstrap_servers)
-        for host, port in hosts:
+        for host, port in self.hosts:
             log.debug("Attempting to bootstrap via node at %s:%s", host, port)
 
             try:
@@ -108,7 +115,8 @@ class AIOKafkaClient:
             log.debug('Received cluster metadata: %s', self.cluster)
             break
         else:
-            raise ConnectionError('Unable to bootstrap from {}'.format(hosts))
+            raise ConnectionError(
+                'Unable to bootstrap from {}'.format(self.hosts))
 
         if self._sync_task is None:
             # starting metadata synchronizer task
@@ -126,6 +134,7 @@ class AIOKafkaClient:
                     break
                 log.debug("metadata synchronizer sleep for %s sec", ttl)
                 yield from asyncio.sleep(ttl, loop=self.loop)
+
             yield from self.force_metadata_update()
 
     def get_random_node(self):
@@ -148,6 +157,8 @@ class AIOKafkaClient:
         """
         metadata_request = MetadataRequest(list(self._topics))
         nodeids = [b.nodeId for b in self.cluster.brokers()]
+        if 'bootstrap' in self._conns:
+            nodeids.append('bootstrap')
         random.shuffle(nodeids)
         for node_id in nodeids:
             conn = yield from self._get_conn(node_id)
@@ -178,6 +189,8 @@ class AIOKafkaClient:
             metadata_max_age_ms=self._metadata_max_age_ms)
         metadata_request = MetadataRequest([])
         nodeids = [b.nodeId for b in self.cluster.brokers()]
+        if 'bootstrap' in self._conns:
+            nodeids.append('bootstrap')
         random.shuffle(nodeids)
         for node_id in nodeids:
             conn = yield from self._get_conn(node_id)
@@ -326,7 +339,7 @@ class AIOKafkaClient:
             try:
                 conn = yield from self._get_conn(node_id)
                 assert conn, 'no connection to node with id {}'.format(node_id)
-                self.send(node_id, request)
+                yield from self.send(node_id, request)
             except ConnectionError:
                 continue
             else:

@@ -57,8 +57,6 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         self._messages = {}
 
     def tearDown(self):
-        self.client.close()
-        del self.client
         super().tearDown()
 
     @asyncio.coroutine
