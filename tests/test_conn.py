@@ -50,6 +50,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         response = yield from conn.send(request)
         conn.close()
         self.assertIsInstance(response, MetadataResponse)
+        self.assertEqual(response.topics, [])
 
     @run_until_complete
     def test_send_without_response(self):
@@ -70,6 +71,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
             conn.send(request, expect_response=False)
         # make sure futures no stuck in queue
         self.assertEqual(len(conn._requests), 0)
+
 
     @run_until_complete
     def test_send_to_closed(self):
