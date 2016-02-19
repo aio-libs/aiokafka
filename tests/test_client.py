@@ -2,7 +2,6 @@ import asyncio
 import pytest
 import unittest
 from unittest import mock
-
 from kafka.common import (KafkaError, ConnectionError,
                           NodeNotReadyError, UnrecognizedBrokerVersion)
 from kafka.protocol.metadata import MetadataRequest, MetadataResponse
@@ -44,6 +43,7 @@ class TestAIOKafkaClient(unittest.TestCase):
                                  'kafka02': 9092,
                                  'kafka03': 9092}.items()),
                          sorted(client.hosts))
+
 
     def test_load_metadata(self):
         brokers = [
