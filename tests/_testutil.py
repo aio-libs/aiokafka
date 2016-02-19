@@ -44,24 +44,9 @@ class KafkaIntegrationTestCase(BaseTest):
     def setUp(self):
         super().setUp()
         self.hosts = ['{}:{}'.format(self.server.host, self.server.port)]
-        self.client = AIOKafkaClient(
-            loop=self.loop, bootstrap_servers=self.hosts)
-        self.client = self.loop.run_until_complete(
-            self.client.bootstrap())
-
-        if not self.topic:
-            topic = "%s-%s" % (self.id()[self.id().rindex(".") + 1:],
-                               random_string(10).decode('utf-8'))
-            self.topic = topic.encode('utf-8')
-
-        update_md_task = self.client.set_topics([self.topic])
-        self.loop.run_until_complete(
-            asyncio.wait_for(update_md_task, loop=self.loop))
         self._messages = {}
 
     def tearDown(self):
-        self.client.close()
-        del self.client
         super().tearDown()
 
     @asyncio.coroutine
