@@ -7,14 +7,9 @@ import uuid
 import pytest
 
 from functools import wraps
-from kafka.common import (
-    OffsetRequest,
-    KafkaUnavailableError,
-    LeaderNotAvailableError,
-    UnknownError
-)
 
-from aiokafka.client import connect
+from kafka.common import ConnectionError
+from aiokafka.client import AIOKafkaClient
 
 
 __all__ = ['KafkaIntegrationTestCase', 'random_string']
@@ -48,19 +43,17 @@ class KafkaIntegrationTestCase(unittest.TestCase):
             self.topic = topic.encode('utf-8')
 
         # Reconnecting until Kafka in docker becomes available
+        client = AIOKafkaClient(
+            loop=self.loop, bootstrap_servers=self.hosts)
         for i in range(500):
             try:
-                self.client = self.loop.run_until_complete(
-                    connect(self.hosts, loop=self.loop))
-                # Check Kafka is already operational (Kafka <= 0.8.2.x)
-                self.loop.run_until_complete(
-                    self.client.load_metadata_for_topics(self.topic))
-                break
-            except (KafkaUnavailableError,
-                    UnknownError,
-                    LeaderNotAvailableError):
-                time.sleep(0.1)
+                self.loop.run_until_complete(client.bootstrap())
 
+            except ConnectionError:
+                time.sleep(0.1)
+            else:
+                yield from client.close()
+                break
         self._messages = {}
 
     def tearDown(self):

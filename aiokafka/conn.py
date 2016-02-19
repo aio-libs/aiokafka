@@ -63,6 +63,11 @@ class AIOKafkaConnection:
         return self._port
 
     def send(self, request, expect_response=True):
+        if self._writer is None:
+            raise Errors.ConnectionError(
+                "No connection to broker at {0}:{1}"
+                .format(self._host, self._port))
+
         correlation_id = self._next_correlation_id()
         header = RequestHeader(request,
                                correlation_id=correlation_id,
@@ -85,12 +90,12 @@ class AIOKafkaConnection:
         return asyncio.wait_for(fut, self._request_timeout, loop=self._loop)
 
     def connected(self):
-        return self._reader and not self._reader.at_eof()
+        return bool(self._reader and not self._reader.at_eof())
 
     def close(self):
         if self._reader:
             self._writer.close()
-            self._reader = self._writer = None
+            self._writer = self._reader = None
             self._read_task.cancel()
             for _, _, fut in self._requests:
                 fut.cancel()
@@ -117,7 +122,7 @@ class AIOKafkaConnection:
                         ' should go away once at least one topic has been'
                         ' initialized on the broker')
 
-                if correlation_id != recv_correlation_id:
+                elif correlation_id != recv_correlation_id:
                     error = Errors.CorrelationIdError(
                         'Correlation ids do not match: sent {}, recv {}'
                         .format(correlation_id, recv_correlation_id))
@@ -135,8 +140,8 @@ class AIOKafkaConnection:
                 "Connection at {0}:{1} broken".format(self._host, self._port))
             conn_exc.__cause__ = exc
             conn_exc.__context__ = exc
-            _, _, fut = self._requests.pop(0)
-            fut.set_exception(conn_exc)
+            for _, _, fut in self._requests:
+                fut.set_exception(conn_exc)
             self.close()
 
     def _next_correlation_id(self):

@@ -7,6 +7,6 @@ except ImportError:
 
 from .client import AIOKafkaClient
 from .producer import AIOKafkaProducer
-from .consumer import SimpleAIOConsumer
+#from .consumer import SimpleAIOConsumer
 
 (AIOKafkaClient, AIOKafkaProducer)
