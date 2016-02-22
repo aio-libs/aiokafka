@@ -72,7 +72,6 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         # make sure futures no stuck in queue
         self.assertEqual(len(conn._requests), 0)
 
-
     @run_until_complete
     def test_send_to_closed(self):
         host, port = self.kafka_host, self.kafka_port

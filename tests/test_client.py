@@ -45,7 +45,6 @@ class TestAIOKafkaClient(unittest.TestCase):
                                  'kafka03': 9092}.items()),
                          sorted(client.hosts))
 
-
     def test_load_metadata(self):
         brokers = [
             (0, 'broker_1', 4567),

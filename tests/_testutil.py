@@ -7,6 +7,7 @@ import uuid
 import pytest
 
 from functools import wraps
+
 from kafka.common import ConnectionError
 from aiokafka.client import AIOKafkaClient
 
