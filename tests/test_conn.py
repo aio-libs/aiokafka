@@ -1,12 +1,10 @@
 import asyncio
 import unittest
-import functools
 import struct
 from unittest import mock
 from kafka.common import ConnectionError, CorrelationIdError
-from kafka.protocol import KafkaProtocol, create_message_set
-from kafka.protocol.produce import ProduceRequest, ProduceResponse
-from kafka.protocol.message import Message, MessageSet
+from kafka.protocol.produce import ProduceRequest
+from kafka.protocol.message import Message
 from kafka.protocol.metadata import MetadataRequest, MetadataResponse
 from kafka.protocol.commit import (GroupCoordinatorRequest,
                                    GroupCoordinatorResponse)
@@ -82,14 +80,13 @@ class ConnIntegrationTest(BaseTest):
         # prepare message
         msg = Message(b'foo')
         request = ProduceRequest(required_acks=0, timeout=10*1000,
-                                 topics=[(b'foo', [(0, [(0,0,msg)])])])
+                                 topics=[(b'foo', [(0, [(0, 0, msg)])])])
 
         # produce messages without acknowledge
         for i in range(100):
             conn.send(request, expect_response=False)
         # make sure futures no stuck in queue
         self.assertEqual(len(conn._requests), 0)
-
 
     @run_until_complete
     def test_send_to_closed(self):
@@ -151,7 +148,7 @@ class ConnIntegrationTest(BaseTest):
         resp = GroupCoordinatorResponse(
             error_code=0, coordinator_id=22,
             host='127.0.0.1', port=3333).encode()
-        resp = int32.pack(0) + resp # set correlation id to 0
+        resp = int32.pack(0) + resp  # set correlation id to 0
         reader.readexactly.side_effect = [
             asyncio.coroutine(lambda *a, **kw: int32.pack(len(resp)))(),
             asyncio.coroutine(lambda *a, **kw: resp)()]

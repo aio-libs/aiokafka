@@ -6,8 +6,6 @@ import unittest
 import uuid
 
 from functools import wraps
-from aiokafka.client import AIOKafkaClient
-
 
 __all__ = ['get_open_port', 'KafkaIntegrationTestCase', 'random_string']
 
@@ -61,12 +59,6 @@ class KafkaIntegrationTestCase(BaseTest):
             else:
                 return
         raise AssertionError('No topic "{}" exists'.format(topic))
-
-    @asyncio.coroutine
-    def current_offset(self, topic, partition):
-        offsets, = yield from self.client.send_offset_request(
-            [OffsetRequest(topic, partition, -1, 1)])
-        return offsets.offsets[0]
 
     def msgs(self, iterable):
         return [self.msg(x) for x in iterable]
