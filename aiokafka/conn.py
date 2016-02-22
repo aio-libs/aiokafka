@@ -1,20 +1,19 @@
 import asyncio
 import struct
 import logging
-import copy
 
 import kafka.common as Errors
 from kafka.protocol.api import RequestHeader
 from kafka.protocol.commit import GroupCoordinatorResponse
 
-from aiokafka import ensure_future, __version__
+from aiokafka import ensure_future
 
 __all__ = ['AIOKafkaConnection', 'create_conn']
 
 
 @asyncio.coroutine
 def create_conn(host, port, *, loop=None, client_id='aiokafka',
-                request_timeout_ms=40000, api_version=(0,8,2)):
+                request_timeout_ms=40000, api_version=(0, 8, 2)):
     if loop is None:
         loop = asyncio.get_event_loop()
     conn = AIOKafkaConnection(
@@ -32,7 +31,7 @@ class AIOKafkaConnection:
     log = logging.getLogger(__name__)
 
     def __init__(self, host, port, *, loop, client_id='aiokafka',
-                 request_timeout_ms=40000, api_version=(0,8,2)):
+                 request_timeout_ms=40000, api_version=(0, 8, 2)):
         self._host = host
         self._port = port
         self._reader = self._writer = None
@@ -113,9 +112,9 @@ class AIOKafkaConnection:
                 recv_correlation_id, = self.HEADER.unpack(resp[:4])
 
                 correlation_id, resp_type, fut = self._requests.pop(0)
-                if (self._api_version == (0, 8, 2)
-                        and resp_type is GroupCoordinatorResponse
-                        and correlation_id != 0 and recv_correlation_id == 0):
+                if (self._api_version == (0, 8, 2) and
+                        resp_type is GroupCoordinatorResponse and
+                        correlation_id != 0 and recv_correlation_id == 0):
                     self.log.warning(
                         'Kafka 0.8.2 quirk -- GroupCoordinatorResponse'
                         ' coorelation id does not match request. This'

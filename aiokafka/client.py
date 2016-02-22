@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import copy
 import random
 
 from kafka.conn import collect_hosts

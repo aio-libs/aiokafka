@@ -6,7 +6,6 @@ from unittest import mock
 from kafka.common import (KafkaError, ConnectionError,
                           NodeNotReadyError, UnrecognizedBrokerVersion)
 from kafka.protocol.metadata import MetadataRequest, MetadataResponse
-from kafka.protocol import create_message
 
 from aiokafka.client import AIOKafkaClient
 from aiokafka.conn import AIOKafkaConnection
@@ -46,9 +45,7 @@ class TestAIOKafkaClient(unittest.TestCase):
                                  'kafka03': 9092}.items()),
                          sorted(client.hosts))
 
-
     def test_load_metadata(self):
-
         brokers = [
             (0, 'broker_1', 4567),
             (1, 'broker_2', 5678)
