@@ -2,16 +2,9 @@ import asyncio
 import pytest
 import unittest
 from unittest import mock
-"""
-from kafka.common import (KafkaUnavailableError, BrokerMetadata, TopicMetadata,
-                          PartitionMetadata, TopicAndPartition,
-                          LeaderNotAvailableError,
-                          UnknownTopicOrPartitionError,
-                          MetadataResponse, ProduceRequest, FetchRequest,
-                          OffsetCommitRequest, OffsetFetchRequest,
-                          KafkaTimeoutError)
-"""
-from kafka.common import KafkaError, ConnectionError
+
+from kafka.common import (KafkaError, ConnectionError,
+                          NodeNotReadyError, UnrecognizedBrokerVersion)
 from kafka.protocol.metadata import MetadataRequest, MetadataResponse
 from kafka.protocol import create_message
 
@@ -39,6 +32,9 @@ class TestAIOKafkaClient(unittest.TestCase):
                                  'kafka02': 9092,
                                  'kafka03': 9092}.items()),
                          sorted(client.hosts))
+
+        node = client.get_random_node()
+        self.assertEqual(node, None)  # unknown cluster metadata
 
     def test_init_with_csv(self):
         client = AIOKafkaClient(
@@ -105,6 +101,16 @@ class TestAIOKafkaClient(unittest.TestCase):
         self.assertEqual(
             md.available_partitions_for_topic('topic_2'), set([1]))
 
+        mocked_conns[0].connected.return_value = False
+        is_ready = self.loop.run_until_complete(client.ready(0))
+        self.assertEqual(is_ready, False)
+        is_ready = self.loop.run_until_complete(client.ready(1))
+        self.assertEqual(is_ready, False)
+        self.assertEqual(mocked_conns, {})
+
+        with self.assertRaises(NodeNotReadyError):
+            self.loop.run_until_complete(client.send(0, None))
+
 
 class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
@@ -123,6 +129,8 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         self.assertTrue('test_topic' in metadata.topics())
 
         client.set_topics(['t2', 't3'])
+        client.set_topics(['t2', 't3'])  # should be ignored
+        client.add_topic('t2')  # shold be ignored
         # bootstrap again -- no error expected
         yield from client.bootstrap()
         yield from client.close()
@@ -134,19 +142,6 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
             mock_send.side_effect = KafkaError('some kafka error')
             with self.assertRaises(ConnectionError):
                 yield from client.bootstrap()
-
-    @asyncio.coroutine
-    def wait_topic(self, client, topic):
-        client.add_topic(topic)
-        for i in range(5):
-            ok = yield from client.force_metadata_update()
-            if ok:
-                ok = topic in client.cluster.topics()
-            if not ok:
-                yield from asyncio.sleep(1, loop=self.loop)
-            else:
-                return
-        raise AssertionError('No topic "{}" exists'.format(topic))
 
     @run_until_complete
     def test_send_request(self):
@@ -162,11 +157,17 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         yield from client.bootstrap()
         ver = yield from client.check_version()
         self.assertTrue('0.' in ver)
-        yield from self.wait_topic(client, 'test_topic')
+        yield from self.wait_topic(client, 'some_test_topic')
         ver2 = yield from client.check_version()
         self.assertEqual(ver, ver2)
         ver2 = yield from client.check_version(client.get_random_node())
         self.assertEqual(ver, ver2)
+
+        with mock.patch.object(
+                AIOKafkaConnection, 'send') as mocked:
+            mocked.side_effect = KafkaError('mocked exception')
+            with self.assertRaises(UnrecognizedBrokerVersion):
+                yield from client.check_version(client.get_random_node())
 
     @run_until_complete
     def test_metadata_synchronizer(self):
@@ -188,3 +189,19 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
             self.assertNotEqual(
                 len(client.force_metadata_update.mock_calls), 0)
+
+    @run_until_complete
+    def test_metadata_update_fail(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        yield from client.bootstrap()
+
+        with mock.patch.object(
+                AIOKafkaConnection, 'send') as mocked:
+            mocked.side_effect = KafkaError('mocked exception')
+
+            updated = yield from client.force_metadata_update()
+
+            self.assertEqual(updated, False)
+
+            with self.assertRaises(KafkaError):
+                yield from client.fetch_all_metadata()

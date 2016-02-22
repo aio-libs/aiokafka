@@ -60,6 +60,19 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         super().tearDown()
 
     @asyncio.coroutine
+    def wait_topic(self, client, topic):
+        client.add_topic(topic)
+        for i in range(5):
+            ok = yield from client.force_metadata_update()
+            if ok:
+                ok = topic in client.cluster.topics()
+            if not ok:
+                yield from asyncio.sleep(1, loop=self.loop)
+            else:
+                return
+        raise AssertionError('No topic "{}" exists'.format(topic))
+
+    @asyncio.coroutine
     def current_offset(self, topic, partition):
         offsets, = yield from self.client.send_offset_request(
             [OffsetRequest(topic, partition, -1, 1)])

@@ -7,7 +7,8 @@ from aiokafka.client import AIOKafkaClient
 from kafka.common import (TopicPartition,
                           NotLeaderForPartitionError,
                           LeaderNotAvailableError,
-                          MessageSizeTooLargeError)
+                          MessageSizeTooLargeError,
+                          UnknownTopicOrPartitionError)
 
 from kafka.producer.buffer import MessageSetBuffer
 from kafka.partitioner.default import DefaultPartitioner
@@ -123,6 +124,9 @@ class AIOKafkaProducer(object):
                  compression_type=None, batch_size=16384,
                  partitioner=DefaultPartitioner(), max_request_size=1048576):
 
+        assert acks in (0, 1, -1, 'all'), "Invalid ACKS parameter"
+        assert compression_type in ('gzip', 'snappy', 'lz4', None), \
+            "Invalid compression type!"
         self._PRODUCER_CLIENT_ID_SEQUENCE += 1
         if client_id is None:
             client_id = 'aiokafka-producer-%s' % \
@@ -208,13 +212,18 @@ class AIOKafkaProducer(object):
             UnknownTopicOrPartitionError: if no topic or partitions found
                 in cluster metadata
         """
+        if topic in self.client.cluster.topics():
+            return self._metadata.partitions_for_topic(topic)
+
         # add topic to metadata topic list if it is not there already.
         self.client.add_topic(topic)
         yield from self.client.force_metadata_update()
         if topic not in self.client.cluster.topics():
             raise UnknownTopicOrPartitionError()
+
         return self._metadata.partitions_for_topic(topic)
 
+    @asyncio.coroutine
     def send(self, topic, value=None, key=None, partition=None):
         """Publish a message to a topic.
 
