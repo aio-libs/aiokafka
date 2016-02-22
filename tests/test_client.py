@@ -2,6 +2,7 @@ import asyncio
 import pytest
 import unittest
 from unittest import mock
+
 from kafka.common import (KafkaError, ConnectionError,
                           NodeNotReadyError, UnrecognizedBrokerVersion)
 from kafka.protocol.metadata import MetadataRequest, MetadataResponse

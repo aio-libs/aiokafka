@@ -67,6 +67,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         def serializer(val):
             return json.dumps(val).encode()
+
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts,
             value_serializer=serializer,
