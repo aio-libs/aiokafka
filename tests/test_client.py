@@ -114,7 +114,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     def test_bootstrap(self):
         client = AIOKafkaClient(loop=self.loop,
-                                bootstrap_servers='127.0.0.2:22')
+                                bootstrap_servers='0.42.42.42:444')
         with self.assertRaises(ConnectionError):
             yield from client.bootstrap()
 
