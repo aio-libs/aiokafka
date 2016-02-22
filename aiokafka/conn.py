@@ -134,7 +134,7 @@ class AIOKafkaConnection:
                     self.log.debug('%s Response %d: %s',
                                    self, correlation_id, response)
                     fut.set_result(response)
-        except OSError as exc:
+        except (OSError, EOFError, ConnectionError) as exc:
             conn_exc = Errors.ConnectionError(
                 "Connection at {0}:{1} broken".format(self._host, self._port))
             conn_exc.__cause__ = exc

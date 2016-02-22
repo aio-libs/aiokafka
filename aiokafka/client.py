@@ -338,8 +338,8 @@ class AIOKafkaClient:
             try:
                 conn = yield from self._get_conn(node_id)
                 assert conn, 'no connection to node with id {}'.format(node_id)
-                yield from self.send(node_id, request)
-            except KafkaError:
+                yield from conn.send(request)
+            except KafkaError as err:
                 continue
             else:
                 return version
