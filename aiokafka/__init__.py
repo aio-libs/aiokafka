@@ -1,12 +1,14 @@
-__version__ = '0.0.1'
 
 try:
     from asyncio import ensure_future
 except ImportError:
-    ensure_future = asyncio.async
+    from asyncio import async as ensure_future
 
-from .client import AIOKafkaClient
-from .producer import AIOKafkaProducer
-#from .consumer import SimpleAIOConsumer
+__version__ = '0.0.1'
 
-(AIOKafkaClient, AIOKafkaProducer)
+from .client import AIOKafkaClient  # noqa
+from .producer import AIOKafkaProducer  # noqa
+
+# from .consumer import SimpleAIOConsumer
+
+(AIOKafkaClient, AIOKafkaProducer, ensure_future)
