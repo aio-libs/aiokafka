@@ -309,7 +309,6 @@ class AIOKafkaClient:
 
     @asyncio.coroutine
     def check_version(self, node_id=None):
-        # FIXME
         """Attempt to guess the broker version"""
         if node_id is None:
             if self._conns:
@@ -334,12 +333,14 @@ class AIOKafkaClient:
         # vanilla MetadataRequest. If the server did not recognize the first
         # request, both will be failed with a ConnectionError that wraps
         # socket.error (32, 54, or 104)
+        conn = yield from self._get_conn(node_id)
         for version, request in test_cases:
             try:
-                conn = yield from self._get_conn(node_id)
+                if not conn.connected():
+                    yield from conn.connect()
                 assert conn, 'no connection to node with id {}'.format(node_id)
                 yield from conn.send(request)
-            except KafkaError as err:
+            except KafkaError:
                 continue
             else:
                 return version

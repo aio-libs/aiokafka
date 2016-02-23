@@ -19,7 +19,7 @@ def create_conn(host, port, *, loop=None, client_id='aiokafka',
     conn = AIOKafkaConnection(
         host, port, loop=loop, client_id=client_id,
         request_timeout_ms=request_timeout_ms, api_version=api_version)
-    yield from conn._connect()
+    yield from conn.connect()
     return conn
 
 
@@ -44,7 +44,7 @@ class AIOKafkaConnection:
         self._client_id = client_id
 
     @asyncio.coroutine
-    def _connect(self):
+    def connect(self):
         future = asyncio.open_connection(self.host, self.port, loop=self._loop)
         self._reader, self._writer = yield from asyncio.wait_for(
             future, self._request_timeout, loop=self._loop)
