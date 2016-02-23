@@ -66,7 +66,6 @@ class ConnIntegrationTest(BaseTest):
         response = yield from conn.send(request)
         conn.close()
         self.assertIsInstance(response, MetadataResponse)
-        self.assertEqual(response.topics, [])
 
     @run_until_complete
     def test_send_without_response(self):
