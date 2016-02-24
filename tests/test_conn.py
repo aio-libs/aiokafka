@@ -1,9 +1,13 @@
 import asyncio
 import unittest
-import functools
+import struct
 from unittest import mock
-from kafka.common import MetadataResponse, ProduceRequest, ConnectionError
-from kafka.protocol import KafkaProtocol, create_message_set
+from kafka.common import ConnectionError, CorrelationIdError
+from kafka.protocol.produce import ProduceRequest
+from kafka.protocol.message import Message
+from kafka.protocol.metadata import MetadataRequest, MetadataResponse
+from kafka.protocol.commit import (GroupCoordinatorRequest,
+                                   GroupCoordinatorResponse)
 
 from aiokafka.conn import AIOKafkaConnection, create_conn
 from .fixtures import ZookeeperFixture, KafkaFixture
@@ -57,17 +61,9 @@ class ConnIntegrationTest(BaseTest):
         host, port = self.server.host, self.server.port
         conn = yield from create_conn(host, port, loop=self.loop)
 
-        encoder = KafkaProtocol.encode_metadata_request
-        decoder = KafkaProtocol.decode_metadata_response
-
-        request_id = 1
-        client_id = b"aiokafka-python"
-        payloads = ()
-        request = encoder(client_id=client_id, correlation_id=request_id,
-                          payloads=payloads)
-        fut = conn.send(request)
-        raw_response = yield from fut
-        response = decoder(raw_response)
+        self.assertEqual(conn.connected(), True)
+        request = MetadataRequest([])
+        response = yield from conn.send(request)
         conn.close()
         self.assertIsInstance(response, MetadataResponse)
 
@@ -81,67 +77,93 @@ class ConnIntegrationTest(BaseTest):
         conn = yield from create_conn(host, port, loop=self.loop)
 
         # prepare message
-        msgs = create_message_set([b'foo'], 0, None)
-        req = ProduceRequest(b'bar', 0, msgs)
+        msg = Message(b'foo')
+        request = ProduceRequest(required_acks=0, timeout=10*1000,
+                                 topics=[(b'foo', [(0, [(0, 0, msg)])])])
 
-        encoder = functools.partial(
-            KafkaProtocol.encode_produce_request,
-            acks=0, timeout=int(10*1000))
-
-        request_id = 1
-        client_id = b"aiokafka-python"
-        request = encoder(client_id=client_id, correlation_id=request_id,
-                          payloads=[req])
         # produce messages without acknowledge
         for i in range(100):
-            conn.send(request, no_ack=True)
+            conn.send(request, expect_response=False)
         # make sure futures no stuck in queue
         self.assertEqual(len(conn._requests), 0)
 
     @run_until_complete
-    def test_send_cancelled(self):
+    def test_send_to_closed(self):
         host, port = self.server.host, self.server.port
-        conn = yield from create_conn(host, port, loop=self.loop)
+        conn = AIOKafkaConnection(host=host, port=port, loop=self.loop)
+        request = MetadataRequest([])
+        with self.assertRaises(ConnectionError):
+            yield from conn.send(request)
 
-        encoder = KafkaProtocol.encode_metadata_request
-        decoder = KafkaProtocol.decode_metadata_response
+        @asyncio.coroutine
+        def invoke_osserror(*a, **kw):
+            yield from asyncio.sleep(0.1, loop=self.loop)
+            raise OSError('mocked writer is closed')
+        conn._writer = mock.MagicMock()
+        conn._writer.write.side_effect = OSError('mocked writer is closed')
 
-        request_id = 1
-        client_id = b"aiokafka-python"
-        payloads = ()
-        request = encoder(client_id=client_id, correlation_id=request_id,
-                          payloads=payloads)
-        fut = conn.send(request)
-        fut.cancel()
-        asyncio.sleep(0.1, loop=self.loop)
-        self.assertTrue(fut.cancelled())
-
-        # make sure that connections still working
-        raw_response = yield from conn.send(request)
-        response = decoder(raw_response)
-        self.assertIsInstance(response, MetadataResponse)
-        conn.close()
+        with self.assertRaises(ConnectionError):
+            yield from conn.send(request)
 
     @run_until_complete
-    def test_pending_futures(self):
+    def test_invalid_correlation_id(self):
         host, port = self.server.host, self.server.port
-        conn = yield from create_conn(host, port, loop=self.loop)
 
-        encoder = KafkaProtocol.encode_metadata_request
+        request = MetadataRequest([])
 
-        request_id = 1
-        client_id = b"aiokafka-python"
-        payloads = ()
-        request = encoder(client_id=client_id, correlation_id=request_id,
-                          payloads=payloads)
-        fut1 = conn.send(request)
-        fut2 = conn.send(request)
-        fut3 = conn.send(request)
-        conn.close()
+        # setup connection with mocked reader and writer
+        conn = AIOKafkaConnection(host=host, port=port, loop=self.loop)
 
-        self.assertTrue(fut1.cancelled())
-        self.assertTrue(fut2.cancelled())
-        self.assertTrue(fut3.cancelled())
+        # setup reader
+        reader = mock.MagicMock()
+        int32 = struct.Struct('>i')
+        resp = MetadataResponse(brokers=[], topics=[]).encode()
+        resp = int32.pack(999) + resp  # set invalid correlation id
+        reader.readexactly.side_effect = [
+            asyncio.coroutine(lambda *a, **kw: int32.pack(len(resp)))(),
+            asyncio.coroutine(lambda *a, **kw: resp)()]
+        writer = mock.MagicMock()
+
+        conn._reader = reader
+        conn._writer = writer
+        # invoke reader task
+        conn._read_task = asyncio.async(conn._read(), loop=self.loop)
+
+        with self.assertRaises(CorrelationIdError):
+            yield from conn.send(request)
+
+    @run_until_complete
+    def test_correlation_id_on_group_coordinator_req(self):
+        host, port = self.server.host, self.server.port
+
+        request = GroupCoordinatorRequest(consumer_group='test')
+
+        # setup connection with mocked reader and writer
+        conn = AIOKafkaConnection(host=host, port=port, loop=self.loop)
+
+        # setup reader
+        reader = mock.MagicMock()
+        int32 = struct.Struct('>i')
+        resp = GroupCoordinatorResponse(
+            error_code=0, coordinator_id=22,
+            host='127.0.0.1', port=3333).encode()
+        resp = int32.pack(0) + resp  # set correlation id to 0
+        reader.readexactly.side_effect = [
+            asyncio.coroutine(lambda *a, **kw: int32.pack(len(resp)))(),
+            asyncio.coroutine(lambda *a, **kw: resp)()]
+        writer = mock.MagicMock()
+
+        conn._reader = reader
+        conn._writer = writer
+        # invoke reader task
+        conn._read_task = asyncio.async(conn._read(), loop=self.loop)
+
+        response = yield from conn.send(request)
+        self.assertIsInstance(response, GroupCoordinatorResponse)
+        self.assertEqual(response.error_code, 0)
+        self.assertEqual(response.coordinator_id, 22)
+        self.assertEqual(response.host, '127.0.0.1')
+        self.assertEqual(response.port, 3333)
 
     @run_until_complete
     def test_osserror_in_reader_task(self):
@@ -150,12 +172,9 @@ class ConnIntegrationTest(BaseTest):
         @asyncio.coroutine
         def invoke_osserror(*a, **kw):
             yield from asyncio.sleep(0.1, loop=self.loop)
-            raise OSError
+            raise OSError('test oserror')
 
-        encoder = KafkaProtocol.encode_metadata_request
-        request = encoder(client_id=b"aiokafka-python", correlation_id=1,
-                          payloads=())
-
+        request = MetadataRequest([])
         # setup connection with mocked reader and writer
         conn = AIOKafkaConnection(host=host, port=port, loop=self.loop)
 
@@ -171,3 +190,4 @@ class ConnIntegrationTest(BaseTest):
 
         with self.assertRaises(ConnectionError):
             yield from conn.send(request)
+        self.assertEqual(conn.connected(), False)

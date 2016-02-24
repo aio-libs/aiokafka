@@ -6,10 +6,6 @@ import unittest
 import uuid
 
 from functools import wraps
-from kafka.common import OffsetRequest
-
-from aiokafka.client import connect
-
 
 __all__ = ['get_open_port', 'KafkaIntegrationTestCase', 'random_string']
 
@@ -46,28 +42,23 @@ class KafkaIntegrationTestCase(BaseTest):
     def setUp(self):
         super().setUp()
         self.hosts = ['{}:{}'.format(self.server.host, self.server.port)]
-        self.client = self.loop.run_until_complete(
-            connect(self.hosts, loop=self.loop))
-
-        if not self.topic:
-            topic = "%s-%s" % (self.id()[self.id().rindex(".") + 1:],
-                               random_string(10).decode('utf-8'))
-            self.topic = topic.encode('utf-8')
-
-        self.loop.run_until_complete(
-            self.client.ensure_topic_exists(self.topic))
         self._messages = {}
 
     def tearDown(self):
-        self.client.close()
-        del self.client
         super().tearDown()
 
     @asyncio.coroutine
-    def current_offset(self, topic, partition):
-        offsets, = yield from self.client.send_offset_request(
-            [OffsetRequest(topic, partition, -1, 1)])
-        return offsets.offsets[0]
+    def wait_topic(self, client, topic):
+        client.add_topic(topic)
+        for i in range(5):
+            ok = yield from client.force_metadata_update()
+            if ok:
+                ok = topic in client.cluster.topics()
+            if not ok:
+                yield from asyncio.sleep(1, loop=self.loop)
+            else:
+                return
+        raise AssertionError('No topic "{}" exists'.format(topic))
 
     def msgs(self, iterable):
         return [self.msg(x) for x in iterable]
