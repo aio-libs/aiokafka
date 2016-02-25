@@ -243,6 +243,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         yield from self.wait_topic(client, 'st-topic1')
         yield from self.wait_topic(client, 'st-topic2')
+        if api_ver >= (0, 8, 2):
+            yield from coordinator.ensure_coordinator_known()
         if api_ver >= (0, 9):
             yield from coordinator.ensure_active_group()
             self.assertNotEqual(coordinator.coordinator_id, None)
@@ -281,6 +283,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         yield from producer.send('topic1', b'third msg', partition=1)
         yield from producer.stop()
 
+        if api_ver >= (0, 8, 2):
+            yield from coordinator.ensure_coordinator_known()
         if api_ver >= (0, 9):
             yield from coordinator.ensure_active_group()
 
@@ -310,6 +314,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator = AIOConsumerCoordinator(
             client, subscription, loop=self.loop,
             api_version=api_ver, group_id='test-offsets-group')
+        if api_ver >= (0, 8, 2):
+            yield from coordinator.ensure_coordinator_known()
         if api_ver >= (0, 9):
             yield from coordinator.ensure_active_group()
 
@@ -366,6 +372,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator = AIOConsumerCoordinator(
             client, subscription, loop=self.loop,
             api_version=api_ver, group_id='fetch-offsets-group')
+        if api_ver >= (0, 8, 2):
+            yield from coordinator.ensure_coordinator_known()
         if api_ver >= (0, 9):
             yield from coordinator.ensure_active_group()
 
@@ -391,7 +399,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 yield from coordinator.fetch_committed_offsets(offsets)
 
             mocked.side_effect = MockedKafkaErrCode(
-                Errors.NotCoordinatorForGroupError, Errors.NoError)
+                Errors.NotCoordinatorForGroupError,
+                Errors.NoError, Errors.NoError, Errors.NoError)
             yield from coordinator.fetch_committed_offsets(offsets)
 
         yield from coordinator.close()
