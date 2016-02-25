@@ -1,4 +1,5 @@
 import asyncio
+import os
 import socket
 import string
 import random
@@ -30,7 +31,13 @@ def run_until_complete(fun):
 class BaseTest(unittest.TestCase):
     """Base test case for unittests.
     """
+
+    kafka_host = os.environ.get('KAFKA_HOST')
+    kafka_port = os.environ.get('KAFKA_PORT')
+
     def setUp(self):
+        assert all([self.kafka_host, self.kafka_port]),\
+            'Required env variables are not provided'
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(None)
 
@@ -45,7 +52,7 @@ class KafkaIntegrationTestCase(BaseTest):
 
     def setUp(self):
         super().setUp()
-        self.hosts = ['{}:{}'.format(self.server.host, self.server.port)]
+        self.hosts = ['{}:{}'.format(self.kafka_host, self.kafka_port)]
         self.client = self.loop.run_until_complete(
             connect(self.hosts, loop=self.loop))
 

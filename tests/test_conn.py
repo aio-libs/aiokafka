@@ -6,7 +6,6 @@ from kafka.common import MetadataResponse, ProduceRequest, ConnectionError
 from kafka.protocol import KafkaProtocol, create_message_set
 
 from aiokafka.conn import AIOKafkaConnection, create_conn
-from .fixtures import ZookeeperFixture, KafkaFixture
 from ._testutil import BaseTest, run_until_complete
 
 
@@ -31,20 +30,10 @@ class ConnTest(unittest.TestCase):
 
 class ConnIntegrationTest(BaseTest):
 
-    @classmethod
-    def setUpClass(cls):
-        cls.zk = ZookeeperFixture.instance()
-        cls.server = KafkaFixture.instance(0, cls.zk.host, cls.zk.port)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.server.close()
-        cls.zk.close()
-
     @run_until_complete
     def test_global_loop_for_create_conn(self):
         asyncio.set_event_loop(self.loop)
-        host, port = self.server.host, self.server.port
+        host, port = self.kafka_host, self.kafka_port
         conn = yield from create_conn(host, port)
         self.assertIs(conn._loop, self.loop)
         conn.close()
@@ -54,7 +43,7 @@ class ConnIntegrationTest(BaseTest):
 
     @run_until_complete
     def test_basic_connection_load_meta(self):
-        host, port = self.server.host, self.server.port
+        host, port = self.kafka_host, self.kafka_port
         conn = yield from create_conn(host, port, loop=self.loop)
 
         encoder = KafkaProtocol.encode_metadata_request
@@ -77,7 +66,7 @@ class ConnIntegrationTest(BaseTest):
         messages and kafka does not send response, and we make sure that
         futures do not stuck in queue forever"""
 
-        host, port = self.server.host, self.server.port
+        host, port = self.kafka_host, self.kafka_port
         conn = yield from create_conn(host, port, loop=self.loop)
 
         # prepare message
@@ -100,7 +89,7 @@ class ConnIntegrationTest(BaseTest):
 
     @run_until_complete
     def test_send_cancelled(self):
-        host, port = self.server.host, self.server.port
+        host, port = self.kafka_host, self.kafka_port
         conn = yield from create_conn(host, port, loop=self.loop)
 
         encoder = KafkaProtocol.encode_metadata_request
@@ -124,7 +113,7 @@ class ConnIntegrationTest(BaseTest):
 
     @run_until_complete
     def test_pending_futures(self):
-        host, port = self.server.host, self.server.port
+        host, port = self.kafka_host, self.kafka_port
         conn = yield from create_conn(host, port, loop=self.loop)
 
         encoder = KafkaProtocol.encode_metadata_request
@@ -145,7 +134,7 @@ class ConnIntegrationTest(BaseTest):
 
     @run_until_complete
     def test_osserror_in_reader_task(self):
-        host, port = self.server.host, self.server.port
+        host, port = self.kafka_host, self.kafka_port
 
         @asyncio.coroutine
         def invoke_osserror(*a, **kw):
