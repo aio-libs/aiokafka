@@ -346,7 +346,7 @@ class BaseCoordinator(object):
             {})
         log.debug("Issuing follower SyncGroup (%s) to coordinator %s",
                   request, self.coordinator_id)
-        return self._send_sync_group_request(request)
+        return (yield from self._send_sync_group_request(request))
 
     @asyncio.coroutine
     def _on_join_leader(self, response):
@@ -382,7 +382,7 @@ class BaseCoordinator(object):
 
         log.debug("Issuing leader SyncGroup (%s) to coordinator %s",
                   request, self.coordinator_id)
-        return self._send_sync_group_request(request)
+        return (yield from self._send_sync_group_request(request))
 
     @asyncio.coroutine
     def _send_sync_group_request(self, request):
