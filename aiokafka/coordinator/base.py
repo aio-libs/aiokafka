@@ -67,7 +67,7 @@ class BaseCoordinator(object):
         self._client = client
         self._session_timeout_ms = session_timeout_ms
         self._heartbeat_interval_ms = heartbeat_interval_ms
-        self._retry_backoff_time = retry_backoff_ms
+        self._retry_backoff_ms = retry_backoff_ms
         self.generation = OffsetCommitRequest.DEFAULT_GENERATION_ID
         self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
         self.group_id = group_id
@@ -296,13 +296,9 @@ class BaseCoordinator(object):
             self.coordinator_dead()
             log.info("Attempt to join group %s failed due to obsolete "
                      "coordinator information, retrying.", self.group_id)
-        except (Errors.InconsistentGroupProtocolError,
-                Errors.InvalidSessionTimeoutError,
-                Errors.InvalidGroupIdError) as err:
-            log.error("Attempt to join group %s failed due to: %s",
-                      self.group_id, err)
         except Errors.KafkaError as err:
-            log.error("Unexpected error in join group response: %s", err)
+            log.error(
+                "Error in join group '%s' response: %s", self.group_id, err)
         else:
             log.debug("Join group response %s", response)
             self.member_id = response.member_id

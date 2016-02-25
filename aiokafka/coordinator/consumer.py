@@ -15,7 +15,7 @@ from aiokafka.coordinator.base import BaseCoordinator
 log = logging.getLogger(__name__)
 
 
-class ConsumerCoordinator(BaseCoordinator):
+class AIOConsumerCoordinator(BaseCoordinator):
     """
     This class manages the coordination process with the consumer coordinator.
     """
@@ -28,7 +28,10 @@ class ConsumerCoordinator(BaseCoordinator):
                  api_version=(0, 9)):
         """Initialize the coordination manager.
 
-        Keyword Arguments:
+        Parameters:
+            client (AIOKafkaClient): kafka client
+            subscription (SubscriptionState): instance of SubscriptionState
+                located in kafka.consumer.subscription_state
             group_id (str): name of the consumer group to join for dynamic
                 partition assignment (if enabled), and to use for fetching and
                 committing offsets. Default: 'kafka-python-default-group'
@@ -53,7 +56,7 @@ class ConsumerCoordinator(BaseCoordinator):
             retry_backoff_ms (int): Milliseconds to backoff when retrying on
                 errors. Default: 100.
         """
-        super(ConsumerCoordinator, self).__init__(
+        super(AIOConsumerCoordinator, self).__init__(
             client, loop=loop, group_id=group_id,
             session_timeout_ms=session_timeout_ms,
             heartbeat_interval_ms=heartbeat_interval_ms,
@@ -70,14 +73,14 @@ class ConsumerCoordinator(BaseCoordinator):
         self._cluster.add_listener(self._handle_metadata_update)
         self._auto_commit_task = None
 
-        if self._api_version >= (0, 9) and self._group_id is not None:
+        if self._api_version >= (0, 9) and self.group_id is not None:
             assert self._assignors, 'Coordinator requires assignors'
         if self._enable_auto_commit:
             if self._api_version < (0, 8, 1):
                 log.warning(
                     'Broker version (%s) does not support offset'
                     ' commits; disabling auto-commit.', self._api_version)
-            elif self._group_id is None:
+            elif self.group_id is None:
                 log.warning('group_id is None: disabling auto-commit.')
             else:
                 interval = self._auto_commit_interval_ms / 1000.0
@@ -124,7 +127,7 @@ class ConsumerCoordinator(BaseCoordinator):
         # check if there are any changes to the metadata which should trigger
         # a rebalance
         if self._subscription_metadata_changed():
-            if (self._api_version >= (0, 9) and self._group_id is not None):
+            if (self._api_version >= (0, 9) and self.group_id is not None):
                 self._subscription.mark_for_reassignment()
             # If we haven't got group coordinator support,
             # just assign all partitions locally
@@ -237,7 +240,7 @@ class ConsumerCoordinator(BaseCoordinator):
             bool: True if consumer should rejoin group, False otherwise
         """
         return (self._subscription.partitions_auto_assigned() and
-                (super(ConsumerCoordinator, self).need_rejoin() or
+                (super(AIOConsumerCoordinator, self).need_rejoin() or
                  self._subscription.needs_partition_assignment))
 
     @asyncio.coroutine
@@ -273,7 +276,7 @@ class ConsumerCoordinator(BaseCoordinator):
                 yield from self.ensure_coordinator_known()
                 node_id = self.coordinator_id
             else:
-                node_id = self._client.random_node()
+                node_id = self._client.get_random_node()
 
             log.debug(
                 "Fetching committed offsets for partitions: %s", partitions)
@@ -336,7 +339,6 @@ class ConsumerCoordinator(BaseCoordinator):
                         log.error("Unknown error fetching offsets for %s: %s",
                                   tp, error)
                         raise error
-                    return
                 elif offset >= 0:
                     # record the position with the offset
                     # (-1 indicates no committed offset to fetch)
@@ -345,7 +347,7 @@ class ConsumerCoordinator(BaseCoordinator):
                     log.debug(
                         "No committed offset for partition %s", tp)
 
-                return offsets
+        return offsets
 
     @asyncio.coroutine
     def commit_offsets(self, offsets):
@@ -371,7 +373,7 @@ class ConsumerCoordinator(BaseCoordinator):
                 raise Errors.GroupCoordinatorNotAvailableError()
             node_id = self.coordinator_id
         else:
-            node_id = self._client.random_node()
+            node_id = self._client.get_random_node()
 
         # create the offset commit request
         offset_data = collections.defaultdict(dict)
@@ -476,7 +478,7 @@ class ConsumerCoordinator(BaseCoordinator):
                     raise error
                 else:
                     log.error(
-                        "OffsetCommit failed for group % on partition %s"
+                        "OffsetCommit failed for group %s on partition %s"
                         " with offset %s: %s", self.group_id, tp, offset,
                         error_type.__name__)
                     raise error_type()
@@ -503,7 +505,7 @@ class ConsumerCoordinator(BaseCoordinator):
                     "Cannot auto-commit offsets because the coordinator is"
                     " unknown, will retry after backoff")
                 yield from asyncio.sleep(
-                    self._retry_backoff_time / 1000.0, loop=self.loop)
+                    self._retry_backoff_ms / 1000.0, loop=self.loop)
                 continue
 
             # select offsets that should be committed
