@@ -40,6 +40,8 @@ doc:
 
 docker-build:
 	@echo "Building docker image with Scala $(SCALA_VERSION) and Kafka $(KAFKA_VERSION)"
-	@docker build -qt $(DOCKER_IMAGE_NAME) --build-arg SCALA_VERSION=$(SCALA_VERSION) --build-arg KAFKA_VERSION=$(KAFKA_VERSION) ./tests/docker
+	@export SCALA_VERSION=$(SCALA_VERSION) && export KAFKA_VERSION=$(KAFKA_VERSION) && cat tests/docker/Dockerfile.tpl | envsubst > tests/docker/Dockerfile
+	@docker build -qt $(DOCKER_IMAGE_NAME) tests/docker ; rm tests/docker/Dockerfile || true
+
 
 .PHONY: all flake test vtest cov clean doc docker-build

@@ -16,9 +16,6 @@ env:
 
 before_install:
     - sudo apt-get install -y libsnappy-dev
-    - sudo service docker stop
-    - sudo apt-get purge -y docker-engine
-    - sudo apt-get install -y docker-engine
 
 install:
     - pip install flake8

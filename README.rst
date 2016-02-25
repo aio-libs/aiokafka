@@ -12,7 +12,7 @@ asyncio client for kafka
 Running tests
 -------------
 
-Docker 1.9+ is required to run tests. See https://docs.docker.com/engine/installation for installation notes.
+Docker is required to run tests. See https://docs.docker.com/engine/installation for installation notes.
 
 Setting up tests requirements (assuming you're within virtualenv on ubuntu 14.04+)::
 
