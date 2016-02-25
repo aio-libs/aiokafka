@@ -77,11 +77,11 @@ class BaseCoordinator(object):
         self.rejoin_needed = True
         self.needs_join_prepare = True
         self.loop = loop
-        self.heartbeat_task = ensure_future(
-            self._heartbeat_task_routine(), loop=self.loop)
         # rejoin group can be called in parallel
         # (from consumer and from heartbeat task), so we need lock
         self._rejoin_lock = asyncio.Lock(loop=self.loop)
+        self.heartbeat_task = ensure_future(
+            self._heartbeat_task_routine(), loop=self.loop)
 
     @abc.abstractmethod
     def protocol_type(self):

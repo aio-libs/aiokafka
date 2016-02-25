@@ -181,7 +181,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         subscription = SubscriptionState('latest')
         subscription.subscribe(topics=('topic1',))
         coordinator = AIOConsumerCoordinator(
-            client, subscription, loop=self.loop)
+            client, subscription, loop=self.loop,
+            heartbeat_interval_ms=20000)
 
         with self.assertRaises(GroupCoordinatorNotAvailableError):
             yield from coordinator._on_join_follower()
