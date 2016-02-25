@@ -4,11 +4,13 @@ import time
 import asyncio
 
 import kafka.common as Errors
+from kafka.protocol.group import (
+    HeartbeatRequest, JoinGroupRequest,
+    LeaveGroupRequest, SyncGroupRequest)
 from kafka.protocol.commit import (
     GroupCoordinatorRequest,
     OffsetCommitRequest_v2 as OffsetCommitRequest)
-from kafka.protocol.group import (HeartbeatRequest, JoinGroupRequest,
-                                  LeaveGroupRequest, SyncGroupRequest)
+from aiokafka import ensure_future
 
 log = logging.getLogger('kafka.coordinator')
 
@@ -75,7 +77,7 @@ class BaseCoordinator(object):
         self.rejoin_needed = True
         self.needs_join_prepare = True
         self.loop = loop
-        self.heartbeat_task = asyncio.ensure_future(
+        self.heartbeat_task = ensure_future(
             self._heartbeat_task_routine(), loop=self.loop)
         # rejoin group can be called in parallel
         # (from consumer and from heartbeat task), so we need lock

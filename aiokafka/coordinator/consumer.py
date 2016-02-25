@@ -10,6 +10,7 @@ from kafka.protocol.commit import (
     OffsetFetchRequest_v0, OffsetFetchRequest_v1)
 import kafka.common as Errors
 
+from aiokafka import ensure_future
 from aiokafka.coordinator.base import BaseCoordinator
 
 log = logging.getLogger(__name__)
@@ -84,7 +85,7 @@ class AIOConsumerCoordinator(BaseCoordinator):
                 log.warning('group_id is None: disabling auto-commit.')
             else:
                 interval = self._auto_commit_interval_ms / 1000.0
-                self._auto_commit_task = asyncio.ensure_future(
+                self._auto_commit_task = ensure_future(
                     self.auto_commit_routine(interval), loop=loop)
 
     @asyncio.coroutine
