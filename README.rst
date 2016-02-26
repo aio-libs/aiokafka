@@ -36,7 +36,6 @@ AIOKafkaProducer is a high-level, asynchronous message producer.
 Example of AIOKafkaProducer usage:
 
 ```python
-
 import asyncio
 from aiokafka import AIOKafkaProducer
 
@@ -52,5 +51,4 @@ def produce(loop):
 loop = asyncio.get_event_loop()
 loop.run_until_complete(produce(loop))
 loop.close()
-
 ```
