@@ -148,68 +148,53 @@ class AIOKafkaClient:
         return random.choice(nodeids)
 
     @asyncio.coroutine
+    def _metadata_update(self, cluster_metadata, topics):
+        assert isinstance(cluster_metadata, ClusterMetadata)
+        metadata_request = MetadataRequest(list(topics))
+        nodeids = [b.nodeId for b in self.cluster.brokers()]
+        if 'bootstrap' in self._conns:
+            nodeids.append('bootstrap')
+        random.shuffle(nodeids)
+        for node_id in nodeids:
+            conn = yield from self._get_conn(node_id)
+            if conn is None:
+                continue
+            log.debug("Sending metadata request %s to %s",
+                      metadata_request, node_id)
+
+            try:
+                metadata = yield from conn.send(metadata_request)
+            except KafkaError as err:
+                log.error(
+                    'Unable to request metadata from node with id %s: %s',
+                    node_id, err)
+                continue
+
+            cluster_metadata.update_metadata(metadata)
+            break
+        else:
+            log.error('Unable to update metadata from %s', nodeids)
+            cluster_metadata.failed_update(None)
+            return False
+        return True
+
+    @asyncio.coroutine
     def force_metadata_update(self):
         """Update cluster metadata
 
         Returns:
             True/False - metadata updated or not
         """
-        metadata_request = MetadataRequest(list(self._topics))
-        nodeids = [b.nodeId for b in self.cluster.brokers()]
-        if 'bootstrap' in self._conns:
-            nodeids.append('bootstrap')
-        random.shuffle(nodeids)
-        for node_id in nodeids:
-            conn = yield from self._get_conn(node_id)
-            if conn is None:
-                continue
-            log.debug("Sending metadata request %s to %s",
-                      metadata_request, node_id)
-
-            try:
-                metadata = yield from conn.send(metadata_request)
-            except KafkaError as err:
-                log.error(
-                    'Unable to request metadata from node with id %s: %s',
-                    node_id, err)
-                continue
-
-            self.cluster.update_metadata(metadata)
-            break
-        else:
-            log.error('Unable to update metadata from %s', nodeids)
-            self.cluster.failed_update(None)
-            return False
-        return True
+        return (yield from self._metadata_update(self.cluster, self._topics))
 
     @asyncio.coroutine
     def fetch_all_metadata(self):
         cluster_md = ClusterMetadata(
             metadata_max_age_ms=self._metadata_max_age_ms)
-        metadata_request = MetadataRequest([])
-        nodeids = [b.nodeId for b in self.cluster.brokers()]
-        if 'bootstrap' in self._conns:
-            nodeids.append('bootstrap')
-        random.shuffle(nodeids)
-        for node_id in nodeids:
-            conn = yield from self._get_conn(node_id)
-            if conn is None:
-                continue
-            log.debug("Sending metadata request %s to %s",
-                      metadata_request, node_id)
-
-            try:
-                metadata = yield from conn.send(metadata_request)
-            except KafkaError as err:
-                log.error(
-                    'Unable to request metadata from node with id %s: %s',
-                    node_id, err)
-                continue
-
-            cluster_md.update_metadata(metadata)
-            break
-        else:
-            raise KafkaError('Unable to update metadata from %s', nodeids)
+        updated = yield from self._metadata_update(cluster_md, [])
+        if not updated:
+            raise KafkaError(
+                'Unable to get cluster metadata over all known brokers')
         return cluster_md
 
     def add_topic(self, topic):
@@ -230,9 +215,8 @@ class AIOKafkaClient:
         """
         if set(topics).difference(self._topics):
             self._topics = set(topics)
-            return ensure_future(
-                self.force_metadata_update(), loop=self.loop)
-        return None
+            # update metadata in async manner
+            ensure_future(self.force_metadata_update(), loop=self.loop)
 
     @property
     def loop(self):
@@ -334,6 +318,9 @@ class AIOKafkaClient:
         # request, both will be failed with a ConnectionError that wraps
         # socket.error (32, 54, or 104)
         conn = yield from self._get_conn(node_id)
+        if conn is None:
+            raise ConnectionError(
+                "No connection to node with id {}".format(node_id))
         for version, request in test_cases:
             try:
                 if not conn.connected():

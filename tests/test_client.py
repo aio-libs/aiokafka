@@ -166,6 +166,10 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
             with self.assertRaises(UnrecognizedBrokerVersion):
                 yield from client.check_version(client.get_random_node())
 
+        client._get_conn = asyncio.coroutine(lambda _: None)
+        with self.assertRaises(ConnectionError):
+            yield from client.check_version()
+
     @run_until_complete
     def test_metadata_synchronizer(self):
         client = AIOKafkaClient(
