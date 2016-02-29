@@ -41,7 +41,7 @@ class AIOKafkaClient:
                 each request to servers and can be used to identify specific
                 server-side log entries that correspond to this client. Also
                 submitted to GroupCoordinator for logging with respect to
-                consumer group administration. Default: 'kafka-python-{ver}'
+                consumer group administration. Default: 'aiokafka-{ver}'
             request_timeout_ms (int): Client request timeout in milliseconds.
                 Default: 40000.
             metadata_max_age_ms (int): The period of time in milliseconds after

@@ -28,6 +28,12 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     def test_producer_start(self):
+        with self.assertRaises(ValueError):
+            producer = AIOKafkaProducer(loop=self.loop, acks=122)
+
+        with self.assertRaises(ValueError):
+            producer = AIOKafkaProducer(loop=self.loop, api_version="3.4.5")
+
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
@@ -103,7 +109,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     def test_producer_send_with_compression(self):
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             producer = AIOKafkaProducer(
                 loop=self.loop, compression_type='my_custom')
 
