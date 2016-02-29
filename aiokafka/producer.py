@@ -47,7 +47,7 @@ class AIOKafkaProducer(object):
         client_id (str): a name for this client. This string is passed in
             each request to servers and can be used to identify specific
             server-side log entries that correspond to this client.
-            Default: 'kafka-python-producer-#' (appended with a unique number
+            Default: 'aiokafka-producer-#' (appended with a unique number
             per instance)
         key_serializer (callable): used to convert user-supplied keys to bytes
             If not None, called as f(key), should return bytes. Default: None.
@@ -123,9 +123,12 @@ class AIOKafkaProducer(object):
                  compression_type=None, batch_size=16384,
                  partitioner=DefaultPartitioner(), max_request_size=1048576):
 
-        assert acks in (0, 1, -1, 'all'), "Invalid ACKS parameter"
-        assert compression_type in ('gzip', 'snappy', 'lz4', None), \
-            "Invalid compression type!"
+        if acks not in (0, 1, -1, 'all'):
+            raise ValueError("Invalid ACKS parameter")
+        if compression_type not in ('gzip', 'snappy', 'lz4', None):
+            raise ValueError("Invalid compression type!")
+        if api_version not in ('auto', '0.9', '0.8.2', '0.8.1', '0.8.0'):
+            raise ValueError("Unsupported Kafka version")
         self._PRODUCER_CLIENT_ID_SEQUENCE += 1
         if client_id is None:
             client_id = 'aiokafka-producer-%s' % \
@@ -153,14 +156,13 @@ class AIOKafkaProducer(object):
 
     @asyncio.coroutine
     def start(self):
-        log.debug("Starting the Kafka producer")  # trace
         """Connect to Kafka cluster and check server version"""
+        log.debug("Starting the Kafka producer")  # trace
         yield from self.client.bootstrap()
 
         # Check Broker Version if not set explicitly
         if self._api_version == 'auto':
             self._api_version = yield from self.client.check_version()
-        assert self._api_version in ('0.9', '0.8.2', '0.8.1', '0.8.0')
 
         # Convert api_version config to tuple for easy comparisons
         self._api_version = tuple(
