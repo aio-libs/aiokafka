@@ -29,16 +29,7 @@ def run_until_complete(fun):
 
 
 @pytest.mark.usefixtures('setup_test_class', 'kafka_server')
-class BaseTest(unittest.TestCase):
-    """Base test case for unittests.
-    """
-
-    @pytest.fixture(autouse=True)
-    def setup_kafka_host_and_port(self, kafka_server):
-        self.kafka_host, self.kafka_port = kafka_server
-
-
-class KafkaIntegrationTestCase(BaseTest):
+class KafkaIntegrationTestCase(unittest.TestCase):
 
     topic = None
 

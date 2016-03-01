@@ -1,23 +1,17 @@
 import asyncio
 import unittest
 import functools
+import pytest
 from unittest import mock
 from kafka.common import MetadataResponse, ProduceRequest, ConnectionError
 from kafka.protocol import KafkaProtocol, create_message_set
 
 from aiokafka.conn import AIOKafkaConnection, create_conn
-from ._testutil import BaseTest, run_until_complete
+from ._testutil import run_until_complete
 
 
+@pytest.mark.usefixtures('setup_test_class')
 class ConnTest(unittest.TestCase):
-
-    def setUp(self):
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(None)
-        self.conn = AIOKafkaConnection('localhost', 1234, loop=self.loop)
-
-    def tearDown(self):
-        self.loop.close()
 
     def test_ctor(self):
         conn = AIOKafkaConnection('localhost', 1234, loop=self.loop)
@@ -28,7 +22,8 @@ class ConnTest(unittest.TestCase):
         self.assertIsNone(conn._writer)
 
 
-class ConnIntegrationTest(BaseTest):
+@pytest.mark.usefixtures('setup_test_class')
+class ConnIntegrationTest(unittest.TestCase):
 
     @run_until_complete
     def test_global_loop_for_create_conn(self):

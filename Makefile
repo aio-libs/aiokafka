@@ -3,19 +3,19 @@
 FLAGS=
 SCALA_VERSION?=2.11
 KAFKA_VERSION?=0.9.0.1
-DOCKER_IMAGE_NAME=pygo/kafka
+DOCKER_IMAGE=pygo/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
 
 flake:
 	flake8 aiokafka tests
 
 test: flake
-	@py.test -s --no-print-logs --scala-version $(SCALA_VERSION) --kafka-version $(KAFKA_VERSION) --docker-image-name $(DOCKER_IMAGE_NAME) $(FLAGS) tests
+	@py.test -s --no-print-logs --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
 vtest: flake
-	@py.test -s -v --no-print-logs --scala-version $(SCALA_VERSION) --kafka-version $(KAFKA_VERSION) --docker-image-name $(DOCKER_IMAGE_NAME) $(FLAGS) tests
+	@py.test -s -v --no-print-logs --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
 cov cover coverage:
-	@py.test -s --no-print-logs --cov aiokafka --cov-report html --scala-version $(SCALA_VERSION) --kafka-version $(KAFKA_VERSION) --docker-image-name $(DOCKER_IMAGE_NAME) $(FLAGS) tests
+	@py.test -s --no-print-logs --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 	@echo "open file://`pwd`/htmlcov/index.html"
 
 clean:

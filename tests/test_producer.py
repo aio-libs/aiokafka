@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 import uuid
 import unittest
 from unittest import mock
@@ -20,14 +21,8 @@ from aiokafka.producer import (SimpleAIOProducer, KeyedAIOProducer,
 from aiokafka.client import AIOKafkaClient
 
 
+@pytest.mark.usefixtures('setup_test_class')
 class TestKafkaProducer(unittest.TestCase):
-
-    def setUp(self):
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(None)
-
-    def tearDown(self):
-        self.loop.close()
 
     def test_invalid_codec(self):
         client = mock.Mock()

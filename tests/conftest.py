@@ -9,18 +9,10 @@ import uuid
 
 
 def pytest_addoption(parser):
-    parser.addoption('--docker-image-name',
+    parser.addoption('--docker-image',
                      action='store',
-                     default='pygo/kafka',
-                     help='Kafka docker image name')
-    parser.addoption('--kafka-version',
-                     action='store',
-                     default='0.9.0.1',
-                     help='Kafka version')
-    parser.addoption('--scala-version',
-                     action='store',
-                     default='2.11',
-                     help='Scala version')
+                     default='pygo/kafka:2.11_0.9.0.1',
+                     help='Kafka docker image to use')
 
 
 @pytest.fixture(scope='session')
@@ -65,15 +57,12 @@ def session_id():
 
 @pytest.yield_fixture(scope='session')
 def kafka_server(request, docker, docker_ip_address, unused_port, session_id):
-    image_name = request.config.getoption('--docker-image-name')
-    skala_version = request.config.getoption('--scala-version')
-    kafka_version = request.config.getoption('--kafka-version')
-    image_tag = '{}:{}_{}'.format(image_name, skala_version, kafka_version)
-    docker.pull(image_tag)
+    image = request.config.getoption('--docker-image')
+    docker.pull(image)
     kafka_host = docker_ip_address
     kafka_port = unused_port()
     container = docker.create_container(
-        image=image_tag,
+        image=image,
         name='aiokafka-tests-{}'.format(session_id),
         ports=[2181, 9092],
         environment={
@@ -108,5 +97,6 @@ def loop(request):
 
 
 @pytest.fixture(scope='class')
-def setup_test_class(request, loop):
+def setup_test_class(request, loop, kafka_server):
     request.cls.loop = loop
+    request.cls.kafka_host, request.cls.kafka_port = kafka_server
