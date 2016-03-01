@@ -10,6 +10,7 @@ from kafka.common import (TopicAndPartition, BrokerMetadata,
                           ConnectionError, FailedPayloadsError,
                           KafkaTimeoutError, KafkaUnavailableError,
                           LeaderNotAvailableError,
+                          UnknownError,
                           UnknownTopicOrPartitionError,
                           NotLeaderForPartitionError,
                           ReplicaNotAvailableError, check_error)
@@ -286,7 +287,10 @@ class AIOKafkaClient:
                     "Unable to create topic {0}".format(topic))
             try:
                 yield from self.load_metadata_for_topics(topic)
-            except LeaderNotAvailableError:
+            # Catching UnknownError since there is a strange behavior on
+            # Kafka <= 0.8.2.x when service already accepts a client connection
+            # after cold start, but send_metadata_request raises UnknownError.
+            except (LeaderNotAvailableError, UnknownError):
                 pass
             except UnknownTopicOrPartitionError:
                 # Server is not configured to auto-create
