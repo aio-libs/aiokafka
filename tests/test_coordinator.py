@@ -208,7 +208,10 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(KafkaError):
             yield from coordinator._on_join_follower()
 
-        # expect no exception
+        # client sends LeaveGroupRequest to group coordinator
+        # if generation > 0 (means that client is a member of group)
+        # expecting no exception in this case (error should be ignored in close
+        # method)
         coordinator.generation = 33
         yield from coordinator.close()
 

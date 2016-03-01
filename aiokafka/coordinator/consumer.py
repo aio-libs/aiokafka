@@ -73,6 +73,7 @@ class AIOConsumerCoordinator(BaseCoordinator):
         self._cluster.request_update()
         self._cluster.add_listener(self._handle_metadata_update)
         self._auto_commit_task = None
+        self._closing = asyncio.Future(loop=loop)
 
         if self._api_version >= (0, 9) and self.group_id is not None:
             assert self._assignors, 'Coordinator requires assignors'
@@ -90,9 +91,8 @@ class AIOConsumerCoordinator(BaseCoordinator):
 
     @asyncio.coroutine
     def close(self):
-        yield from self._maybe_auto_commit_offsets_sync()
+        self._closing.set_result(None)
         if self._auto_commit_task:
-            self._auto_commit_task.cancel()
             try:
                 yield from self._auto_commit_task
             except asyncio.CancelledError:
@@ -500,7 +500,7 @@ class AIOConsumerCoordinator(BaseCoordinator):
 
     @asyncio.coroutine
     def auto_commit_routine(self, interval):
-        while True:
+        while not self._closing.done():
             if (yield from self.coordinator_unknown()):
                 log.debug(
                     "Cannot auto-commit offsets because the coordinator is"
@@ -508,6 +508,9 @@ class AIOConsumerCoordinator(BaseCoordinator):
                 yield from asyncio.sleep(
                     self._retry_backoff_ms / 1000.0, loop=self.loop)
                 continue
+
+            yield from asyncio.wait(
+                [self._closing], timeout=interval, loop=self.loop)
 
             # select offsets that should be committed
             offsets = {}
@@ -525,5 +528,3 @@ class AIOConsumerCoordinator(BaseCoordinator):
                     continue
                 else:
                     log.warning("Auto offset commit failed: %s", error)
-
-            yield from asyncio.sleep(interval, loop=self.loop)
