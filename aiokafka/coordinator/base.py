@@ -190,8 +190,6 @@ class BaseCoordinator(object):
         """Check if we know who the coordinator is
         and have an active connection
 
-        Side-effect: reset coordinator_id to None if connection failed
-
         Returns:
             bool: True if the coordinator is unknown
         """
