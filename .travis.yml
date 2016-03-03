@@ -1,5 +1,9 @@
 language: python
 
+sudo: required
+services:
+  - docker
+
 python:
     - 3.3
     - 3.4
@@ -9,19 +13,18 @@ env:
         - KAFKA_VERSION=0.8.1.1 SCALA_VERSION=2.10 PYTHONASYNCIODEBUG=0
         - KAFKA_VERSION=0.8.2.0 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
         - KAFKA_VERSION=0.8.2.0 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=0
+        - KAFKA_VERSION=0.9.0.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
+        - KAFKA_VERSION=0.9.0.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=0
 
 before_install:
-    - sudo apt-get install libsnappy-dev
-    - wget -N https://archive.apache.org/dist/kafka/${KAFKA_VERSION}/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz
-    - echo "Extracting kafka binaries for ${KAFKA_VERSION}"
-    - tar xzvf kafka_${SCALA_VERSION}-${KAFKA_VERSION}.t*
+    - sudo apt-get install -y libsnappy-dev
 
 install:
     - pip install flake8
-    - pip install nose
+    - pip install pytest pytest-cov pytest-catchlog docker-py
+    - pip install coveralls
     - pip install python-snappy
     - pip install .
-    - pip install coveralls
 
 script:
   - make cov

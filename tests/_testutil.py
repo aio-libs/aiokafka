@@ -1,17 +1,23 @@
 import asyncio
-import socket
 import string
 import random
+import time
 import unittest
 import uuid
+import pytest
 
 from functools import wraps
-from kafka.common import OffsetRequest
+from kafka.common import (
+    OffsetRequest,
+    KafkaUnavailableError,
+    LeaderNotAvailableError,
+    UnknownError
+)
 
 from aiokafka.client import connect
 
 
-__all__ = ['get_open_port', 'KafkaIntegrationTestCase', 'random_string']
+__all__ = ['KafkaIntegrationTestCase', 'random_string']
 
 
 def run_until_complete(fun):
@@ -27,35 +33,34 @@ def run_until_complete(fun):
     return wrapper
 
 
-class BaseTest(unittest.TestCase):
-    """Base test case for unittests.
-    """
-    def setUp(self):
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(None)
-
-    def tearDown(self):
-        self.loop.close()
-        del self.loop
-
-
-class KafkaIntegrationTestCase(BaseTest):
+@pytest.mark.usefixtures('setup_test_class')
+class KafkaIntegrationTestCase(unittest.TestCase):
 
     topic = None
 
     def setUp(self):
         super().setUp()
-        self.hosts = ['{}:{}'.format(self.server.host, self.server.port)]
-        self.client = self.loop.run_until_complete(
-            connect(self.hosts, loop=self.loop))
+        self.hosts = ['{}:{}'.format(self.kafka_host, self.kafka_port)]
 
         if not self.topic:
             topic = "%s-%s" % (self.id()[self.id().rindex(".") + 1:],
                                random_string(10).decode('utf-8'))
             self.topic = topic.encode('utf-8')
 
-        self.loop.run_until_complete(
-            self.client.ensure_topic_exists(self.topic))
+        # Reconnecting until Kafka in docker becomes available
+        for i in range(500):
+            try:
+                self.client = self.loop.run_until_complete(
+                    connect(self.hosts, loop=self.loop))
+                # Check Kafka is already operational (Kafka <= 0.8.2.x)
+                self.loop.run_until_complete(
+                    self.client.load_metadata_for_topics(self.topic))
+                break
+            except (KafkaUnavailableError,
+                    UnknownError,
+                    LeaderNotAvailableError):
+                time.sleep(0.1)
+
         self._messages = {}
 
     def tearDown(self):
@@ -80,14 +85,6 @@ class KafkaIntegrationTestCase(BaseTest):
 
     def key(self, k):
         return k.encode('utf-8')
-
-
-def get_open_port():
-    sock = socket.socket()
-    sock.bind(("", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port
 
 
 def random_string(length):

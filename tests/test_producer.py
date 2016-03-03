@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 import uuid
 import unittest
 from unittest import mock
@@ -13,7 +14,6 @@ from kafka.common import (
     UnsupportedCodecError
 )
 
-from .fixtures import ZookeeperFixture, KafkaFixture
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 from aiokafka.producer import (SimpleAIOProducer, KeyedAIOProducer,
@@ -21,14 +21,8 @@ from aiokafka.producer import (SimpleAIOProducer, KeyedAIOProducer,
 from aiokafka.client import AIOKafkaClient
 
 
+@pytest.mark.usefixtures('setup_test_class')
 class TestKafkaProducer(unittest.TestCase):
-
-    def setUp(self):
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(None)
-
-    def tearDown(self):
-        self.loop.close()
 
     def test_invalid_codec(self):
         client = mock.Mock()
@@ -75,16 +69,6 @@ class TestKafkaProducer(unittest.TestCase):
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     topic = b'produce_topic'
-
-    @classmethod
-    def setUpClass(cls):
-        cls.zk = ZookeeperFixture.instance()
-        cls.server = KafkaFixture.instance(0, cls.zk.host, cls.zk.port)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.server.close()
-        cls.zk.close()
 
     @run_until_complete
     def test_produce_many_simple(self):

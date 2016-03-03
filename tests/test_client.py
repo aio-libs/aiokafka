@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 import unittest
 from unittest import mock
 from kafka.common import (KafkaUnavailableError, BrokerMetadata, TopicMetadata,
@@ -12,7 +13,6 @@ from kafka.common import (KafkaUnavailableError, BrokerMetadata, TopicMetadata,
 from kafka.protocol import create_message
 
 from aiokafka.client import AIOKafkaClient, connect
-from .fixtures import ZookeeperFixture, KafkaFixture
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
@@ -22,14 +22,8 @@ NO_LEADER = 5
 REPLICA_NOT_AVAILABLE = 9
 
 
+@pytest.mark.usefixtures('setup_test_class')
 class TestAIOKafkaClient(unittest.TestCase):
-
-    def setUp(self):
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(None)
-
-    def tearDown(self):
-        self.loop.close()
 
     def test_init_with_list(self):
         client = AIOKafkaClient(
@@ -526,16 +520,6 @@ class TestAIOKafkaClient(unittest.TestCase):
 
 
 class TestKafkaClientIntegration(KafkaIntegrationTestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.zk = ZookeeperFixture.instance()
-        cls.server = KafkaFixture.instance(0, cls.zk.host, cls.zk.port)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.server.close()
-        cls.zk.close()
 
     @run_until_complete
     def test_connect_with_global_loop(self):

@@ -6,26 +6,11 @@ from kafka import create_message
 from kafka.common import ProduceRequest, ConsumerFetchSizeTooSmall
 from kafka.consumer.base import MAX_FETCH_BUFFER_SIZE_BYTES
 
-from .fixtures import ZookeeperFixture, KafkaFixture
 from ._testutil import KafkaIntegrationTestCase, run_until_complete, \
     random_string
 
 
 class TestConsumerIntegration(KafkaIntegrationTestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.zk = ZookeeperFixture.instance()
-        cls.server1 = KafkaFixture.instance(0, cls.zk.host, cls.zk.port)
-        cls.server2 = KafkaFixture.instance(1, cls.zk.host, cls.zk.port)
-
-        cls.server = cls.server1  # Bootstrapping server
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.server1.close()
-        cls.server2.close()
-        cls.zk.close()
 
     @asyncio.coroutine
     def send_messages(self, partition, messages):
