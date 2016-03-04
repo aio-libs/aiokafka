@@ -398,10 +398,10 @@ class AIOKafkaClient:
         return (yield from self._send_broker_unaware_request(
             payloads, encoder, decoder))
 
-    def _build_resp(self, resps):
+    def _build_resp(self, resps, fail_on_error=True):
         out = []
         for resp in resps:
-            self._raise_on_response_error(resp)
+            fail_on_error and self._raise_on_response_error(resp)
             out.append(resp)
         return out
 
@@ -440,7 +440,8 @@ class AIOKafkaClient:
 
     @asyncio.coroutine
     def send_fetch_request(self, payloads=(),
-                           *, max_wait_time=0.1, min_bytes=4096):
+                           *, max_wait_time=0.1, min_bytes=4096,
+                           fail_on_error=True):
         """
         Encode and send a FetchRequest
 
@@ -456,7 +457,7 @@ class AIOKafkaClient:
             payloads, encoder,
             KafkaProtocol.decode_fetch_response)
 
-        return self._build_resp(resps)
+        return self._build_resp(resps, fail_on_error)
 
     @asyncio.coroutine
     def send_offset_request(self, payloads=()):
@@ -478,7 +479,8 @@ class AIOKafkaClient:
         return self._build_resp(resps)
 
     @asyncio.coroutine
-    def send_offset_fetch_request(self, group, payloads=()):
+    def send_offset_fetch_request(self, group, payloads=(),
+                                  fail_on_error=True):
 
         encoder = functools.partial(KafkaProtocol.encode_offset_fetch_request,
                                     group=group)
@@ -486,4 +488,4 @@ class AIOKafkaClient:
         resps = yield from self._send_broker_aware_request(
             payloads, encoder, decoder)
 
-        return self._build_resp(resps)
+        return self._build_resp(resps, fail_on_error)

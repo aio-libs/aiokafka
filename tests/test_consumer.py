@@ -5,6 +5,7 @@ from kafka import create_message
 
 from kafka.common import ProduceRequest, ConsumerFetchSizeTooSmall
 from kafka.consumer.base import MAX_FETCH_BUFFER_SIZE_BYTES
+from aiokafka.consumer import KafkaConsumer
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete, \
     random_string
@@ -168,3 +169,32 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(set(available_msgs), set(result))
         yield from consumer1.stop()
         yield from consumer2.stop()
+
+    @run_until_complete
+    def test_kafka_consumer_basic2(self):
+        msgs0 = yield from self.send_messages(0, range(0, 50))
+        msgs1 = yield from self.send_messages(1, range(50, 200))
+
+        consumer = KafkaConsumer(self.client,
+                                 auto_offset_reset='smallest',
+                                 fetch_message_max_bytes=3*1024,
+                                 consumer_timeout_ms=5000,
+                                 )
+
+        yield from consumer.subscribe(self.topic)
+        n = 0
+        fetched_messages = {0: set(), 1: set()}
+
+        while n < 200:
+            messages = yield from consumer.fetch_messages()
+            print(len(messages))
+            for msg in messages:
+                # print(msg)
+                fetched_messages[msg.partition].add(msg.value)
+                n += 1
+                consumer.task_done(msg)
+        yield from consumer.commit()
+        self.assertEqual(len(fetched_messages[0]), 50)
+        self.assertEqual(len(fetched_messages[1]), 150)
+        self.assertEqual(set(msgs0), set(fetched_messages[0]))
+        self.assertEqual(set(msgs1), set(fetched_messages[1]))
