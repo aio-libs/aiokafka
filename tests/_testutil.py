@@ -51,7 +51,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
             except ConnectionError:
                 time.sleep(0.1)
             else:
-                yield from client.close()
+                self.loop.run_until_complete(client.close())
                 break
         self._messages = {}
 
