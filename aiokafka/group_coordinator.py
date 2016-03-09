@@ -1,8 +1,8 @@
 import asyncio
 import collections
 import logging
-import time
 
+import kafka.common as Errors
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.coordinator.protocol import ConsumerProtocol
 from kafka.common import OffsetAndMetadata, TopicPartition
@@ -11,9 +11,8 @@ from kafka.protocol.commit import (
     OffsetCommitRequest_v2 as OffsetCommitRequest,
     OffsetFetchRequest_v1 as OffsetFetchRequest)
 from kafka.protocol.group import (
-        HeartbeatRequest, JoinGroupRequest,
-        LeaveGroupRequest, SyncGroupRequest)
-import kafka.common as Errors
+    HeartbeatRequest, JoinGroupRequest,
+    LeaveGroupRequest, SyncGroupRequest)
 
 from aiokafka import ensure_future
 
@@ -42,12 +41,6 @@ class AIOConsumerCoordinator(object):
 
     4. Group Stabilization: Each member receives the state assigned by the
        leader and begins processing.
-
-    To leverage this protocol, an implementation must define the format of
-    metadata provided by each member for group registration in
-    group_protocols() and the format of the state assignment provided by
-    the leader in _perform_assignment() and which becomes available to members
-    in _on_join_complete().
     """
     def __init__(self, client, subscription, *, loop,
                  group_id='aiokafka-default-group',
@@ -154,20 +147,6 @@ class AIOConsumerCoordinator(object):
         self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
         self.rejoin_needed = True
 
-    def protocol_type(self):
-        return ConsumerProtocol.PROTOCOL_TYPE
-
-    def group_protocols(self):
-        """Returns list of preferred (protocols, metadata)"""
-        topics = self._subscription.subscription
-        assert topics is not None, 'Consumer has not subscribed to topics'
-        metadata_list = []
-        for assignor in self._assignors:
-            metadata = assignor.metadata(topics)
-            group_protocol = (assignor.name, metadata)
-            metadata_list.append(group_protocol)
-        return metadata_list
-
     @asyncio.coroutine
     def _send_req(self, node_id, request):
         """send request to Kafka node and mark coordinator as `dead`
@@ -225,34 +204,23 @@ class AIOConsumerCoordinator(object):
                 return assignor
         return None
 
-    def _on_join_complete(self, generation, member_id, protocol,
-                          member_assignment_bytes):
-        assignor = self._lookup_assignor(protocol)
-        assert assignor, 'invalid assignment protocol: %s' % protocol
+    @asyncio.coroutine
+    def _on_join_prepare(self, generation, member_id):
+        self._subscription.mark_for_reassignment()
 
-        assignment = ConsumerProtocol.ASSIGNMENT.decode(
-            member_assignment_bytes)
+        # commit offsets prior to rebalance if auto-commit enabled
+        yield from self._maybe_auto_commit_offsets_sync()
 
-        # set the flag to refresh last committed offsets
-        self._subscription.needs_fetch_committed_offsets = True
-
-        # update partition assignment
-        self._subscription.assign_from_subscribed(assignment.partitions())
-
-        # give the assignor a chance to update internal state
-        # based on the received assignment
-        assignor.on_assignment(assignment)
-
-        assigned = set(self._subscription.assigned_partitions())
-        log.debug("Set newly assigned partitions %s", assigned)
-
-        # execute the user's callback after rebalance
+        # execute the user's callback before rebalance
+        log.debug("Revoking previously assigned partitions %s",
+                  self._subscription.assigned_partitions())
         if self._subscription.listener:
             try:
-                self._subscription.listener.on_partitions_assigned(assigned)
+                revoked = set(self._subscription.assigned_partitions())
+                self._subscription.listener.on_partitions_revoked(revoked)
             except Exception:
-                log.exception("User provided listener failed on partition"
-                              " assignment: %s", assigned)
+                log.exception("User provided subscription listener failed"
+                              " on_partitions_revoked")
 
     def _perform_assignment(self, leader_id, assignment_strategy, members):
         assignor = self._lookup_assignor(assignment_strategy)
@@ -282,23 +250,34 @@ class AIOConsumerCoordinator(object):
             group_assignment[member_id] = assignment
         return group_assignment
 
-    @asyncio.coroutine
-    def _on_join_prepare(self, generation, member_id):
-        self._subscription.mark_for_reassignment()
+    def _on_join_complete(self, generation, member_id, protocol,
+                          member_assignment_bytes):
+        assignor = self._lookup_assignor(protocol)
+        assert assignor, 'invalid assignment protocol: %s' % protocol
 
-        # commit offsets prior to rebalance if auto-commit enabled
-        yield from self._maybe_auto_commit_offsets_sync()
+        assignment = ConsumerProtocol.ASSIGNMENT.decode(
+            member_assignment_bytes)
 
-        # execute the user's callback before rebalance
-        log.debug("Revoking previously assigned partitions %s",
-                  self._subscription.assigned_partitions())
+        # set the flag to refresh last committed offsets
+        self._subscription.needs_fetch_committed_offsets = True
+
+        # update partition assignment
+        self._subscription.assign_from_subscribed(assignment.partitions())
+
+        # give the assignor a chance to update internal state
+        # based on the received assignment
+        assignor.on_assignment(assignment)
+
+        assigned = set(self._subscription.assigned_partitions())
+        log.debug("Set newly assigned partitions %s", assigned)
+
+        # execute the user's callback after rebalance
         if self._subscription.listener:
             try:
-                revoked = set(self._subscription.assigned_partitions())
-                self._subscription.listener.on_partitions_revoked(revoked)
+                self._subscription.listener.on_partitions_assigned(assigned)
             except Exception:
-                log.exception("User provided subscription listener failed"
-                              " on_partitions_revoked")
+                log.exception("User provided listener failed on partition"
+                              " assignment: %s", assigned)
 
     @asyncio.coroutine
     def refresh_committed_offsets(self):
@@ -631,14 +610,23 @@ class AIOConsumerCoordinator(object):
         """
         # send a join group request to the coordinator
         log.debug("(Re-)joining group %s", self.group_id)
+
+        topics = self._subscription.subscription
+        assert topics is not None, 'Consumer has not subscribed to topics'
+        metadata_list = []
+        for assignor in self._assignors:
+            metadata = assignor.metadata(topics)
+            if not isinstance(metadata, bytes):
+                metadata = metadata.encode()
+            group_protocol = (assignor.name, metadata)
+            metadata_list.append(group_protocol)
+
         request = JoinGroupRequest(
             self.group_id,
             self._session_timeout_ms,
             self.member_id,
-            self.protocol_type(),
-            [(protocol,
-              metadata if isinstance(metadata, bytes) else metadata.encode())
-             for protocol, metadata in self.group_protocols()])
+            ConsumerProtocol.PROTOCOL_TYPE,
+            metadata_list)
 
         # create the request for the coordinator
         log.debug("Issuing request (%s) to coordinator %s",
@@ -793,7 +781,7 @@ class AIOConsumerCoordinator(object):
 
     @asyncio.coroutine
     def _heartbeat_task_routine(self):
-        last_ok_heartbeat = time.time()
+        last_ok_heartbeat = self.loop.time()
         hb_interval = self._heartbeat_interval_ms / 1000
         session_timeout = self._session_timeout_ms / 1000
         retry_backoff_time = self._retry_backoff_ms / 1000
@@ -805,14 +793,12 @@ class AIOConsumerCoordinator(object):
             try:
                 yield from self.ensure_active_group()
             except Errors.KafkaError as err:
-                log.debug("Skipping heartbeat: no active group: %s", err)
-                last_ok_heartbeat = time.time()
+                log.error("Skipping heartbeat: no active group: %s", err)
+                last_ok_heartbeat = self.loop.time()
                 sleep_time = retry_backoff_time
                 continue
-            else:
-                sleep_time = hb_interval
 
-            t0 = time.time()
+            t0 = self.loop.time()
             request = HeartbeatRequest(
                 self.group_id, self.generation, self.member_id)
             log.debug("Heartbeat: %s[%s] %s",
@@ -845,13 +831,13 @@ class AIOConsumerCoordinator(object):
                 log.error("Heartbeat failed: %s", err)
             else:
                 log.debug("Received successful heartbeat response.")
-                last_ok_heartbeat = time.time()
+                last_ok_heartbeat = self.loop.time()
 
             if self.rejoin_needed:
                 sleep_time = retry_backoff_time
             else:
-                sleep_time = max((0, hb_interval - time.time() + t0))
-            session_time = time.time() - last_ok_heartbeat
+                sleep_time = max((0, hb_interval - self.loop.time() + t0))
+            session_time = self.loop.time() - last_ok_heartbeat
             if session_time > session_timeout:
                 # we haven't received a successful heartbeat in one session
                 # interval so mark the coordinator dead
