@@ -15,7 +15,7 @@ from kafka.consumer.subscription_state import (
 from .fixtures import ZookeeperFixture, KafkaFixture
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
-from aiokafka.coordinator.consumer import AIOConsumerCoordinator
+from aiokafka.group_coordinator import AIOConsumerCoordinator
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 
@@ -61,11 +61,6 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     def test_coordinator_workflow(self):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         yield from client.bootstrap()
-        api_ver = yield from client.check_version()
-        api_ver = tuple(map(int, api_ver.split('.')))
-        if api_ver < (0, 9):
-            # auto-assigning supported in >=kafka-0.9
-            return
         yield from self.wait_topic(client, 'topic1')
         yield from self.wait_topic(client, 'topic2')
 
@@ -142,7 +137,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         subscription.subscribe(topics=('topic1',))
         coordinator = AIOConsumerCoordinator(
             client, subscription, loop=self.loop,
-            retry_backoff_ms=10, api_version=(0, 8))
+            retry_backoff_ms=10)
 
         yield from client.bootstrap()
         yield from self.wait_topic(client, 'topic1')
@@ -222,45 +217,35 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         subscription.subscribe(topics=('topic1',))
         coordinator = AIOConsumerCoordinator(
             client, subscription, loop=self.loop,
-            api_version=(0, 7, 4))
-        self.assertEqual(coordinator._auto_commit_task, None)
-
-        coordinator = AIOConsumerCoordinator(
-            client, subscription, loop=self.loop,
-            group_id=None)
+            enable_auto_commit=False)
         self.assertEqual(coordinator._auto_commit_task, None)
 
     @run_until_complete
     def test_subscribe_pattern(self):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         yield from client.bootstrap()
-        api_ver = yield from client.check_version()
-        api_ver = tuple(map(int, api_ver.split('.')))
 
         test_listener = TestRebalanceListener()
         subscription = SubscriptionState('latest')
         subscription.subscribe(pattern='st-topic*', listener=test_listener)
         coordinator = AIOConsumerCoordinator(
             client, subscription, loop=self.loop,
-            group_id='subs-pattern-group', api_version=api_ver)
+            group_id='subs-pattern-group')
 
         yield from self.wait_topic(client, 'st-topic1')
         yield from self.wait_topic(client, 'st-topic2')
-        if api_ver >= (0, 8, 2):
-            yield from coordinator.ensure_coordinator_known()
-        if api_ver >= (0, 9):
-            yield from coordinator.ensure_active_group()
-            self.assertNotEqual(coordinator.coordinator_id, None)
-            self.assertEqual(coordinator.rejoin_needed, False)
+
+        yield from coordinator.ensure_active_group()
+        self.assertNotEqual(coordinator.coordinator_id, None)
+        self.assertEqual(coordinator.rejoin_needed, False)
 
         tp_list = subscription.assigned_partitions()
         assigned = set([('st-topic1', 0), ('st-topic1', 1),
                         ('st-topic2', 0), ('st-topic2', 1)])
         self.assertEqual(tp_list, assigned)
 
-        if api_ver >= (0, 9):
-            self.assertEqual(test_listener.revoked, [set([])])
-            self.assertEqual(test_listener.assigned, [assigned])
+        self.assertEqual(test_listener.revoked, [set([])])
+        self.assertEqual(test_listener.assigned, [assigned])
         yield from coordinator.close()
         yield from client.close()
 
@@ -268,14 +253,12 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     def test_get_offsets(self):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         yield from client.bootstrap()
-        api_ver = yield from client.check_version()
-        api_ver = tuple(map(int, api_ver.split('.')))
 
         subscription = SubscriptionState('earliest')
         subscription.subscribe(topics=('topic1',))
         coordinator = AIOConsumerCoordinator(
             client, subscription, loop=self.loop,
-            api_version=api_ver, group_id='getoffsets-group')
+            group_id='getoffsets-group')
 
         yield from self.wait_topic(client, 'topic1')
         producer = AIOKafkaProducer(
@@ -286,10 +269,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         yield from producer.send('topic1', b'third msg', partition=1)
         yield from producer.stop()
 
-        if api_ver >= (0, 8, 2):
-            yield from coordinator.ensure_coordinator_known()
-        if api_ver >= (0, 9):
-            yield from coordinator.ensure_active_group()
+        yield from coordinator.ensure_active_group()
 
         offsets = {TopicPartition('topic1', 0): OffsetAndMetadata(1, ''),
                    TopicPartition('topic1', 1): OffsetAndMetadata(2, '')}
@@ -309,18 +289,14 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     def test_offsets_failed_scenarios(self):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         yield from client.bootstrap()
-        api_ver = yield from client.check_version()
-        api_ver = tuple(map(int, api_ver.split('.')))
         yield from self.wait_topic(client, 'topic1')
         subscription = SubscriptionState('earliest')
         subscription.subscribe(topics=('topic1',))
         coordinator = AIOConsumerCoordinator(
             client, subscription, loop=self.loop,
-            api_version=api_ver, group_id='test-offsets-group')
-        if api_ver >= (0, 8, 2):
-            yield from coordinator.ensure_coordinator_known()
-        if api_ver >= (0, 9):
-            yield from coordinator.ensure_active_group()
+            group_id='test-offsets-group')
+
+        yield from coordinator.ensure_active_group()
 
         offsets = {TopicPartition('topic1', 0): OffsetAndMetadata(1, '')}
         yield from coordinator.commit_offsets(offsets)
@@ -355,10 +331,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 yield from coordinator.commit_offsets(offsets)
             self.assertEqual(coordinator.coordinator_id, None)
 
-            if api_ver >= (0, 9):
-                with self.assertRaises(
-                        Errors.GroupCoordinatorNotAvailableError):
-                    yield from coordinator.commit_offsets(offsets)
+            with self.assertRaises(
+                    Errors.GroupCoordinatorNotAvailableError):
+                yield from coordinator.commit_offsets(offsets)
 
         yield from coordinator.close()
         yield from client.close()
@@ -367,18 +342,14 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     def test_fetchoffsets_failed_scenarios(self):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         yield from client.bootstrap()
-        api_ver = yield from client.check_version()
-        api_ver = tuple(map(int, api_ver.split('.')))
         yield from self.wait_topic(client, 'topic1')
         subscription = SubscriptionState('earliest')
         subscription.subscribe(topics=('topic1',))
         coordinator = AIOConsumerCoordinator(
             client, subscription, loop=self.loop,
-            api_version=api_ver, group_id='fetch-offsets-group')
-        if api_ver >= (0, 8, 2):
-            yield from coordinator.ensure_coordinator_known()
-        if api_ver >= (0, 9):
-            yield from coordinator.ensure_active_group()
+            group_id='fetch-offsets-group')
+
+        yield from coordinator.ensure_active_group()
 
         offsets = {TopicPartition('topic1', 0): OffsetAndMetadata(1, '')}
         with mock.patch('kafka.common.for_code') as mocked:
