@@ -101,11 +101,12 @@ class GroupCoordinator(object):
         self._subscription = subscription
         self._partitions_per_topic = {}
         self._cluster = client.cluster
-        self._cluster.request_update()
-        self._cluster.add_listener(self._handle_metadata_update)
         self._auto_commit_task = None
         # _closing future used as a signal to heartbeat task for finish ASAP
         self._closing = asyncio.Future(loop=loop)
+        # update subscribe state usint currently known metadata
+        self._handle_metadata_update(client.cluster)
+        self._cluster.add_listener(self._handle_metadata_update)
 
         self.heartbeat_task = ensure_future(
             self._heartbeat_task_routine(), loop=loop)

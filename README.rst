@@ -22,6 +22,7 @@ Example of AIOKafkaProducer usage:
         import asyncio
         from aiokafka import AIOKafkaProducer
 
+        @asyncio.coroutine
         def produce(loop):
             producer = AIOKafkaProducer(loop=loop, bootstrap_servers='localhost:1234')
             yield from producer.start()
@@ -33,6 +34,39 @@ Example of AIOKafkaProducer usage:
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(produce(loop))
+        loop.close()
+
+
+AIOKafkaConsumer
+****************
+
+AIOKafkaConsumer is a high-level, asynchronous message consumer.
+It also interacts with the assigned kafka Group Coordinator nodeto allow multiple consumers to load balance consumption of topics (requires kafka >= 0.9.0.0).
+
+Example of AIOKafkaConsumer usage:
+
+.. code-block:: python
+
+        import asyncio
+        from kafka.common import KafkaError
+        from aiokafka import AIOKafkaConsumer
+
+        @asyncio.coroutine
+        def consume_task(consumer):
+            while True:
+                try:
+                    msg = yield from consumer.get_message()
+                    print("consumed: ", msg.topic, msg.partition, msg.offset, msg.value)
+                except KafkaError as err:
+                    print("error while consuming message: ", err)
+
+        loop = asyncio.get_event_loop()
+        consumer = AIOKafkaConsumer('topic1', 'topic2', loop=loop, bootstrap_servers='localhost:1234')
+        loop.run_until_complete(consumer.start())
+        asyncio.async(consume_task(consumer))
+        loop.run_until_complete(asyncio.sleep(5))
+        loop.run_until_complete(consumer.stop())
+        c_task.close()
         loop.close()
 
 
