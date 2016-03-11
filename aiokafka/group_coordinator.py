@@ -19,9 +19,9 @@ from aiokafka import ensure_future
 log = logging.getLogger(__name__)
 
 
-class AIOConsumerCoordinator(object):
+class GroupCoordinator(object):
     """
-    AIOConsumerCoordinator implements group management for single group member
+    GroupCoordinator implements group management for single group member
     by interacting with a designated Kafka broker (the coordinator). Group
     semantics are provided by extending this class.  See ConsumerCoordinator
     for example usage.

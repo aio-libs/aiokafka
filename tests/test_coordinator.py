@@ -13,7 +13,7 @@ from kafka.consumer.subscription_state import (
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
-from aiokafka.group_coordinator import AIOConsumerCoordinator
+from aiokafka.group_coordinator import GroupCoordinator
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 
@@ -54,7 +54,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         subscription = SubscriptionState('latest')
         subscription.subscribe(topics=('topic1', 'topic2'))
-        coordinator = AIOConsumerCoordinator(
+        coordinator = GroupCoordinator(
             client, subscription, loop=self.loop,
             session_timeout_ms=10000,
             heartbeat_interval_ms=500,
@@ -79,7 +79,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         yield from client2.bootstrap()
         subscription2 = SubscriptionState('latest')
         subscription2.subscribe(topics=('topic1', 'topic2'))
-        coordinator2 = AIOConsumerCoordinator(
+        coordinator2 = GroupCoordinator(
             client2, subscription2, loop=self.loop,
             session_timeout_ms=10000,
             heartbeat_interval_ms=500,
@@ -111,7 +111,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         subscription = SubscriptionState('latest')
         subscription.subscribe(topics=('topic1',))
-        coordinator = AIOConsumerCoordinator(
+        coordinator = GroupCoordinator(
             client, subscription, loop=self.loop)
 
         with self.assertRaises(NoBrokersAvailable):
@@ -122,7 +122,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         subscription = SubscriptionState('latest')
         subscription.subscribe(topics=('topic1',))
-        coordinator = AIOConsumerCoordinator(
+        coordinator = GroupCoordinator(
             client, subscription, loop=self.loop,
             retry_backoff_ms=10)
 
@@ -162,7 +162,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         subscription = SubscriptionState('latest')
         subscription.subscribe(topics=('topic1',))
-        coordinator = AIOConsumerCoordinator(
+        coordinator = GroupCoordinator(
             client, subscription, loop=self.loop,
             heartbeat_interval_ms=20000)
 
@@ -202,7 +202,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         subscription = SubscriptionState('latest')
         subscription.subscribe(topics=('topic1',))
-        coordinator = AIOConsumerCoordinator(
+        coordinator = GroupCoordinator(
             client, subscription, loop=self.loop,
             enable_auto_commit=False)
         self.assertEqual(coordinator._auto_commit_task, None)
@@ -215,7 +215,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         test_listener = TestRebalanceListener()
         subscription = SubscriptionState('latest')
         subscription.subscribe(pattern='st-topic*', listener=test_listener)
-        coordinator = AIOConsumerCoordinator(
+        coordinator = GroupCoordinator(
             client, subscription, loop=self.loop,
             group_id='subs-pattern-group')
 
@@ -243,7 +243,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         subscription = SubscriptionState('earliest')
         subscription.subscribe(topics=('topic1',))
-        coordinator = AIOConsumerCoordinator(
+        coordinator = GroupCoordinator(
             client, subscription, loop=self.loop,
             group_id='getoffsets-group')
 
@@ -279,7 +279,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         yield from self.wait_topic(client, 'topic1')
         subscription = SubscriptionState('earliest')
         subscription.subscribe(topics=('topic1',))
-        coordinator = AIOConsumerCoordinator(
+        coordinator = GroupCoordinator(
             client, subscription, loop=self.loop,
             group_id='test-offsets-group')
 
@@ -332,7 +332,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         yield from self.wait_topic(client, 'topic1')
         subscription = SubscriptionState('earliest')
         subscription.subscribe(topics=('topic1',))
-        coordinator = AIOConsumerCoordinator(
+        coordinator = GroupCoordinator(
             client, subscription, loop=self.loop,
             group_id='fetch-offsets-group')
 
