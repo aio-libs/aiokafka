@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from kafka.common import OffsetAndMetadata, TopicPartition
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.consumer.subscription_state import SubscriptionState
 
@@ -250,15 +251,7 @@ class AIOKafkaConsumer(object):
             yield from self._coordinator.close()
         if self._fetcher:
             yield from self._fetcher.close()
-        self._client.close()
-        try:
-            self._key_deserializer.close()
-        except AttributeError:
-            pass
-        try:
-            self._value_deserializer.close()
-        except AttributeError:
-            pass
+        yield from self._client.close()
         log.debug("The KafkaConsumer has closed.")
 
     @asyncio.coroutine
@@ -281,8 +274,14 @@ class AIOKafkaConsumer(object):
                 consumed offsets for all subscribed partitions.
         """
         assert self._group_id is not None, 'Requires group_id'
+
         if offsets is None:
             offsets = self._subscription.all_consumed_offsets()
+        else:
+            # validate `offsets` structure
+            assert all(map(lambda k: isinstance(k, TopicPartition), offsets))
+            assert all(map(lambda v: isinstance(v, OffsetAndMetadata),
+                           offsets.values()))
         yield from self._coordinator.commit_offsets(offsets)
 
     @asyncio.coroutine
@@ -542,14 +541,6 @@ class AIOKafkaConsumer(object):
         yield from self._fetcher.update_fetch_positions(partitions)
 
     @asyncio.coroutine
-    def _init_fetcher(self):
-        assert self._fetcher, 'Consumer is not started yet!'
-        assert self.assignment() or self.subscription() is not None, \
-            'No topic subscription or manual partition assignment'
-
-        yield from self._fetcher.init_fetches()
-
-    @asyncio.coroutine
     def get_message(self):
         """
         Get one message from Kafka
@@ -601,7 +592,6 @@ class AIOKafkaConsumer(object):
         """
         assert timeout_ms >= 0, 'Timeout must not be negative'
 
-        start = self._loop.time()
         # fetch positions if we have partitions we're subscribed
         # to that we don't know the offset for
         if not self._subscription.has_all_fetch_positions():
@@ -609,15 +599,14 @@ class AIOKafkaConsumer(object):
             yield from self._update_fetch_positions(partitions)
 
         records = self._fetcher.fetched_records()
-        if not records:
-            self._fetcher.init_fetches()
+        if records:
+            return records
 
-        while not records:
-            yield from asyncio.sleep(
-                self._consumer_timeout, loop=self._loop)
-            elapsed_ms = (self._loop.time() - start) * 1000
-            if timeout_ms - elapsed_ms <= 0:
-                return {}
-            records = self._fetcher.fetched_records()
+        fetch_task = self._fetcher.init_fetches()
+        done, _ = yield from asyncio.wait(
+            [fetch_task], timeout=timeout_ms/1000., loop=self._loop)
+        if not done:
+            # timeouted, no new fetched data now
+            return {}
 
-        return records
+        return self._fetcher.fetched_records()

@@ -72,7 +72,7 @@ class Fetcher:
         self._max_partition_fetch_bytes = max_partition_fetch_bytes
         self._check_crcs = check_crcs
         self._subscriptions = subscriptions
-        self._records = asyncio.Queue(loop=loop)
+        self._records = []
         self._unauthorized_topics = set()
         self._offset_out_of_range_partitions = dict()  # {partition: offset}
         self._record_too_large_partitions = dict()  # {partition: offset}
@@ -164,7 +164,7 @@ class Fetcher:
                         log.debug(
                             "Adding fetched record for partition %s with"
                             " offset %d to buffered record list", tp, position)
-                        self._records.put_nowait((fetch_offset, tp, messages))
+                        self._records.append((fetch_offset, tp, messages))
                     elif partial:
                         # we did not read a single message from a non-empty
                         # buffer because that message's size is larger than
@@ -430,10 +430,10 @@ class Fetcher:
             self._raise_if_unauthorized_topics()
             self._raise_if_record_too_large()
 
-            try:
-                (fetch_offset, tp, messages) = self._records.get_nowait()
-            except asyncio.QueueEmpty:
+            if not self._records:
                 break
+
+            (fetch_offset, tp, messages) = self._records.pop()
 
             if not self._subscriptions.is_assigned(tp):
                 # this can happen when a rebalance happened before
@@ -493,7 +493,7 @@ class Fetcher:
 
     def next_record(self):
         while True:
-            while self._iterator is None and self._records.empty():
+            while self._iterator is None and not self._records:
                 return None
 
             if not self._iterator:

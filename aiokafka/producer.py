@@ -181,14 +181,6 @@ class AIOKafkaProducer(object):
 
         yield from self.client.close()
 
-        try:
-            self._key_serializer.close()
-        except AttributeError:
-            pass
-        try:
-            self._value_serializer.close()
-        except AttributeError:
-            pass
         self._closed = True
         log.debug("The Kafka producer has closed.")
 
