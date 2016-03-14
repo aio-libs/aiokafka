@@ -122,13 +122,13 @@ class AIOKafkaProducer(object):
                  key_serializer=None, value_serializer=None,
                  compression_type=None, batch_size=16384,
                  partitioner=DefaultPartitioner(), max_request_size=1048576):
-
         if acks not in (0, 1, -1, 'all'):
             raise ValueError("Invalid ACKS parameter")
         if compression_type not in ('gzip', 'snappy', 'lz4', None):
             raise ValueError("Invalid compression type!")
         if api_version not in ('auto', '0.9', '0.8.2', '0.8.1', '0.8.0'):
             raise ValueError("Unsupported Kafka version")
+
         self._PRODUCER_CLIENT_ID_SEQUENCE += 1
         if client_id is None:
             client_id = 'aiokafka-producer-%s' % \

@@ -9,6 +9,5 @@ __version__ = '0.0.1'
 from .client import AIOKafkaClient  # noqa
 from .producer import AIOKafkaProducer  # noqa
 
-# from .consumer import SimpleAIOConsumer
 
 (AIOKafkaClient, AIOKafkaProducer, ensure_future)
