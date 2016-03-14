@@ -23,8 +23,7 @@ class GroupCoordinator(object):
     """
     GroupCoordinator implements group management for single group member
     by interacting with a designated Kafka broker (the coordinator). Group
-    semantics are provided by extending this class.  See ConsumerCoordinator
-    for example usage.
+    semantics are provided by extending this class.
 
     From a high level, Kafka's group management protocol consists of the
     following sequence of actions:
@@ -33,14 +32,17 @@ class GroupCoordinator(object):
        providing their own metadata
        (such as the set of topics they are interested in).
 
-    2. Group/Leader Selection: The coordinator select the members of the group
-       and chooses one member as the leader.
+    2. Group/Leader Selection: The coordinator (one of Kafka nodes) select
+       the members of the group and chooses one member (one of client's)
+       as the leader.
 
-    3. State Assignment: The leader collects the metadata from all the members
-       of the group and assigns state.
+    3. State Assignment: The leader receives metadata for all members and
+       assigns partitions to them.
 
     4. Group Stabilization: Each member receives the state assigned by the
        leader and begins processing.
+       Between each phase coordinator awaits all clients to respond. If some
+       do not respond in time - it will revoke their membership
     """
     def __init__(self, client, subscription, *, loop,
                  group_id='aiokafka-default-group',
@@ -57,7 +59,7 @@ class GroupCoordinator(object):
                 located in kafka.consumer.subscription_state
             group_id (str): name of the consumer group to join for dynamic
                 partition assignment (if enabled), and to use for fetching and
-                committing offsets. Default: 'kafka-python-default-group'
+                committing offsets. Default: 'aiokafka-default-group'
             enable_auto_commit (bool): If true the consumer's offset will be
                 periodically committed in the background. Default: True.
             auto_commit_interval_ms (int): milliseconds between automatic
@@ -102,6 +104,7 @@ class GroupCoordinator(object):
         self._cluster.request_update()
         self._cluster.add_listener(self._handle_metadata_update)
         self._auto_commit_task = None
+        # _closing future used as a signal to heartbeat task for finish ASAP
         self._closing = asyncio.Future(loop=loop)
 
         self.heartbeat_task = ensure_future(
@@ -118,10 +121,7 @@ class GroupCoordinator(object):
         and reset local generation/memberId."""
         self._closing.set_result(None)
         if self._auto_commit_task:
-            try:
-                yield from self._auto_commit_task
-            except asyncio.CancelledError:
-                pass
+            yield from self._auto_commit_task
             self._auto_commit_task = None
 
         if self.heartbeat_task:
@@ -142,10 +142,6 @@ class GroupCoordinator(object):
                 log.error("LeaveGroup request failed: %s", err)
             else:
                 log.info("LeaveGroup request succeeded")
-
-        self.generation = OffsetCommitRequest.DEFAULT_GENERATION_ID
-        self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
-        self.rejoin_needed = True
 
     @asyncio.coroutine
     def _send_req(self, node_id, request):
@@ -386,10 +382,6 @@ class GroupCoordinator(object):
 
         Raises error on failure
         """
-        assert all(map(lambda k: isinstance(k, TopicPartition), offsets))
-        assert all(map(lambda v: isinstance(v, OffsetAndMetadata),
-                       offsets.values()))
-
         self._subscription.needs_fetch_committed_offsets = True
         if not offsets:
             log.debug('No offsets to commit')
@@ -400,22 +392,19 @@ class GroupCoordinator(object):
         node_id = self.coordinator_id
 
         # create the offset commit request
-        offset_data = collections.defaultdict(dict)
+        offset_data = collections.defaultdict(list)
         for tp, offset in offsets.items():
-            offset_data[tp.topic][tp.partition] = offset
+            offset_data[tp.topic].append(
+                (tp.partition,
+                 offset.offset,
+                 offset.metadata))
 
         request = OffsetCommitRequest(
             self.group_id,
             self.generation,
             self.member_id,
             OffsetCommitRequest.DEFAULT_RETENTION_TIME,
-            [(
-                topic, [(
-                    partition,
-                    offset.offset,
-                    offset.metadata
-                ) for partition, offset in partitions.items()]
-            ) for topic, partitions in offset_data.items()]
+            [(topic, tp_offsets) for topic, tp_offsets in offset_data.items()]
         )
 
         log.debug(
@@ -521,10 +510,9 @@ class GroupCoordinator(object):
             try:
                 yield from self.commit_offsets(offsets)
             except Errors.KafkaError as error:
-                if error.retriable:
+                if error.retriable and not self._closing.done():
                     log.debug("Failed to auto-commit offsets: %s, will retry"
                               " immediately", error)
-                    continue
                 else:
                     log.warning("Auto offset commit failed: %s", error)
 
