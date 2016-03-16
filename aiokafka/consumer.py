@@ -85,7 +85,13 @@ class AIOKafkaConsumer(object):
             brokers or partitions. Default: 300000
         partition_assignment_strategy (list): List of objects to use to
             distribute partition ownership amongst consumer instances when
-            group management is used. Default: [RoundRobinPartitionAssignor]
+            group management is used. This preference is implicit in the order
+            of the strategies in the list. When assignment strategy changes:
+            to support a change to the assignment strategy, new versions must
+            enable support both for the old assignment strategy and the new
+            one. The coordinator will choose the old assignment strategy until
+            all members have been updated. Then it will choose the new
+            strategy. Default: [RoundRobinPartitionAssignor]
         heartbeat_interval_ms (int): The expected time in milliseconds
             between heartbeats to the consumer coordinator when using
             Kafka's group management feature. Heartbeats are used to ensure
