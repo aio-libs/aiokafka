@@ -113,7 +113,7 @@ class GroupCoordinator(object):
                 self._heartbeat_task_routine(), loop=loop)
 
         if self._enable_auto_commit and self.group_id is not None:
-            interval = self._auto_commit_interval_ms / 1000.0
+            interval = self._auto_commit_interval_ms / 1000
             self._auto_commit_task = ensure_future(
                 self.auto_commit_routine(interval), loop=loop)
 
@@ -330,7 +330,7 @@ class GroupCoordinator(object):
                 else:
                     # wait backoff and try again
                     yield from asyncio.sleep(
-                        self._retry_backoff_ms / 1000.0, loop=self.loop)
+                        self._retry_backoff_ms / 1000, loop=self.loop)
             else:
                 return offsets
 
@@ -496,7 +496,7 @@ class GroupCoordinator(object):
                     "Cannot auto-commit offsets because the coordinator is"
                     " unknown, will retry after backoff")
                 yield from asyncio.sleep(
-                    self._retry_backoff_ms / 1000.0, loop=self.loop)
+                    self._retry_backoff_ms / 1000, loop=self.loop)
                 continue
 
             yield from asyncio.wait(
@@ -549,7 +549,7 @@ class GroupCoordinator(object):
             except Errors.KafkaError as err:
                 log.error("Group Coordinator Request failed: %s", err)
                 yield from asyncio.sleep(
-                    self._retry_backoff_ms / 1000.0, loop=self.loop)
+                    self._retry_backoff_ms / 1000, loop=self.loop)
                 if err.retriable is True:
                     yield from self._client.force_metadata_update()
             else:
@@ -675,7 +675,7 @@ class GroupCoordinator(object):
 
         # backoff wait - failure case
         yield from asyncio.sleep(
-            self._retry_backoff_ms / 1000.0, loop=self.loop)
+            self._retry_backoff_ms / 1000, loop=self.loop)
 
     @asyncio.coroutine
     def _on_join_follower(self):

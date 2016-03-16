@@ -128,7 +128,7 @@ class AIOKafkaClient:
         `metadata_max_age_ms` milliseconds"""
         while True:
             while True:
-                ttl = self.cluster.ttl() / 1000.0
+                ttl = self.cluster.ttl() / 1000
                 if ttl == 0:
                     break
                 log.debug("metadata synchronizer sleep for %s sec", ttl)

@@ -150,7 +150,7 @@ class AIOKafkaConsumer(object):
         self._fetch_min_bytes = fetch_min_bytes
         self._fetch_max_wait_ms = fetch_max_wait_ms
         self._max_partition_fetch_bytes = max_partition_fetch_bytes
-        self._consumer_timeout = consumer_timeout_ms / 1000.
+        self._consumer_timeout = consumer_timeout_ms / 1000
         self._check_crcs = check_crcs
         self._subscription = SubscriptionState(auto_offset_reset)
         self._fetcher = None
@@ -594,7 +594,7 @@ class AIOKafkaConsumer(object):
             yield from self._update_fetch_positions(
                 self._subscription.missing_fetch_positions())
 
-        timeout = timeout_ms / 1000.
+        timeout = timeout_ms / 1000
         start_time = self._loop.time()
         while True:
             records = self._fetcher.fetched_records(partitions)
