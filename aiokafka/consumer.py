@@ -152,10 +152,11 @@ class AIOKafkaConsumer(object):
         self._closed = False
         self._iterator = None
         self._loop = loop
+        self._topics = topics
 
         if topics:
-            self._subscription.subscribe(topics=topics)
             self._client.set_topics(topics)
+            self._subscription.subscribe(topics=topics)
 
     @asyncio.coroutine
     def start(self):
@@ -190,7 +191,17 @@ class AIOKafkaConsumer(object):
             auto_commit_interval_ms=self._auto_commit_interval_ms,
             assignors=self._partition_assignment_strategy)
 
-        yield from self._coordinator.ensure_active_group()
+        if self._group_id is not None:
+            yield from self._coordinator.ensure_active_group()
+        elif self._subscription.needs_partition_assignment:
+            yield from self._client.force_metadata_update()
+            partitions = []
+            for topic in self._topics:
+                p_ids = self.partitions_for_topic(topic)
+                for p_id in p_ids:
+                    partitions.append(TopicPartition(topic, p_id))
+            self._subscription.unsubscribe()
+            self._subscription.assign_from_user(partitions)
 
     def assign(self, partitions):
         """Manually assign a list of TopicPartitions to this consumer.

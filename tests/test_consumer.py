@@ -40,8 +40,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @asyncio.coroutine
     def consumer_factory(self, **kwargs):
-        enable_auto_commit = kwargs.get('enable_auto_commit', True)
-        auto_offset_reset = kwargs.get('auto_offset_reset', 'earliest')
+        enable_auto_commit = kwargs.pop('enable_auto_commit', True)
+        auto_offset_reset = kwargs.pop('auto_offset_reset', 'earliest')
         group = kwargs.pop('group', 'group-%s' % self.id())
         consumer = AIOKafkaConsumer(
             self.topic, loop=self.loop, group_id=group,
@@ -50,7 +50,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             auto_offset_reset=auto_offset_reset,
             **kwargs)
         yield from consumer.start()
-        yield from consumer.seek_to_committed()
+        if group is not None:
+            yield from consumer.seek_to_committed()
         return consumer
 
     @run_until_complete
@@ -100,6 +101,30 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # will ignore, no exception expected
         yield from consumer.stop()
+
+    @run_until_complete
+    def test_none_group(self):
+        yield from self.send_messages(0, list(range(0, 100)))
+        yield from self.send_messages(1, list(range(100, 200)))
+        # Start a consumer_factory
+        consumer1 = yield from self.consumer_factory(
+            group=None, enable_auto_commit=False)
+        consumer2 = yield from self.consumer_factory(group=None)
+
+        messages = []
+        for i in range(200):
+            message = yield from consumer1.get_message()
+            messages.append(message)
+        self.assert_message_count(messages, 200)
+        with self.assertRaises(AssertionError):
+            # commit does not supported for None group
+            yield from consumer1.commit()
+
+        messages = []
+        for i in range(200):
+            message = yield from consumer2.get_message()
+            messages.append(message)
+        self.assert_message_count(messages, 200)
 
     @run_until_complete
     def test_consumer_poll(self):
