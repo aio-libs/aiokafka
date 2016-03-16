@@ -86,7 +86,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         messages = []
         for i in range(200):
-            message = yield from consumer.get_message()
+            message = yield from consumer.getone()
             messages.append(message)
         self.assert_message_count(messages, 200)
 
@@ -95,12 +95,31 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         consumer.seek(p0, offset+90)
         for i in range(10):
-            m = yield from consumer.get_message()
+            m = yield from consumer.getone()
             self.assertEqual(m.value, str(i+90).encode())
         yield from consumer.stop()
 
         # will ignore, no exception expected
         yield from consumer.stop()
+
+    @run_until_complete
+    def test_get_by_partition(self):
+        yield from self.send_messages(0, list(range(0, 100)))
+        yield from self.send_messages(1, list(range(100, 200)))
+        consumer = yield from self.consumer_factory()
+
+        p0 = TopicPartition(self.topic, 0)
+        p1 = TopicPartition(self.topic, 1)
+        messages = []
+        for i in range(100):
+            m = yield from consumer.getone(p0)
+            self.assertEqual(m.partition, 0)
+            messages.append(m)
+        for i in range(100):
+            m = yield from consumer.getone(p1)
+            self.assertEqual(m.partition, 1)
+            messages.append(m)
+        self.assert_message_count(messages, 200)
 
     @run_until_complete
     def test_none_group(self):
@@ -113,7 +132,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         messages = []
         for i in range(200):
-            message = yield from consumer1.get_message()
+            message = yield from consumer1.getone()
             messages.append(message)
         self.assert_message_count(messages, 200)
         with self.assertRaises(AssertionError):
@@ -122,7 +141,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         messages = []
         for i in range(200):
-            message = yield from consumer2.get_message()
+            message = yield from consumer2.getone()
             messages.append(message)
         self.assert_message_count(messages, 200)
 
@@ -135,30 +154,29 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         messages = []
         while True:
-            resp = yield from consumer.poll(1000)
+            resp = yield from consumer.getmany(timeout_ms=1000)
             for partition, msg_list in resp.items():
                 messages += msg_list
             if len(messages) == 200:
                 break
         self.assert_message_count(messages, 200)
 
-        p1 = (self.topic, 1)
-        consumer.pause(p1)
+        p0 = TopicPartition(self.topic, 0)
+        p1 = TopicPartition(self.topic, 1)
         yield from self.send_messages(0, list(range(0, 100)))
         yield from self.send_messages(1, list(range(100, 200)))
 
         messages = []
         while True:
-            resp = yield from consumer.poll(1000)
+            resp = yield from consumer.getmany(p0, timeout_ms=1000)
             for partition, msg_list in resp.items():
                 messages += msg_list
             if len(messages) == 100:
                 break
         self.assert_message_count(messages, 100)
 
-        consumer.resume(p1)
         while True:
-            resp = yield from consumer.poll(1000)
+            resp = yield from consumer.getmany(p1)
             for partition, msg_list in resp.items():
                 messages += msg_list
             if len(messages) == 200:
@@ -182,7 +200,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         expected_messages = set(small_messages + large_messages)
         actual_messages = []
         for i in range(20):
-            m = yield from consumer.get_message()
+            m = yield from consumer.getone()
             actual_messages.append(m)
         actual_messages = {m.value for m in actual_messages}
         self.assertEqual(expected_messages, set(actual_messages))
@@ -197,13 +215,13 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         consumer = yield from self.consumer_factory(
             max_partition_fetch_bytes=4000)
-        m = yield from consumer.get_message()
+        m = yield from consumer.getone()
         self.assertEqual(m.value, large_messages[0])
 
         with self.assertRaises(RecordTooLargeError):
-            yield from consumer.get_message()
+            yield from consumer.getone()
 
-        m = yield from consumer.get_message()
+        m = yield from consumer.getone()
         self.assertEqual(m.value, small_messages[0])
         yield from consumer.stop()
 
@@ -218,13 +236,13 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer2 = yield from self.consumer_factory()
         result = []
         for i in range(10):
-            msg = yield from consumer1.get_message()
+            msg = yield from consumer1.getone()
             result.append(msg.value)
         yield from consumer1.stop()
 
         # consumer2 should take both partitions after rebalance
         while True:
-            msg = yield from consumer2.get_message()
+            msg = yield from consumer2.getone()
             result.append(msg.value)
             if len(result) == len(available_msgs):
                 break
@@ -236,7 +254,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(set(available_msgs), set(result))
 
     @run_until_complete
-    def test_manual_subscribe(self):
+    def test_subscribe_manual(self):
         msgs1 = yield from self.send_messages(0, range(0, 10))
         msgs2 = yield from self.send_messages(1, range(10, 20))
         available_msgs = msgs1 + msgs2
@@ -249,7 +267,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer.assign([TopicPartition(self.topic, 0)])
         result = []
         for i in range(10):
-            msg = yield from consumer.get_message()
+            msg = yield from consumer.getone()
             result.append(msg.value)
         self.assertEqual(set(result), set(msgs1))
         yield from consumer.commit()
@@ -259,7 +277,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer.unsubscribe()
         consumer.assign([TopicPartition(self.topic, 1)])
         for i in range(10):
-            msg = yield from consumer.get_message()
+            msg = yield from consumer.getone()
             result.append(msg.value)
         yield from consumer.stop()
         self.assertEqual(set(available_msgs), set(result))
@@ -278,7 +296,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from consumer.seek_to_committed()
         result = []
         for i in range(20):
-            msg = yield from consumer.get_message()
+            msg = yield from consumer.getone()
             result.append(msg.value)
         yield from consumer.stop()
         self.assertEqual(set(available_msgs), set(result))

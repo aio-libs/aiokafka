@@ -40,7 +40,7 @@ class AIOKafkaConsumer(object):
             partition assignment (if enabled), and to use for fetching and
             committing offsets. If None, auto-partition assignment (via
             group coordinator) and offset commits are disabled.
-            Default: 'aiokafka-default-group'
+            Default: None
         key_deserializer (callable): Any callable that takes a
             raw message key and returns a deserialized key.
         value_deserializer (callable, optional): Any callable that takes a
@@ -97,8 +97,8 @@ class AIOKafkaConsumer(object):
             rebalances. Default: 3000
         session_timeout_ms (int): The timeout used to detect failures when
             using Kafka's group managementment facilities. Default: 30000
-        consumer_timeout_ms (int): number of millisecond to poll subscribtion
-            changes on consumer group rebalance. Default: 100
+        consumer_timeout_ms (int): number of millisecond to poll available
+            fetched messages. Default: 100
         api_version (str): specify which kafka API version to use.
             AIOKafkaConsumer supports Kafka API versions >=0.9 only.
             If set to 'auto', will attempt to infer the broker version by
@@ -107,7 +107,7 @@ class AIOKafkaConsumer(object):
     def __init__(self, *topics, loop,
                  bootstrap_servers='localhost',
                  client_id='aiokafka-'+__version__,
-                 group_id='aiokafka-default-group',
+                 group_id=None,
                  key_deserializer=None, value_deserializer=None,
                  fetch_max_wait_ms=500,
                  fetch_min_bytes=1,
@@ -180,7 +180,8 @@ class AIOKafkaConsumer(object):
             fetch_min_bytes=self._fetch_min_bytes,
             fetch_max_wait_ms=self._fetch_max_wait_ms,
             max_partition_fetch_bytes=self._max_partition_fetch_bytes,
-            check_crcs=self._check_crcs)
+            check_crcs=self._check_crcs,
+            fetcher_timeout=self._consumer_timeout)
 
         self._coordinator = GroupCoordinator(
             self._client, self._subscription, loop=self._loop,
@@ -382,32 +383,6 @@ class AIOKafkaConsumer(object):
             'Partition is not assigned'
         return self._subscription.assignment[partition].highwater
 
-    def pause(self, *partitions):
-        """Suspend fetching from the import requested partitions.
-
-        Future calls to poll() will not return any records from these
-        import partitions until they have been resumed using resume().
-        Note that this method does not affect partition subscription.
-        In particular, it does not cause a group rebalance
-        when automatic assignment is used.
-
-        Arguments:
-            *partitions (TopicPartition): partitions to pause
-        """
-        for partition in partitions:
-            log.debug("Pausing partition %s", partition)
-            self._subscription.pause(partition)
-
-    def resume(self, *partitions):
-        """Resume fetching from the import specified (paused) partitions.
-
-        Arguments:
-            *partitions (TopicPartition): partitions to resume
-        """
-        for partition in partitions:
-            log.debug("Resuming partition %s", partition)
-            self._subscription.resume(partition)
-
     def seek(self, partition, offset):
         """Manually specify the fetch offset for a TopicPartition.
 
@@ -545,15 +520,22 @@ class AIOKafkaConsumer(object):
         yield from self._fetcher.update_fetch_positions(partitions)
 
     @asyncio.coroutine
-    def get_message(self):
+    def getone(self, *partitions):
         """
         Get one message from Kafka
         If no new messages occured, this method will wait it
+
+        Arguments:
+            partitions (List[TopicPartition]): The partitions that need
+                fetching message. If no one partition specified then all
+                subscribed partitions will be used
 
         Returns:
             instance of collections.namedtuple("ConsumerRecord",
                 ["topic", "partition", "offset", "key", "value"])
         """
+        assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
+
         while True:
             while not self._subscription.assigned_partitions():
                 # no one partition for fetch... waiting consumers rebalance
@@ -563,18 +545,19 @@ class AIOKafkaConsumer(object):
             # fetch positions if we have partitions we're subscribed
             # to that we don't know the offset for
             if not self._subscription.has_all_fetch_positions():
-                partitions = self._subscription.missing_fetch_positions()
-                yield from self._update_fetch_positions(partitions)
+                yield from self._update_fetch_positions(
+                    self._subscription.missing_fetch_positions())
 
-            msg = self._fetcher.next_record()
+            msg = self._fetcher.next_record(partitions)
             if msg is None:
-                yield from self._fetcher.init_fetches()  # waits for fetch
+                yield from asyncio.sleep(
+                    self._consumer_timeout, loop=self._loop)
                 continue
 
             return msg
 
     @asyncio.coroutine
-    def poll(self, timeout_ms=0):
+    def getmany(self, *partitions, timeout_ms=0):
         """Fetch data from assigned topics / partitions.
 
         Records are fetched and returned in batches by topic-partition.
@@ -586,6 +569,9 @@ class AIOKafkaConsumer(object):
         other, not both.
 
         Arguments:
+            partitions (List[TopicPartition]): The partitions that need
+                fetching message. If no one partition specified then all
+                subscribed partitions will be used
             timeout_ms (int, optional): milliseconds spent waiting in poll if
                 data is not available in the buffer. If 0, returns immediately
                 with any records that are available currently in the buffer,
@@ -594,23 +580,23 @@ class AIOKafkaConsumer(object):
             dict: topic to list of records since the last fetch for the
                 subscribed list of topics and partitions
         """
-        assert timeout_ms >= 0, 'Timeout must not be negative'
+        assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
 
         # fetch positions if we have partitions we're subscribed
         # to that we don't know the offset for
         if not self._subscription.has_all_fetch_positions():
-            partitions = self._subscription.missing_fetch_positions()
-            yield from self._update_fetch_positions(partitions)
+            yield from self._update_fetch_positions(
+                self._subscription.missing_fetch_positions())
 
-        records = self._fetcher.fetched_records()
-        if records:
-            return records
+        timeout = timeout_ms / 1000.
+        start_time = self._loop.time()
+        while True:
+            records = self._fetcher.fetched_records(partitions)
+            if records:
+                return records
 
-        fetch_task = self._fetcher.init_fetches()
-        done, _ = yield from asyncio.wait(
-            [fetch_task], timeout=timeout_ms/1000., loop=self._loop)
-        if not done:
-            # timeouted, no new fetched data now
-            return {}
+            yield from asyncio.sleep(self._consumer_timeout, loop=self._loop)
 
-        return self._fetcher.fetched_records()
+            if (self._loop.time() - start_time) >= timeout:
+                # timeouted, no new fetched data now
+                return {}

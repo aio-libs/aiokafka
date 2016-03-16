@@ -32,7 +32,8 @@ class Fetcher:
                  fetch_min_bytes=1,
                  fetch_max_wait_ms=500,
                  max_partition_fetch_bytes=1048576,
-                 check_crcs=True):
+                 check_crcs=True,
+                 fetcher_timeout=0.1):
         """Initialize a Kafka Message Fetcher.
 
         Parameters:
@@ -62,6 +63,8 @@ class Fetcher:
                 consumed. This ensures no on-the-wire or on-disk corruption to
                 the messages occurred. This check adds some overhead, so it may
                 be disabled in cases seeking extreme performance. Default: True
+            fetcher_timeout (float): number of second to poll necessity to send
+                next fetch request. Default: 0.1
         """
         self._client = client
         self._loop = loop
@@ -71,8 +74,9 @@ class Fetcher:
         self._fetch_max_wait_ms = fetch_max_wait_ms
         self._max_partition_fetch_bytes = max_partition_fetch_bytes
         self._check_crcs = check_crcs
+        self._fetcher_timeout = fetcher_timeout
         self._subscriptions = subscriptions
-        self._records = []
+        self._records = collections.defaultdict(list)
         self._unauthorized_topics = set()
         self._offset_out_of_range_partitions = dict()  # {partition: offset}
         self._record_too_large_partitions = dict()  # {partition: offset}
@@ -89,34 +93,31 @@ class Fetcher:
                 pass
             self._fetch_task = None
 
-    def init_fetches(self):
+    def _init_fetches(self):
         """Send FetchRequests asynchronously for all assigned partitions.
         """
         if self._fetch_task is None:
             self._fetch_task = ensure_future(
                 self._fetch_requests_routine(), loop=self._loop)
 
-            def done_task(f):
-                self._fetch_task = None
-            self._fetch_task.add_done_callback(done_task)
-
-        return self._fetch_task
-
     @asyncio.coroutine
     def _fetch_requests_routine(self):
-        futures = []
-        requests = self._create_fetch_requests()
-        for node_id, request in requests.items():
-            if (yield from self._client.ready(node_id)):
-                log.debug("Sending FetchRequest to node %s", node_id)
-                future = ensure_future(
-                    self._proc_fetch_request(node_id, request),
-                    loop=self._loop)
-                futures.append(future)
+        while True:
+            futures = []
+            requests = self._create_fetch_requests()
+            for node_id, request in requests.items():
+                if (yield from self._client.ready(node_id)):
+                    log.debug("Sending FetchRequest to node %s", node_id)
+                    future = ensure_future(
+                        self._proc_fetch_request(node_id, request),
+                        loop=self._loop)
+                    futures.append(future)
 
-        if futures:
-            yield from asyncio.wait(
-                futures, return_when=asyncio.ALL_COMPLETED, loop=self._loop)
+            if futures:
+                yield from asyncio.wait(futures, loop=self._loop)
+            else:
+                yield from asyncio.sleep(
+                    self._fetcher_timeout, loop=self._loop)
 
     @asyncio.coroutine
     def _proc_fetch_request(self, node_id, request):
@@ -164,7 +165,7 @@ class Fetcher:
                         log.debug(
                             "Adding fetched record for partition %s with"
                             " offset %d to buffered record list", tp, position)
-                        self._records.append((fetch_offset, tp, messages))
+                        self._records[tp].append((fetch_offset, messages))
                     elif partial:
                         # we did not read a single message from a non-empty
                         # buffer because that message's size is larger than
@@ -422,92 +423,100 @@ class Fetcher:
                 yield ConsumerRecord(
                     tp.topic, tp.partition, offset, key, value)
 
-    def _message_generator(self):
+    def _message_generator(self, partitions):
         """Iterate over fetched records"""
-        while True:
-            # Check on each iteration since this is a generator
-            self._raise_if_offset_out_of_range()
-            self._raise_if_unauthorized_topics()
-            self._raise_if_record_too_large()
+        # Check on each iteration since this is a generator
+        self._raise_if_offset_out_of_range()
+        self._raise_if_unauthorized_topics()
+        self._raise_if_record_too_large()
 
-            if not self._records:
-                break
+        if not partitions:
+            partitions = list(self._records.keys())
 
-            (fetch_offset, tp, messages) = self._records.pop()
+        for tp in partitions:
+            tp_records = self._records.pop(tp, [])
 
-            if not self._subscriptions.is_assigned(tp):
-                # this can happen when a rebalance happened before
-                # fetched records are returned
-                log.debug("Not returning fetched records for partition %s"
-                          " since it is no longer assigned", tp)
-                continue
+            for fetch_offset, messages in tp_records:
+                if not self._subscriptions.is_assigned(tp):
+                    # this can happen when a rebalance happened before
+                    # fetched records are returned
+                    log.debug("Not returning fetched records for partition %s"
+                              " since it is no longer assigned", tp)
+                    continue
 
-            # note that the consumed position should always be available
-            # as long as the partition is still assigned
-            position = self._subscriptions.assignment[tp].position
-            if not self._subscriptions.is_fetchable(tp):
-                # this can happen when a partition consumption paused before
-                # fetched records are returned
-                log.debug(
-                    "Not returning fetched records for assigned partition"
-                    " %s since it is no longer fetchable", tp)
+                # note that the consumed position should always be available
+                # as long as the partition is still assigned
+                position = self._subscriptions.assignment[tp].position
+                if not self._subscriptions.is_fetchable(tp):
+                    # this can happen when a partition consumption paused
+                    # before fetched records are returned
+                    log.debug(
+                        "Not returning fetched records for assigned partition"
+                        " %s since it is no longer fetchable", tp)
 
-            elif fetch_offset == position:
-                log.debug(
-                    "Returning fetched records at offset %d for assigned"
-                    " partition %s", position, tp)
-                for msg in self._unpack_message_set(tp, messages):
-                    # Because we are in a generator, it is possible for
-                    # subscription state to change between yield calls
-                    # so we need to re-check on each loop
-                    # this should catch assignment changes, pauses
-                    # and resets via seek_to_beginning / seek_to_end
-                    if tp not in self._subscriptions.assignment:
-                        log.debug("Not returning fetched records"
-                                  " bcs partitions are unassigned")
-                        break
-                    position = self._subscriptions.assignment[tp].position
-                    if not self._subscriptions.is_fetchable(tp):
-                        log.debug(
-                            "Not returning fetched records for partition %s"
-                            " since it is no longer fetchable", tp)
-                        break
+                elif fetch_offset == position:
+                    log.debug(
+                        "Returning fetched records at offset %d for assigned"
+                        " partition %s", position, tp)
+                    for msg in self._unpack_message_set(tp, messages):
+                        # Because we are in a generator, it is possible for
+                        # subscription state to change between yield calls
+                        # so we need to re-check on each loop
+                        # this should catch assignment changes, pauses
+                        # and resets via seek_to_beginning / seek_to_end
+                        if tp not in self._subscriptions.assignment:
+                            log.debug("Not returning fetched records"
+                                      " bcs partitions are unassigned")
+                            break
+                        position = self._subscriptions.assignment[tp].position
+                        if not self._subscriptions.is_fetchable(tp):
+                            log.debug(
+                                "Not returning fetched records for partition"
+                                " %s since it is no longer fetchable", tp)
+                            break
 
-                    if self._subscriptions.needs_partition_assignment:
-                        log.debug("Not returning fetched records"
-                                  " bcs partitions are unassigned")
-                        break
+                        if self._subscriptions.needs_partition_assignment:
+                            log.debug("Not returning fetched records"
+                                      " bcs partitions are unassigned")
+                            break
 
-                    # Compressed messagesets may include earlier messages
-                    # It is also possible that the user called seek()
-                    elif msg.offset != position:
-                        continue
+                        # Compressed messagesets may include earlier messages
+                        # It is also possible that the user called seek()
+                        elif msg.offset != position:
+                            continue
 
-                    self._subscriptions.assignment[tp].position += 1
-                    yield msg
-            else:
-                # these records aren't next in line based on the last consumed
-                # position, ignore them they must be from an obsolete request
-                log.debug("Ignoring fetched records for %s at offset %s",
-                          tp, fetch_offset)
+                        self._subscriptions.assignment[tp].position += 1
+                        yield msg
+                else:
+                    # these records aren't next in line based on the last
+                    # consumed position, ignore them they must be from
+                    # an obsolete request
+                    log.debug("Ignoring fetched records for %s at offset %s",
+                              tp, fetch_offset)
 
-    def next_record(self):
+    def next_record(self, partitions):
+        if self._fetch_task is None:
+            self._init_fetches()
+
         while True:
             while self._iterator is None and not self._records:
                 return None
 
             if not self._iterator:
-                self._iterator = self._message_generator()
+                self._iterator = self._message_generator(partitions)
             try:
                 return next(self._iterator)
             except StopIteration:
                 self._iterator = None
                 continue
 
-    def fetched_records(self):
+    def fetched_records(self, partitions):
         """Returns previously fetched records and updates consumed offsets."""
+        if self._fetch_task is None:
+            self._init_fetches()
+
         drained = collections.defaultdict(list)
-        for message in self._message_generator():
+        for message in self._message_generator(partitions):
             tp = TopicPartition(message.topic, message.partition)
             drained[tp].append(message)
         return dict(drained)
@@ -540,6 +549,9 @@ class Fetcher:
             lambda: collections.defaultdict(list))
 
         for partition in self._subscriptions.fetchable_partitions():
+            if partition in self._records:
+                # we still have previous fetched records
+                continue
             node_id = self._client.cluster.leader_for_partition(partition)
             if node_id is None or node_id == -1:
                 log.debug("No leader found for partition %s."
