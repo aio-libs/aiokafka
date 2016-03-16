@@ -41,7 +41,7 @@ AIOKafkaConsumer
 ****************
 
 AIOKafkaConsumer is a high-level, asynchronous message consumer.
-It also interacts with the assigned kafka Group Coordinator nodeto allow multiple consumers to load balance consumption of topics (requires kafka >= 0.9.0.0).
+It interacts with the assigned kafka Group Coordinator node to allow multiple consumers to load balance consumption of topics (requires kafka >= 0.9.0.0).
 
 Example of AIOKafkaConsumer usage:
 
@@ -63,7 +63,7 @@ Example of AIOKafkaConsumer usage:
         loop = asyncio.get_event_loop()
         consumer = AIOKafkaConsumer('topic1', 'topic2', loop=loop, bootstrap_servers='localhost:1234')
         loop.run_until_complete(consumer.start())
-        asyncio.async(consume_task(consumer))
+        c_task = asyncio.async(consume_task(consumer))
         loop.run_until_complete(asyncio.sleep(5))
         loop.run_until_complete(consumer.stop())
         c_task.close()

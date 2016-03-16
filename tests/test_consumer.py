@@ -40,12 +40,14 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @asyncio.coroutine
     def consumer_factory(self, **kwargs):
-        kwargs.setdefault('enable_auto_commit', True)
-        kwargs.setdefault('auto_offset_reset', 'earliest')
+        enable_auto_commit = kwargs.get('enable_auto_commit', True)
+        auto_offset_reset = kwargs.get('auto_offset_reset', 'earliest')
         group = kwargs.pop('group', 'group-%s' % self.id())
         consumer = AIOKafkaConsumer(
             self.topic, loop=self.loop, group_id=group,
             bootstrap_servers=self.hosts,
+            enable_auto_commit=enable_auto_commit,
+            auto_offset_reset=auto_offset_reset,
             **kwargs)
         yield from consumer.start()
         yield from consumer.seek_to_committed()

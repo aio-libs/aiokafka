@@ -75,10 +75,6 @@ class AIOKafkaConsumer(object):
             periodically committed in the background. Default: True.
         auto_commit_interval_ms (int): milliseconds between automatic
             offset commits, if enable_auto_commit is True. Default: 5000.
-        default_offset_commit_callback (callable): called as
-            callback(offsets, response) response will be either an Exception
-            or a OffsetCommitResponse struct. This callback can be used to
-            trigger custom actions when a commit request completes.
         check_crcs (bool): Automatically check the CRC32 of the records
             consumed. This ensures no on-the-wire or on-disk corruption to
             the messages occurred. This check adds some overhead, so it may
@@ -101,15 +97,12 @@ class AIOKafkaConsumer(object):
             rebalances. Default: 3000
         session_timeout_ms (int): The timeout used to detect failures when
             using Kafka's group managementment facilities. Default: 30000
-        consumer_timeout_ms (int): number of millisecond to throw a timeout
-            exception to the consumer if no message is available for
-            consumption. Default: -1 (dont throw exception)
+        consumer_timeout_ms (int): number of millisecond to poll subscribtion
+            changes on consumer group rebalance. Default: 100
         api_version (str): specify which kafka API version to use.
-            0.9 enables full group coordination features; 0.8.2 enables
-            kafka-storage offset commits; 0.8.1 enables zookeeper-storage
-            offset commits; 0.8.0 is what is left. If set to 'auto', will
-            attempt to infer the broker version by probing various APIs.
-            Default: auto
+            AIOKafkaConsumer supports Kafka API versions >=0.9 only.
+            If set to 'auto', will attempt to infer the broker version by
+            probing various APIs. Default: auto
     """
     def __init__(self, *topics, loop,
                  bootstrap_servers='localhost',
@@ -151,7 +144,7 @@ class AIOKafkaConsumer(object):
         self._fetch_min_bytes = fetch_min_bytes
         self._fetch_max_wait_ms = fetch_max_wait_ms
         self._max_partition_fetch_bytes = max_partition_fetch_bytes
-        self._consumer_timeout = consumer_timeout_ms / 100
+        self._consumer_timeout = consumer_timeout_ms / 1000.
         self._check_crcs = check_crcs
         self._subscription = SubscriptionState(auto_offset_reset)
         self._fetcher = None
