@@ -485,8 +485,7 @@ class GroupCoordinator(object):
             return
 
         yield from self.commit_offsets(
-            self._subscription.all_consumed_offsets()
-        )
+            self._subscription.all_consumed_offsets())
 
     @asyncio.coroutine
     def auto_commit_routine(self, interval):
