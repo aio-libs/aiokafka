@@ -156,7 +156,6 @@ class AIOKafkaConsumer(object):
         self._fetcher = None
         self._coordinator = None
         self._closed = False
-        self._iterator = None
         self._loop = loop
         self._topics = topics
 
@@ -564,21 +563,17 @@ class AIOKafkaConsumer(object):
 
     @asyncio.coroutine
     def getmany(self, *partitions, timeout_ms=0):
-        """Fetch data from assigned topics / partitions.
+        """Get messages from assigned topics / partitions.
 
-        Records are fetched and returned in batches by topic-partition.
-        On each poll, consumer will try to use the last consumed offset as the
-        starting offset and fetch sequentially. The last consumed offset can be
-        manually set through seek(partition, offset) or automatically set as
-        the last committed offset for the subscribed list of partitions.
-        Incompatible with iterator interface (get_message) -- use one or the
-        other, not both.
+        Prefetched messages are returned in batches by topic-partition.
+        If messages is not available in the prefetched buffer this method waits
+        `timeout_ms` milliseconds.
 
         Arguments:
             partitions (List[TopicPartition]): The partitions that need
                 fetching message. If no one partition specified then all
                 subscribed partitions will be used
-            timeout_ms (int, optional): milliseconds spent waiting in poll if
+            timeout_ms (int, optional): milliseconds spent waiting if
                 data is not available in the buffer. If 0, returns immediately
                 with any records that are available currently in the buffer,
                 else returns empty. Must not be negative. Default: 0

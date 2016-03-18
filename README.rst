@@ -55,7 +55,7 @@ Example of AIOKafkaConsumer usage:
         def consume_task(consumer):
             while True:
                 try:
-                    msg = yield from consumer.get_message()
+                    msg = yield from consumer.getone()
                     print("consumed: ", msg.topic, msg.partition, msg.offset, msg.value)
                 except KafkaError as err:
                     print("error while consuming message: ", err)
@@ -64,10 +64,12 @@ Example of AIOKafkaConsumer usage:
         consumer = AIOKafkaConsumer('topic1', 'topic2', loop=loop, bootstrap_servers='localhost:1234')
         loop.run_until_complete(consumer.start())
         c_task = asyncio.async(consume_task(consumer))
-        loop.run_until_complete(asyncio.sleep(5))
-        loop.run_until_complete(consumer.stop())
-        c_task.close()
-        loop.close()
+        try:
+            loop.run_forever()
+        finally:
+            loop.run_until_complete(consumer.stop())
+            c_task.close()
+            loop.close()
 
 
 Running tests
