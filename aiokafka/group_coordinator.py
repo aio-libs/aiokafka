@@ -108,11 +108,10 @@ class GroupCoordinator(object):
         self._handle_metadata_update(client.cluster)
         self._cluster.add_listener(self._handle_metadata_update)
 
-        if self.group_id is not None:
-            self.heartbeat_task = ensure_future(
-                self._heartbeat_task_routine(), loop=loop)
+        self.heartbeat_task = ensure_future(
+            self._heartbeat_task_routine(), loop=loop)
 
-        if self._enable_auto_commit and self.group_id is not None:
+        if self._enable_auto_commit:
             interval = self._auto_commit_interval_ms / 1000
             self._auto_commit_task = ensure_future(
                 self.auto_commit_routine(interval), loop=loop)

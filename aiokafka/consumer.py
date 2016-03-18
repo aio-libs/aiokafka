@@ -188,18 +188,20 @@ class AIOKafkaConsumer(object):
             check_crcs=self._check_crcs,
             fetcher_timeout=self._consumer_timeout)
 
-        self._coordinator = GroupCoordinator(
-            self._client, self._subscription, loop=self._loop,
-            group_id=self._group_id,
-            heartbeat_interval_ms=self._heartbeat_interval_ms,
-            retry_backoff_ms=self._retry_backoff_ms,
-            enable_auto_commit=self._enable_auto_commit,
-            auto_commit_interval_ms=self._auto_commit_interval_ms,
-            assignors=self._partition_assignment_strategy)
-
         if self._group_id is not None:
+            # using group coordinator for automatic partitions assignment
+            self._coordinator = GroupCoordinator(
+                self._client, self._subscription, loop=self._loop,
+                group_id=self._group_id,
+                heartbeat_interval_ms=self._heartbeat_interval_ms,
+                retry_backoff_ms=self._retry_backoff_ms,
+                enable_auto_commit=self._enable_auto_commit,
+                auto_commit_interval_ms=self._auto_commit_interval_ms,
+                assignors=self._partition_assignment_strategy)
+
             yield from self._coordinator.ensure_active_group()
         elif self._subscription.needs_partition_assignment:
+            # using manual partitions assignment by topic(s)
             yield from self._client.force_metadata_update()
             partitions = []
             for topic in self._topics:
