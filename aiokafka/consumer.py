@@ -544,24 +544,15 @@ class AIOKafkaConsumer(object):
         assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
 
         while True:
-            while not self._subscription.assigned_partitions():
-                # no one partition for fetch... waiting consumers rebalance
-                yield from asyncio.sleep(
-                    self._consumer_timeout, loop=self._loop)
-
             # fetch positions if we have partitions we're subscribed
             # to that we don't know the offset for
             if not self._subscription.has_all_fetch_positions():
                 yield from self._update_fetch_positions(
                     self._subscription.missing_fetch_positions())
 
-            msg = self._fetcher.next_record(partitions)
-            if msg is None:
-                yield from asyncio.sleep(
-                    self._consumer_timeout, loop=self._loop)
-                continue
-
-            return msg
+            msg = yield from self._fetcher.next_record(partitions)
+            if msg:
+                return msg
 
     @asyncio.coroutine
     def getmany(self, *partitions, timeout_ms=0):

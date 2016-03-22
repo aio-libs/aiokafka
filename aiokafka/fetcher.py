@@ -25,6 +25,72 @@ class RecordTooLargeError(Errors.KafkaError):
     pass
 
 
+class PartitionBuffer:
+    def __init__(self, tp, messages, subscriptions, loop):
+        self._topic_partition = tp
+        self._subscriptions = subscriptions
+        self._loop = loop
+        self._messages = messages
+        self._waiter = asyncio.Future(loop=loop)
+
+    def waiter(self):
+        return self._waiter
+
+    def empty(self):
+        return len(self._messages) == 0
+
+    def getone(self):
+        tp = self._topic_partition
+        if self._subscriptions.needs_partition_assignment and \
+                not self._subscriptions.is_fetchable(tp):
+            # this can happen when a rebalance happened before
+            # fetched records are returned
+            log.debug("Not returning fetched records for partition %s"
+                      " since it is no fetchable (unassigned or paused)", tp)
+            self._messages.clear()
+            self._waiter.set_result(None)
+            return
+
+        while True:
+            if not self._messages:
+                if not self._waiter.done():
+                    self._waiter.set_result(None)
+                return
+
+            msg = self._messages.popleft()
+            if msg.offset == self._subscriptions.assignment[tp].position:
+                # Compressed messagesets may include earlier messages
+                # It is also possible that the user called seek()
+                self._subscriptions.assignment[tp].position += 1
+                return msg
+
+    def getall(self):
+        tp = self._topic_partition
+        if self._subscriptions.needs_partition_assignment and \
+                not self._subscriptions.is_fetchable(tp):
+            # this can happen when a rebalance happened before
+            # fetched records are returned
+            log.debug("Not returning fetched records for partition %s"
+                      " since it is no fetchable (unassigned or paused)", tp)
+            self._messages.clear()
+            self._waiter.set_result(None)
+            return []
+
+        ret_list = []
+        while True:
+            if not self._messages:
+                if not self._waiter.done():
+                    self._waiter.set_result(None)
+                return ret_list
+
+            msg = self._messages.popleft()
+            if msg.offset == self._subscriptions.assignment[tp].position:
+                # Compressed messagesets may include earlier messages
+                # It is also possible that the user called seek()
+                self._subscriptions.assignment[tp].position += 1
+                ret_list.append(msg)
+
+
 class Fetcher:
     def __init__(self, client, subscriptions, *, loop,
                  key_deserializer=None,
@@ -76,56 +142,122 @@ class Fetcher:
         self._check_crcs = check_crcs
         self._fetcher_timeout = fetcher_timeout
         self._subscriptions = subscriptions
-        self._records = collections.defaultdict(list)
+        self._fetches = {}  # {TopicPartition: Future}
+        self._records = {}  # {TopicPartition: PartitionBuffer}
         self._unauthorized_topics = set()
-        self._offset_out_of_range_partitions = dict()  # {partition: offset}
-        self._record_too_large_partitions = dict()  # {partition: offset}
-        self._fetch_task = None
-        self._iterator = None
+        self._fetch_task = ensure_future(
+            self._fetch_requests_routine(), loop=loop)
+        self._error_future = asyncio.Future(loop=loop)
+        self._wait_data_future = asyncio.Future(loop=loop)
 
     @asyncio.coroutine
     def close(self):
-        if self._fetch_task:
-            self._fetch_task.cancel()
-            try:
-                yield from self._fetch_task
-            except asyncio.CancelledError:
-                pass
-            self._fetch_task = None
-
-    def _init_fetches(self):
-        """Send FetchRequests asynchronously for all assigned partitions.
-        """
-        if self._fetch_task is None:
-            self._fetch_task = ensure_future(
-                self._fetch_requests_routine(), loop=self._loop)
+        self._fetch_task.cancel()
+        try:
+            yield from self._fetch_task
+        except asyncio.CancelledError:
+            pass
 
     @asyncio.coroutine
     def _fetch_requests_routine(self):
+        waiters = set()
         while True:
-            futures = []
             requests = self._create_fetch_requests()
             for node_id, request in requests.items():
                 if (yield from self._client.ready(node_id)):
                     log.debug("Sending FetchRequest to node %s", node_id)
-                    future = ensure_future(
+                    task = ensure_future(
                         self._proc_fetch_request(node_id, request),
                         loop=self._loop)
-                    futures.append(future)
+                    waiters.add(task)
 
-            if futures:
-                yield from asyncio.wait(futures, loop=self._loop)
+            if waiters:
+                done_set, waiters = yield from asyncio.wait(
+                    waiters, loop=self._loop,
+                    return_when=asyncio.FIRST_COMPLETED)
+
+                has_new_data = False
+                for results in done_set:
+                    for tp, messages in results.result():
+                        if not messages:
+                            continue
+                        self._records[tp] = PartitionBuffer(
+                            tp, messages, self._subscriptions, loop=self._loop)
+                        has_new_data = True
+
+                if has_new_data:
+                    # we have new data, wake up getters
+                    self._wait_data_future.set_result(None)
+                    self._wait_data_future = asyncio.Future(loop=self._loop)
             else:
-                yield from asyncio.sleep(
-                    self._fetcher_timeout, loop=self._loop)
+                r_waiters = [b.waiter() for b in self._records.values()
+                             if not b.empty()]
+                if r_waiters:
+                    yield from asyncio.wait(
+                        r_waiters, loop=self._loop,
+                        return_when=asyncio.FIRST_COMPLETED)
+                else:
+                    # we have no one assigned partition
+                    yield from asyncio.sleep(
+                        self._fetcher_timeout, loop=self._loop)
+                    if not self._subscriptions.has_all_fetch_positions():
+                        self._wait_data_future.set_result(None)
+                        self._wait_data_future = asyncio.Future(
+                            loop=self._loop)
+
+    def _create_fetch_requests(self):
+        """Create fetch requests for all assigned partitions, grouped by node.
+
+        FetchRequests skipped if no leader, or node has requests in flight
+
+        Returns:
+            dict: {node_id: FetchRequest, ...}
+        """
+        if self._subscriptions.needs_partition_assignment:
+            return {}
+
+        # create the fetch info as a dict of lists of partition info tuples
+        # which can be passed to FetchRequest() via .items()
+        fetchable = collections.defaultdict(
+            lambda: collections.defaultdict(list))
+
+        fetchable_partitions = self._subscriptions.fetchable_partitions()
+        for tp in fetchable_partitions:
+            if tp in self._records and not self._records[tp].empty():
+                continue
+            node_id = self._client.cluster.leader_for_partition(tp)
+            if node_id is None or node_id == -1:
+                log.debug("No leader found for partition %s."
+                          " Requesting metadata update", tp)
+            else:
+                # fetch if there is a leader and no in-flight requests
+                position = self._subscriptions.assignment[tp].position
+                partition_info = (
+                    tp.partition,
+                    position,
+                    self._max_partition_fetch_bytes)
+                fetchable[node_id][tp.topic].append(partition_info)
+                log.debug(
+                    "Adding fetch request for partition %s at offset %d",
+                    tp, position)
+
+        requests = {}
+        for node_id, partition_data in fetchable.items():
+            requests[node_id] = FetchRequest(
+                -1,  # replica_id
+                self._fetch_max_wait_ms,
+                self._fetch_min_bytes,
+                partition_data.items())
+        return requests
 
     @asyncio.coroutine
     def _proc_fetch_request(self, node_id, request):
+        records = []
         try:
             response = yield from self._client.send(node_id, request)
         except Errors.KafkaError as err:
             log.error("Failed fetch messages from %s: %s", node_id, err)
-            return
+            return records
 
         fetch_offsets = {}
         for topic, partitions in request.topics:
@@ -165,12 +297,24 @@ class Fetcher:
                         log.debug(
                             "Adding fetched record for partition %s with"
                             " offset %d to buffered record list", tp, position)
-                        self._records[tp].append((fetch_offset, messages))
+                        try:
+                            messages = collections.deque(
+                                self._unpack_message_set(tp, messages))
+                        except Errors.InvalidMessageError as err:
+                            self._set_error(err)
+                            continue
+                        records.append((tp, messages))
                     elif partial:
                         # we did not read a single message from a non-empty
                         # buffer because that message's size is larger than
                         # fetch size, in this case record this exception
-                        self._record_too_large_partitions[tp] = fetch_offset
+                        self._set_error(RecordTooLargeError(
+                            "There are some messages at [Partition=Offset]: "
+                            "%s=%s whose size is larger than the fetch size %s"
+                            " and hence cannot be ever returned. "
+                            "Increase the fetch size, or decrease the maximum "
+                            "message size the broker will allow.",
+                            tp, fetch_offset, self._max_partition_fetch_bytes))
                         self._subscriptions.assignment[tp].position += 1
 
                 elif error_type in (Errors.NotLeaderForPartitionError,
@@ -181,19 +325,21 @@ class Fetcher:
                     if self._subscriptions.has_default_offset_reset_policy():
                         self._subscriptions.need_offset_reset(tp)
                     else:
-                        self._offset_out_of_range_partitions[tp] = fetch_offset
+                        self._set_error(
+                            Errors.OffsetOutOfRangeError({tp: fetch_offset}))
                     log.info(
                         "Fetch offset %s is out of range, resetting offset",
                         fetch_offset)
                 elif error_type is Errors.TopicAuthorizationFailedError:
-                    log.warn(
-                        "Not authorized to read from topic %s.", tp.topic)
-                    self._unauthorized_topics.add(tp.topic)
+                    log.warn("Not authorized to read from topic %s.", tp.topic)
+                    self._set_error(
+                        Errors.TopicAuthorizationFailedError(tp.topic))
                 elif error_type is Errors.UnknownError:
                     log.warn(
                         "Unknown error fetching data for partition %s", tp)
                 else:
                     log.warn('Unexpected error while fetching data')
+        return records
 
     @asyncio.coroutine
     def update_fetch_positions(self, partitions):
@@ -348,68 +494,61 @@ class Fetcher:
                 " %s", partition, error_type)
             raise error_type(partition)
 
-    def _raise_if_offset_out_of_range(self):
-        """Check FetchResponses for offset out of range.
-
-        Raises:
-            OffsetOutOfRangeError: if any partition from previous FetchResponse
-                contains OffsetOutOfRangeError and the default_reset_policy is
-                None
+    def _set_error(self, error):
+        """Set error future that should be raised when messages are requested
         """
-        if not self._offset_out_of_range_partitions:
-            return
+        if not self._error_future.done():
+            self._error_future.set_result(error)
 
-        current_out_of_range_partitions = {}
+    @asyncio.coroutine
+    def next_record(self, partitions):
+        """Return one fetched records"""
+        if self._error_future.done():
+            # raising error from background task
+            err = self._error_future.result()
+            self._error_future = asyncio.Future(loop=self._loop)
+            raise err
 
-        # filter only the fetchable partitions
-        for partition, offset in self._offset_out_of_range_partitions:
-            if not self._subscriptions.is_fetchable(partition):
-                log.debug("Ignoring fetched records for %s since it is no"
-                          " longer fetchable", partition)
+        if not self._subscriptions.has_all_fetch_positions():
+            # consumer MUST update fetch position(s) for some partitions
+            # in this case
+            return None
+
+        if not partitions:
+            partitions = self._records.keys()
+
+        for tp in list(partitions):
+            if tp not in self._records:
                 continue
-            position = self._subscriptions.assignment[partition].position
-            # ignore partition if the current position != offset
-            # in FetchResponse e.g. after seek()
-            if position is not None and offset == position:
-                current_out_of_range_partitions[partition] = position
+            buf = self._records[tp]
+            message = buf.getone()
+            if message is not None:
+                return message
 
-        self._offset_out_of_range_partitions.clear()
-        if current_out_of_range_partitions:
-            raise Errors.OffsetOutOfRangeError(
-                current_out_of_range_partitions)
+        yield from self._wait_data_future
+        return (yield from self.next_record(partitions))
 
-    def _raise_if_unauthorized_topics(self):
-        """Check FetchResponses for topic authorization failures.
+    def fetched_records(self, partitions):
+        """Returns previously fetched records and updates consumed offsets."""
+        if self._error_future.done():
+            # raising error from background task
+            err = self._error_future.result()
+            self._error_future = asyncio.Future(loop=self._loop)
+            raise err
 
-        Raises:
-            TopicAuthorizationFailedError
-        """
-        if self._unauthorized_topics:
-            topics = set(self._unauthorized_topics)
-            self._unauthorized_topics.clear()
-            raise Errors.TopicAuthorizationFailedError(topics)
+        if not partitions:
+            partitions = self._records.keys()
 
-    def _raise_if_record_too_large(self):
-        """Check FetchResponses for messages larger than the max per partition
+        drained = {}
+        for tp in list(partitions):
+            if tp not in self._records:
+                continue
+            recs = self._records[tp].getall()
+            if not recs:
+                continue
+            drained[tp] = recs
 
-        Raises:
-            RecordTooLargeError: if there is a message larger than fetch size
-        """
-        if not self._record_too_large_partitions:
-            return
-
-        copied_record_too_large_partitions = dict(
-            self._record_too_large_partitions)
-        self._record_too_large_partitions.clear()
-
-        raise RecordTooLargeError(
-            "There are some messages at [Partition=Offset]: %s "
-            " whose size is larger than the fetch size %s"
-            " and hence cannot be ever returned."
-            " Increase the fetch size, or decrease the maximum message"
-            " size the broker will allow.",
-            copied_record_too_large_partitions,
-            self._max_partition_fetch_bytes)
+        return drained
 
     def _unpack_message_set(self, tp, messages):
         for offset, size, msg in messages:
@@ -423,104 +562,6 @@ class Fetcher:
                 yield ConsumerRecord(
                     tp.topic, tp.partition, offset, key, value)
 
-    def _message_generator(self, partitions):
-        """Iterate over fetched records"""
-        # Check on each iteration since this is a generator
-        self._raise_if_offset_out_of_range()
-        self._raise_if_unauthorized_topics()
-        self._raise_if_record_too_large()
-
-        if not partitions:
-            partitions = list(self._records.keys())
-
-        for tp in partitions:
-            tp_records = self._records.pop(tp, [])
-
-            for fetch_offset, messages in tp_records:
-                if not self._subscriptions.is_assigned(tp):
-                    # this can happen when a rebalance happened before
-                    # fetched records are returned
-                    log.debug("Not returning fetched records for partition %s"
-                              " since it is no longer assigned", tp)
-                    continue
-
-                # note that the consumed position should always be available
-                # as long as the partition is still assigned
-                position = self._subscriptions.assignment[tp].position
-                if not self._subscriptions.is_fetchable(tp):
-                    # this can happen when a partition consumption paused
-                    # before fetched records are returned
-                    log.debug(
-                        "Not returning fetched records for assigned partition"
-                        " %s since it is no longer fetchable", tp)
-
-                elif fetch_offset == position:
-                    log.debug(
-                        "Returning fetched records at offset %d for assigned"
-                        " partition %s", position, tp)
-                    for msg in self._unpack_message_set(tp, messages):
-                        # Because we are in a generator, it is possible for
-                        # subscription state to change between yield calls
-                        # so we need to re-check on each loop
-                        # this should catch assignment changes, pauses
-                        # and resets via seek_to_beginning / seek_to_end
-                        if tp not in self._subscriptions.assignment:
-                            log.debug("Not returning fetched records"
-                                      " bcs partitions are unassigned")
-                            break
-                        position = self._subscriptions.assignment[tp].position
-                        if not self._subscriptions.is_fetchable(tp):
-                            log.debug(
-                                "Not returning fetched records for partition"
-                                " %s since it is no longer fetchable", tp)
-                            break
-
-                        if self._subscriptions.needs_partition_assignment:
-                            log.debug("Not returning fetched records"
-                                      " bcs partitions are unassigned")
-                            break
-
-                        # Compressed messagesets may include earlier messages
-                        # It is also possible that the user called seek()
-                        elif msg.offset != position:
-                            continue
-
-                        self._subscriptions.assignment[tp].position += 1
-                        yield msg
-                else:
-                    # these records aren't next in line based on the last
-                    # consumed position, ignore them they must be from
-                    # an obsolete request
-                    log.debug("Ignoring fetched records for %s at offset %s",
-                              tp, fetch_offset)
-
-    def next_record(self, partitions):
-        if self._fetch_task is None:
-            self._init_fetches()
-
-        while True:
-            while self._iterator is None and not self._records:
-                return None
-
-            if not self._iterator:
-                self._iterator = self._message_generator(partitions)
-            try:
-                return next(self._iterator)
-            except StopIteration:
-                self._iterator = None
-                continue
-
-    def fetched_records(self, partitions):
-        """Returns previously fetched records and updates consumed offsets."""
-        if self._fetch_task is None:
-            self._init_fetches()
-
-        drained = collections.defaultdict(list)
-        for message in self._message_generator(partitions):
-            tp = TopicPartition(message.topic, message.partition)
-            drained[tp].append(message)
-        return dict(drained)
-
     def _deserialize(self, msg):
         if self._key_deserializer:
             key = self._key_deserializer(msg.key)
@@ -531,49 +572,3 @@ class Fetcher:
         else:
             value = msg.value
         return key, value
-
-    def _create_fetch_requests(self):
-        """Create fetch requests for all assigned partitions, grouped by node.
-
-        FetchRequests skipped if no leader, or node has requests in flight
-
-        Returns:
-            dict: {node_id: FetchRequest, ...}
-        """
-        if self._subscriptions.needs_partition_assignment:
-            return {}
-
-        # create the fetch info as a dict of lists of partition info tuples
-        # which can be passed to FetchRequest() via .items()
-        fetchable = collections.defaultdict(
-            lambda: collections.defaultdict(list))
-
-        for partition in self._subscriptions.fetchable_partitions():
-            if partition in self._records:
-                # we still have previous fetched records
-                continue
-            node_id = self._client.cluster.leader_for_partition(partition)
-            if node_id is None or node_id == -1:
-                log.debug("No leader found for partition %s."
-                          " Requesting metadata update", partition)
-            else:
-                # fetch if there is a leader and no in-flight requests
-                position = self._subscriptions.assignment[partition].position
-                partition_info = (
-                    partition.partition,
-                    position,
-                    self._max_partition_fetch_bytes
-                )
-                fetchable[node_id][partition.topic].append(partition_info)
-                log.debug(
-                    "Adding fetch request for partition %s at offset %d",
-                    partition, position)
-
-        requests = {}
-        for node_id, partition_data in fetchable.items():
-            requests[node_id] = FetchRequest(
-                -1,  # replica_id
-                self._fetch_max_wait_ms,
-                self._fetch_min_bytes,
-                partition_data.items())
-        return requests
