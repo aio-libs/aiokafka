@@ -151,6 +151,7 @@ class Fetcher:
             self._fetch_requests_routine(), loop=loop)
         self._error_future = asyncio.Future(loop=loop)
         self._wait_data_future = asyncio.Future(loop=loop)
+        self._fetch_waiters = set()
 
     @asyncio.coroutine
     def close(self):
@@ -160,9 +161,13 @@ class Fetcher:
         except asyncio.CancelledError:
             pass
 
+        if self._fetch_waiters:
+            yield from asyncio.wait(self._fetch_waiters,
+                                    timeout=self._fetch_max_wait_ms,
+                                    loop=self._loop)
+
     @asyncio.coroutine
     def _fetch_requests_routine(self):
-        waiters = set()
         while True:
             requests = self._create_fetch_requests()
             for node_id, request in requests.items():
@@ -171,11 +176,11 @@ class Fetcher:
                     task = ensure_future(
                         self._proc_fetch_request(node_id, request),
                         loop=self._loop)
-                    waiters.add(task)
+                    self._fetch_waiters.add(task)
 
-            if waiters:
-                done_set, waiters = yield from asyncio.wait(
-                    waiters, loop=self._loop,
+            if self._fetch_waiters:
+                done_set, self._fetch_waiters = yield from asyncio.wait(
+                    self._fetch_waiters, loop=self._loop,
                     return_when=asyncio.FIRST_COMPLETED)
 
                 has_new_data = False
@@ -523,7 +528,8 @@ class Fetcher:
         yield from self._wait_data_future
         return (yield from self.next_record(partitions))
 
-    def fetched_records(self, partitions):
+    @asyncio.coroutine
+    def fetched_records(self, partitions, timeout=0):
         """Returns previously fetched records and updates consumed offsets."""
         if self._error_future.done():
             # raising error from background task
@@ -543,6 +549,14 @@ class Fetcher:
                 continue
             drained[tp] = recs
 
+        if drained or not timeout:
+            return drained
+
+        done, _ = yield from asyncio.wait(
+            [self._wait_data_future], timeout=timeout, loop=self._loop)
+
+        if done:
+            return (yield from self.fetched_records(partitions, 0))
         return drained
 
     def _unpack_message_set(self, tp, messages):

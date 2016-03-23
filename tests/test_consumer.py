@@ -177,6 +177,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         while True:
             resp = yield from consumer.getmany(p1)
+            yield from asyncio.sleep(0.1, loop=self.loop)
             for partition, msg_list in resp.items():
                 messages += msg_list
             if len(messages) == 200:

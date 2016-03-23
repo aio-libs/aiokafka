@@ -198,7 +198,7 @@ class AIOKafkaConsumer(object):
                 enable_auto_commit=self._enable_auto_commit,
                 auto_commit_interval_ms=self._auto_commit_interval_ms,
                 assignors=self._partition_assignment_strategy)
-            self._coordinator.connect_group_rebalanced(
+            self._coordinator.on_group_rebalanced(
                 self._on_change_subscription)
 
             yield from self._coordinator.ensure_active_group()
@@ -584,14 +584,5 @@ class AIOKafkaConsumer(object):
         assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
 
         timeout = timeout_ms / 1000
-        start_time = self._loop.time()
-        while True:
-            records = self._fetcher.fetched_records(partitions)
-            if records:
-                return records
-
-            yield from asyncio.sleep(self._consumer_timeout, loop=self._loop)
-
-            if (self._loop.time() - start_time) >= timeout:
-                # timeouted, no new fetched data now
-                return {}
+        records = yield from self._fetcher.fetched_records(partitions, timeout)
+        return records

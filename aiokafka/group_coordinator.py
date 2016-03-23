@@ -145,7 +145,7 @@ class GroupCoordinator(object):
             else:
                 log.info("LeaveGroup request succeeded")
 
-    def connect_group_rebalanced(self, callback):
+    def on_group_rebalanced(self, callback):
         self._group_rebalanced_callback = callback
 
     @asyncio.coroutine
