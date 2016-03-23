@@ -178,9 +178,9 @@ class Fetcher:
 
                 has_new_data = any([fut.result() for fut in done_set])
 
-                if has_new_data and self._wait_empty_future is not None:
+                if has_new_data:
                     # we have new data, wake up getters
-                    self._wait_empty_future.set_result(None)
+                    self._notify(self._wait_empty_future)
             else:
                 # no fetches need, try to wait until at least one buffer will
                 # be empty
@@ -194,6 +194,10 @@ class Fetcher:
                     # maybe we have no one assigned partition
                     yield from asyncio.sleep(
                         self._fetcher_timeout, loop=self._loop)
+
+    def _notify(self, future):
+        if future is not None and not future.done():
+            future.set_result(None)
 
     def _create_fetch_requests(self):
         """Create fetch requests for all assigned partitions, grouped by node.
@@ -496,24 +500,22 @@ class Fetcher:
     @asyncio.coroutine
     def next_record(self, partitions):
         """Return one fetched records"""
-        for tp in self._records.keys():
+        for tp in list(self._records.keys()):
             if partitions and tp not in partitions:
                 continue
             res_or_error = self._records[tp]
             if type(res_or_error) == FetchResult:
-                message = buf.getone()
+                message = res_or_error.getone()
                 if message is None:
                     # We already processed all messages, request new ones
                     del self._records[tp]
-                    if self._wait_full_future is not None:
-                        self._wait_full_future.set_result(None)
+                    self._notify(self._wait_full_future)
                 else:
                     return message
             else:
                 # Remove error, so we can fetch on partition again
                 del self._records[tp]
-                if self._wait_full_future is not None:
-                    self._wait_full_future.set_result(None)
+                self._notify(self._wait_full_future)
                 raise res_or_error
         # No messages ready. Wait for some to arrive
         self._wait_empty_future = asyncio.Future(loop=self._loop)
@@ -524,7 +526,7 @@ class Fetcher:
     def fetched_records(self, partitions, timeout=0):
         """Returns previously fetched records and updates consumed offsets."""
         drained = {}
-        for tp in self._records.keys():
+        for tp in list(self._records.keys()):
             if partitions and tp not in partitions:
                 continue
             res_or_error = self._records[tp]
@@ -532,8 +534,7 @@ class Fetcher:
                 drained[tp] = res_or_error.getall()
                 # We processed all messages - request new ones
                 del self._records[tp]
-                if self._wait_full_future is not None:
-                    self._wait_full_future.set_result(None)
+                self._notify(self._wait_full_future)
             else:
                 # We already got some of messages from other partition -
                 # return them. We will raise this error on next call
@@ -542,8 +543,7 @@ class Fetcher:
                 else:
                     # Remove error, so we can fetch on partition again
                     del self._records[tp]
-                    if self._wait_full_future is not None:
-                        self._wait_full_future.set_result(None)
+                    self._notify(self._wait_full_future)
                     raise res_or_error
 
         if drained or not timeout:

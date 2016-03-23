@@ -60,8 +60,8 @@ class AIOKafkaClient:
         self._loop = loop
         self._sync_task = None
 
-        self._md_update_fut = None
-        self._md_update_waiter = None
+        self._md_update_fut = asyncio.Future(loop=self._loop)
+        self._md_update_waiter = asyncio.Future(loop=self._loop)
 
     def __repr__(self):
         return '<AIOKafkaClient client_id=%s>' % self._client_id
@@ -123,23 +123,22 @@ class AIOKafkaClient:
         if self._sync_task is None:
             # starting metadata synchronizer task
             self._sync_task = ensure_future(
-                self._md_synchronizer(), loop=self.loop)
+                self._md_synchronizer(), loop=self._loop)
 
     @asyncio.coroutine
     def _md_synchronizer(self):
         """routine (async task) for synchronize cluster metadata every
         `metadata_max_age_ms` milliseconds"""
         while True:
-            self._md_update_fut = asyncio.Future(loop=self.loop)
-            self._md_update_waiter = asyncio.Future(loop=self.loop)
-
             yield from asyncio.wait(
                 [self._md_update_waiter],
-                timeout=self.metadata_max_age_ms / 1000,
-                loop=self.loop)
+                timeout=self._metadata_max_age_ms / 1000,
+                loop=self._loop)
 
-            yield from self._metadata_update(self.cluster, self._topics)
-            self._md_update_fut.set_result(None)
+            self._md_update_waiter = asyncio.Future(loop=self._loop)
+            ret = yield from self._metadata_update(self.cluster, self._topics)
+            self._md_update_fut.set_result(ret)
+            self._md_update_fut = asyncio.Future(loop=self._loop)
 
     def get_random_node(self):
         """choice random node from known cluster brokers
