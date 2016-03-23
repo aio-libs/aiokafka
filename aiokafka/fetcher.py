@@ -141,10 +141,7 @@ class Fetcher:
     @asyncio.coroutine
     def close(self):
         self._fetch_task.cancel()
-        try:
-            yield from self._fetch_task
-        except asyncio.CancelledError:
-            pass
+        yield from self._fetch_task
 
         for x in self._fetch_waiters:
             x.cancel()
@@ -155,44 +152,49 @@ class Fetcher:
 
     @asyncio.coroutine
     def _fetch_requests_routine(self):
-        while True:
-            requests = self._create_fetch_requests()
-            for node_id, tps, request in requests:
-                node_ready = yield from self._client.ready(node_id)
-                if not node_ready:
-                    # We will request it on next routine
-                    continue
-                log.debug("Sending FetchRequest to node %s", node_id)
-                task = ensure_future(
-                    self._proc_fetch_request(node_id, request),
-                    loop=self._loop)
-                self._fetch_waiters.add(task)
-                for tp in tps:
-                    self._in_flight.add(tp)
+        try:
+            while True:
+                requests = self._create_fetch_requests()
+                for node_id, tps, request in requests:
+                    node_ready = yield from self._client.ready(node_id)
+                    if not node_ready:
+                        # We will request it on next routine
+                        continue
+                    log.debug("Sending FetchRequest to node %s", node_id)
+                    task = ensure_future(
+                        self._proc_fetch_request(node_id, request),
+                        loop=self._loop)
+                    self._fetch_waiters.add(task)
+                    for tp in tps:
+                        self._in_flight.add(tp)
 
-            if self._fetch_waiters:
-                done_set, self._fetch_waiters = yield from asyncio.wait(
-                    self._fetch_waiters, loop=self._loop,
-                    timeout=self._fetcher_timeout,
-                    return_when=asyncio.FIRST_COMPLETED)
-
-                has_new_data = any([fut.result() for fut in done_set])
-                if has_new_data:
-                    # we have new data, wake up getters
-                    self._notify(self._wait_empty_future)
-            else:
-                # no fetches need, try to wait until at least one buffer will
-                # be empty
-                self._wait_full_future = asyncio.Future(loop=self._loop)
-                if self._records:
-                    yield from asyncio.wait(
-                        [self._wait_full_future], loop=self._loop,
+                if self._fetch_waiters:
+                    done_set, self._fetch_waiters = yield from asyncio.wait(
+                        self._fetch_waiters, loop=self._loop,
                         timeout=self._fetcher_timeout,
                         return_when=asyncio.FIRST_COMPLETED)
+
+                    has_new_data = any([fut.result() for fut in done_set])
+                    if has_new_data:
+                        # we have new data, wake up getters
+                        self._notify(self._wait_empty_future)
                 else:
-                    # maybe we have no one assigned partition
-                    yield from asyncio.sleep(
-                        self._fetcher_timeout, loop=self._loop)
+                    # no fetches need, try to wait until at least one buffer
+                    # will be empty
+                    self._wait_full_future = asyncio.Future(loop=self._loop)
+                    if self._records:
+                        yield from asyncio.wait(
+                            [self._wait_full_future], loop=self._loop,
+                            timeout=self._fetcher_timeout,
+                            return_when=asyncio.FIRST_COMPLETED)
+                    else:
+                        # maybe we have no one assigned partition
+                        yield from asyncio.sleep(
+                            self._fetcher_timeout, loop=self._loop)
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa
+            log.error("Unexpected error in fetcher routine", exc_info=True)
 
     def _notify(self, future):
         if future is not None and not future.done():
