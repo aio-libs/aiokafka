@@ -107,6 +107,7 @@ class GroupCoordinator(object):
         # update subscribe state usint currently known metadata
         self._handle_metadata_update(client.cluster)
         self._cluster.add_listener(self._handle_metadata_update)
+        self._group_rebalanced_callback = None
 
         self.heartbeat_task = ensure_future(
             self._heartbeat_task_routine(), loop=loop)
@@ -143,6 +144,9 @@ class GroupCoordinator(object):
                 log.error("LeaveGroup request failed: %s", err)
             else:
                 log.info("LeaveGroup request succeeded")
+
+    def connect_group_rebalanced(self, callback):
+        self._group_rebalanced_callback = callback
 
     @asyncio.coroutine
     def _send_req(self, node_id, request):
@@ -275,6 +279,9 @@ class GroupCoordinator(object):
             except Exception:
                 log.exception("User provided listener failed on partition"
                               " assignment: %s", assigned)
+
+        if self._group_rebalanced_callback:
+            self._group_rebalanced_callback()
 
     @asyncio.coroutine
     def refresh_committed_offsets(self):

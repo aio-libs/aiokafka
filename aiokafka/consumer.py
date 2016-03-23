@@ -8,7 +8,7 @@ from kafka.consumer.subscription_state import SubscriptionState
 from aiokafka.client import AIOKafkaClient
 from aiokafka.group_coordinator import GroupCoordinator
 from aiokafka.fetcher import Fetcher
-from aiokafka import __version__
+from aiokafka import __version__,  ensure_future
 
 log = logging.getLogger(__name__)
 
@@ -198,6 +198,8 @@ class AIOKafkaConsumer(object):
                 enable_auto_commit=self._enable_auto_commit,
                 auto_commit_interval_ms=self._auto_commit_interval_ms,
                 assignors=self._partition_assignment_strategy)
+            self._coordinator.connect_group_rebalanced(
+                self._on_change_subscription)
 
             yield from self._coordinator.ensure_active_group()
         elif self._subscription.needs_partition_assignment:
@@ -210,6 +212,8 @@ class AIOKafkaConsumer(object):
                     partitions.append(TopicPartition(topic, p_id))
             self._subscription.unsubscribe()
             self._subscription.assign_from_user(partitions)
+            yield from self._update_fetch_positions(
+                self._subscription.missing_fetch_positions())
 
     def assign(self, partitions):
         """Manually assign a list of TopicPartitions to this consumer.
@@ -235,6 +239,7 @@ class AIOKafkaConsumer(object):
             and topic metadata change.
         """
         self._subscription.assign_from_user(partitions)
+        self._on_change_subscription()
         self._client.set_topics([tp.topic for tp in partitions])
 
     def assignment(self):
@@ -526,6 +531,16 @@ class AIOKafkaConsumer(object):
         # then do any offset lookups in case some positions are not known
         yield from self._fetcher.update_fetch_positions(partitions)
 
+    def _on_change_subscription(self):
+        """This is `group rebalanced` signal handler for update fetch positions
+        of assigned partitions"""
+        # fetch positions if we have partitions we're subscribed
+        # to that we don't know the offset for
+        if not self._subscription.has_all_fetch_positions():
+            ensure_future(self._update_fetch_positions(
+                self._subscription.missing_fetch_positions()),
+                loop=self._loop)
+
     @asyncio.coroutine
     def getone(self, *partitions):
         """
@@ -543,16 +558,8 @@ class AIOKafkaConsumer(object):
         """
         assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
 
-        while True:
-            # fetch positions if we have partitions we're subscribed
-            # to that we don't know the offset for
-            if not self._subscription.has_all_fetch_positions():
-                yield from self._update_fetch_positions(
-                    self._subscription.missing_fetch_positions())
-
-            msg = yield from self._fetcher.next_record(partitions)
-            if msg:
-                return msg
+        msg = yield from self._fetcher.next_record(partitions)
+        return msg
 
     @asyncio.coroutine
     def getmany(self, *partitions, timeout_ms=0):
@@ -575,12 +582,6 @@ class AIOKafkaConsumer(object):
                 subscribed list of topics and partitions
         """
         assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
-
-        # fetch positions if we have partitions we're subscribed
-        # to that we don't know the offset for
-        if not self._subscription.has_all_fetch_positions():
-            yield from self._update_fetch_positions(
-                self._subscription.missing_fetch_positions())
 
         timeout = timeout_ms / 1000
         start_time = self._loop.time()

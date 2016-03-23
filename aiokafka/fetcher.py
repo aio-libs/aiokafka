@@ -41,14 +41,15 @@ class PartitionBuffer:
 
     def getone(self):
         tp = self._topic_partition
-        if self._subscriptions.needs_partition_assignment and \
+        if self._subscriptions.needs_partition_assignment or \
                 not self._subscriptions.is_fetchable(tp):
             # this can happen when a rebalance happened before
             # fetched records are returned
             log.debug("Not returning fetched records for partition %s"
                       " since it is no fetchable (unassigned or paused)", tp)
             self._messages.clear()
-            self._waiter.set_result(None)
+            if not self._waiter.done():
+                self._waiter.set_result(None)
             return
 
         while True:
@@ -66,14 +67,15 @@ class PartitionBuffer:
 
     def getall(self):
         tp = self._topic_partition
-        if self._subscriptions.needs_partition_assignment and \
+        if self._subscriptions.needs_partition_assignment or \
                 not self._subscriptions.is_fetchable(tp):
             # this can happen when a rebalance happened before
             # fetched records are returned
             log.debug("Not returning fetched records for partition %s"
                       " since it is no fetchable (unassigned or paused)", tp)
             self._messages.clear()
-            self._waiter.set_result(None)
+            if not self._waiter.done():
+                self._waiter.set_result(None)
             return []
 
         ret_list = []
@@ -190,6 +192,8 @@ class Fetcher:
                     self._wait_data_future.set_result(None)
                     self._wait_data_future = asyncio.Future(loop=self._loop)
             else:
+                # no fetches need, try to wait until at least one buffer will
+                # be empty
                 r_waiters = [b.waiter() for b in self._records.values()
                              if not b.empty()]
                 if r_waiters:
@@ -197,13 +201,9 @@ class Fetcher:
                         r_waiters, loop=self._loop,
                         return_when=asyncio.FIRST_COMPLETED)
                 else:
-                    # we have no one assigned partition
+                    # maybe we have no one assigned partition
                     yield from asyncio.sleep(
                         self._fetcher_timeout, loop=self._loop)
-                    if not self._subscriptions.has_all_fetch_positions():
-                        self._wait_data_future.set_result(None)
-                        self._wait_data_future = asyncio.Future(
-                            loop=self._loop)
 
     def _create_fetch_requests(self):
         """Create fetch requests for all assigned partitions, grouped by node.
@@ -508,11 +508,6 @@ class Fetcher:
             err = self._error_future.result()
             self._error_future = asyncio.Future(loop=self._loop)
             raise err
-
-        if not self._subscriptions.has_all_fetch_positions():
-            # consumer MUST update fetch position(s) for some partitions
-            # in this case
-            return None
 
         if not partitions:
             partitions = self._records.keys()
