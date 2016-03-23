@@ -60,6 +60,9 @@ class AIOKafkaClient:
         self._loop = loop
         self._sync_task = None
 
+        self._md_update_fut = None
+        self._md_update_waiter = None
+
     def __repr__(self):
         return '<AIOKafkaClient client_id=%s>' % self._client_id
 
@@ -127,14 +130,16 @@ class AIOKafkaClient:
         """routine (async task) for synchronize cluster metadata every
         `metadata_max_age_ms` milliseconds"""
         while True:
-            while True:
-                ttl = self.cluster.ttl() / 1000
-                if ttl == 0:
-                    break
-                log.debug("metadata synchronizer sleep for %s sec", ttl)
-                yield from asyncio.sleep(ttl, loop=self.loop)
+            self._md_update_fut = asyncio.Future(loop=self.loop)
+            self._md_update_waiter = asyncio.Future(loop=self.loop)
 
-            yield from self.force_metadata_update()
+            yield from asyncio.wait(
+                [self._md_update_waiter],
+                timeout=self.metadata_max_age_ms / 1000,
+                loop=self.loop)
+
+            yield from self._metadata_update(self.cluster, self._topics)
+            self._md_update_fut.set_result(None)
 
     def get_random_node(self):
         """choice random node from known cluster brokers
@@ -178,14 +183,17 @@ class AIOKafkaClient:
             return False
         return True
 
-    @asyncio.coroutine
     def force_metadata_update(self):
         """Update cluster metadata
 
         Returns:
             True/False - metadata updated or not
         """
-        return (yield from self._metadata_update(self.cluster, self._topics))
+        # Wake up the `_md_synchronizer` task
+        if not self._md_update_waiter.done():
+            self._md_update_waiter.set_result(None)
+        # Metadata will be updated in the background by syncronizer
+        return self._md_update_fut
 
     @asyncio.coroutine
     def fetch_all_metadata(self):
@@ -216,7 +224,7 @@ class AIOKafkaClient:
         if set(topics).difference(self._topics):
             self._topics = set(topics)
             # update metadata in async manner
-            ensure_future(self.force_metadata_update(), loop=self.loop)
+            self.force_metadata_update()
 
     @property
     def loop(self):

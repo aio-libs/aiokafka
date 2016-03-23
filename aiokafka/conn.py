@@ -125,7 +125,8 @@ class AIOKafkaConnection:
                     error = Errors.CorrelationIdError(
                         'Correlation ids do not match: sent {}, recv {}'
                         .format(correlation_id, recv_correlation_id))
-                    fut.set_exception(error)
+                    if not fut.done():
+                        fut.set_exception(error)
                     self.close()
                     break
 
