@@ -797,7 +797,7 @@ class GroupCoordinator(object):
             request = HeartbeatRequest(
                 self.group_id, self.generation, self.member_id)
             log.debug("Heartbeat: %s[%s] %s",
-                    self.group_id, self.generation, self.member_id)
+                      self.group_id, self.generation, self.member_id)
 
             try:
                 yield from self._send_req(self.coordinator_id, request)
@@ -840,4 +840,3 @@ class GroupCoordinator(object):
                     "Heartbeat session expired - marking coordinator dead")
                 self.coordinator_dead()
                 continue
-

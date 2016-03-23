@@ -177,7 +177,6 @@ class Fetcher:
                     return_when=asyncio.FIRST_COMPLETED)
 
                 has_new_data = any([fut.result() for fut in done_set])
-
                 if has_new_data:
                     # we have new data, wake up getters
                     self._notify(self._wait_empty_future)
@@ -248,17 +247,22 @@ class Fetcher:
                 partition_data.items())
             tps = []
             for topic, partition_info in partition_data.items():
-                tps.append(TopicPartition(topic, partition_info[0]))
+                for partition, _, _ in partition_info:
+                    tps.append(TopicPartition(topic, partition))
             requests.append((node_id, tps, req))
         return requests
 
     @asyncio.coroutine
     def _proc_fetch_request(self, node_id, request):
-        has_data = False
+        needs_wakeup = False
         try:
             response = yield from self._client.send(node_id, request)
         except Errors.KafkaError as err:
             log.error("Failed fetch messages from %s: %s", node_id, err)
+            for topic, partitions in request.topics:
+                for partition, _, _ in partitions:
+                    tp = TopicPartition(topic, partition)
+                    self._in_flight.remove(tp)
             return False
 
         fetch_offsets = {}
@@ -269,6 +273,7 @@ class Fetcher:
         for topic, partitions in response.topics:
             for partition, error_code, highwater, messages in partitions:
                 tp = TopicPartition(topic, partition)
+                self._in_flight.remove(tp)
                 error_type = Errors.for_code(error_code)
                 if not self._subscriptions.is_fetchable(tp):
                     # this can happen when a rebalance happened
@@ -295,25 +300,26 @@ class Fetcher:
                             messages = collections.deque(
                                 self._unpack_message_set(tp, messages))
                         except Errors.InvalidMessageError as err:
-                            self._set_error(tp, err)
+                            self._records[tp] = err
                             continue
 
                         self._records[tp] = FetchResult(
                             tp, messages=messages,
                             subscriptions=self._subscriptions)
                         # We added at least 1 successful record
-                        has_data = True
+                        needs_wakeup = True
                     elif partial:
                         # we did not read a single message from a non-empty
                         # buffer because that message's size is larger than
                         # fetch size, in this case record this exception
-                        self._set_error(tp, RecordTooLargeError(
+                        self._records[tp] = RecordTooLargeError(
                             "There are some messages at [Partition=Offset]: "
                             "%s=%s whose size is larger than the fetch size %s"
                             " and hence cannot be ever returned. "
                             "Increase the fetch size, or decrease the maximum "
                             "message size the broker will allow.",
-                            tp, fetch_offset, self._max_partition_fetch_bytes))
+                            tp, fetch_offset, self._max_partition_fetch_bytes)
+                        needs_wakeup = True
                         self._subscriptions.assignment[tp].position += 1
 
                 elif error_type in (Errors.NotLeaderForPartitionError,
@@ -325,24 +331,23 @@ class Fetcher:
                         self._subscriptions.need_offset_reset(tp)
                     else:
                         err = Errors.OffsetOutOfRangeError({tp: fetch_offset})
-                        self._set_error(tp, err)
+                        self._records[tp] = err
+                        needs_wakeup = True
                     log.info(
                         "Fetch offset %s is out of range, resetting offset",
                         fetch_offset)
                 elif error_type is Errors.TopicAuthorizationFailedError:
                     log.warn("Not authorized to read from topic %s.", tp.topic)
                     err = Errors.TopicAuthorizationFailedError(tp.topic)
-                    self._set_error(tp, err)
+                    self._records[tp] = err
+                    needs_wakeup = True
                 elif error_type is Errors.UnknownError:
                     log.warn(
                         "Unknown error fetching data for partition %s", tp)
                 else:
                     log.warn(
                         'Unexpected error while fetching data %s', error_type)
-        return has_data
-
-    def _set_error(self, tp, error):
-        self._records[tp] = error
+        return needs_wakeup
 
     @asyncio.coroutine
     def update_fetch_positions(self, partitions):
