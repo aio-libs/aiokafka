@@ -61,6 +61,15 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         yield from producer.stop()
 
     @run_until_complete
+    def test_producer_send_noack(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts, acks=0)
+        yield from producer.start()
+        yield from self.wait_topic(producer.client, self.topic)
+        resp = yield from producer.send(self.topic, b'hello, Kafka!')
+        self.assertEqual(resp, None)
+
+    @run_until_complete
     def test_producer_send_with_serializer(self):
         def key_serializer(val):
             return val.upper().encode()

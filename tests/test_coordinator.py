@@ -18,7 +18,7 @@ from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 
 
-class TestRebalanceListener(ConsumerRebalanceListener):
+class RebalanceListenerForTest(ConsumerRebalanceListener):
     def __init__(self):
         self.revoked = []
         self.assigned = []
@@ -212,7 +212,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         yield from client.bootstrap()
 
-        test_listener = TestRebalanceListener()
+        test_listener = RebalanceListenerForTest()
         subscription = SubscriptionState('latest')
         subscription.subscribe(pattern='st-topic*', listener=test_listener)
         coordinator = GroupCoordinator(

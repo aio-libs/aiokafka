@@ -80,10 +80,12 @@ class TestAIOKafkaClient(unittest.TestCase):
         mocked_conns[0].send.side_effect = send
         client = AIOKafkaClient(loop=self.loop,
                                 bootstrap_servers=['broker_1:4567'])
+        task = asyncio.async(client._md_synchronizer(), loop=self.loop)
         client._conns = mocked_conns
         client.cluster.update_metadata(MetadataResponse(brokers[:1], []))
 
         self.loop.run_until_complete(client.force_metadata_update())
+        task.cancel()
 
         md = client.cluster
         c_brokers = md.brokers()
@@ -178,9 +180,9 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
             metadata_max_age_ms=100)
 
         with mock.patch.object(
-                AIOKafkaClient, 'force_metadata_update') as mocked:
+                AIOKafkaClient, '_metadata_update') as mocked:
             @asyncio.coroutine
-            def dummy():
+            def dummy(*d, **kw):
                 client.cluster.failed_update(None)
             mocked.side_effect = dummy
 
@@ -189,7 +191,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
             yield from client.close()
 
             self.assertNotEqual(
-                len(client.force_metadata_update.mock_calls), 0)
+                len(client._metadata_update.mock_calls), 0)
 
     @run_until_complete
     def test_metadata_update_fail(self):
