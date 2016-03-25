@@ -225,10 +225,6 @@ class AIOKafkaClient:
             # update metadata in async manner
             self.force_metadata_update()
 
-    @property
-    def loop(self):
-        return self._loop
-
     @asyncio.coroutine
     def _get_conn(self, node_id):
         "Get or create a connection to a broker using host and port"

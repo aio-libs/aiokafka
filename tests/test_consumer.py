@@ -3,7 +3,7 @@ from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.fetcher import RecordTooLargeError
 
-from kafka.common import TopicPartition, IllegalStateError
+from kafka.common import TopicPartition, OffsetAndMetadata, IllegalStateError
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, random_string)
 
@@ -291,7 +291,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         consumer = AIOKafkaConsumer(
             loop=self.loop, group_id='test-group',
-            bootstrap_servers=self.hosts, auto_offset_reset='earliest')
+            bootstrap_servers=self.hosts, auto_offset_reset='earliest',
+            enable_auto_commit=False)
         consumer.subscribe(pattern="topic-test_manual_subs*")
         yield from consumer.start()
         yield from consumer.seek_to_committed()
@@ -299,5 +300,29 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         for i in range(20):
             msg = yield from consumer.getone()
             result.append(msg.value)
-        yield from consumer.stop()
         self.assertEqual(set(available_msgs), set(result))
+
+        yield from consumer.commit(
+            {TopicPartition(self.topic, 0): OffsetAndMetadata(9, '')})
+        yield from consumer.seek_to_committed(TopicPartition(self.topic, 0))
+        msg = yield from consumer.getone()
+        self.assertEqual(msg.value, b'9')
+        yield from consumer.commit(
+            {TopicPartition(self.topic, 0): OffsetAndMetadata(10, '')})
+        yield from consumer.stop()
+
+        # subscribe by topic
+        consumer = AIOKafkaConsumer(
+            loop=self.loop, group_id='test-group',
+            bootstrap_servers=self.hosts, auto_offset_reset='earliest',
+            enable_auto_commit=False)
+        consumer.subscribe(topics=(self.topic,))
+        yield from consumer.start()
+        yield from consumer.seek_to_committed()
+        result = []
+        for i in range(10):
+            msg = yield from consumer.getone()
+            result.append(msg.value)
+        self.assertEqual(set(msgs2), set(result))
+        self.assertEqual(consumer.subscription(), set([self.topic]))
+        yield from consumer.stop()

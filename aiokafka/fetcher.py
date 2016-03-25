@@ -141,7 +141,10 @@ class Fetcher:
     @asyncio.coroutine
     def close(self):
         self._fetch_task.cancel()
-        yield from self._fetch_task
+        try:
+            yield from self._fetch_task
+        except asyncio.CancelledError:
+            pass
 
         for x in self._fetch_waiters:
             x.cancel()
@@ -343,12 +346,9 @@ class Fetcher:
                     err = Errors.TopicAuthorizationFailedError(tp.topic)
                     self._records[tp] = err
                     needs_wakeup = True
-                elif error_type is Errors.UnknownError:
-                    log.warn(
-                        "Unknown error fetching data for partition %s", tp)
                 else:
-                    log.warn(
-                        'Unexpected error while fetching data %s', error_type)
+                    log.warn('Unexpected error while fetching data: %s',
+                             error_type.__name__)
         return needs_wakeup
 
     @asyncio.coroutine
@@ -389,8 +389,10 @@ class Fetcher:
                 self._subscriptions.seek(tp, committed)
 
         if futures:
-            yield from asyncio.wait(
+            done, _ = yield from asyncio.wait(
                 futures, return_when=asyncio.ALL_COMPLETED, loop=self._loop)
+            # retrieve task result, can raise exception
+            [x.result() for x in done]
 
     @asyncio.coroutine
     def _reset_offset(self, partition):
@@ -406,10 +408,8 @@ class Fetcher:
         timestamp = self._subscriptions.assignment[partition].reset_strategy
         if timestamp is OffsetResetStrategy.EARLIEST:
             strategy = 'earliest'
-        elif timestamp is OffsetResetStrategy.LATEST:
-            strategy = 'latest'
         else:
-            raise NoOffsetForPartitionError(partition)
+            strategy = 'latest'
 
         log.debug("Resetting offset for partition %s to %s offset.",
                   partition, strategy)

@@ -97,6 +97,11 @@ def loop(request):
 
 
 @pytest.fixture(scope='class')
+def setup_test_class_serverless(request, loop):
+    request.cls.loop = loop
+
+
+@pytest.fixture(scope='class')
 def setup_test_class(request, loop, kafka_server):
     request.cls.loop = loop
     request.cls.kafka_host, request.cls.kafka_port = kafka_server
