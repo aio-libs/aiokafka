@@ -158,7 +158,7 @@ class Fetcher:
         try:
             while True:
                 requests = self._create_fetch_requests()
-                for node_id, tps, request in requests:
+                for node_id, request in requests:
                     node_ready = yield from self._client.ready(node_id)
                     if not node_ready:
                         # We will request it on next routine
@@ -168,8 +168,7 @@ class Fetcher:
                         self._proc_fetch_request(node_id, request),
                         loop=self._loop)
                     self._fetch_waiters.add(task)
-                    for tp in tps:
-                        self._in_flight.add(tp)
+                    self._in_flight.add(node_id)
 
                 if self._fetch_waiters:
                     done_set, self._fetch_waiters = yield from asyncio.wait(
@@ -224,10 +223,10 @@ class Fetcher:
             if tp in self._records:
                 # We have some prefetched data already
                 continue
-            if tp in self._in_flight:
+            node_id = self._client.cluster.leader_for_partition(tp)
+            if node_id in self._in_flight:
                 # We have in-flight requests to this node
                 continue
-            node_id = self._client.cluster.leader_for_partition(tp)
             if node_id is None or node_id == -1:
                 log.debug("No leader found for partition %s."
                           " Waiting metadata update", tp)
@@ -250,11 +249,7 @@ class Fetcher:
                 self._fetch_max_wait_ms,
                 self._fetch_min_bytes,
                 partition_data.items())
-            tps = []
-            for topic, partition_info in partition_data.items():
-                for partition, _, _ in partition_info:
-                    tps.append(TopicPartition(topic, partition))
-            requests.append((node_id, tps, req))
+            requests.append((node_id, req))
         return requests
 
     @asyncio.coroutine
@@ -264,11 +259,9 @@ class Fetcher:
             response = yield from self._client.send(node_id, request)
         except Errors.KafkaError as err:
             log.error("Failed fetch messages from %s: %s", node_id, err)
-            for topic, partitions in request.topics:
-                for partition, _, _ in partitions:
-                    tp = TopicPartition(topic, partition)
-                    self._in_flight.remove(tp)
             return False
+        finally:
+            self._in_flight.remove(node_id)
 
         fetch_offsets = {}
         for topic, partitions in request.topics:
@@ -278,7 +271,6 @@ class Fetcher:
         for topic, partitions in response.topics:
             for partition, error_code, highwater, messages in partitions:
                 tp = TopicPartition(topic, partition)
-                self._in_flight.remove(tp)
                 error_type = Errors.for_code(error_code)
                 if not self._subscriptions.is_fetchable(tp):
                     # this can happen when a rebalance happened
