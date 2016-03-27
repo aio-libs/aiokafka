@@ -242,9 +242,9 @@ class AIOKafkaClient:
                       node_id, broker.host, broker.port)
 
             self._conns[node_id] = yield from create_conn(
-                    broker.host, broker.port, loop=self._loop,
-                    client_id=self._client_id,
-                    request_timeout_ms=self._request_timeout_ms)
+                broker.host, broker.port, loop=self._loop,
+                client_id=self._client_id,
+                request_timeout_ms=self._request_timeout_ms)
         except (OSError, asyncio.TimeoutError) as err:
             log.error('Unable connect to node with id %s: %s', node_id, err)
             return None
