@@ -62,6 +62,7 @@ class AIOKafkaClient:
 
         self._md_update_fut = asyncio.Future(loop=self._loop)
         self._md_update_waiter = asyncio.Future(loop=self._loop)
+        self._get_conn_lock = asyncio.Lock(loop=loop)
 
     def __repr__(self):
         return '<AIOKafkaClient client_id=%s>' % self._client_id
@@ -161,6 +162,7 @@ class AIOKafkaClient:
         random.shuffle(nodeids)
         for node_id in nodeids:
             conn = yield from self._get_conn(node_id)
+
             if conn is None:
                 continue
             log.debug("Sending metadata request %s to %s",
@@ -241,10 +243,13 @@ class AIOKafkaClient:
             log.debug("Initiating connection to node %s at %s:%s",
                       node_id, broker.host, broker.port)
 
-            self._conns[node_id] = yield from create_conn(
-                broker.host, broker.port, loop=self._loop,
-                client_id=self._client_id,
-                request_timeout_ms=self._request_timeout_ms)
+            with (yield from self._get_conn_lock):
+                if node_id in self._conns:
+                    return self._conns[node_id]
+                self._conns[node_id] = yield from create_conn(
+                    broker.host, broker.port, loop=self._loop,
+                    client_id=self._client_id,
+                    request_timeout_ms=self._request_timeout_ms)
         except (OSError, asyncio.TimeoutError) as err:
             log.error('Unable connect to node with id %s: %s', node_id, err)
             return None
