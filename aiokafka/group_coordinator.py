@@ -101,17 +101,19 @@ class GroupCoordinator(object):
         self._subscription = subscription
         self._partitions_per_topic = {}
         self._cluster = client.cluster
-        self._cluster.request_update()
-        self._cluster.add_listener(self._handle_metadata_update)
         self._auto_commit_task = None
         # _closing future used as a signal to heartbeat task for finish ASAP
         self._closing = asyncio.Future(loop=loop)
+        # update subscribe state usint currently known metadata
+        self._handle_metadata_update(client.cluster)
+        self._cluster.add_listener(self._handle_metadata_update)
+        self._group_rebalanced_callback = None
 
         self.heartbeat_task = ensure_future(
             self._heartbeat_task_routine(), loop=loop)
 
         if self._enable_auto_commit:
-            interval = self._auto_commit_interval_ms / 1000.0
+            interval = self._auto_commit_interval_ms / 1000
             self._auto_commit_task = ensure_future(
                 self.auto_commit_routine(interval), loop=loop)
 
@@ -142,6 +144,9 @@ class GroupCoordinator(object):
                 log.error("LeaveGroup request failed: %s", err)
             else:
                 log.info("LeaveGroup request succeeded")
+
+    def on_group_rebalanced(self, callback):
+        self._group_rebalanced_callback = callback
 
     @asyncio.coroutine
     def _send_req(self, node_id, request):
@@ -275,6 +280,9 @@ class GroupCoordinator(object):
                 log.exception("User provided listener failed on partition"
                               " assignment: %s", assigned)
 
+        if self._group_rebalanced_callback:
+            self._group_rebalanced_callback()
+
     @asyncio.coroutine
     def refresh_committed_offsets(self):
         """Fetch committed offsets for assigned partitions."""
@@ -328,7 +336,7 @@ class GroupCoordinator(object):
                 else:
                     # wait backoff and try again
                     yield from asyncio.sleep(
-                        self._retry_backoff_ms / 1000.0, loop=self.loop)
+                        self._retry_backoff_ms / 1000, loop=self.loop)
             else:
                 return offsets
 
@@ -483,8 +491,7 @@ class GroupCoordinator(object):
             return
 
         yield from self.commit_offsets(
-            self._subscription.all_consumed_offsets()
-        )
+            self._subscription.all_consumed_offsets())
 
     @asyncio.coroutine
     def auto_commit_routine(self, interval):
@@ -494,7 +501,7 @@ class GroupCoordinator(object):
                     "Cannot auto-commit offsets because the coordinator is"
                     " unknown, will retry after backoff")
                 yield from asyncio.sleep(
-                    self._retry_backoff_ms / 1000.0, loop=self.loop)
+                    self._retry_backoff_ms / 1000, loop=self.loop)
                 continue
 
             yield from asyncio.wait(
@@ -547,7 +554,7 @@ class GroupCoordinator(object):
             except Errors.KafkaError as err:
                 log.error("Group Coordinator Request failed: %s", err)
                 yield from asyncio.sleep(
-                    self._retry_backoff_ms / 1000.0, loop=self.loop)
+                    self._retry_backoff_ms / 1000, loop=self.loop)
                 if err.retriable is True:
                     yield from self._client.force_metadata_update()
             else:
@@ -673,7 +680,7 @@ class GroupCoordinator(object):
 
         # backoff wait - failure case
         yield from asyncio.sleep(
-            self._retry_backoff_ms / 1000.0, loop=self.loop)
+            self._retry_backoff_ms / 1000, loop=self.loop)
 
     @asyncio.coroutine
     def _on_join_follower(self):

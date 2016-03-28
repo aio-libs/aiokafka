@@ -38,9 +38,9 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         self.hosts = ['{}:{}'.format(self.kafka_host, self.kafka_port)]
 
         if not self.topic:
-            topic = "%s-%s" % (self.id()[self.id().rindex(".") + 1:],
-                               random_string(10).decode('utf-8'))
-            self.topic = topic.encode('utf-8')
+            self.topic = "topic-{}-{}".format(
+                self.id()[self.id().rindex(".") + 1:],
+                random_string(10).decode('utf-8'))
 
         # Reconnecting until Kafka in docker becomes available
         client = AIOKafkaClient(

@@ -89,10 +89,10 @@ class AIOKafkaConnection:
         return asyncio.wait_for(fut, self._request_timeout, loop=self._loop)
 
     def connected(self):
-        return bool(self._reader and not self._reader.at_eof())
+        return bool(self._reader is not None and not self._reader.at_eof())
 
     def close(self):
-        if self._reader:
+        if self._reader is not None:
             self._writer.close()
             self._writer = self._reader = None
             self._read_task.cancel()
@@ -125,7 +125,8 @@ class AIOKafkaConnection:
                     error = Errors.CorrelationIdError(
                         'Correlation ids do not match: sent {}, recv {}'
                         .format(correlation_id, recv_correlation_id))
-                    fut.set_exception(error)
+                    if not fut.done():
+                        fut.set_exception(error)
                     self.close()
                     break
 
