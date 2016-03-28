@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import logging
+from itertools import chain
 
 import kafka.common as Errors
 from kafka.common import TopicPartition
@@ -26,10 +27,19 @@ class RecordTooLargeError(Errors.KafkaError):
 
 
 class FetchResult:
-    def __init__(self, tp, *, subscriptions, messages=None):
+    def __init__(self, tp, *, subscriptions, loop, messages, backoff):
         self._topic_partition = tp
         self._subscriptions = subscriptions
         self._messages = messages
+        self._created = loop.time()
+        self._backoff = backoff
+        self._loop = loop
+
+    def calculate_backoff(self):
+        lifetime = self._loop.time() - self._created
+        if lifetime < self._backoff:
+            return self._backoff - lifetime
+        return 0
 
     def _check_assignment(self, tp):
         if self._subscriptions.needs_partition_assignment or \
@@ -76,6 +86,24 @@ class FetchResult:
                 ret_list.append(msg)
 
 
+class FetchError:
+    def __init__(self, *, loop, error, backoff):
+        self._error = error
+        self._created = loop.time()
+        self._backoff = backoff
+        self._loop = loop
+
+    def calculate_backoff(self):
+        lifetime = self._loop.time() - self._created
+        if lifetime < self._backoff:
+            return self._backoff - lifetime
+        return 0
+
+    def check_raise(self):
+        # TODO: Do we need to raise error if partition not assigned anymore
+        raise self._error
+
+
 class Fetcher:
     def __init__(self, client, subscriptions, *, loop,
                  key_deserializer=None,
@@ -84,7 +112,8 @@ class Fetcher:
                  fetch_max_wait_ms=500,
                  max_partition_fetch_bytes=1048576,
                  check_crcs=True,
-                 fetcher_timeout=0.1):
+                 fetcher_timeout=0.1,
+                 prefetch_backoff=0.1):
         """Initialize a Kafka Message Fetcher.
 
         Parameters:
@@ -126,13 +155,14 @@ class Fetcher:
         self._max_partition_fetch_bytes = max_partition_fetch_bytes
         self._check_crcs = check_crcs
         self._fetcher_timeout = fetcher_timeout
+        self._prefetch_backoff = prefetch_backoff
         self._subscriptions = subscriptions
 
         self._records = collections.OrderedDict()
         self._in_flight = set()
-        self._fetch_waiters = set()
+        self._fetch_tasks = set()
 
-        self._wait_full_future = None
+        self._wait_consume_future = None
         self._wait_empty_future = None
 
         self._fetch_task = ensure_future(
@@ -146,7 +176,7 @@ class Fetcher:
         except asyncio.CancelledError:
             pass
 
-        for x in self._fetch_waiters:
+        for x in self._fetch_tasks:
             x.cancel()
             try:
                 yield from x
@@ -155,9 +185,36 @@ class Fetcher:
 
     @asyncio.coroutine
     def _fetch_requests_routine(self):
+        """ Background task, that always prefetches next result page.
+
+        The algorithm:
+        * Group partitions per node, which is the leader for it.
+        * If all partitions for this node need prefetch - do it right alway
+        * If any partition has some data (in `self._records`) wait up till
+          `fetcher_timeout` so application can consume data from it.
+        * If data in `self._records` is not consumed up to
+          `fetcher_timeout` just request data for other partitions from this
+          node.
+
+        We request data in such manner cause Kafka blocks the connection if
+        we perform a FetchRequest and we don't have enough data. This means
+        we must perform a FetchRequest to as many partitions as we can in a
+        node.
+
+        Original java Kafka client processes data differently, as it only
+        prefetches data if all messages were given to application (i.e. if
+        `self._records` are empty). We don't use this method, cause we allow
+        to process partitions separately (by passing `partitions` list to
+        `getall()` call of the consumer), which can end up in a long wait
+        if some partitions (or topics) are processed slower, than others.
+
+        """
         try:
             while True:
-                requests = self._create_fetch_requests()
+                # Reset consuming signal future.
+                self._wait_consume_future = asyncio.Future(loop=self._loop)
+                # Create and send fetch requests
+                requests, timeout = self._create_fetch_requests()
                 for node_id, request in requests:
                     node_ready = yield from self._client.ready(node_id)
                     if not node_ready:
@@ -167,32 +224,24 @@ class Fetcher:
                     task = ensure_future(
                         self._proc_fetch_request(node_id, request),
                         loop=self._loop)
-                    self._fetch_waiters.add(task)
+                    self._fetch_tasks.add(task)
                     self._in_flight.add(node_id)
 
-                if self._fetch_waiters:
-                    done_set, self._fetch_waiters = yield from asyncio.wait(
-                        self._fetch_waiters, loop=self._loop,
-                        timeout=self._fetcher_timeout,
-                        return_when=asyncio.FIRST_COMPLETED)
+                done_set, _ = yield from asyncio.wait(
+                    chain(self._fetch_tasks, [self._wait_consume_future]),
+                    loop=self._loop,
+                    timeout=timeout,
+                    return_when=asyncio.FIRST_COMPLETED)
 
-                    has_new_data = any([fut.result() for fut in done_set])
+                # Process fetch tasks results if any
+                done_fetches = self._fetch_tasks.intersection(done_set)
+                if done_fetches:
+                    has_new_data = any(fut.result() for fut in done_fetches)
                     if has_new_data:
-                        # we have new data, wake up getters
+                        # we added some messages to self._records,
+                        # wake up getters
                         self._notify(self._wait_empty_future)
-                else:
-                    # no fetches need, try to wait until at least one buffer
-                    # will be empty
-                    self._wait_full_future = asyncio.Future(loop=self._loop)
-                    if self._records:
-                        yield from asyncio.wait(
-                            [self._wait_full_future], loop=self._loop,
-                            timeout=self._fetcher_timeout,
-                            return_when=asyncio.FIRST_COMPLETED)
-                    else:
-                        # maybe we have no one assigned partition
-                        yield from asyncio.sleep(
-                            self._fetcher_timeout, loop=self._loop)
+                    self._fetch_tasks -= done_fetches
         except asyncio.CancelledError:
             pass
         except Exception:  # noqa
@@ -205,27 +254,38 @@ class Fetcher:
     def _create_fetch_requests(self):
         """Create fetch requests for all assigned partitions, grouped by node.
 
-        FetchRequests skipped if no leader, or node has requests in flight
+        FetchRequests skipped if:
+        * no leader, or node has already fetches in flight
+        * we have data for this partition
+        * we have data for other partitions on this node
 
         Returns:
             dict: {node_id: FetchRequest, ...}
         """
         if self._subscriptions.needs_partition_assignment:
-            return {}
+            return {}, self._fetcher_timeout
 
         # create the fetch info as a dict of lists of partition info tuples
         # which can be passed to FetchRequest() via .items()
         fetchable = collections.defaultdict(
             lambda: collections.defaultdict(list))
+        backoff_by_nodes = collections.defaultdict(list)
 
         fetchable_partitions = self._subscriptions.fetchable_partitions()
         for tp in fetchable_partitions:
-            if tp in self._records:
-                # We have some prefetched data already
-                continue
             node_id = self._client.cluster.leader_for_partition(tp)
+            if tp in self._records:
+                record = self._records[tp]
+                # Calculate backoff for this node if data is only recently
+                # fetched. If data is consumed before backoff we will
+                # include this partition in this fetch request
+                backoff = record.calculate_backoff()
+                if backoff:
+                    backoff_by_nodes[node_id].append(backoff)
+                # We have some prefetched data for this partition already
+                continue
             if node_id in self._in_flight:
-                # We have in-flight requests to this node
+                # We have in-flight fetches to this node
                 continue
             if node_id is None or node_id == -1:
                 log.debug("No leader found for partition %s."
@@ -244,13 +304,22 @@ class Fetcher:
 
         requests = []
         for node_id, partition_data in fetchable.items():
+            if node_id in backoff_by_nodes:
+                # At least one partition is still waiting to be consumed
+                continue
             req = FetchRequest(
                 -1,  # replica_id
                 self._fetch_max_wait_ms,
                 self._fetch_min_bytes,
                 partition_data.items())
             requests.append((node_id, req))
-        return requests
+        if backoff_by_nodes:
+            # Return min time til any node will be ready to send event
+            # (max of it's backoffs)
+            backoff = min(map(max, backoff_by_nodes.values()))
+        else:
+            backoff = self._fetcher_timeout
+        return requests, backoff
 
     @asyncio.coroutine
     def _proc_fetch_request(self, node_id, request):
@@ -297,25 +366,28 @@ class Fetcher:
                             messages = collections.deque(
                                 self._unpack_message_set(tp, messages))
                         except Errors.InvalidMessageError as err:
-                            self._records[tp] = err
+                            self._set_error(tp, err)
                             continue
 
                         self._records[tp] = FetchResult(
                             tp, messages=messages,
-                            subscriptions=self._subscriptions)
+                            subscriptions=self._subscriptions,
+                            backoff=self._prefetch_backoff,
+                            loop=self._loop)
                         # We added at least 1 successful record
                         needs_wakeup = True
                     elif partial:
                         # we did not read a single message from a non-empty
                         # buffer because that message's size is larger than
                         # fetch size, in this case record this exception
-                        self._records[tp] = RecordTooLargeError(
+                        err = RecordTooLargeError(
                             "There are some messages at [Partition=Offset]: "
                             "%s=%s whose size is larger than the fetch size %s"
                             " and hence cannot be ever returned. "
                             "Increase the fetch size, or decrease the maximum "
                             "message size the broker will allow.",
                             tp, fetch_offset, self._max_partition_fetch_bytes)
+                        self._set_error(tp, err)
                         needs_wakeup = True
                         self._subscriptions.assignment[tp].position += 1
 
@@ -328,7 +400,7 @@ class Fetcher:
                         self._subscriptions.need_offset_reset(tp)
                     else:
                         err = Errors.OffsetOutOfRangeError({tp: fetch_offset})
-                        self._records[tp] = err
+                        self._set_error(tp, err)
                         needs_wakeup = True
                     log.info(
                         "Fetch offset %s is out of range, resetting offset",
@@ -336,12 +408,17 @@ class Fetcher:
                 elif error_type is Errors.TopicAuthorizationFailedError:
                     log.warn("Not authorized to read from topic %s.", tp.topic)
                     err = Errors.TopicAuthorizationFailedError(tp.topic)
-                    self._records[tp] = err
+                    self._set_error(tp, err)
                     needs_wakeup = True
                 else:
                     log.warn('Unexpected error while fetching data: %s',
                              error_type.__name__)
         return needs_wakeup
+
+    def _set_error(self, tp, error):
+        assert tp not in self._records
+        self._records[tp] = FetchError(
+            error=error, backoff=self._prefetch_backoff, loop=self._loop)
 
     @asyncio.coroutine
     def update_fetch_positions(self, partitions):
@@ -498,7 +575,14 @@ class Fetcher:
 
     @asyncio.coroutine
     def next_record(self, partitions):
-        """Return one fetched records"""
+        """ Return one fetched records
+
+        This method will contain a little overhead as we will do more work this
+        way:
+            * Notify prefetch routine per every consumed partition
+            * Assure message marked for autocommit
+
+        """
         for tp in list(self._records.keys()):
             if partitions and tp not in partitions:
                 continue
@@ -508,14 +592,14 @@ class Fetcher:
                 if message is None:
                     # We already processed all messages, request new ones
                     del self._records[tp]
-                    self._notify(self._wait_full_future)
+                    self._notify(self._wait_consume_future)
                 else:
                     return message
             else:
                 # Remove error, so we can fetch on partition again
                 del self._records[tp]
-                self._notify(self._wait_full_future)
-                raise res_or_error
+                self._notify(self._wait_consume_future)
+                res_or_error.check_raise()
         # No messages ready. Wait for some to arrive
         self._wait_empty_future = asyncio.Future(loop=self._loop)
         yield from self._wait_empty_future
@@ -523,7 +607,8 @@ class Fetcher:
 
     @asyncio.coroutine
     def fetched_records(self, partitions, timeout=0):
-        """Returns previously fetched records and updates consumed offsets."""
+        """ Returns previously fetched records and updates consumed offsets.
+        """
         drained = {}
         for tp in list(self._records.keys()):
             if partitions and tp not in partitions:
@@ -533,7 +618,7 @@ class Fetcher:
                 drained[tp] = res_or_error.getall()
                 # We processed all messages - request new ones
                 del self._records[tp]
-                self._notify(self._wait_full_future)
+                self._notify(self._wait_consume_future)
             else:
                 # We already got some of messages from other partition -
                 # return them. We will raise this error on next call
@@ -542,8 +627,8 @@ class Fetcher:
                 else:
                     # Remove error, so we can fetch on partition again
                     del self._records[tp]
-                    self._notify(self._wait_full_future)
-                    raise res_or_error
+                    self._notify(self._wait_consume_future)
+                    res_or_error.check_raise()
 
         if drained or not timeout:
             return drained
@@ -554,7 +639,7 @@ class Fetcher:
 
         if done:
             return (yield from self.fetched_records(partitions, 0))
-        return drained
+        return {}
 
     def _unpack_message_set(self, tp, messages):
         for offset, size, msg in messages:

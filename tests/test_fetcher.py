@@ -106,6 +106,7 @@ class TestFetcher(unittest.TestCase):
 
         state.seek(4)
         fetcher._in_flight.add(0)
+        fetcher._records.clear()
         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
         self.assertEqual(needs_wake_up, True)
         buf = fetcher._records[tp]
@@ -116,6 +117,7 @@ class TestFetcher(unittest.TestCase):
             lambda n, r: FetchResponse(
                 [('test', [(0, 3, 9, [(4, 10, msg)])])]))
         fetcher._in_flight.add(0)
+        fetcher._records.clear()
         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
         self.assertEqual(needs_wake_up, False)
 
@@ -124,6 +126,7 @@ class TestFetcher(unittest.TestCase):
             lambda n, r: FetchResponse(
                 [('test', [(0, 29, 9, [(4, 10, msg)])])]))
         fetcher._in_flight.add(0)
+        fetcher._records.clear()
         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
         self.assertEqual(needs_wake_up, True)
         with self.assertRaises(TopicAuthorizationFailedError):
@@ -134,6 +137,7 @@ class TestFetcher(unittest.TestCase):
             lambda n, r: FetchResponse(
                 [('test', [(0, -1, 9, [(4, 10, msg)])])]))
         fetcher._in_flight.add(0)
+        fetcher._records.clear()
         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
         self.assertEqual(needs_wake_up, False)
 
@@ -142,6 +146,7 @@ class TestFetcher(unittest.TestCase):
             lambda n, r: FetchResponse(
                 [('test', [(0, 1, 9, [(4, 10, msg)])])]))
         fetcher._in_flight.add(0)
+        fetcher._records.clear()
         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
         self.assertEqual(needs_wake_up, False)
         self.assertEqual(state.is_fetchable(), False)
@@ -152,6 +157,7 @@ class TestFetcher(unittest.TestCase):
             lambda n, r: FetchResponse(
                 [('test', [(0, 1, 9, [(4, 10, msg)])])]))
         fetcher._in_flight.add(0)
+        fetcher._records.clear()
         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
         self.assertEqual(needs_wake_up, True)
         with self.assertRaises(OffsetOutOfRangeError):
