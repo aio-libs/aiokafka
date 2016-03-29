@@ -1,4 +1,3 @@
-
 Welcome to aiokafka's documentation!
 ====================================
 
@@ -12,7 +11,7 @@ partition assignment to multiple consumers in the same group.
 
 
 Installation
-------------
+============
 
 .. code::
 
@@ -22,13 +21,16 @@ Installation
 
 
 Getting started
----------------
+===============
+
+
+AIOKafkaConsumer
+++++++++++++++++
 
 :class:`~aiokafka.AIOKafkaConsumer` is a high-level message consumer, intended to
 operate as similarly as possible to the official 0.9 java client. Full support
 for coordinated consumer groups requires use of kafka brokers that support the
 0.9 Group APIs.
-See `AIOKafkaConsumer <apidoc/aiokafka.consumer.html>`_ for more details.
 
 See consumer example:
 
@@ -58,9 +60,11 @@ See consumer example:
             c_task.close()
             loop.close()
 
+AIOKafkaProducer
+++++++++++++++++
+
 :class:`~aiokafka.AIOKafkaProducer` is a high-level, asynchronous message producer.
 The class is intended to operate as similarly as possible to the official java client.
-See `AIOKafkaProducer <apidoc/aiokafka.producer.html>`_ for more details.
 
 See producer example:
 
@@ -85,23 +89,15 @@ See producer example:
 
 
 Compression
------------
+===========
 
 aiokafka supports gzip compression/decompression natively. To produce or
 consume lz4 compressed messages, you must install lz4tools and xxhash.
 To enable snappy, install python-snappy (also requires snappy library).
 
-API Documentation
------------------
+.. toctree::
+   :hidden:
+   :maxdepth: 2
 
-        * `Producer API <apidoc/aiokafka.producer.html>`_
-        * `Consumer API <apidoc/aiokafka.consumer.html>`_
-
-Examples
---------
-
-`Serialization and compression <serialize_and_compress.html>`_
-
-`Manual commit <manual_commit.html>`_
-
-`Group consumer <group_consumer.html>`_
+   API documentation <api>
+   Examples <examples>
