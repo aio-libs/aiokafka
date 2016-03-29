@@ -81,10 +81,9 @@ class AIOKafkaConnection:
                 "Connection at {0}:{1} broken: {2}".format(
                     self._host, self._port, err))
 
-        fut = asyncio.Future(loop=self._loop)
         if not expect_response:
-            fut.set_result(None)
-            return fut
+            return self._writer.drain()
+        fut = asyncio.Future(loop=self._loop)
         self._requests.append((correlation_id, request.RESPONSE_TYPE, fut))
         return asyncio.wait_for(fut, self._request_timeout, loop=self._loop)
 
