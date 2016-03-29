@@ -97,5 +97,11 @@ API Documentation
         * `Producer API <apidoc/aiokafka.producer.html>`_
         * `Consumer API <apidoc/aiokafka.consumer.html>`_
 
+Examples
+--------
 
+`Serialization and compression <serialize_and_compress.html>`_
 
+`Manual commit <manual_commit.html>`_
+
+`Group consumer <group_consumer.html>`_
