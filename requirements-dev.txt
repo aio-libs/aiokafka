@@ -5,3 +5,6 @@ pytest-catchlog
 docker-py
 coveralls
 Sphinx
+
+sphinxcontrib-asyncio
+sphinx_rtd_theme
