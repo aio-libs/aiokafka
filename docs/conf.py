@@ -57,7 +57,8 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.intersphinx',
     'sphinx.ext.viewcode',
-    'sphinxcontrib.asyncio'
+    'sphinxcontrib.asyncio',
+    'sphinx.ext.napoleon'
 ]
 
 intersphinx_mapping = {'python': ('http://docs.python.org/3', None)}

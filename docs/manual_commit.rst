@@ -2,6 +2,8 @@
 Example. Manual commit
 ======================
 
+When processing data from several
+
 
 Consumer:
 

@@ -1,27 +1,20 @@
 Welcome to aiokafka's documentation!
 ====================================
 
+.. _GitHub: https://github.com/aio-libs/aiokafka
+.. _kafka-python: https://github.com/dpkp/kafka-python
 .. _asyncio: http://docs.python.org/3.4/library/asyncio.html
 
 **aiokafka** is a client for the Apache Kafka distributed stream processing system using the asyncio_.
+It is based on kafka-python_ library and reuses it's internals for protocol parsing, errors, etc. 
 Client is designed to function much like the official java client, with a sprinkling of pythonic interfaces.
 
 **aiokafka** is used with 0.9 Kafka brokers and supports fully coordinated consumer groups -- i.e., dynamic
 partition assignment to multiple consumers in the same group.
 
 
-Installation
-============
-
-.. code::
-
-   pip3 install aiokafka
-
-.. note:: *aiokafka* requires *python-kafka* library.
-
-
 Getting started
-===============
+---------------
 
 
 AIOKafkaConsumer
@@ -50,7 +43,8 @@ See consumer example:
                     print("error while consuming message: ", err)
 
         loop = asyncio.get_event_loop()
-        consumer = AIOKafkaConsumer('topic1', 'topic2', loop=loop, bootstrap_servers='localhost:1234')
+        consumer = AIOKafkaConsumer(
+            'topic1', 'topic2', loop=loop, bootstrap_servers='localhost:1234')
         loop.run_until_complete(consumer.start())
         c_task = asyncio.async(consume_task(consumer))
         try:
@@ -88,16 +82,95 @@ See producer example:
         loop.close()
 
 
-Compression
-===========
+Installation
+------------
 
-aiokafka supports gzip compression/decompression natively. To produce or
-consume lz4 compressed messages, you must install lz4tools and xxhash.
-To enable snappy, install python-snappy (also requires snappy library).
+.. code::
+
+   pip3 install aiokafka
+
+.. note:: *aiokafka* requires *python-kafka* library and heavily depands on it.
+
+
+Optional LZ4 install
+++++++++++++++++++++
+
+To enable LZ4 compression/decompression, install lz4tools and xxhash:
+
+>>> pip3 install lz4tools
+>>> pip3 install xxhash
+
+
+Optional Snappy install
++++++++++++++++++++++++
+
+1. Download and build Snappy from http://code.google.com/p/snappy/downloads/list
+
+Ubuntu:
+
+.. code:: bash
+
+    apt-get install libsnappy-dev
+
+OSX:
+
+.. code:: bash
+
+    brew install snappy
+
+From Source:
+
+.. code:: bash
+
+    wget http://snappy.googlecode.com/files/snappy-1.0.5.tar.gz
+    tar xzvf snappy-1.0.5.tar.gz
+    cd snappy-1.0.5
+    ./configure
+    make
+    sudo make install
+
+
+2. Install the `python-snappy` module
+
+.. code:: bash
+
+    pip3 install python-snappy
+
+
+
+Source code
+-----------
+
+The project is hosted on GitHub_
+
+Please feel free to file an issue on `bug tracker
+<https://github.com/aio-libs/aiokafka/issues>`_ if you have found a bug
+or have some suggestion for library improvement.
+
+The library uses `Travis <https://travis-ci.org/aio-libs/aiokafka>`_ for
+Continious Integration.
+
+
+Authors and License
+-------------------
+
+The ``aiokafka`` package is Apache 2 licensed and freely available.
+
+Feel free to improve this package and send a pull request to GitHub_.
+
+
+Contents:
 
 .. toctree::
-   :hidden:
    :maxdepth: 2
 
-   API documentation <api>
-   Examples <examples>
+   api
+   examples
+
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`

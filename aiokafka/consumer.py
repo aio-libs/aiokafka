@@ -109,6 +109,12 @@ class AIOKafkaConsumer(object):
             AIOKafkaConsumer supports Kafka API versions >=0.9 only.
             If set to 'auto', will attempt to infer the broker version by
             probing various APIs. Default: auto
+
+
+    Note:
+        Many configuration parameters are taken from Java Client:
+        https://kafka.apache.org/documentation.html#newconsumerconfigs
+
     """
     def __init__(self, *topics, loop,
                  bootstrap_servers='localhost',
@@ -421,8 +427,9 @@ class AIOKafkaConsumer(object):
     @asyncio.coroutine
     def seek_to_committed(self, *partitions):
         """Seek to the committed offset for partitions
+
         Arguments:
-            *partitions: optionally provide specific TopicPartitions,
+            partitions: optionally provide specific TopicPartitions,
                 otherwise default to all assigned partitions
 
         Raises:
@@ -545,16 +552,36 @@ class AIOKafkaConsumer(object):
     def getone(self, *partitions):
         """
         Get one message from Kafka
-        If no new messages occured, this method will wait it
+        If no new messages prefetched, this method will wait for it
 
         Arguments:
-            partitions (List[TopicPartition]): The partitions that need
-                fetching message. If no one partition specified then all
-                subscribed partitions will be used
+            partitions (List[TopicPartition]): Optional list of partitions to
+                return from. If no partitions specified then returned message
+                will be from any partition, which consumer is subscribed to.
 
         Returns:
-            instance of collections.namedtuple("ConsumerRecord",
+            ConsumerRecord
+
+        Will return instance of
+
+        .. code:: python
+
+            collections.namedtuple(
+                "ConsumerRecord",
                 ["topic", "partition", "offset", "key", "value"])
+
+        Example usage:
+
+
+        .. code:: python
+
+            while True:
+                message = yield from consumer.getone()
+                topic = message.topic
+                partition = message.partition
+                # Process message
+                print(message.offset, message.key, message.value)
+
         """
         assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
 
@@ -580,6 +607,20 @@ class AIOKafkaConsumer(object):
         Returns:
             dict: topic to list of records since the last fetch for the
                 subscribed list of topics and partitions
+
+        Example usage:
+
+
+        .. code:: python
+
+            data = yield from consumer.getmany()
+            for tp, messages in data.items():
+                topic = tp.topic
+                partition = tp.partition
+                for message in messages:
+                    # Process message
+                    print(message.offset, message.key, message.value)
+
         """
         assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
 
