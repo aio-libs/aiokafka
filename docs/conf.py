@@ -16,6 +16,9 @@
 import sys
 import os
 
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
+
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
@@ -56,10 +59,7 @@ extensions = [
     'sphinx.ext.viewcode',
 ]
 
-intersphinx_mapping = {'python': ('http://docs.python.org/3', None),
-                       'sqlalchemy':
-                           ('http://docs.sqlalchemy.org/en/rel_0_9/', None),
-}
+intersphinx_mapping = {'python': ('http://docs.python.org/3', None)}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
