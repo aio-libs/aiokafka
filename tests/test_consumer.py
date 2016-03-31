@@ -24,8 +24,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                     msg = str(msg).encode()
                 resp = yield from producer.send(
                     self.topic, msg, partition=partition)
-                self.assertEqual(len(resp.topics), 1)
-                self.assertEqual(resp.topics[0][1][0][0], partition)
+                self.assertEqual(resp.topic, self.topic)
+                self.assertEqual(resp.partition, partition)
                 ret.append(msg)
         finally:
             yield from producer.stop()
