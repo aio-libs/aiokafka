@@ -2,7 +2,8 @@ import io
 import asyncio
 import collections
 
-from kafka.common import (KafkaTimeoutError,
+from kafka.common import (KafkaError,
+                          KafkaTimeoutError,
                           NotLeaderForPartitionError,
                           LeaderNotAvailableError)
 from kafka.producer.buffer import MessageSetBuffer
@@ -10,6 +11,10 @@ from kafka.protocol.message import Message
 
 RecordMetadata = collections.namedtuple(
     'RecordMetadata', ['topic', 'partition', 'topic_partition', 'offset'])
+
+
+class ProducerClosed(KafkaError):
+    pass
 
 
 class MessageBatch:
@@ -44,6 +49,11 @@ class MessageBatch:
                                      self._tp, base_offset+relative_offset)
                 future.set_result(res)
 
+    @asyncio.coroutine
+    def wait_all(self):
+        done, _ = yield from asyncio.wait(self._msg_futures, loop=self._loop)
+        return done
+
     def expired(self):
         return (self._loop.time() - self._ctime) > self._ttl
 
@@ -64,9 +74,16 @@ class MessageAccumulator:
         self._loop = loop
         self._wait_data_future = asyncio.Future(loop=loop)
         self._empty_futures = {}
+        self._closed = False
+
+    def close(self):
+        self._closed = True
 
     @asyncio.coroutine
     def add_message(self, tp, key, value):
+        if self._closed:
+            raise ProducerClosed()
+
         batch = self._batches.get(tp)
         if not batch:
             message_set_buffer = MessageSetBuffer(
@@ -94,6 +111,11 @@ class MessageAccumulator:
         if self._wait_data_future.done():
             return
         yield from self._wait_data_future
+
+    @asyncio.coroutine
+    def flush(self):
+        for batch in list(self._batches.values()):
+            yield from batch.wait_all()
 
     def _pop_batch(self, tp):
         batch = self._batches.pop(tp)

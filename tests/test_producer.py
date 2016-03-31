@@ -14,6 +14,7 @@ from kafka.protocol.produce import ProduceResponse
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 from aiokafka.producer import AIOKafkaProducer
+from aiokafka.message_accumulator import ProducerClosed
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
@@ -48,17 +49,23 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         yield from self.wait_topic(producer.client, self.topic)
         with self.assertRaisesRegexp(AssertionError, 'value must be bytes'):
             yield from producer.send(self.topic, 'hello, Kafka!')
-        resp = yield from producer.send(self.topic, b'hello, Kafka!')
+        future = yield from producer.send(self.topic, b'hello, Kafka!')
+        resp = yield from future
         self.assertEqual(resp.topic, self.topic)
         self.assertTrue(resp.partition in (0, 1))
         self.assertEqual(resp.offset, 0)
 
-        resp = yield from producer.send(self.topic, b'second msg', partition=1)
+        fut = yield from producer.send(self.topic, b'second msg', partition=1)
+        resp = yield from fut
         self.assertEqual(resp.partition, 1)
 
-        resp = yield from producer.send(self.topic, b'value', key=b'KEY')
+        future = yield from producer.send(self.topic, b'value', key=b'KEY')
+        resp = yield from future
         self.assertTrue(resp.partition in (0, 1))
         yield from producer.stop()
+
+        with self.assertRaises(ProducerClosed):
+            yield from producer.send(self.topic, b'value', key=b'KEY')
 
     @run_until_complete
     def test_producer_send_noack(self):
@@ -66,8 +73,10 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             loop=self.loop, bootstrap_servers=self.hosts, acks=0)
         yield from producer.start()
         yield from self.wait_topic(producer.client, self.topic)
-        fut1 = producer.send(self.topic, b'hello, Kafka!', partition=0)
-        fut2 = producer.send(self.topic, b'hello, Kafka!', partition=1)
+        fut1 = yield from producer.send(
+            self.topic, b'hello, Kafka!', partition=0)
+        fut2 = yield from producer.send(
+            self.topic, b'hello, Kafka!', partition=1)
         done, _ = yield from asyncio.wait([fut1, fut2], loop=self.loop)
         for item in done:
             self.assertEqual(item.result(), None)
@@ -89,12 +98,14 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         yield from self.wait_topic(producer.client, self.topic)
         key = 'some key'
         value = {'strKey': 23523.443, 23: 'STRval'}
-        resp = yield from producer.send(self.topic, value, key=key)
+        future = yield from producer.send(self.topic, value, key=key)
+        resp = yield from future
         partition = resp.partition
         offset = resp.offset
         self.assertTrue(partition in (0, 1))  # partition
 
-        resp = yield from producer.send(self.topic, 'some str', key=key)
+        future = yield from producer.send(self.topic, 'some str', key=key)
+        resp = yield from future
         # expect the same partition bcs the same key
         self.assertEqual(resp.partition, partition)
         # expect offset +1
@@ -120,8 +131,9 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         yield from producer.start()
         yield from self.wait_topic(producer.client, self.topic)
 
-        resp = yield from producer.send(
+        future = yield from producer.send(
             self.topic, b'this msg is compressed by client')
+        resp = yield from future
         self.assertEqual(resp.topic, self.topic)
         self.assertTrue(resp.partition in (0, 1))
         yield from producer.stop()
@@ -137,14 +149,16 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         with mock.patch.object(
                 ClusterMetadata, 'leader_for_partition') as mocked:
             mocked.return_value = -1
+            future = yield from producer.send(self.topic, b'text')
             with self.assertRaises(LeaderNotAvailableError):
-                yield from producer.send(self.topic, b'text')
+                yield from future
 
         with mock.patch.object(
                 ClusterMetadata, 'leader_for_partition') as mocked:
             mocked.return_value = None
+            future = yield from producer.send(self.topic, b'text')
             with self.assertRaises(NotLeaderForPartitionError):
-                yield from producer.send(self.topic, b'text')
+                yield from future
 
         yield from producer.stop()
 
@@ -161,10 +175,9 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         with mock.patch.object(producer.client, 'send') as mocked:
             mocked.side_effect = mocked_send
 
-            fut1 = producer.send(self.topic, b'text1')
-            fut2 = producer.send(self.topic, b'text2')
+            fut1 = yield from producer.send(self.topic, b'text1')
+            fut2 = yield from producer.send(self.topic, b'text2')
             done, _ = yield from asyncio.wait([fut1, fut2], loop=self.loop)
-
             for item in done:
                 with self.assertRaises(KafkaTimeoutError):
                     item.result()
@@ -184,8 +197,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         with mock.patch.object(producer.client, 'send') as mocked:
             mocked.side_effect = mocked_send
-            fut1 = producer.send(self.topic, b'text1', partition=0)
-            fut2 = producer.send(self.topic, b'text2', partition=1)
+            fut1 = yield from producer.send(self.topic, b'text1', partition=0)
+            fut2 = yield from producer.send(self.topic, b'text2', partition=1)
             with self.assertRaises(RequestTimedOutError):
                 yield from fut1
             resp = yield from fut2
@@ -200,4 +213,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         with mock.patch.object(producer.client, 'send') as mocked:
             mocked.side_effect = mocked_send_with_sleep
             with self.assertRaises(KafkaTimeoutError):
-                yield from producer.send(self.topic, b'text1', partition=0)
+                future = yield from producer.send(
+                    self.topic, b'text1', partition=0)
+                yield from future

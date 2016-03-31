@@ -22,8 +22,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                     msg = msg.encode()
                 elif isinstance(msg, int):
                     msg = str(msg).encode()
-                resp = yield from producer.send(
+                future = yield from producer.send(
                     self.topic, msg, partition=partition)
+                resp = yield from future
                 self.assertEqual(resp.topic, self.topic)
                 self.assertEqual(resp.partition, partition)
                 ret.append(msg)

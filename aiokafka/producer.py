@@ -3,8 +3,6 @@ import logging
 import collections
 
 from kafka.common import (TopicPartition,
-                          NotLeaderForPartitionError,
-                          LeaderNotAvailableError,
                           MessageSizeTooLargeError,
                           UnknownTopicOrPartitionError,
                           KafkaTimeoutError)
@@ -222,6 +220,9 @@ class AIOKafkaProducer(object):
         if self._closed:
             return
 
+        self._message_accumulator.close()
+        yield from self._message_accumulator.flush()
+
         if self._sender_task:
             self._sender_task.cancel()
             yield from self._sender_task
@@ -286,7 +287,8 @@ class AIOKafkaProducer(object):
                 key_serializer.
 
         Returns:
-            response from Kafka
+            asyncio.Future: future object that will be set when message is
+                            processed
         """
         assert value is not None or self._api_version >= (0, 8, 1), (
             'Null messages require kafka >= 0.8.1')
@@ -302,23 +304,10 @@ class AIOKafkaProducer(object):
 
         tp = TopicPartition(topic, partition)
         log.debug("Sending (key=%s value=%s) to %s", key, value, tp)
-        '''
-        msg = Message(value_bytes, key=key_bytes)
-        buf = MessageSetBuffer(
-            io.BytesIO(), self._batch_size, self._compression_type)
-        buf.append(0, msg)
-        buf.close()
-        request = ProduceRequest(
-            required_acks=self._acks,
-            timeout=self._request_timeout_ms,
-            topics=[(topic, [(partition, buf.buffer())])])
 
-        response = yield from self.client.send(leader, request)
-        return response
-        '''
         fut = yield from self._message_accumulator.add_message(
             tp, key_bytes, value_bytes)
-        return (yield from fut)
+        return fut
 
     @asyncio.coroutine
     def _sender_routine(self):
