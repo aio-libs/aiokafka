@@ -1,6 +1,6 @@
 import io
 import asyncio
-import collections
+mport collections
 
 from kafka.common import (KafkaError,
                           KafkaTimeoutError,
@@ -18,6 +18,7 @@ class ProducerClosed(KafkaError):
 
 
 class MessageBatch:
+    """This class incapsulate operations with batch of produce messages"""
     def __init__(self, tp, records, ttl, loop):
         self._tp = tp
         self._records = records
@@ -30,6 +31,13 @@ class MessageBatch:
         self._ctime = loop.time()
 
     def append(self, key, value):
+        """append message (key and value) to batch
+
+        Returns:
+            None if batch is full
+              or
+            asyncio.Future that will resolved when message will be processed
+        """
         if not self._records.has_room_for(key, value):
             return None
         self._records.append(self._records_cnt, Message(value, key=key))
@@ -39,6 +47,7 @@ class MessageBatch:
         return future
 
     def done(self, base_offset=None, exception=None):
+        """resolve all pending futures"""
         for relative_offset, future in enumerate(self._msg_futures):
             if exception is not None:
                 future.set_exception(exception)
@@ -51,13 +60,15 @@ class MessageBatch:
 
     @asyncio.coroutine
     def wait_all(self):
-        done, _ = yield from asyncio.wait(self._msg_futures, loop=self._loop)
-        return done
+        """wait until all message from this batch is processed"""
+        yield from asyncio.wait(self._msg_futures, loop=self._loop)
 
     def expired(self):
+        """check that batch is expired or not"""
         return (self._loop.time() - self._ctime) > self._ttl
 
     def pack(self):
+        """close batch to be ready for send"""
         self._records.close()
 
     def data(self):

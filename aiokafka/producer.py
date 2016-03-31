@@ -311,6 +311,7 @@ class AIOKafkaProducer(object):
 
     @asyncio.coroutine
     def _sender_routine(self):
+        """backgroud task that sends message batches to Kafka brokers"""
         tasks = set()
         try:
             while True:
@@ -318,6 +319,7 @@ class AIOKafkaProducer(object):
                     self._message_accumulator.drain_by_nodes(
                         ignore_nodes=self._in_flight)
 
+                # create produce task for every batch
                 for node_id, batches in batches.items():
                     task = ensure_future(
                         self._send_produce_req(node_id, batches),
@@ -325,9 +327,12 @@ class AIOKafkaProducer(object):
                     tasks.add(task)
 
                 if unknown_leaders_exist:
+                    # we have at least one unknown partition's leader,
+                    # try to update cluster metadata
                     yield from self.client.force_metadata_update()
 
                 if tasks:
+                    # wait when at least one of produce task is finished
                     _, tasks = yield from asyncio.wait(
                         tasks, return_when=asyncio.FIRST_COMPLETED,
                         loop=self._loop)
@@ -346,6 +351,7 @@ class AIOKafkaProducer(object):
         except Exception:  # noqa
             log.error("Unexpected error in sender routine", exc_info=True)
         finally:
+            # wait in-progress produce tasks before close
             if tasks:
                 yield from asyncio.wait(
                     tasks, timeout=self._request_timeout_ms/1000,
@@ -353,6 +359,15 @@ class AIOKafkaProducer(object):
 
     @asyncio.coroutine
     def _send_produce_req(self, node_id, batches):
+        """Create produce request to node
+        If producer configured with `retries`>0 and produce response contain
+        "failed" partitions produce request for this partition will try
+        resend to broker `retries` times with `retry_timeout_ms` timeouts.
+
+        Arguments:
+            node_id (int): kafka broker identifier
+            batches (dict): dictionary of {TopicPartition: MessageBatch}
+        """
         self._in_flight.add(node_id)
         t0 = self._loop.time()
         for attempts in range(self._retries+1):
@@ -373,6 +388,7 @@ class AIOKafkaProducer(object):
                 break
 
             if response is None:
+                # noacks, just "done" batches
                 for batch in batches.values():
                     batch.done()
                 break
@@ -401,6 +417,7 @@ class AIOKafkaProducer(object):
                             self._retry_timeout, loop=self._loop)
 
                 if not batches:
+                    # all batches was processed, break from for-loop
                     break
 
         # if batches for node is processed in less than a linger seconds
