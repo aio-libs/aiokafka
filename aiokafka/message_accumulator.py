@@ -1,6 +1,6 @@
 import io
 import asyncio
-mport collections
+import collections
 
 from kafka.common import (KafkaError,
                           KafkaTimeoutError,
@@ -76,6 +76,11 @@ class MessageBatch:
 
 
 class MessageAccumulator:
+    """Accumulator of messages batches by topic-partition
+
+    Producer add messages to this accumulator and background send task
+    gets batches per nodes for process it.
+    """
     def __init__(self, cluster, batch_size, compression_type, ttl, loop):
         self._batches = {}
         self._cluster = cluster
@@ -92,7 +97,13 @@ class MessageAccumulator:
 
     @asyncio.coroutine
     def add_message(self, tp, key, value):
+        """Add message to batch by topic-partition
+        If batch is already full this method waits (`ttl` seconds maximum)
+        until batch is drained by send task
+        """
         if self._closed:
+            # this can happen when producer is closing but try to send some
+            # messages in async task
             raise ProducerClosed()
 
         batch = self._batches.get(tp)
@@ -104,12 +115,16 @@ class MessageAccumulator:
 
             efut = self._empty_futures.get(tp)
             if efut is None or efut.done():
+                # batch per topic-partition is not empty
+                # so create new "empty" future
                 self._empty_futures[tp] = asyncio.Future(loop=self._loop)
             if not self._wait_data_future.done():
+                # we have some data, so resolve "wait data" future
                 self._wait_data_future.set_result(None)
 
         future = batch.append(key, value)
         if future is None:
+            # waiting until batch per topic-partition is drained
             done, _ = yield from asyncio.wait(
                 [self._empty_futures[tp]], timeout=self._ttl, loop=self._loop)
             if not done:
@@ -119,12 +134,14 @@ class MessageAccumulator:
 
     @asyncio.coroutine
     def wait_data(self):
+        """wait until there are some data for send"""
         if self._wait_data_future.done():
             return
         yield from self._wait_data_future
 
     @asyncio.coroutine
     def flush(self):
+        """wait until all batches is drained by send task"""
         for batch in list(self._batches.values()):
             yield from batch.wait_all()
 
@@ -136,6 +153,7 @@ class MessageAccumulator:
         return batch
 
     def drain_by_nodes(self, ignore_nodes):
+        """return batches by nodes"""
         nodes = collections.defaultdict(dict)
         unknown_leaders_exist = False
         for tp in list(self._batches.keys()):
@@ -159,6 +177,9 @@ class MessageAccumulator:
             nodes[leader][tp] = batch
 
         if not self._batches:
+            # all batches are drained from accumulator
+            # so create "wait data" future again for waiting new data in send
+            # task
             self._wait_data_future = asyncio.Future(loop=self._loop)
 
         return nodes, unknown_leaders_exist
