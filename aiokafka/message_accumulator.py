@@ -22,32 +22,35 @@ class MessageBatch:
     def __init__(self, tp, records, ttl, loop):
         self._tp = tp
         self._records = records
-        self._records_cnt = 0
+        self._relative_offset = 0
         self._loop = loop
-        self._batch_waiter = asyncio.Future(loop=loop)
-        self._msg_futures = []
         self._ttl = ttl
-        self._loop = loop
         self._ctime = loop.time()
 
+        # Waiters
+        # Set when messages are delivered to Kafka based on ACK setting
+        self._msg_futures = []
+        # Set when sender takes this batch
+        self._drain_waiter = asyncio.Future(loop=loop)
+
     def append(self, key, value):
-        """append message (key and value) to batch
+        """Append message (key and value) to batch
 
         Returns:
             None if batch is full
               or
-            asyncio.Future that will resolved when message will be processed
+            asyncio.Future that will resolved when message is delivered
         """
         if not self._records.has_room_for(key, value):
             return None
-        self._records.append(self._records_cnt, Message(value, key=key))
+        self._records.append(self._relative_offset, Message(value, key=key))
         future = asyncio.Future(loop=self._loop)
         self._msg_futures.append(future)
-        self._records_cnt += 1
+        self._relative_offset += 1
         return future
 
     def done(self, base_offset=None, exception=None):
-        """resolve all pending futures"""
+        """Resolve all pending futures"""
         for relative_offset, future in enumerate(self._msg_futures):
             if exception is not None:
                 future.set_exception(exception)
@@ -58,18 +61,22 @@ class MessageBatch:
                                      self._tp, base_offset+relative_offset)
                 future.set_result(res)
 
-    @asyncio.coroutine
-    def wait_all(self):
-        """wait until all message from this batch is processed"""
-        yield from asyncio.wait(self._msg_futures, loop=self._loop)
+    def wait_deliver(self):
+        """Wait until all message from this batch is processed"""
+        return asyncio.wait(self._msg_futures, loop=self._loop)
+
+    def wait_drain(self):
+        """Wait until all message from this batch is processed"""
+        return self._drain_waiter
 
     def expired(self):
-        """check that batch is expired or not"""
+        """Check that batch is expired or not"""
         return (self._loop.time() - self._ctime) > self._ttl
 
-    def pack(self):
-        """close batch to be ready for send"""
+    def drain_ready(self):
+        """Compress batch to be ready for send"""
         self._records.close()
+        self._drain_waiter.set_result(None)
 
     def data(self):
         return self._records.buffer()
@@ -81,22 +88,24 @@ class MessageAccumulator:
     Producer add messages to this accumulator and background send task
     gets batches per nodes for process it.
     """
-    def __init__(self, cluster, batch_size, compression_type, ttl, loop):
+    def __init__(self, cluster, batch_size, compression_type, batch_ttl, loop):
         self._batches = {}
         self._cluster = cluster
         self._batch_size = batch_size
         self._compression_type = compression_type
-        self._ttl = ttl
+        self._batch_ttl = batch_ttl
         self._loop = loop
         self._wait_data_future = asyncio.Future(loop=loop)
-        self._empty_futures = {}
         self._closed = False
 
+    @asyncio.coroutine
     def close(self):
         self._closed = True
+        for batch in list(self._batches.values()):
+            yield from batch.wait_deliver()
 
     @asyncio.coroutine
-    def add_message(self, tp, key, value):
+    def add_message(self, tp, key, value, timeout):
         """Add message to batch by topic-partition
         If batch is already full this method waits (`ttl` seconds maximum)
         until batch is drained by send task
@@ -110,26 +119,25 @@ class MessageAccumulator:
         if not batch:
             message_set_buffer = MessageSetBuffer(
                 io.BytesIO(), self._batch_size, self._compression_type)
-            batch = MessageBatch(tp, message_set_buffer, self._ttl, self._loop)
+            batch = MessageBatch(
+                tp, message_set_buffer, self._batch_ttl, self._loop)
             self._batches[tp] = batch
 
-            efut = self._empty_futures.get(tp)
-            if efut is None or efut.done():
-                # batch per topic-partition is not empty
-                # so create new "empty" future
-                self._empty_futures[tp] = asyncio.Future(loop=self._loop)
             if not self._wait_data_future.done():
-                # we have some data, so resolve "wait data" future
+                # Wakeup sender task if it waits for data
                 self._wait_data_future.set_result(None)
 
         future = batch.append(key, value)
         if future is None:
+            # Batch is full, can't append data atm,
             # waiting until batch per topic-partition is drained
-            done, _ = yield from asyncio.wait(
-                [self._empty_futures[tp]], timeout=self._ttl, loop=self._loop)
-            if not done:
+            start = self._loop.time()
+            yield from asyncio.wait(
+                [batch.wait_drain()], timeout=timeout, loop=self._loop)
+            timeout -= self._loop.time() - start
+            if timeout <= 0:
                 raise KafkaTimeoutError()
-            return (yield from self.add_message(tp, key, value))
+            return (yield from self.add_message(tp, key, value, timeout))
         return future
 
     @asyncio.coroutine
@@ -139,17 +147,9 @@ class MessageAccumulator:
             return
         yield from self._wait_data_future
 
-    @asyncio.coroutine
-    def flush(self):
-        """wait until all batches is drained by send task"""
-        for batch in list(self._batches.values()):
-            yield from batch.wait_all()
-
     def _pop_batch(self, tp):
         batch = self._batches.pop(tp)
-        batch.pack()
-        if not self._empty_futures[tp].done():
-            self._empty_futures[tp].set_result(None)
+        batch.drain_ready()
         return batch
 
     def drain_by_nodes(self, ignore_nodes):

@@ -25,8 +25,8 @@ class TestMessageAccumulator(unittest.TestCase):
 
         tp0 = TopicPartition("test-topic", 0)
         tp1 = TopicPartition("test-topic", 1)
-        yield from ma.add_message(tp0, b'key', b'value')
-        yield from ma.add_message(tp1, None, b'value without key')
+        yield from ma.add_message(tp0, b'key', b'value', timeout=2)
+        yield from ma.add_message(tp1, None, b'value without key', timeout=2)
 
         done, _ = yield from asyncio.wait(
             [data_waiter], timeout=0.2, loop=self.loop)
@@ -61,15 +61,20 @@ class TestMessageAccumulator(unittest.TestCase):
 
         # testing batch overflow
         tp2 = TopicPartition("test-topic", 2)
-        yield from ma.add_message(tp0, None, b'some short message')
-        yield from ma.add_message(tp0, None, b'some other short message')
-        yield from ma.add_message(tp1, None, b'0123456789'*70)
-        yield from ma.add_message(tp2, None, b'message to unknown leader')
+        yield from ma.add_message(
+            tp0, None, b'some short message', timeout=2)
+        yield from ma.add_message(
+            tp0, None, b'some other short message', timeout=2)
+        yield from ma.add_message(
+            tp1, None, b'0123456789'*70, timeout=2)
+        yield from ma.add_message(
+            tp2, None, b'message to unknown leader', timeout=2)
         # next we try to add message with len=500,
         # as we have buffer_size=1000 coroutine will block until data will be
         # drained
-        add_task = asyncio.async(ma.add_message(tp1, None, b'0123456789'*50),
-                                 loop=self.loop)
+        add_task = asyncio.async(
+            ma.add_message(tp1, None, b'0123456789'*50, timeout=2),
+            loop=self.loop)
         done, _ = yield from asyncio.wait(
             [add_task], timeout=0.2, loop=self.loop)
         self.assertFalse(bool(done))
@@ -77,7 +82,7 @@ class TestMessageAccumulator(unittest.TestCase):
         batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[1, 2])
         self.assertEqual(unknown_leaders_exist, True)
         m_set0 = batches[0].get(tp0)
-        self.assertEqual(m_set0._records_cnt, 2)
+        self.assertEqual(m_set0._relative_offset, 2)
         m_set1 = batches[1].get(tp1)
         self.assertEqual(m_set1, None)
 
@@ -90,7 +95,7 @@ class TestMessageAccumulator(unittest.TestCase):
         m_set0 = batches[0].get(tp0)
         self.assertEqual(m_set0, None)
         m_set1 = batches[1].get(tp1)
-        self.assertEqual(m_set1._records_cnt, 1)
+        self.assertEqual(m_set1._relative_offset, 1)
 
         done, _ = yield from asyncio.wait(
             [add_task], timeout=0.2, loop=self.loop)
@@ -98,7 +103,7 @@ class TestMessageAccumulator(unittest.TestCase):
         batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(unknown_leaders_exist, True)
         m_set1 = batches[1].get(tp1)
-        self.assertEqual(m_set1._records_cnt, 1)
+        self.assertEqual(m_set1._relative_offset, 1)
 
     @run_until_complete
     def test_batch_done(self):
@@ -121,11 +126,13 @@ class TestMessageAccumulator(unittest.TestCase):
         cluster.leader_for_partition.side_effect = mocked_leader_for_partition
 
         ma = MessageAccumulator(cluster, 1000, None, 1, self.loop)
-        fut1 = yield from ma.add_message(tp2, None, b'msg for tp@2')
-        fut2 = yield from ma.add_message(tp3, None, b'msg for tp@3')
-        yield from ma.add_message(tp1, None, b'0123456789'*70)
+        fut1 = yield from ma.add_message(
+            tp2, None, b'msg for tp@2', timeout=2)
+        fut2 = yield from ma.add_message(
+            tp3, None, b'msg for tp@3', timeout=2)
+        yield from ma.add_message(tp1, None, b'0123456789'*70, timeout=2)
         with self.assertRaises(KafkaTimeoutError):
-            yield from ma.add_message(tp1, None, b'0123456789'*70)
+            yield from ma.add_message(tp1, None, b'0123456789'*70, timeout=2)
         batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(batches[1][tp1].expired(), True)
         with self.assertRaises(LeaderNotAvailableError):
@@ -133,9 +140,12 @@ class TestMessageAccumulator(unittest.TestCase):
         with self.assertRaises(NotLeaderForPartitionError):
             yield from fut2
 
-        fut01 = yield from ma.add_message(tp0, b'key0', b'value#0')
-        fut02 = yield from ma.add_message(tp0, b'key1', b'value#1')
-        fut10 = yield from ma.add_message(tp1, None, b'0123456789'*70)
+        fut01 = yield from ma.add_message(
+            tp0, b'key0', b'value#0', timeout=2)
+        fut02 = yield from ma.add_message(
+            tp0, b'key1', b'value#1', timeout=2)
+        fut10 = yield from ma.add_message(
+            tp1, None, b'0123456789'*70, timeout=2)
         batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(batches[0][tp0].expired(), False)
         self.assertEqual(batches[1][tp1].expired(), False)
@@ -159,7 +169,8 @@ class TestMessageAccumulator(unittest.TestCase):
         with self.assertRaises(TestException):
             yield from fut10
 
-        fut01 = yield from ma.add_message(tp0, b'key0', b'value#0')
+        fut01 = yield from ma.add_message(
+            tp0, b'key0', b'value#0', timeout=2)
         batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         batches[0][tp0].done(base_offset=None)
         res = yield from fut01

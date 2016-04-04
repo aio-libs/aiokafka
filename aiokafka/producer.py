@@ -220,8 +220,8 @@ class AIOKafkaProducer(object):
         if self._closed:
             return
 
-        self._message_accumulator.close()
-        yield from self._message_accumulator.flush()
+        # Wait untill all batches are Delivered and futures resolved
+        yield from self._message_accumulator.close()
 
         if self._sender_task:
             self._sender_task.cancel()
@@ -306,7 +306,7 @@ class AIOKafkaProducer(object):
         log.debug("Sending (key=%s value=%s) to %s", key, value, tp)
 
         fut = yield from self._message_accumulator.add_message(
-            tp, key_bytes, value_bytes)
+            tp, key_bytes, value_bytes, self._request_timeout_ms / 1000)
         return fut
 
     @asyncio.coroutine
@@ -350,12 +350,6 @@ class AIOKafkaProducer(object):
             pass
         except Exception:  # noqa
             log.error("Unexpected error in sender routine", exc_info=True)
-        finally:
-            # wait in-progress produce tasks before close
-            if tasks:
-                yield from asyncio.wait(
-                    tasks, timeout=self._request_timeout_ms/1000,
-                    loop=self._loop)
 
     @asyncio.coroutine
     def _send_produce_req(self, node_id, batches):
