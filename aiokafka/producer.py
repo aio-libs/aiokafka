@@ -326,8 +326,8 @@ class AIOKafkaProducer(object):
                     fut = asyncio.sleep(self._retry_backoff, loop=self._loop)
                     waiters = tasks.union([fut])
                 else:
-                    waiters = tasks.union(
-                        [self._message_accumulator.wait_data()])
+                    fut = self._message_accumulator.data_waiter()
+                    waiters = tasks.union([fut])
 
                 # wait when:
                 # * At least one of produce task is finished

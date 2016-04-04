@@ -140,12 +140,10 @@ class MessageAccumulator:
             return (yield from self.add_message(tp, key, value, timeout))
         return future
 
-    @asyncio.coroutine
-    def wait_data(self):
-        """wait until there are some data for send"""
-        if self._wait_data_future.done():
-            return
-        yield from self._wait_data_future
+    def data_waiter(self):
+        """return waiter future that will be resolved when accumulator contain
+        some data for drain"""
+        return self._wait_data_future
 
     def _pop_batch(self, tp):
         batch = self._batches.pop(tp)
@@ -179,6 +177,8 @@ class MessageAccumulator:
         # all batches are drained from accumulator
         # so create "wait data" future again for waiting new data in send
         # task
+        if not self._wait_data_future.done():
+            self._wait_data_future.set_result(None)
         self._wait_data_future = asyncio.Future(loop=self._loop)
 
         return nodes, unknown_leaders_exist

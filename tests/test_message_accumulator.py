@@ -18,7 +18,7 @@ class TestMessageAccumulator(unittest.TestCase):
     def test_basic(self):
         cluster = ClusterMetadata(metadata_max_age_ms=10000)
         ma = MessageAccumulator(cluster, 1000, None, 30, self.loop)
-        data_waiter = asyncio.async(ma.wait_data(), loop=self.loop)
+        data_waiter = asyncio.async(ma.data_waiter(), loop=self.loop)
         done, _ = yield from asyncio.wait(
             [data_waiter], timeout=0.2, loop=self.loop)
         self.assertFalse(bool(done))  # no data in accumulator yet...
@@ -54,7 +54,7 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertEqual(type(m_set1), MessageBatch)
         self.assertEqual(m_set0.expired(), False)
 
-        data_waiter = asyncio.async(ma.wait_data(), loop=self.loop)
+        data_waiter = asyncio.async(ma.data_waiter(), loop=self.loop)
         done, _ = yield from asyncio.wait(
             [data_waiter], timeout=0.2, loop=self.loop)
         self.assertFalse(bool(done))  # no data in accumulator again...
