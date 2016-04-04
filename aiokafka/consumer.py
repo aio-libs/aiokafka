@@ -19,8 +19,8 @@ class AIOKafkaConsumer(object):
     The consumer will transparently handle the failure of servers in the Kafka
     cluster, and adapt as topic-partitions are created or migrate between
     brokers. It also interacts with the assigned kafka Group Coordinator node
-    to allow multiple consumers to load balance consumption of topics (requires
-    kafka >= 0.9.0.0).
+    to allow multiple consumers to load balance consumption of topics (feature
+    of kafka >= 0.9.0.0).
 
     Arguments:
         *topics (str): optional list of topics to subscribe to. If not set,
@@ -283,8 +283,9 @@ class AIOKafkaConsumer(object):
 
         This commits offsets only to Kafka.
         The offsets committed using this API will be used on the first fetch
-        after every rebalance and also on startup. As such, if you needto store
-        offsets in anything other than Kafka, this API should not be used.
+        after every rebalance and also on startup. As such, if you need to
+        store offsets in anything other than Kafka, this API should not be
+        used.
 
         Blocks until either the commit succeeds or an unrecoverable error is
         encountered (in which case it is thrown to the caller).

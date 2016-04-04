@@ -106,7 +106,7 @@ To enable LZ4 compression/decompression, install lz4tools and xxhash:
 Optional Snappy install
 +++++++++++++++++++++++
 
-1. Download and build Snappy from http://code.google.com/p/snappy/downloads/list
+1. Download and build Snappy from http://google.github.io/snappy/
 
 Ubuntu:
 
@@ -124,9 +124,9 @@ From Source:
 
 .. code:: bash
 
-    wget http://snappy.googlecode.com/files/snappy-1.0.5.tar.gz
-    tar xzvf snappy-1.0.5.tar.gz
-    cd snappy-1.0.5
+    wget https://github.com/google/snappy/tarball/master
+    tar xzvf google-snappy-X.X.X-X-XXXXXXXX.tar.gz
+    cd google-snappy-X.X.X-X-XXXXXXXX
     ./configure
     make
     sudo make install
