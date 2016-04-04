@@ -176,10 +176,9 @@ class MessageAccumulator:
             batch = self._pop_batch(tp)
             nodes[leader][tp] = batch
 
-        if not self._batches:
-            # all batches are drained from accumulator
-            # so create "wait data" future again for waiting new data in send
-            # task
-            self._wait_data_future = asyncio.Future(loop=self._loop)
+        # all batches are drained from accumulator
+        # so create "wait data" future again for waiting new data in send
+        # task
+        self._wait_data_future = asyncio.Future(loop=self._loop)
 
         return nodes, unknown_leaders_exist

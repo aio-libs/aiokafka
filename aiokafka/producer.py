@@ -328,24 +328,25 @@ class AIOKafkaProducer(object):
 
                 if unknown_leaders_exist:
                     # we have at least one unknown partition's leader,
-                    # try to update cluster metadata
-                    yield from self.client.force_metadata_update()
-
-                if tasks:
-                    # wait when at least one of produce task is finished
-                    _, tasks = yield from asyncio.wait(
-                        tasks, return_when=asyncio.FIRST_COMPLETED,
-                        loop=self._loop)
-                elif not unknown_leaders_exist:
-                    # we have no tasks and all partition's leader are known
-                    # so just wait new data (at least one message)
-                    yield from self._message_accumulator.wait_data()
-                else:
-                    # we have no tasks and some leaders for partitions are
-                    # unknown. In this case we should sleep some time before
-                    # next drain/metadata_update
-                    yield from asyncio.sleep(
+                    # try to update cluster metadata and wait backoff time
+                    self.client.force_metadata_update()
+                    # Just to have at least 1 future in wait() call
+                    fut = asyncio.sleep(
                         self._send_backoff_time, loop=self._loop)
+                    waiters = tasks.union([fut])
+                else:
+                    waiters = tasks.union(
+                        [self._message_accumulator.wait_data()])
+
+                # wait when:
+                # * At least one of produce task is finished
+                # * Data for new partition arrived
+                done, _ = yield from asyncio.wait(
+                    waiters,
+                    return_when=asyncio.FIRST_COMPLETED,
+                    loop=self._loop)
+                tasks -= done
+
         except asyncio.CancelledError:
             pass
         except Exception:  # noqa
