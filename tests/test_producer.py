@@ -212,7 +212,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         with mock.patch.object(producer.client, 'send') as mocked:
             mocked.side_effect = mocked_send_with_sleep
-            with self.assertRaises(KafkaTimeoutError):
+            with self.assertRaises(RequestTimedOutError):
                 future = yield from producer.send(
                     self.topic, b'text1', partition=0)
                 yield from future

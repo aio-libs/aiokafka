@@ -5,7 +5,7 @@ import collections
 from kafka.common import (TopicPartition,
                           MessageSizeTooLargeError,
                           UnknownTopicOrPartitionError,
-                          KafkaTimeoutError)
+                          KafkaError)
 from kafka.partitioner.default import DefaultPartitioner
 from kafka.protocol.message import Message, MessageSet
 from kafka.protocol.produce import ProduceRequest
@@ -365,7 +365,7 @@ class AIOKafkaProducer(object):
         """
         self._in_flight.add(node_id)
         t0 = self._loop.time()
-        for attempts in range(self._retries+1):
+        while True:
             topics = collections.defaultdict(list)
             for tp, batch in batches.items():
                 topics[tp.topic].append((tp.partition, batch.data()))
@@ -377,43 +377,46 @@ class AIOKafkaProducer(object):
 
             try:
                 response = yield from self.client.send(node_id, request)
-            except KafkaTimeoutError as err:
+            except KafkaError as err:
                 for batch in batches.values():
-                    batch.done(exception=err)
-                break
-
-            if response is None:
-                # noacks, just "done" batches
-                for batch in batches.values():
-                    batch.done()
-                break
-
-            for topic, partitions in response.topics:
-                for partition, error_code, offset in partitions:
-                    tp = TopicPartition(topic, partition)
-                    error = Errors.for_code(error_code)
-                    batch = batches.pop(tp, None)
-                    if batch is None:
-                        continue
-                    if error is Errors.NoError:
-                        batch.done(offset)
-                    elif not getattr(error, 'retriable', False) \
-                            or attempts == self._retries:
-                        batch.done(exception=error())
-                    elif batch.expired():
-                        batch.done(exception=KafkaTimeoutError())
-                    else:
-                        batches[tp] = batch
-                        log.warning(
-                            "Got error produce response on topic-partition"
-                            " %s, retrying (%d attempts left). Error: %s",
-                            tp, self._retries - attempts - 1, error)
-                        yield from asyncio.sleep(
-                            self._retry_timeout, loop=self._loop)
-
-                if not batches:
-                    # all batches was processed, break from for-loop
+                    if not err.retriable or batch.expired():
+                        batch.done(exception=err)
+                log.warning(
+                    "Got error produce response: %s", err)
+                if not err.retriable:
                     break
+            else:
+                if response is None:
+                    # noacks, just "done" batches
+                    for batch in batches.values():
+                        batch.done()
+                    break
+
+                for topic, partitions in response.topics:
+                    for partition, error_code, offset in partitions:
+                        tp = TopicPartition(topic, partition)
+                        error = Errors.for_code(error_code)
+                        batch = batches.pop(tp, None)
+                        if batch is None:
+                            continue
+
+                        if error is Errors.NoError:
+                            batch.done(offset)
+                        elif not getattr(error, 'retriable', False) or \
+                                batch.expired():
+                            batch.done(exception=error())
+                        else:
+                            # Ok, we can retry this batch
+                            batches[tp] = batch
+                            log.warning(
+                                "Got error produce response on topic-partition"
+                                " %s, retrying. Error: %s", tp, error)
+
+            if batches:
+                yield from asyncio.sleep(
+                    self._retry_timeout, loop=self._loop)
+            else:
+                break
 
         # if batches for node is processed in less than a linger seconds
         # then waiting for the remaining time
