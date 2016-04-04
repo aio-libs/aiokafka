@@ -82,18 +82,9 @@ class AIOKafkaProducer(object):
             Compression is of full batches of data, so the efficacy of batching
             will also impact the compression ratio (more batching means better
             compression). Default: None.
-        retries (int): Setting a value greater than zero will cause the client
-            to resend any record whose send fails with a potentially transient
-            error. Note that this retry is no different than if the client
-            resent the record upon receiving the error. Allowing retries will
-            potentially change the ordering of records because if two records
-            are sent to a single partition, and the first fails and is retried
-            but the second succeeds, then the second record may appear first.
-            Default: 0.
-        batch_size (int): Requests sent to brokers will contain multiple
-            batches, one for each partition with data available to be sent.
-            A small batch size will make batching less common and may reduce
-            throughput (a batch size of zero will disable batching entirely).
+        max_batch_size (int): Maximum size of buffered data per partition.
+            After this amount `send` coroutine will block until batch is
+            drained.
             Default: 16384
         linger_ms (int): The producer groups together any records that arrive
             in between request transmissions into a single batched request.
@@ -126,15 +117,15 @@ class AIOKafkaProducer(object):
             which we force a refresh of metadata even if we haven't seen any
             partition leadership changes to proactively discover any new
             brokers or partitions. Default: 300000
-        request_timeout_ms (int): Client request timeout in milliseconds.
+        request_timeout_ms (int): Produce request timeout in milliseconds.
+            As it's sent as part of ProduceRequest, maximum waiting time can
+            be up to 2 * request_timeout_ms.
             Default: 30000.
+        retry_backoff_ms (int): Milliseconds to backoff when retrying on
+            errors. Default: 100.
         api_version (str): specify which kafka API version to use.
             If set to 'auto', will attempt to infer the broker version by
             probing various APIs. Default: auto
-        send_backoff_ms (int): The amount of time in milliseconds to
-            wait before try again to send records when one or more partitions
-            has no leader.
-            Default: 50.
 
     Note:
         Many configuration parameters are taken from Java Client:
@@ -147,10 +138,10 @@ class AIOKafkaProducer(object):
                  metadata_max_age_ms=300000, request_timeout_ms=40000,
                  api_version='auto', acks=1,
                  key_serializer=None, value_serializer=None,
-                 compression_type=None, batch_size=16384,
+                 compression_type=None, max_batch_size=16384,
                  partitioner=DefaultPartitioner(), max_request_size=1048576,
-                 retries=0, linger_ms=0, send_backoff_ms=100,
-                 retry_timeout_ms=500):
+                 linger_ms=0, send_backoff_ms=100,
+                 retry_backoff_ms=100):
         if acks not in (0, 1, -1, 'all'):
             raise ValueError("Invalid ACKS parameter")
         if compression_type not in ('gzip', 'snappy', 'lz4', None):
@@ -170,7 +161,6 @@ class AIOKafkaProducer(object):
         self._key_serializer = key_serializer
         self._value_serializer = value_serializer
         self._compression_type = compression_type
-        self._batch_size = batch_size
         self._partitioner = partitioner
         self._max_request_size = max_request_size
         self._request_timeout_ms = request_timeout_ms
@@ -181,16 +171,14 @@ class AIOKafkaProducer(object):
             request_timeout_ms=request_timeout_ms)
         self._metadata = self.client.cluster
         self._message_accumulator = MessageAccumulator(
-            self._metadata, self._batch_size, self._compression_type,
+            self._metadata, max_batch_size, self._compression_type,
             self._request_timeout_ms/1000, loop)
         self._sender_task = None
         self._in_flight = set()
         self._closed = False
         self._loop = loop
-        self._retries = retries
-        self._retry_timeout = retry_timeout_ms / 1000
+        self._retry_backoff = retry_backoff_ms / 1000
         self._linger_time = linger_ms / 1000
-        self._send_backoff_time = send_backoff_ms / 1000
 
     @asyncio.coroutine
     def start(self):
@@ -289,6 +277,10 @@ class AIOKafkaProducer(object):
         Returns:
             asyncio.Future: future object that will be set when message is
                             processed
+
+        Note: The returned future will wait based on `request_timeout_ms`
+            setting. Cancelling this future will not stop event from being
+            sent.
         """
         assert value is not None or self._api_version >= (0, 8, 1), (
             'Null messages require kafka >= 0.8.1')
@@ -331,8 +323,7 @@ class AIOKafkaProducer(object):
                     # try to update cluster metadata and wait backoff time
                     self.client.force_metadata_update()
                     # Just to have at least 1 future in wait() call
-                    fut = asyncio.sleep(
-                        self._send_backoff_time, loop=self._loop)
+                    fut = asyncio.sleep(self._retry_backoff, loop=self._loop)
                     waiters = tasks.union([fut])
                 else:
                     waiters = tasks.union(
@@ -414,7 +405,7 @@ class AIOKafkaProducer(object):
 
             if batches:
                 yield from asyncio.sleep(
-                    self._retry_timeout, loop=self._loop)
+                    self._retry_backoff, loop=self._loop)
             else:
                 break
 

@@ -186,7 +186,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     def test_producer_send_error(self):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts,
-            retry_timeout_ms=100, retries=3,
+            retry_backoff_ms=100,
             linger_ms=5, request_timeout_ms=400)
         yield from producer.start()
 
