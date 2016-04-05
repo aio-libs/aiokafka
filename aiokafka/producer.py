@@ -302,6 +302,12 @@ class AIOKafkaProducer(object):
         return fut
 
     @asyncio.coroutine
+    def send_and_wait(self, topic, value=None, key=None, partition=None):
+        """Publish a message to a topic and wait the result"""
+        future = yield from self.send(topic, value, key, partition)
+        return (yield from future)
+
+    @asyncio.coroutine
     def _sender_routine(self):
         """backgroud task that sends message batches to Kafka brokers"""
         tasks = set()

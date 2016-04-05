@@ -62,8 +62,11 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         future = yield from producer.send(self.topic, b'value', key=b'KEY')
         resp = yield from future
         self.assertTrue(resp.partition in (0, 1))
-        yield from producer.stop()
 
+        resp = yield from producer.send_and_wait(self.topic, b'value')
+        self.assertTrue(resp.partition in (0, 1))
+
+        yield from producer.stop()
         with self.assertRaises(ProducerClosed):
             yield from producer.send(self.topic, b'value', key=b'KEY')
 
