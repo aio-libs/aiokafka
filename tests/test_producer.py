@@ -134,9 +134,16 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         yield from producer.start()
         yield from self.wait_topic(producer.client, self.topic)
 
+        # short message will not be compressed
         future = yield from producer.send(
-            self.topic, b'this msg is compressed by client')
+            self.topic, b'this msg is too short for compress')
         resp = yield from future
+        self.assertEqual(resp.topic, self.topic)
+        self.assertTrue(resp.partition in (0, 1))
+
+        # now message will be compressed
+        resp = yield from producer.send_and_wait(
+            self.topic, b'large_message-'*100)
         self.assertEqual(resp.topic, self.topic)
         self.assertTrue(resp.partition in (0, 1))
         yield from producer.stop()
