@@ -330,7 +330,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     def test_compress_decompress(self):
-        ret = []
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts,
             compression_type="gzip")
