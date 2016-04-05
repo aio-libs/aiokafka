@@ -115,13 +115,13 @@ class MessageBatch:
             _, compressor, attrs = self._COMPRESSORS[self._compression_type]
             msg = Message(compressor(memview[4:].tobytes()), attributes=attrs)
             encoded = msg.encode()
-            header_size = 16   # 4(all size) + 8(offset) + 4(compressed size)
             # if compressed message is longer than original
             # we should send it as is (not compressed)
+            header_size = 16   # 4(all size) + 8(offset) + 4(compressed size)
             if len(encoded) + header_size < len(memview):
                 # write compressed message set (with header) to buffer
                 # using memory view (for avoid memory copying)
-                memview[:4] = Int32.encode(len(encoded) + header_size)
+                memview[:4] = Int32.encode(len(encoded) + 12)
                 memview[4:12] = Int64.encode(0)  # offset 0
                 memview[12:16] = Int32.encode(len(encoded))
                 memview[16:16+len(encoded)] = encoded
