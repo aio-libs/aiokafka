@@ -26,12 +26,12 @@ Example of AIOKafkaProducer usage:
         def produce(loop):
             producer = AIOKafkaProducer(loop=loop, bootstrap_servers='localhost:1234')
             yield from producer.start()
-            future1 = yield from producer.send('foobar', b'some_message_bytes')
-            resp = yield from future1
+            future = yield from producer.send('foobar', b'some_message_bytes')
+            # waiting send result
+            resp = yield from future
             print("Message was produced to partition %i with offset %i"%(resp.partition, resp.offset))
-            future2 = yield from producer.send('foobar', key=b'foo', value=b'bar')
-            future3 = yield from producer.send('foobar', b'message for partition 1', partition=1)
-            yield from asyncio.wait([future2, future3], loop=loop)
+            resp = yield from producer.send_and_wait('foobar', key=b'foo', value=b'bar')
+            resp = yield from producer.send_and_wait('foobar', b'message for partition 1', partition=1)
             yield from producer.stop()
 
         loop = asyncio.get_event_loop()
