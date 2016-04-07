@@ -22,10 +22,11 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                     msg = msg.encode()
                 elif isinstance(msg, int):
                     msg = str(msg).encode()
-                resp = yield from producer.send(
+                future = yield from producer.send(
                     self.topic, msg, partition=partition)
-                self.assertEqual(len(resp.topics), 1)
-                self.assertEqual(resp.topics[0][1][0][0], partition)
+                resp = yield from future
+                self.assertEqual(resp.topic, self.topic)
+                self.assertEqual(resp.partition, partition)
                 ret.append(msg)
         finally:
             yield from producer.stop()
@@ -326,3 +327,22 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(set(msgs2), set(result))
         self.assertEqual(consumer.subscription(), set([self.topic]))
         yield from consumer.stop()
+
+    @run_until_complete
+    def test_compress_decompress(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            compression_type="gzip")
+        yield from producer.start()
+        yield from self.wait_topic(producer.client, self.topic)
+        msg1 = b'some-message'*10
+        msg2 = b'other-message'*30
+        yield from producer.send(self.topic, msg1, partition=1)
+        yield from producer.send(self.topic, msg2, partition=1)
+        yield from producer.stop()
+
+        consumer = yield from self.consumer_factory()
+        rmsg1 = yield from consumer.getone()
+        self.assertEqual(rmsg1.value, msg1)
+        rmsg2 = yield from consumer.getone()
+        self.assertEqual(rmsg2.value, msg2)
