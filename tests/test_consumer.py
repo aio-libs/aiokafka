@@ -1,6 +1,5 @@
 import asyncio
 from aiokafka.consumer import AIOKafkaConsumer
-from aiokafka.producer import AIOKafkaProducer
 from aiokafka.fetcher import RecordTooLargeError
 
 from kafka.common import TopicPartition, OffsetAndMetadata, IllegalStateError
@@ -9,36 +8,6 @@ from ._testutil import (
 
 
 class TestConsumerIntegration(KafkaIntegrationTestCase):
-    @asyncio.coroutine
-    def send_messages(self, partition, messages):
-        ret = []
-        producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts)
-        yield from producer.start()
-        try:
-            yield from self.wait_topic(producer.client, self.topic)
-            for msg in messages:
-                if isinstance(msg, str):
-                    msg = msg.encode()
-                elif isinstance(msg, int):
-                    msg = str(msg).encode()
-                future = yield from producer.send(
-                    self.topic, msg, partition=partition)
-                resp = yield from future
-                self.assertEqual(resp.topic, self.topic)
-                self.assertEqual(resp.partition, partition)
-                ret.append(msg)
-        finally:
-            yield from producer.stop()
-        return ret
-
-    def assert_message_count(self, messages, num_messages):
-        # Make sure we got them all
-        self.assertEquals(len(messages), num_messages)
-
-        # Make sure there are no duplicates
-        self.assertEquals(len(set(messages)), num_messages)
-
     @asyncio.coroutine
     def consumer_factory(self, **kwargs):
         enable_auto_commit = kwargs.pop('enable_auto_commit', True)

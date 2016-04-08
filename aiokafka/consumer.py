@@ -8,7 +8,7 @@ from kafka.consumer.subscription_state import SubscriptionState
 from aiokafka.client import AIOKafkaClient
 from aiokafka.group_coordinator import GroupCoordinator
 from aiokafka.fetcher import Fetcher
-from aiokafka import __version__,  ensure_future
+from aiokafka import __version__,  ensure_future, PY_35
 
 log = logging.getLogger(__name__)
 
@@ -628,3 +628,12 @@ class AIOKafkaConsumer(object):
         timeout = timeout_ms / 1000
         records = yield from self._fetcher.fetched_records(partitions, timeout)
         return records
+
+    if PY_35:
+        @asyncio.coroutine
+        def __aiter__(self):
+            return self
+
+        @asyncio.coroutine
+        def __anext__(self):
+            return (yield from self.getone())

@@ -3,6 +3,8 @@ try:
     from asyncio import ensure_future
 except ImportError:
     from asyncio import async as ensure_future
+import sys  # noqa
+PY_35 = sys.version_info >= (3, 5)
 
 __version__ = '0.0.1'
 
