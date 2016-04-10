@@ -25,7 +25,7 @@ Consumer:
         # we want to consume 10 messages from "foobar" topic
         # and commit after that
         for i in range(10):
-                msg = loop.run_until_complete(consumer.getone())
+            msg = loop.run_until_complete(consumer.getone())
         loop.run_until_complete(consumer.commit())
         loop.run_until_complete(consumer.stop())
         loop.close()
