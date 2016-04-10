@@ -1,6 +1,7 @@
 import asyncio
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.fetcher import RecordTooLargeError
+from aiokafka.producer import AIOKafkaProducer
 
 from kafka.common import TopicPartition, OffsetAndMetadata, IllegalStateError
 from ._testutil import (
