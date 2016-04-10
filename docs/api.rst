@@ -21,7 +21,7 @@ Errors handling
 Both consumer and producer can raise exceptions that inherit from the `kafka.common.KafkaError` class
 and declared in `kafka.common` module.
 
-Example of exceptions catching:
+Example of exceptions handling:
 
 
 .. code:: python

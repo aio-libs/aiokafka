@@ -29,30 +29,30 @@ See consumer example:
 
 .. code:: python
 
-        import asyncio
-        from kafka.common import KafkaError
-        from aiokafka import AIOKafkaConsumer
+    import asyncio
+    from kafka.common import KafkaError
+    from aiokafka import AIOKafkaConsumer
 
-        @asyncio.coroutine
-        def consume_task(consumer):
-            while True:
-                try:
-                    msg = yield from consumer.getone()
-                    print("consumed: ", msg.topic, msg.partition, msg.offset, msg.value)
-                except KafkaError as err:
-                    print("error while consuming message: ", err)
+    @asyncio.coroutine
+    def consume_task(consumer):
+        while True:
+            try:
+                msg = yield from consumer.getone()
+                print("consumed: ", msg.topic, msg.partition, msg.offset, msg.value)
+            except KafkaError as err:
+                print("error while consuming message: ", err)
 
-        loop = asyncio.get_event_loop()
-        consumer = AIOKafkaConsumer(
-            'topic1', 'topic2', loop=loop, bootstrap_servers='localhost:1234')
-        loop.run_until_complete(consumer.start())
-        c_task = asyncio.async(consume_task(consumer))
-        try:
-            loop.run_forever()
-        finally:
-            loop.run_until_complete(consumer.stop())
-            c_task.close()
-            loop.close()
+    loop = asyncio.get_event_loop()
+    consumer = AIOKafkaConsumer(
+        'topic1', 'topic2', loop=loop, bootstrap_servers='localhost:1234')
+    loop.run_until_complete(consumer.start())
+    c_task = loop.create_task(consume_task(consumer))
+    try:
+        loop.run_forever()
+    finally:
+        loop.run_until_complete(consumer.stop())
+        c_task.cancel()
+        loop.close()
 
 AIOKafkaProducer
 ++++++++++++++++
@@ -64,24 +64,29 @@ See producer example:
 
 .. code:: python
 
-        import asyncio
-        from aiokafka import AIOKafkaProducer
+    import asyncio
+    from aiokafka import AIOKafkaProducer
 
-        @asyncio.coroutine
-        def produce(loop):
-            producer = AIOKafkaProducer(loop=loop, bootstrap_servers='localhost:1234')
-            yield from producer.start()
-            future = yield from producer.send('foobar', b'some_message_bytes')
-            # waiting send result
-            resp = yield from future
-            print("Message was produced to partition %i with offset %i"%(resp.partition, resp.offset))
-            resp = yield from producer.send_and_wait('foobar', key=b'foo', value=b'bar')
-            resp = yield from producer.send_and_wait('foobar', b'message for partition 1', partition=1)
-            yield from producer.stop()
+    @asyncio.coroutine
+    def produce(loop):
+        # Just adds message to sending queue
+        future = yield from producer.send('foobar', b'some_message_bytes')
+        # waiting for message to be delivered
+        resp = yield from future
+        print("Message produced: partition {}; offset {}".format(
+              resp.partition, resp.offset))
+        # Also can use a helper to send and wait in 1 call
+        resp = yield from producer.send_and_wait(
+            'foobar', key=b'foo', value=b'bar')
+        resp = yield from producer.send_and_wait(
+            'foobar', b'message for partition 1', partition=1)
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(produce(loop))
-        loop.close()
+    loop = asyncio.get_event_loop()
+    producer = AIOKafkaProducer(loop=loop, bootstrap_servers='localhost:9092')
+    loop.run_until_complete(producer.start())
+    loop.run_until_complete(produce(loop))
+    loop.run_until_complete(producer.stop())
+    loop.close()
 
 
 Installation
