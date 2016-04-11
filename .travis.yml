@@ -27,3 +27,14 @@ script:
 
 after_success:
   - coveralls
+
+deploy:
+  provider: pypi
+  user: andrew.svetlov
+  password:
+    secure: bNequAaWVcBKr296rptqi4O1ylONydRydCvUDkohQf4Oa73jx7wNXkBHPcRGlKpCMoU8zcJTh1xkEALW5eLyRgNRwvL3VJEhiy1TZCPByPKLM+uwrrwSP/G5TcSgC4nCBlUHAhun+l85CW/acOJeYFyKxiNeLHAO2thHFYdwWNI=
+  distributions: "sdist"
+  on:
+    tags: true
+    all_branches: true
+    python: 3.5
