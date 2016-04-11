@@ -10,6 +10,7 @@ from functools import wraps
 
 from kafka.common import ConnectionError
 from aiokafka.client import AIOKafkaClient
+from aiokafka.producer import AIOKafkaProducer
 
 
 __all__ = ['KafkaIntegrationTestCase', 'random_string']
@@ -71,6 +72,36 @@ class KafkaIntegrationTestCase(unittest.TestCase):
             else:
                 return
         raise AssertionError('No topic "{}" exists'.format(topic))
+
+    @asyncio.coroutine
+    def send_messages(self, partition, messages):
+        ret = []
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        yield from producer.start()
+        try:
+            yield from self.wait_topic(producer.client, self.topic)
+            for msg in messages:
+                if isinstance(msg, str):
+                    msg = msg.encode()
+                elif isinstance(msg, int):
+                    msg = str(msg).encode()
+                future = yield from producer.send(
+                    self.topic, msg, partition=partition)
+                resp = yield from future
+                self.assertEqual(resp.topic, self.topic)
+                self.assertEqual(resp.partition, partition)
+                ret.append(msg)
+        finally:
+            yield from producer.stop()
+        return ret
+
+    def assert_message_count(self, messages, num_messages):
+        # Make sure we got them all
+        self.assertEquals(len(messages), num_messages)
+
+        # Make sure there are no duplicates
+        self.assertEquals(len(set(messages)), num_messages)
 
     def msgs(self, iterable):
         return [self.msg(x) for x in iterable]
