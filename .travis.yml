@@ -20,6 +20,7 @@ install:
     - pip install pytest pytest-cov pytest-catchlog docker-py
     - pip install coveralls
     - pip install python-snappy
+    - pip install wheel
     - pip install .
 
 script:
@@ -33,7 +34,7 @@ deploy:
   user: andrew.svetlov
   password:
     secure: bNequAaWVcBKr296rptqi4O1ylONydRydCvUDkohQf4Oa73jx7wNXkBHPcRGlKpCMoU8zcJTh1xkEALW5eLyRgNRwvL3VJEhiy1TZCPByPKLM+uwrrwSP/G5TcSgC4nCBlUHAhun+l85CW/acOJeYFyKxiNeLHAO2thHFYdwWNI=
-  distributions: "sdist"
+  distributions: "sdist bdist_wheel"
   on:
     tags: true
     all_branches: true
