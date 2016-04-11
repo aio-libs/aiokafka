@@ -601,7 +601,8 @@ class Fetcher:
                 self._notify(self._wait_consume_future)
                 res_or_error.check_raise()
         # No messages ready. Wait for some to arrive
-        self._wait_empty_future = asyncio.Future(loop=self._loop)
+        if self._wait_empty_future is None or self._wait_empty_future.done():
+            self._wait_empty_future = asyncio.Future(loop=self._loop)
         yield from self._wait_empty_future
         return (yield from self.next_record(partitions))
 
@@ -633,7 +634,8 @@ class Fetcher:
         if drained or not timeout:
             return drained
 
-        self._wait_empty_future = asyncio.Future(loop=self._loop)
+        if self._wait_empty_future is None or self._wait_empty_future.done():
+            self._wait_empty_future = asyncio.Future(loop=self._loop)
         done, _ = yield from asyncio.wait(
             [self._wait_empty_future], timeout=timeout, loop=self._loop)
 
