@@ -7,6 +7,7 @@ services:
 python:
     - 3.3
     - 3.4
+    - 3.5
 env:
     matrix:
         - KAFKA_VERSION=0.8.1.1 SCALA_VERSION=2.10 PYTHONASYNCIODEBUG=1
