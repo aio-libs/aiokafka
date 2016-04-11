@@ -9,6 +9,71 @@ aiokafka
 
 asyncio client for kafka
 
+
+AIOKafkaProducer
+****************
+
+AIOKafkaProducer is a high-level, asynchronous message producer.
+
+Example of AIOKafkaProducer usage:
+
+.. code-block:: python
+
+        import asyncio
+        from aiokafka import AIOKafkaProducer
+
+        @asyncio.coroutine
+        def produce(loop):
+            producer = AIOKafkaProducer(loop=loop, bootstrap_servers='localhost:1234')
+            yield from producer.start()
+            future = yield from producer.send('foobar', b'some_message_bytes')
+            # waiting send result
+            resp = yield from future
+            print("Message was produced to partition %i with offset %i"%(resp.partition, resp.offset))
+            resp = yield from producer.send_and_wait('foobar', key=b'foo', value=b'bar')
+            resp = yield from producer.send_and_wait('foobar', b'message for partition 1', partition=1)
+            yield from producer.stop()
+
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(produce(loop))
+        loop.close()
+
+
+AIOKafkaConsumer
+****************
+
+AIOKafkaConsumer is a high-level, asynchronous message consumer.
+It interacts with the assigned kafka Group Coordinator node to allow multiple consumers to load balance consumption of topics (requires kafka >= 0.9.0.0).
+
+Example of AIOKafkaConsumer usage:
+
+.. code-block:: python
+
+        import asyncio
+        from kafka.common import KafkaError
+        from aiokafka import AIOKafkaConsumer
+
+        @asyncio.coroutine
+        def consume_task(consumer):
+            while True:
+                try:
+                    msg = yield from consumer.getone()
+                    print("consumed: ", msg.topic, msg.partition, msg.offset, msg.value)
+                except KafkaError as err:
+                    print("error while consuming message: ", err)
+
+        loop = asyncio.get_event_loop()
+        consumer = AIOKafkaConsumer('topic1', 'topic2', loop=loop, bootstrap_servers='localhost:1234')
+        loop.run_until_complete(consumer.start())
+        c_task = asyncio.async(consume_task(consumer))
+        try:
+            loop.run_forever()
+        finally:
+            loop.run_until_complete(consumer.stop())
+            c_task.close()
+            loop.close()
+
+
 Running tests
 -------------
 
@@ -26,3 +91,4 @@ Running tests::
 To run tests with a specific version of Kafka (default one is 0.9.0.1) use KAFKA_VERSION variable::
 
     make cov KAFKA_VERSION=0.8.2.1
+

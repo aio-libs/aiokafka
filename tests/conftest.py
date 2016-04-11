@@ -6,6 +6,7 @@ import pytest
 import socket
 import struct
 import uuid
+import sys
 
 
 def pytest_addoption(parser):
@@ -97,6 +98,17 @@ def loop(request):
 
 
 @pytest.fixture(scope='class')
+def setup_test_class_serverless(request, loop):
+    request.cls.loop = loop
+
+
+@pytest.fixture(scope='class')
 def setup_test_class(request, loop, kafka_server):
     request.cls.loop = loop
     request.cls.kafka_host, request.cls.kafka_port = kafka_server
+
+
+def pytest_ignore_collect(path, config):
+    if 'pep492' in str(path):
+        if sys.version_info < (3, 5, 0):
+            return True

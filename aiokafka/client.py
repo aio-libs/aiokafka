@@ -1,489 +1,343 @@
 import asyncio
-import binascii
-import collections
-import functools
 import logging
-import time
+import random
 
 from kafka.conn import collect_hosts
-from kafka.common import (TopicAndPartition, BrokerMetadata,
-                          ConnectionError, FailedPayloadsError,
-                          KafkaTimeoutError, KafkaUnavailableError,
-                          LeaderNotAvailableError,
-                          UnknownTopicOrPartitionError,
-                          NotLeaderForPartitionError,
-                          ReplicaNotAvailableError, check_error)
-from kafka.protocol import KafkaProtocol
+from kafka.common import (KafkaError,
+                          ConnectionError,
+                          NodeNotReadyError,
+                          KafkaTimeoutError,
+                          UnrecognizedBrokerVersion)
+from kafka.cluster import ClusterMetadata
+from kafka.protocol.metadata import MetadataRequest
+from kafka.protocol.produce import ProduceRequest
 
-from .conn import create_conn
+from aiokafka.conn import create_conn
+from aiokafka import ensure_future, __version__
 
 
-__all__ = ['connect', 'AIOKafkaClient']
+__all__ = ['AIOKafkaClient']
 
 
 log = logging.getLogger('aiokafka')
 
 
-@asyncio.coroutine
-def connect(hosts, *, loop=None):
-    if loop is None:
-        loop = asyncio.get_event_loop()
-    client = AIOKafkaClient(hosts, loop=loop)
-    yield from client.load_metadata_for_topics()
-    return client
-
-
 class AIOKafkaClient:
+    """This class implements interface for interact with Kafka cluster"""
 
-    CLIENT_ID = b"aiokafka-python"
+    def __init__(self, *, loop, bootstrap_servers='localhost',
+                 client_id='aiokafka-'+__version__, metadata_max_age_ms=300000,
+                 request_timeout_ms=40000):
+        """Initialize an asynchronous kafka client
 
-    def __init__(self, hosts, *, client_id=CLIENT_ID, loop):
+        Keyword Arguments:
+            bootstrap_servers: 'host[:port]' string (or list of 'host[:port]'
+                strings) that the consumer should contact to bootstrap initial
+                cluster metadata. This does not have to be the full node list.
+                It just needs to have at least one broker that will respond to
+                Metadata API Request. Default port is 9092. If no servers are
+                specified, will default to localhost:9092.
+            client_id (str): a name for this client. This string is passed in
+                each request to servers and can be used to identify specific
+                server-side log entries that correspond to this client. Also
+                submitted to GroupCoordinator for logging with respect to
+                consumer group administration. Default: 'aiokafka-{ver}'
+            request_timeout_ms (int): Client request timeout in milliseconds.
+                Default: 40000.
+            metadata_max_age_ms (int): The period of time in milliseconds after
+                which we force a refresh of metadata even if we haven't seen
+                any partition leadership changes to proactively discover any
+                new brokers or partitions. Default: 300000
+        """
+        self._bootstrap_servers = bootstrap_servers
         self._client_id = client_id
-        self._hosts = collect_hosts(hosts)
+        self._metadata_max_age_ms = metadata_max_age_ms
+        self._request_timeout_ms = request_timeout_ms
 
+        self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
+        self._topics = set()  # empty set will fetch all topic metadata
         self._conns = {}
-        self._brokers = {}  # broker_id -> BrokerMetadata
-        self._topics_to_brokers = {}  # TopicAndPartition -> BrokerMetadata
-        self._topic_partitions = {}  # topic -> partition -> PartitionMetadata
-
         self._loop = loop
-        self._request_id = 0
+        self._sync_task = None
+
+        self._md_update_fut = asyncio.Future(loop=self._loop)
+        self._md_update_waiter = asyncio.Future(loop=self._loop)
+        self._get_conn_lock = asyncio.Lock(loop=loop)
+
+    def __repr__(self):
+        return '<AIOKafkaClient client_id=%s>' % self._client_id
 
     @property
     def hosts(self):
-        return self._hosts
-
-    @property
-    def loop(self):
-        return self._loop
+        return collect_hosts(self._bootstrap_servers)
 
     @asyncio.coroutine
-    def _get_conn(self, host, port):
-        "Get or create a connection to a broker using host and port"
-        host_key = (host, port)
-        if host_key not in self._conns:
-            self._conns[host_key] = yield from create_conn(
-                host, port, loop=self._loop)
-        return self._conns[host_key]
-
-    def _drop_conn(self, conn):
-        conn.close()
-        del self._conns[(conn.host, conn.port)]
-
-    @asyncio.coroutine
-    def _get_leader_for_partition(self, topic, partition):
-        """
-        Returns the leader for a partition or None if the partition exists
-        but has no leader.
-
-        UnknownTopicOrPartitionError will be raised if the topic or partition
-        is not part of the metadata.
-
-        LeaderNotAvailableError is raised if server has metadata, but there is
-        no current leader
-        """
-
-        key = TopicAndPartition(topic, partition)
-
-        # Use cached metadata if it is there
-        if self._topics_to_brokers.get(key) is not None:
-            return self._topics_to_brokers[key]
-
-        # Otherwise refresh metadata
-
-        # If topic does not already exist, this will raise
-        # UnknownTopicOrPartitionError if not auto-creating
-        # LeaderNotAvailableError otherwise until partitions are created
-        yield from self.load_metadata_for_topics(topic)
-
-        # If the partition doesn't actually exist, raise
-        if partition not in self._topic_partitions[topic]:
-            raise UnknownTopicOrPartitionError(key)
-
-        # If there's no leader for the partition, raise
-        meta = self._topic_partitions[topic][partition]
-        if meta.leader == -1:
-            raise LeaderNotAvailableError(meta)
-
-        # Otherwise return the BrokerMetadata
-        return self._brokers[meta.leader]
-
-    def _next_id(self):
-        """
-        Generate a new correlation id
-        """
-        self._request_id += 1
-        if self._request_id > 0x7fffffff:
-            self._request_id = 0
-        return self._request_id
-
-    @asyncio.coroutine
-    def _send_broker_unaware_request(self, payloads, encoder_fn, decoder_fn):
-        """
-        Attempt to send a broker-agnostic request to one of the available
-        brokers. Keep trying until you succeed.
-        """
-        for (host, port) in self._hosts:
-            request_id = self._next_id()
-            try:
-                conn = yield from self._get_conn(host, port)
-                request = encoder_fn(client_id=self._client_id,
-                                     correlation_id=request_id,
-                                     payloads=payloads)
-
-                try:
-                    fut = conn.send(request)
-                    response = yield from fut
-                except Exception:
-                    self._drop_conn(conn)
-                    raise
-                return decoder_fn(response)
-
-            except Exception as e:
-                log.warning("Could not send request [%r] to server %s:%i, "
-                            "trying next server: %s",
-                            request_id, host, port, e)
-
-        raise KafkaUnavailableError("All servers failed to process request")
-
-    @asyncio.coroutine
-    def _send_broker_aware_request(self, payloads, encoder_fn, decoder_fn):
-        """
-        Group a list of request payloads by topic+partition and send them to
-        the leader broker for that partition using the supplied encode/decode
-        functions
-
-        Params
-        ======
-        payloads: list of object-like entities with a topic (str) and
-                  partition (int) attribute
-        encode_fn: a method to encode the list of payloads to a request body,
-                   must accept client_id, correlation_id, and payloads as
-                   keyword arguments
-        decode_fn: a method to decode a response body into response objects.
-                   The response objects must be object-like and have topic
-                   and partition attributes
-
-        Return
-        ======
-        List of response objects in the same order as the supplied payloads
-        """
-
-        # Group the requests by topic+partition
-        original_keys = []
-        payloads_by_broker = collections.defaultdict(list)
-
-        for payload in payloads:
-            leader = yield from self._get_leader_for_partition(
-                payload.topic, payload.partition)
-
-            payloads_by_broker[leader].append(payload)
-            original_keys.append((payload.topic, payload.partition))
-
-        # Accumulate the responses in a dictionary
-        acc = {}
-
-        # keep a list of payloads that were failed to be sent to brokers
-        failed_payloads = []
-
-        # For each broker, send the list of request payloads
-        for broker, payloads in payloads_by_broker.items():
-            conn = yield from self._get_conn(
-                broker.host.decode('utf-8'), broker.port)
-            request_id = self._next_id()
-            request = encoder_fn(client_id=self._client_id,
-                                 correlation_id=request_id, payloads=payloads)
-
-            failed = False
-            # Send the request, recv the response
-            try:
-                try:
-                    no_ack = decoder_fn is None
-                    fut = conn.send(request, no_ack=no_ack)
-                    if decoder_fn is None:
-                        continue
-                    try:
-                        response = yield from fut
-                    except ConnectionError as e:
-                        log.warning(
-                            "Could not receive response to request [%s] "
-                            "from server %s: %s",
-                            binascii.b2a_hex(request), conn, e)
-                        failed = True
-                        self._drop_conn(conn)
-                except Exception:
-                    self._drop_conn(conn)
-                    raise
-            except ConnectionError as e:
-                log.warning("Could not send request [%s] to server %s: %s",
-                            binascii.b2a_hex(request), conn, e)
-                failed = True
-
-            if failed:
-                failed_payloads += payloads
-                self.reset_all_metadata()
-                continue
-
-            for response in decoder_fn(response):
-                acc[(response.topic, response.partition)] = response
-
-        if failed_payloads:
-            raise FailedPayloadsError(failed_payloads)
-
-        # Order the accumulated responses by the original key order
-        return (acc[k] for k in original_keys) if acc else ()
-
-    def __repr__(self):
-        return '<KafkaClient client_id=%s>' % self._client_id
-
-    def _raise_on_response_error(self, resp):
-        try:
-            check_error(resp)
-        except (UnknownTopicOrPartitionError, NotLeaderForPartitionError):
-            self.reset_topic_metadata(resp.topic)
-            raise
-
     def close(self):
+        if self._sync_task:
+            self._sync_task.cancel()
+            try:
+                yield from self._sync_task
+            except asyncio.CancelledError:
+                pass
+            self._sync_task = None
         for conn in self._conns.values():
             conn.close()
-        self._conns = {}
 
-    def reset_topic_metadata(self, *topics):
-        for topic in topics:
+    @asyncio.coroutine
+    def bootstrap(self):
+        """Try to to bootstrap initial cluster metadata"""
+        metadata_request = MetadataRequest([])
+        for host, port in self.hosts:
+            log.debug("Attempting to bootstrap via node at %s:%s", host, port)
+
             try:
-                partitions = self._topic_partitions[topic]
-            except KeyError:
+                bootstrap_conn = yield from create_conn(
+                    host, port, loop=self._loop, client_id=self._client_id,
+                    request_timeout_ms=self._request_timeout_ms)
+            except (OSError, asyncio.TimeoutError) as err:
+                log.error('Unable connect to "%s:%s": %s', host, port, err)
                 continue
 
-            for partition in partitions:
-                self._topics_to_brokers.pop(
-                    TopicAndPartition(topic, partition),
-                    None)
-
-            del self._topic_partitions[topic]
-
-    def reset_all_metadata(self):
-        self._topics_to_brokers.clear()
-        self._topic_partitions.clear()
-
-    def has_metadata_for_topic(self, topic):
-        return (topic in self._topic_partitions and
-                len(self._topic_partitions[topic]) > 0)
-
-    def get_partition_ids_for_topic(self, topic):
-        if topic not in self._topic_partitions:
-            return None
-
-        return list(self._topic_partitions[topic])
-
-    @asyncio.coroutine
-    def ensure_topic_exists(self, topic, *, timeout=30):
-        start_time = time.monotonic()
-
-        while not self.has_metadata_for_topic(topic):
-            if time.monotonic() > start_time + timeout:
-                raise KafkaTimeoutError(
-                    "Unable to create topic {0}".format(topic))
             try:
-                yield from self.load_metadata_for_topics(topic)
-            except LeaderNotAvailableError:
-                pass
-            except UnknownTopicOrPartitionError:
-                # Server is not configured to auto-create
-                # retrying in this case will not help
-                raise
-            yield from asyncio.sleep(0.5, loop=self._loop)
-
-    @asyncio.coroutine
-    def load_metadata_for_topics(self, *topics):
-        """
-        Fetch broker and topic-partition metadata from the server,
-        and update internal data:
-        broker list, topic/partition list, and topic/parition -> broker map
-
-        This method should be called after receiving any error
-
-        @param: *topics (optional)
-        If a list of topics is provided, the metadata refresh will be limited
-        to the specified topics only.
-
-        Exceptions:
-        ----------
-        If the broker is configured to not auto-create topics,
-        expect UnknownTopicOrPartitionError for topics that don't exist
-
-        If the broker is configured to auto-create topics,
-        expect LeaderNotAvailableError for new topics
-        until partitions have been initialized.
-
-        Exceptions *will not* be raised in a full refresh (i.e. no topic list)
-        In this case, error codes will be logged as errors
-
-        Partition-level errors will also not be raised here
-        (a single partition w/o a leader, for example)
-        """
-        resp = yield from self.send_metadata_request(topics)
-
-        log.debug("Broker metadata: %s", resp.brokers)
-        log.debug("Topic metadata: %s", resp.topics)
-
-        self._brokers = dict([(broker.nodeId, broker)
-                              for broker in resp.brokers])
-
-        for topic_metadata in resp.topics:
-            topic = topic_metadata.topic
-            partitions = topic_metadata.partitions
-
-            self.reset_topic_metadata(topic)
-
-            # Errors expected for new topics
-            try:
-                check_error(topic_metadata)
-            except (UnknownTopicOrPartitionError,
-                    LeaderNotAvailableError) as e:
-
-                # Raise if the topic was passed in explicitly
-                if topic in topics:
-                    raise
-
-                # Otherwise, just log a warning
-                log.error("Error loading topic metadata for %s: %s",
-                          topic, type(e))
+                metadata = yield from bootstrap_conn.send(metadata_request)
+            except KafkaError as err:
+                log.warning('Unable to request metadata from "%s:%s": %s',
+                            host, port, err)
+                bootstrap_conn.close()
                 continue
 
-            self._topic_partitions[topic] = {}
-            for partition_metadata in partitions:
-                partition = partition_metadata.partition
-                leader = partition_metadata.leader
+            self.cluster.update_metadata(metadata)
 
-                self._topic_partitions[topic][partition] = partition_metadata
+            # A cluster with no topics can return no broker metadata
+            # in that case, we should keep the bootstrap connection
+            if not len(self.cluster.brokers()):
+                self._conns['bootstrap'] = bootstrap_conn
+            else:
+                bootstrap_conn.close()
 
-                # Populate topics_to_brokers dict
-                topic_part = TopicAndPartition(topic, partition)
-
-                # Check for partition errors
-                try:
-                    check_error(partition_metadata)
-
-                # If No Leader, topics_to_brokers topic_partition -> None
-                except LeaderNotAvailableError:
-                    log.error('No leader for topic %s partition %d',
-                              topic, partition)
-                    self._topics_to_brokers[topic_part] = None
-                    continue
-                # If one of the replicas is unavailable -- ignore
-                # this error code is provided for admin purposes only
-                # we never talk to replicas, only the leader
-                except ReplicaNotAvailableError:
-                    log.warning('Some (non-leader) replicas not available '
-                                'for topic %s partition %d', topic, partition)
-                # If Known Broker, topic_partition -> BrokerMetadata
-                if leader in self._brokers:
-                    self._topics_to_brokers[topic_part] = self._brokers[leader]
-
-                # If Unknown Broker, fake BrokerMetadata so we dont lose the id
-                # (not sure how this could happen.
-                # server could be in bad state)
-                else:
-                    self._topics_to_brokers[topic_part] = BrokerMetadata(
-                        leader, None, None
-                    )
-
-    @asyncio.coroutine
-    def send_metadata_request(self, payloads=()):
-
-        encoder = KafkaProtocol.encode_metadata_request
-        decoder = KafkaProtocol.decode_metadata_response
-
-        return (yield from self._send_broker_unaware_request(
-            payloads, encoder, decoder))
-
-    def _build_resp(self, resps):
-        out = []
-        for resp in resps:
-            self._raise_on_response_error(resp)
-            out.append(resp)
-        return out
-
-    @asyncio.coroutine
-    def send_produce_request(self, payloads=(), *, acks=1, ack_timeout=1.0):
-        """
-        Encode and send some ProduceRequests
-
-        ProduceRequests will be grouped by (topic, partition) and then
-        sent to a specific broker. Output is a list of responses in the
-        same order as the list of payloads specified
-
-        Params
-        ======
-        payloads: list of ProduceRequest
-
-        Return
-        ======
-        list of ProduceResponse, in the order of input payloads
-        """
-
-        encoder = functools.partial(
-            KafkaProtocol.encode_produce_request,
-            acks=acks,
-            timeout=int(ack_timeout*1000))
-
-        if acks == 0:
-            decoder = None
+            log.debug('Received cluster metadata: %s', self.cluster)
+            break
         else:
-            decoder = KafkaProtocol.decode_produce_response
+            raise ConnectionError(
+                'Unable to bootstrap from {}'.format(self.hosts))
 
-        resps = yield from self._send_broker_aware_request(
-            payloads, encoder, decoder)
-
-        return self._build_resp(resps)
+        if self._sync_task is None:
+            # starting metadata synchronizer task
+            self._sync_task = ensure_future(
+                self._md_synchronizer(), loop=self._loop)
 
     @asyncio.coroutine
-    def send_fetch_request(self, payloads=(),
-                           *, max_wait_time=0.1, min_bytes=4096):
+    def _md_synchronizer(self):
+        """routine (async task) for synchronize cluster metadata every
+        `metadata_max_age_ms` milliseconds"""
+        while True:
+            yield from asyncio.wait(
+                [self._md_update_waiter],
+                timeout=self._metadata_max_age_ms / 1000,
+                loop=self._loop)
+
+            self._md_update_waiter = asyncio.Future(loop=self._loop)
+            ret = yield from self._metadata_update(self.cluster, self._topics)
+            self._md_update_fut.set_result(ret)
+            self._md_update_fut = asyncio.Future(loop=self._loop)
+
+    def get_random_node(self):
+        """choice random node from known cluster brokers
+
+        Returns:
+            nodeId - identifier of broker
         """
-        Encode and send a FetchRequest
+        nodeids = [b.nodeId for b in self.cluster.brokers()]
+        if not nodeids:
+            return None
+        return random.choice(nodeids)
 
-        Payloads are grouped by topic and partition so they can be pipelined
-        to the same brokers.
+    @asyncio.coroutine
+    def _metadata_update(self, cluster_metadata, topics):
+        assert isinstance(cluster_metadata, ClusterMetadata)
+        metadata_request = MetadataRequest(list(topics))
+        nodeids = [b.nodeId for b in self.cluster.brokers()]
+        if 'bootstrap' in self._conns:
+            nodeids.append('bootstrap')
+        random.shuffle(nodeids)
+        for node_id in nodeids:
+            conn = yield from self._get_conn(node_id)
+
+            if conn is None:
+                continue
+            log.debug("Sending metadata request %s to %s",
+                      metadata_request, node_id)
+
+            try:
+                metadata = yield from conn.send(metadata_request)
+            except KafkaError as err:
+                log.error(
+                    'Unable to request metadata from node with id %s: %s',
+                    node_id, err)
+                continue
+
+            cluster_metadata.update_metadata(metadata)
+            break
+        else:
+            log.error('Unable to update metadata from %s', nodeids)
+            cluster_metadata.failed_update(None)
+            return False
+        return True
+
+    def force_metadata_update(self):
+        """Update cluster metadata
+
+        Returns:
+            True/False - metadata updated or not
         """
-
-        encoder = functools.partial(KafkaProtocol.encode_fetch_request,
-                                    max_wait_time=int(max_wait_time*1000),
-                                    min_bytes=min_bytes)
-
-        resps = yield from self._send_broker_aware_request(
-            payloads, encoder,
-            KafkaProtocol.decode_fetch_response)
-
-        return self._build_resp(resps)
+        # Wake up the `_md_synchronizer` task
+        if not self._md_update_waiter.done():
+            self._md_update_waiter.set_result(None)
+        # Metadata will be updated in the background by syncronizer
+        return self._md_update_fut
 
     @asyncio.coroutine
-    def send_offset_request(self, payloads=()):
-        resps = yield from self._send_broker_aware_request(
-            payloads,
-            KafkaProtocol.encode_offset_request,
-            KafkaProtocol.decode_offset_response)
+    def fetch_all_metadata(self):
+        cluster_md = ClusterMetadata(
+            metadata_max_age_ms=self._metadata_max_age_ms)
+        updated = yield from self._metadata_update(cluster_md, [])
+        if not updated:
+            raise KafkaError(
+                'Unable to get cluster metadata over all known brokers')
+        return cluster_md
 
-        return self._build_resp(resps)
+    def add_topic(self, topic):
+        """Add a topic to the list of topics tracked via metadata.
+
+        Arguments:
+            topic (str): topic to track
+        """
+        if topic in self._topics:
+            return
+        self._topics.add(topic)
+
+    def set_topics(self, topics):
+        """Set specific topics to track for metadata.
+
+        Arguments:
+            topics (list of str): topics to track
+        """
+        if set(topics).difference(self._topics):
+            self._topics = set(topics)
+            # update metadata in async manner
+            self.force_metadata_update()
 
     @asyncio.coroutine
-    def send_offset_commit_request(self, group, payloads=()):
-        encoder = functools.partial(KafkaProtocol.encode_offset_commit_request,
-                                    group=group)
-        decoder = KafkaProtocol.decode_offset_commit_response
-        resps = yield from self._send_broker_aware_request(
-            payloads, encoder, decoder)
+    def _get_conn(self, node_id):
+        "Get or create a connection to a broker using host and port"
+        if node_id in self._conns:
+            conn = self._conns[node_id]
+            if not conn.connected():
+                del self._conns[node_id]
+            else:
+                return conn
 
-        return self._build_resp(resps)
+        try:
+            broker = self.cluster.broker_metadata(node_id)
+            assert broker, 'Broker id %s not in current metadata' % node_id
+            log.debug("Initiating connection to node %s at %s:%s",
+                      node_id, broker.host, broker.port)
+
+            with (yield from self._get_conn_lock):
+                if node_id in self._conns:
+                    return self._conns[node_id]
+                self._conns[node_id] = yield from create_conn(
+                    broker.host, broker.port, loop=self._loop,
+                    client_id=self._client_id,
+                    request_timeout_ms=self._request_timeout_ms)
+        except (OSError, asyncio.TimeoutError) as err:
+            log.error('Unable connect to node with id %s: %s', node_id, err)
+            return None
+        else:
+            return self._conns[node_id]
 
     @asyncio.coroutine
-    def send_offset_fetch_request(self, group, payloads=()):
+    def ready(self, node_id):
+        conn = yield from self._get_conn(node_id)
+        if conn is None:
+            return False
+        return True
 
-        encoder = functools.partial(KafkaProtocol.encode_offset_fetch_request,
-                                    group=group)
-        decoder = KafkaProtocol.decode_offset_fetch_response
-        resps = yield from self._send_broker_aware_request(
-            payloads, encoder, decoder)
+    @asyncio.coroutine
+    def send(self, node_id, request):
+        """Send a request to a specific node.
 
-        return self._build_resp(resps)
+        Arguments:
+            node_id (int): destination node
+            request (Struct): request object (not-encoded)
+
+        Raises:
+            kafka.common.KafkaTimeoutError
+            kafka.common.NodeNotReadyError
+            kafka.commom.ConnectionError
+            kafka.common.CorrelationIdError
+
+        Returns:
+            Future: resolves to Response struct
+        """
+        if not (yield from self.ready(node_id)):
+            raise NodeNotReadyError(
+                "Attempt to send a request to node"
+                " which is not ready (node id {}).".format(node_id))
+
+        # Every request gets a response, except one special case:
+        expect_response = True
+        if isinstance(request, ProduceRequest) and request.required_acks == 0:
+            expect_response = False
+
+        future = self._conns[node_id].send(
+            request, expect_response=expect_response)
+        try:
+            result = yield from future
+        except asyncio.TimeoutError:
+            raise KafkaTimeoutError()
+        else:
+            return result
+
+    @asyncio.coroutine
+    def check_version(self, node_id=None):
+        """Attempt to guess the broker version"""
+        if node_id is None:
+            if self._conns:
+                node_id = list(self._conns.keys())[0]
+            else:
+                assert self.cluster.brokers(), 'no brokers in metadata'
+                node_id = list(self.cluster.brokers())[0].nodeId
+
+        from kafka.protocol.admin import ListGroupsRequest
+        from kafka.protocol.commit import (
+            OffsetFetchRequest_v0, GroupCoordinatorRequest)
+        from kafka.protocol.metadata import MetadataRequest
+        test_cases = [
+            ('0.9', ListGroupsRequest()),
+            ('0.8.2', GroupCoordinatorRequest('kafka-python-default-group')),
+            ('0.8.1', OffsetFetchRequest_v0('kafka-python-default-group', [])),
+            ('0.8.0', MetadataRequest([])),
+        ]
+
+        # kafka kills the connection when it doesnt recognize an API request
+        # so we can send a test request and then follow immediately with a
+        # vanilla MetadataRequest. If the server did not recognize the first
+        # request, both will be failed with a ConnectionError that wraps
+        # socket.error (32, 54, or 104)
+        conn = yield from self._get_conn(node_id)
+        if conn is None:
+            raise ConnectionError(
+                "No connection to node with id {}".format(node_id))
+        for version, request in test_cases:
+            try:
+                if not conn.connected():
+                    yield from conn.connect()
+                assert conn, 'no connection to node with id {}'.format(node_id)
+                yield from conn.send(request)
+            except KafkaError:
+                continue
+            else:
+                return version
+
+        raise UnrecognizedBrokerVersion()

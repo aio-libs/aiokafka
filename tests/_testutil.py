@@ -7,14 +7,10 @@ import uuid
 import pytest
 
 from functools import wraps
-from kafka.common import (
-    OffsetRequest,
-    KafkaUnavailableError,
-    LeaderNotAvailableError,
-    UnknownError
-)
 
-from aiokafka.client import connect
+from kafka.common import ConnectionError
+from aiokafka.client import AIOKafkaClient
+from aiokafka.producer import AIOKafkaProducer
 
 
 __all__ = ['KafkaIntegrationTestCase', 'random_string']
@@ -43,36 +39,69 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         self.hosts = ['{}:{}'.format(self.kafka_host, self.kafka_port)]
 
         if not self.topic:
-            topic = "%s-%s" % (self.id()[self.id().rindex(".") + 1:],
-                               random_string(10).decode('utf-8'))
-            self.topic = topic.encode('utf-8')
+            self.topic = "topic-{}-{}".format(
+                self.id()[self.id().rindex(".") + 1:],
+                random_string(10).decode('utf-8'))
 
         # Reconnecting until Kafka in docker becomes available
+        client = AIOKafkaClient(
+            loop=self.loop, bootstrap_servers=self.hosts)
         for i in range(500):
             try:
-                self.client = self.loop.run_until_complete(
-                    connect(self.hosts, loop=self.loop))
-                # Check Kafka is already operational (Kafka <= 0.8.2.x)
-                self.loop.run_until_complete(
-                    self.client.load_metadata_for_topics(self.topic))
-                break
-            except (KafkaUnavailableError,
-                    UnknownError,
-                    LeaderNotAvailableError):
-                time.sleep(0.1)
+                self.loop.run_until_complete(client.bootstrap())
 
+            except ConnectionError:
+                time.sleep(0.1)
+            else:
+                self.loop.run_until_complete(client.close())
+                break
         self._messages = {}
 
     def tearDown(self):
-        self.client.close()
-        del self.client
         super().tearDown()
 
     @asyncio.coroutine
-    def current_offset(self, topic, partition):
-        offsets, = yield from self.client.send_offset_request(
-            [OffsetRequest(topic, partition, -1, 1)])
-        return offsets.offsets[0]
+    def wait_topic(self, client, topic):
+        client.add_topic(topic)
+        for i in range(5):
+            ok = yield from client.force_metadata_update()
+            if ok:
+                ok = topic in client.cluster.topics()
+            if not ok:
+                yield from asyncio.sleep(1, loop=self.loop)
+            else:
+                return
+        raise AssertionError('No topic "{}" exists'.format(topic))
+
+    @asyncio.coroutine
+    def send_messages(self, partition, messages):
+        ret = []
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        yield from producer.start()
+        try:
+            yield from self.wait_topic(producer.client, self.topic)
+            for msg in messages:
+                if isinstance(msg, str):
+                    msg = msg.encode()
+                elif isinstance(msg, int):
+                    msg = str(msg).encode()
+                future = yield from producer.send(
+                    self.topic, msg, partition=partition)
+                resp = yield from future
+                self.assertEqual(resp.topic, self.topic)
+                self.assertEqual(resp.partition, partition)
+                ret.append(msg)
+        finally:
+            yield from producer.stop()
+        return ret
+
+    def assert_message_count(self, messages, num_messages):
+        # Make sure we got them all
+        self.assertEquals(len(messages), num_messages)
+
+        # Make sure there are no duplicates
+        self.assertEquals(len(set(messages)), num_messages)
 
     def msgs(self, iterable):
         return [self.msg(x) for x in iterable]
