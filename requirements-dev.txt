@@ -6,5 +6,5 @@ docker-py
 coveralls
 Sphinx
 
-sphinxcontrib-asyncio
+git+https://github.com/Drizzt1991/sphinxcontrib-asyncio.git#master
 sphinx_rtd_theme
