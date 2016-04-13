@@ -82,14 +82,17 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         p0 = TopicPartition(self.topic, 0)
         p1 = TopicPartition(self.topic, 1)
         messages = []
-        for i in range(100):
-            m = yield from consumer.getone(p0)
-            self.assertEqual(m.partition, 0)
-            messages.append(m)
-        for i in range(100):
-            m = yield from consumer.getone(p1)
-            self.assertEqual(m.partition, 1)
-            messages.append(m)
+
+        @asyncio.coroutine
+        def task(tp, messages):
+            for i in range(100):
+                m = yield from consumer.getone(tp)
+                self.assertEqual(m.partition, tp.partition)
+                messages.append(m)
+
+        task1 = asyncio.async(task(p0, messages), loop=self.loop)
+        task2 = asyncio.async(task(p1, messages), loop=self.loop)
+        yield from asyncio.wait([task1, task2], loop=self.loop)
         self.assert_message_count(messages, 200)
 
     @run_until_complete
