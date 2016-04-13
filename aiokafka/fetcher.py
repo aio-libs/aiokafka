@@ -603,7 +603,7 @@ class Fetcher:
         # No messages ready. Wait for some to arrive
         if self._wait_empty_future is None or self._wait_empty_future.done():
             self._wait_empty_future = asyncio.Future(loop=self._loop)
-        yield from self._wait_empty_future
+        yield from asyncio.shield(self._wait_empty_future, loop=self._loop)
         return (yield from self.next_record(partitions))
 
     @asyncio.coroutine
