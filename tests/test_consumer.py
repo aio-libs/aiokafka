@@ -319,3 +319,39 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(rmsg1.value, msg1)
         rmsg2 = yield from consumer.getone()
         self.assertEqual(rmsg2.value, msg2)
+
+    @run_until_complete
+    def test_consumer_seek_backward(self):
+        # Send 2 messages
+        yield from self.send_messages(0, [1, 2])
+
+        # Read first. 2 are delivered at a time, so 1 will remain
+        consumer = yield from self.consumer_factory()
+        rmsg1 = yield from consumer.getone()
+        self.assertEqual(rmsg1.value, b'1')
+
+        # Seek should invalidate the remaining message
+        tp = TopicPartition(self.topic, rmsg1.partition)
+        consumer.seek(tp, rmsg1.offset)
+        rmsg2 = yield from consumer.getone()
+        self.assertEqual(rmsg2.value, b'1')
+        rmsg2 = yield from consumer.getone()
+        self.assertEqual(rmsg2.value, b'2')
+
+    @run_until_complete
+    def test_consumer_seek_forward(self):
+        # Send 3 messages
+        yield from self.send_messages(0, [1, 2, 3])
+
+        # Read first. 3 are delivered at a time, so 2 will remain
+        consumer = yield from self.consumer_factory()
+        rmsg1 = yield from consumer.getone()
+        self.assertEqual(rmsg1.value, b'1')
+
+        # Seek should invalidate the remaining message
+        tp = TopicPartition(self.topic, rmsg1.partition)
+        consumer.seek(tp, rmsg1.offset+2)
+        rmsg2 = yield from consumer.getone()
+        self.assertEqual(rmsg2.value, b'3')
+        res = yield from consumer.getmany(timeout_ms=0)
+        self.assertEqual(res, {tp: []})
