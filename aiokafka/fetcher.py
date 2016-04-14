@@ -112,7 +112,7 @@ class Fetcher:
                  fetch_max_wait_ms=500,
                  max_partition_fetch_bytes=1048576,
                  check_crcs=True,
-                 fetcher_timeout=0.1,
+                 fetcher_timeout=0.2,
                  prefetch_backoff=0.1):
         """Initialize a Kafka Message Fetcher.
 
@@ -143,8 +143,12 @@ class Fetcher:
                 consumed. This ensures no on-the-wire or on-disk corruption to
                 the messages occurred. This check adds some overhead, so it may
                 be disabled in cases seeking extreme performance. Default: True
-            fetcher_timeout (float): number of second to poll necessity to send
-                next fetch request. Default: 0.1
+            fetcher_timeout (float): Maximum polling interval in the background
+                fetching routine. Default: 0.2
+            prefetch_backoff (float): number of seconds to wait until
+                consumption of partition is paused. Paused partitions will not
+                request new data from Kafka server (will not be included in
+                next poll request).
         """
         self._client = client
         self._loop = loop
@@ -191,9 +195,9 @@ class Fetcher:
         * Group partitions per node, which is the leader for it.
         * If all partitions for this node need prefetch - do it right alway
         * If any partition has some data (in `self._records`) wait up till
-          `fetcher_timeout` so application can consume data from it.
+          `prefetch_backoff` so application can consume data from it.
         * If data in `self._records` is not consumed up to
-          `fetcher_timeout` just request data for other partitions from this
+          `prefetch_backoff` just request data for other partitions from this
           node.
 
         We request data in such manner cause Kafka blocks the connection if

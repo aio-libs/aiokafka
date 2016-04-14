@@ -64,9 +64,6 @@ class AIOKafkaConsumer(object):
             Default: 40000.
         retry_backoff_ms (int): Milliseconds to backoff when retrying on
             errors. Default: 100.
-        reconnect_backoff_ms (int): The amount of time in milliseconds to
-            wait before attempting to reconnect to a given host.
-            Default: 50.
         auto_offset_reset (str): A policy for resetting offsets on
             OffsetOutOfRange errors: 'earliest' will move to the oldest
             available message, 'latest' will move to the most recent. Any
@@ -103,8 +100,9 @@ class AIOKafkaConsumer(object):
             rebalances. Default: 3000
         session_timeout_ms (int): The timeout used to detect failures when
             using Kafka's group managementment facilities. Default: 30000
-        consumer_timeout_ms (int): number of millisecond to poll available
-            fetched messages. Default: 100
+        consumer_timeout_ms (int): maximum wait timeout for background fetching
+            routine. Mostly defines how fast the system will see rebalance and
+            request new data for new partitions. Default: 200
         api_version (str): specify which kafka API version to use.
             AIOKafkaConsumer supports Kafka API versions >=0.9 only.
             If set to 'auto', will attempt to infer the broker version by
@@ -126,7 +124,6 @@ class AIOKafkaConsumer(object):
                  max_partition_fetch_bytes=1 * 1024 * 1024,
                  request_timeout_ms=40 * 1000,
                  retry_backoff_ms=100,
-                 reconnect_backoff_ms=50,
                  auto_offset_reset='latest',
                  enable_auto_commit=True,
                  auto_commit_interval_ms=5000,
@@ -135,7 +132,7 @@ class AIOKafkaConsumer(object):
                  partition_assignment_strategy=(RoundRobinPartitionAssignor,),
                  heartbeat_interval_ms=3000,
                  session_timeout_ms=30000,
-                 consumer_timeout_ms=100,
+                 consumer_timeout_ms=200,
                  api_version='auto'):
         if api_version not in ('auto', '0.9'):
             raise ValueError("Unsupported Kafka API version")
