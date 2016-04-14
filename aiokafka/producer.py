@@ -31,8 +31,8 @@ class AIOKafkaProducer(object):
     producer to batch together individual records for efficiency.
 
     The 'acks' config controls the criteria under which requests are considered
-    complete. The "all" setting will result in blocking on the full commit of
-    the record, the slowest but most durable setting.
+    complete. The "all" setting will result in waiting for all replicas to
+    respond, the slowest but most durable setting.
 
     The key_serializer and value_serializer instruct how to turn the key and
     value objects the user provides into bytes.
@@ -92,13 +92,9 @@ class AIOKafkaProducer(object):
             than they can be sent out. However in some circumstances the client
             may want to reduce the number of requests even under moderate load.
             This setting accomplishes this by adding a small amount of
-            artificial delay; that is, rather than immediately sending out a
-            record the producer will wait for up to the given delay to allow
-            other records to be sent so that the sends can be batched together.
-            This setting defaults to 0 (i.e. no delay). Setting linger_ms=5
-            would have the effect of reducing the number of requests sent but
-            would add up to 5ms of latency to records sent in the absense of
-            load. Default: 0.
+            artificial delay; that is, if first request is processed faster,
+            than `linger_ms`, producer will wait `linger_ms - process_time`.
+            This setting defaults to 0 (i.e. no delay).
         partitioner (callable): Callable used to determine which partition
             each message is assigned to. Called (after key serialization):
             partitioner(key_bytes, all_partitions, available_partitions).
@@ -118,8 +114,8 @@ class AIOKafkaProducer(object):
             partition leadership changes to proactively discover any new
             brokers or partitions. Default: 300000
         request_timeout_ms (int): Produce request timeout in milliseconds.
-            As it's sent as part of ProduceRequest, maximum waiting time can
-            be up to 2 * request_timeout_ms.
+            As it's sent as part of ProduceRequest (it's a blocking call),
+            maximum waiting time can be up to 2 * request_timeout_ms.
             Default: 30000.
         retry_backoff_ms (int): Milliseconds to backoff when retrying on
             errors. Default: 100.
@@ -278,7 +274,8 @@ class AIOKafkaProducer(object):
             asyncio.Future: future object that will be set when message is
                             processed
 
-        Note: The returned future will wait based on `request_timeout_ms`
+        Note:
+            The returned future will wait based on `request_timeout_ms`
             setting. Cancelling this future will not stop event from being
             sent.
         """
