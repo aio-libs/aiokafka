@@ -30,7 +30,7 @@ clean:
 	rm -f `find . -type f -name '*.rej' `
 	rm -f .coverage
 	rm -rf htmlcov
-	rm -rf build
+	rm -rf docs/_build/
 	rm -rf cover
 	rm -rf dist
 
