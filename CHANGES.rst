@@ -1,6 +1,11 @@
 CHANGES
 --------
 
+0.1.1 (2016-04-15)
+^^^^^^^^^^^^^^^^^^
+
+* Fix packaging issues. Removed unneded files from package.
+
 0.1.0 (2016-04-15)
 ^^^^^^^^^^^^^^^^^^
 
