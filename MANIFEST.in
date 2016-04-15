@@ -1,0 +1,6 @@
+include LICENSE
+include CHANGES.rst
+include README.rst
+graft aiokafka
+global-exclude *.pyc
+exclude tests/**

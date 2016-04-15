@@ -1,7 +1,7 @@
 import os
 import re
 import sys
-from setuptools import setup, find_packages
+from setuptools import setup
 
 
 install_requires = ['kafka-python==1.0.1']
@@ -40,6 +40,7 @@ classifiers = [
     'Programming Language :: Python :: 3',
     'Programming Language :: Python :: 3.3',
     'Programming Language :: Python :: 3.4',
+    'Programming Language :: Python :: 3.5',
     'Operating System :: OS Independent',
     'Topic :: System :: Networking',
     'Topic :: System :: Distributed Computing',
@@ -58,7 +59,7 @@ setup(name='aiokafka',
       url='http://aiokafka.readthedocs.org',
       download_url='https://pypi.python.org/pypi/aiokafka',
       license='Apache 2',
-      packages=find_packages(),
+      packages=['aiokafka'],
       install_requires=install_requires,
       extras_require=extras_require,
       include_package_data = True)
