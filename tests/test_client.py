@@ -26,7 +26,7 @@ class TestAIOKafkaClient(unittest.TestCase):
             loop=self.loop,
             bootstrap_servers=['kafka01:9092', 'kafka02:9092', 'kafka03:9092'])
         self.assertEqual(
-            '<AIOKafkaClient client_id=aiokafka-0.1.0>', client.__repr__())
+            '<AIOKafkaClient client_id=aiokafka-0.1.1>', client.__repr__())
         self.assertEqual(sorted({'kafka01': 9092,
                                  'kafka02': 9092,
                                  'kafka03': 9092}.items()),
