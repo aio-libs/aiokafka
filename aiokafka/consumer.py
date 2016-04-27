@@ -161,7 +161,6 @@ class AIOKafkaConsumer(object):
         self._coordinator = None
         self._closed = False
         self._loop = loop
-        self._topics = topics
 
         if topics:
             self._client.set_topics(topics)
