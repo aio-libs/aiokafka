@@ -86,6 +86,8 @@ class MessageBatch:
     def done(self, base_offset=None, exception=None):
         """Resolve all pending futures"""
         for relative_offset, future in enumerate(self._msg_futures):
+            if future.done():
+                continue
             if exception is not None:
                 future.set_exception(exception)
             elif base_offset is None:
