@@ -3,7 +3,9 @@ from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.fetcher import RecordTooLargeError
 from aiokafka.producer import AIOKafkaProducer
 
-from kafka.common import TopicPartition, OffsetAndMetadata, IllegalStateError
+from kafka.common import (
+    TopicPartition, OffsetAndMetadata, IllegalStateError,
+    UnknownTopicOrPartitionError)
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, random_string)
 
@@ -279,7 +281,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from consumer.commit(
             {TopicPartition(self.topic, 0): OffsetAndMetadata(9, '')})
         yield from consumer.seek_to_committed(TopicPartition(self.topic, 0))
-        msg = yield from consumer.getone()
+        msg = yield from consumer.getone(TopicPartition(self.topic, 0))
         self.assertEqual(msg.value, b'9')
         yield from consumer.commit(
             {TopicPartition(self.topic, 0): OffsetAndMetadata(10, '')})
@@ -355,3 +357,35 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(rmsg2.value, b'3')
         res = yield from consumer.getmany(timeout_ms=0)
         self.assertEqual(res, {tp: []})
+
+    @run_until_complete
+    def test_manual_subscribe_nogroup(self):
+        msgs1 = yield from self.send_messages(0, range(0, 10))
+        msgs2 = yield from self.send_messages(1, range(10, 20))
+        available_msgs = msgs1 + msgs2
+
+        consumer = AIOKafkaConsumer(
+            loop=self.loop, group_id=None,
+            bootstrap_servers=self.hosts, auto_offset_reset='earliest',
+            enable_auto_commit=False)
+        consumer.subscribe(topics=(self.topic,))
+        yield from consumer.start()
+        result = []
+        for i in range(20):
+            msg = yield from consumer.getone()
+            result.append(msg.value)
+        self.assertEqual(set(available_msgs), set(result))
+        yield from consumer.stop()
+
+    @run_until_complete
+    def test_unknown_topic_or_partition(self):
+        consumer = AIOKafkaConsumer(
+            loop=self.loop, group_id=None,
+            bootstrap_servers=self.hosts, auto_offset_reset='earliest',
+            enable_auto_commit=False)
+        consumer.subscribe(topics=('some_topic_unknown',))
+        with self.assertRaises(UnknownTopicOrPartitionError):
+            yield from consumer.start()
+
+        with self.assertRaises(UnknownTopicOrPartitionError):
+            yield from consumer.assign([TopicPartition(self.topic, 2222)])

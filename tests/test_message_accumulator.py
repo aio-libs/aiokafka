@@ -175,3 +175,10 @@ class TestMessageAccumulator(unittest.TestCase):
         batches[0][tp0].done(base_offset=None)
         res = yield from fut01
         self.assertEqual(res, None)
+
+        # cancelling future
+        fut01 = yield from ma.add_message(
+            tp0, b'key0', b'value#2', timeout=2)
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
+        fut01.cancel()
+        batches[0][tp0].done(base_offset=21)  # no error in this case

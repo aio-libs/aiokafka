@@ -1,7 +1,8 @@
 import asyncio
 import logging
 
-from kafka.common import OffsetAndMetadata, TopicPartition
+from kafka.common import (OffsetAndMetadata, TopicPartition,
+                          UnknownTopicOrPartitionError)
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.consumer.subscription_state import SubscriptionState
 
@@ -209,8 +210,10 @@ class AIOKafkaConsumer(object):
             # using manual partitions assignment by topic(s)
             yield from self._client.force_metadata_update()
             partitions = []
-            for topic in self._topics:
+            for topic in self._subscription.subscription:
                 p_ids = self.partitions_for_topic(topic)
+                if not p_ids:
+                    raise UnknownTopicOrPartitionError()
                 for p_id in p_ids:
                     partitions.append(TopicPartition(topic, p_id))
             self._subscription.unsubscribe()
@@ -241,6 +244,10 @@ class AIOKafkaConsumer(object):
             no rebalance operation triggered when group membership or cluster
             and topic metadata change.
         """
+        for tp in partitions:
+            p_ids = self.partitions_for_topic(tp.topic)
+            if not p_ids or tp.partition not in p_ids:
+                raise UnknownTopicOrPartitionError(tp)
         self._subscription.assign_from_user(partitions)
         self._on_change_subscription()
         self._client.set_topics([tp.topic for tp in partitions])
