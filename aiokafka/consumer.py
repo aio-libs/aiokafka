@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from kafka.common import (OffsetAndMetadata, TopicPartition,
-                          UnknownTopicOrPartitionError)
+                          KafkaError, UnknownTopicOrPartitionError)
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.consumer.subscription_state import SubscriptionState
 
@@ -639,4 +639,13 @@ class AIOKafkaConsumer(object):
 
         @asyncio.coroutine
         def __anext__(self):
-            return (yield from self.getone())
+            """Asyncio iterator interface for consumer
+
+            Note:
+                All KafkaError exceptions will be logged and not raised
+            """
+            while True:
+                try:
+                    return (yield from self.getone())
+                except KafkaError as err:
+                    log.error("error in consumer iterator: %s", err)
