@@ -54,6 +54,7 @@ See consumer example:
         c_task.cancel()
         loop.close()
 
+
 AIOKafkaProducer
 ++++++++++++++++
 

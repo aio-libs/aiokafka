@@ -1,6 +1,14 @@
 CHANGES
 --------
 
+0.1.1 (XXXX-XX-XX)
+^^^^^^^^^^^^^^^^^^
+
+* Added Python3.5 usage example to docs
+* Don't raise retriable exceptions in 3.5's async for iterator
+* Fix Cancellation issue with producer's `send_and_wait` method
+
+
 0.1.1 (2016-04-15)
 ^^^^^^^^^^^^^^^^^^
 

@@ -9,3 +9,4 @@ Examples
    Manual commit <examples/manual_commit>
    Group consumer <examples/group_consumer>
    Custom partitioner <examples/custom_partitioner>
+   Python 3.5 async syntax <examples/python35_examples>

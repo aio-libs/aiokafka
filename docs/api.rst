@@ -1,4 +1,4 @@
-
+.. _api-doc:
 API Documentation
 =================
 
@@ -35,3 +35,19 @@ Example of exceptions handling:
             print("produce timeout... maybe we want to resend data again?")
         except KafkaError as err:
             print("some kafka error on produce: {}".format(err))
+
+Consumer errors
+^^^^^^^^^^^^^^^
+
+Consumer's ``async for`` and ``getone``/``getmany`` interfaces will handle those
+differently. Possible consumer errors include:
+
+    * ``TopicAuthorizationFailedError`` - topic requires authorization.
+      Always raised
+    * ``OffsetOutOfRangeError`` - if you don't specify `auto_offset_reset` policy
+      and started cosumption from not valid offset. Always raised
+    * ``RecordTooLargeError`` - broker has a *MessageSet* larger than 
+      `max_partition_fetch_bytes`. **async for** - log error, **get*** will
+      raise it.
+    * ``InvalidMessageError`` - CRC check on MessageSet failed due to connection
+      failure or bug. **async for** - log error. **get*** will raise it.
