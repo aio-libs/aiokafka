@@ -2,7 +2,9 @@ import asyncio
 import logging
 
 from kafka.common import (OffsetAndMetadata, TopicPartition,
-                          KafkaError, UnknownTopicOrPartitionError)
+                          KafkaError, UnknownTopicOrPartitionError,
+                          TopicAuthorizationFailedError, OffsetOutOfRangeError)
+
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.consumer.subscription_state import SubscriptionState
 
@@ -642,10 +644,15 @@ class AIOKafkaConsumer(object):
             """Asyncio iterator interface for consumer
 
             Note:
-                All KafkaError exceptions will be logged and not raised
+                TopicAuthorizationFailedError and OffsetOutOfRangeError
+                exceptions can be raised in iterator.
+                All other KafkaError exceptions will be logged and not raised
             """
             while True:
                 try:
                     return (yield from self.getone())
+                except (TopicAuthorizationFailedError,
+                        OffsetOutOfRangeError) as err:
+                    raise err
                 except KafkaError as err:
                     log.error("error in consumer iterator: %s", err)

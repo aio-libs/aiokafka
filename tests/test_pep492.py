@@ -1,4 +1,5 @@
 from aiokafka.consumer import AIOKafkaConsumer
+from kafka.common import OffsetOutOfRangeError
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, random_string)
 
@@ -51,3 +52,17 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         self.assertEqual(messages[0].value, large_messages[0])
         self.assertEqual(messages[1].value, small_messages[0])
         await consumer.stop()
+
+    @run_until_complete
+    async def test_exception_in_aiter(self):
+        await self.send_messages(0, [b'test'])
+
+        consumer = AIOKafkaConsumer(
+            self.topic, loop=self.loop,
+            bootstrap_servers=self.hosts,
+            auto_offset_reset=None)
+        await consumer.start()
+
+        with self.assertRaises(OffsetOutOfRangeError):
+            async for m in consumer:
+                print(m)

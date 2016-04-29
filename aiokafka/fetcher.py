@@ -561,6 +561,8 @@ class Fetcher:
 
         error_type = Errors.for_code(error_code)
         if error_type is Errors.NoError:
+            if not offsets:
+                return -1
             assert len(offsets) == 1, 'Expected OffsetResponse with one offset'
             offset = offsets[0]
             log.debug("Fetched offset %d for partition %s", offset, partition)
