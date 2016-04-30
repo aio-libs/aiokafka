@@ -4,11 +4,14 @@ import pytest
 import struct
 from unittest import mock
 from kafka.common import ConnectionError, CorrelationIdError
-from kafka.protocol.produce import ProduceRequest
+from kafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
 from kafka.protocol.message import Message
-from kafka.protocol.metadata import MetadataRequest, MetadataResponse
-from kafka.protocol.commit import (GroupCoordinatorRequest,
-                                   GroupCoordinatorResponse)
+from kafka.protocol.metadata import (
+    MetadataRequest_v0 as MetadataRequest,
+    MetadataResponse_v0 as MetadataResponse)
+from kafka.protocol.commit import (
+    GroupCoordinatorRequest_v0 as GroupCoordinatorRequest,
+    GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
 from aiokafka.conn import AIOKafkaConnection, create_conn
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
