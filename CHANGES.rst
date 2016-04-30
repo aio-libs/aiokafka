@@ -1,7 +1,7 @@
 CHANGES
 --------
 
-0.1.1 (XXXX-XX-XX)
+0.1.2 (2016-04-30)
 ^^^^^^^^^^^^^^^^^^
 
 * Added Python3.5 usage example to docs
