@@ -8,7 +8,7 @@ from kafka.common import (TopicPartition,
                           KafkaError)
 from kafka.partitioner.default import DefaultPartitioner
 from kafka.protocol.message import Message, MessageSet
-from kafka.protocol.produce import ProduceRequest
+from kafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
 import kafka.common as Errors
 
 from aiokafka import ensure_future

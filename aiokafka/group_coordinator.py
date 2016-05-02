@@ -7,12 +7,14 @@ from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.coordinator.protocol import ConsumerProtocol
 from kafka.common import OffsetAndMetadata, TopicPartition
 from kafka.protocol.commit import (
-    GroupCoordinatorRequest,
+    GroupCoordinatorRequest_v0 as GroupCoordinatorRequest,
     OffsetCommitRequest_v2 as OffsetCommitRequest,
     OffsetFetchRequest_v1 as OffsetFetchRequest)
 from kafka.protocol.group import (
-    HeartbeatRequest, JoinGroupRequest,
-    LeaveGroupRequest, SyncGroupRequest)
+    HeartbeatRequest_v0 as HeartbeatRequest,
+    JoinGroupRequest_v0 as JoinGroupRequest,
+    LeaveGroupRequest_v0 as LeaveGroupRequest,
+    SyncGroupRequest_v0 as SyncGroupRequest)
 
 from aiokafka import ensure_future
 
