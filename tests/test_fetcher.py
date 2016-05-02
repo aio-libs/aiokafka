@@ -8,8 +8,10 @@ from kafka.common import (TopicPartition, TopicAuthorizationFailedError,
                           OffsetOutOfRangeError)
 from kafka.consumer.subscription_state import (
     SubscriptionState, TopicPartitionState)
-from kafka.protocol.offset import OffsetResetStrategy, OffsetResponse
-from kafka.protocol.fetch import FetchRequest, FetchResponse
+from kafka.protocol.offset import (
+    OffsetResetStrategy, OffsetResponse_v0 as OffsetResponse)
+from kafka.protocol.fetch import (
+    FetchRequest_v0 as FetchRequest, FetchResponse_v0 as FetchResponse)
 from kafka.protocol.message import Message
 
 from aiokafka.client import AIOKafkaClient
