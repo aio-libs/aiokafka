@@ -5,9 +5,10 @@ from itertools import chain
 
 import kafka.common as Errors
 from kafka.common import TopicPartition
-from kafka.protocol.fetch import FetchRequest
+from kafka.protocol.fetch import FetchRequest_v0 as FetchRequest
 from kafka.protocol.message import PartialMessage
-from kafka.protocol.offset import OffsetRequest, OffsetResetStrategy
+from kafka.protocol.offset import (
+    OffsetRequest_v0 as OffsetRequest, OffsetResetStrategy)
 
 from aiokafka import ensure_future
 

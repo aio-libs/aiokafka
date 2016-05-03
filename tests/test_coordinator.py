@@ -1,7 +1,7 @@
 import asyncio
 from unittest import mock
 
-from kafka.protocol.group import JoinGroupRequest
+from kafka.protocol.group import JoinGroupRequest_v0 as JoinGroupRequest
 from kafka.common import (NoBrokersAvailable,
                           GroupCoordinatorNotAvailableError,
                           KafkaError)

@@ -1,11 +1,14 @@
 import asyncio
 import pytest
 import unittest
+import socket
 from unittest import mock
 
 from kafka.common import (KafkaError, ConnectionError,
                           NodeNotReadyError, UnrecognizedBrokerVersion)
-from kafka.protocol.metadata import MetadataRequest, MetadataResponse
+from kafka.protocol.metadata import (
+    MetadataRequest_v0 as MetadataRequest,
+    MetadataResponse_v0 as MetadataResponse)
 
 from aiokafka.client import AIOKafkaClient
 from aiokafka.conn import AIOKafkaConnection
@@ -23,14 +26,15 @@ class TestAIOKafkaClient(unittest.TestCase):
 
     def test_init_with_list(self):
         client = AIOKafkaClient(
-            loop=self.loop,
-            bootstrap_servers=['kafka01:9092', 'kafka02:9092', 'kafka03:9092'])
+            loop=self.loop, bootstrap_servers=[
+                '127.0.0.1:9092', '127.0.0.2:9092', '127.0.0.3:9092'])
         self.assertEqual(
             '<AIOKafkaClient client_id=aiokafka-0.1.2>', client.__repr__())
-        self.assertEqual(sorted({'kafka01': 9092,
-                                 'kafka02': 9092,
-                                 'kafka03': 9092}.items()),
-                         sorted(client.hosts))
+        self.assertEqual(
+            sorted([('127.0.0.1', 9092, socket.AF_INET),
+                    ('127.0.0.2', 9092, socket.AF_INET),
+                    ('127.0.0.3', 9092, socket.AF_INET)]),
+            sorted(client.hosts))
 
         node = client.get_random_node()
         self.assertEqual(node, None)  # unknown cluster metadata
@@ -38,12 +42,13 @@ class TestAIOKafkaClient(unittest.TestCase):
     def test_init_with_csv(self):
         client = AIOKafkaClient(
             loop=self.loop,
-            bootstrap_servers='kafka01:9092,kafka02:9092,kafka03:9092')
+            bootstrap_servers='127.0.0.1:9092,127.0.0.2:9092,127.0.0.3:9092')
 
-        self.assertEqual(sorted({'kafka01': 9092,
-                                 'kafka02': 9092,
-                                 'kafka03': 9092}.items()),
-                         sorted(client.hosts))
+        self.assertEqual(
+            sorted([('127.0.0.1', 9092, socket.AF_INET),
+                    ('127.0.0.2', 9092, socket.AF_INET),
+                    ('127.0.0.3', 9092, socket.AF_INET)]),
+            sorted(client.hosts))
 
     def test_load_metadata(self):
         brokers = [

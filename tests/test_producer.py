@@ -9,7 +9,7 @@ from kafka.common import (KafkaTimeoutError,
                           NotLeaderForPartitionError,
                           LeaderNotAvailableError,
                           RequestTimedOutError)
-from kafka.protocol.produce import ProduceResponse
+from kafka.protocol.produce import ProduceResponse_v0 as ProduceResponse
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 

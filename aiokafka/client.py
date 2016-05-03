@@ -9,7 +9,7 @@ from kafka.common import (KafkaError,
                           KafkaTimeoutError,
                           UnrecognizedBrokerVersion)
 from kafka.cluster import ClusterMetadata
-from kafka.protocol.metadata import MetadataRequest
+from kafka.protocol.metadata import MetadataRequest_v0 as MetadataRequest
 from kafka.protocol.produce import ProduceRequest
 
 from aiokafka.conn import create_conn
@@ -87,7 +87,7 @@ class AIOKafkaClient:
     def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
         metadata_request = MetadataRequest([])
-        for host, port in self.hosts:
+        for host, port, _ in self.hosts:
             log.debug("Attempting to bootstrap via node at %s:%s", host, port)
 
             try:
@@ -287,7 +287,8 @@ class AIOKafkaClient:
 
         # Every request gets a response, except one special case:
         expect_response = True
-        if isinstance(request, ProduceRequest) and request.required_acks == 0:
+        if isinstance(request, tuple(ProduceRequest)) and \
+                request.required_acks == 0:
             expect_response = False
 
         future = self._conns[node_id].send(
@@ -309,15 +310,15 @@ class AIOKafkaClient:
                 assert self.cluster.brokers(), 'no brokers in metadata'
                 node_id = list(self.cluster.brokers())[0].nodeId
 
-        from kafka.protocol.admin import ListGroupsRequest
+        from kafka.protocol.admin import ListGroupsRequest_v0
         from kafka.protocol.commit import (
-            OffsetFetchRequest_v0, GroupCoordinatorRequest)
-        from kafka.protocol.metadata import MetadataRequest
+            OffsetFetchRequest_v0, GroupCoordinatorRequest_v0)
+        from kafka.protocol.metadata import MetadataRequest_v0
         test_cases = [
-            ('0.9', ListGroupsRequest()),
-            ('0.8.2', GroupCoordinatorRequest('kafka-python-default-group')),
-            ('0.8.1', OffsetFetchRequest_v0('kafka-python-default-group', [])),
-            ('0.8.0', MetadataRequest([])),
+            ('0.9', ListGroupsRequest_v0()),
+            ('0.8.2', GroupCoordinatorRequest_v0('aiokafka-default-group')),
+            ('0.8.1', OffsetFetchRequest_v0('aiokafka-default-group', [])),
+            ('0.8.0', MetadataRequest_v0([])),
         ]
 
         # kafka kills the connection when it doesnt recognize an API request
