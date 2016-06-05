@@ -44,7 +44,7 @@ classifiers = [
     'Operating System :: OS Independent',
     'Topic :: System :: Networking',
     'Topic :: System :: Distributed Computing',
-    'Development Status :: 2 - Pre-Alpha',
+    'Development Status :: 4 - Beta',
 ]
 
 
