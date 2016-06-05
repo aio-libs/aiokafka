@@ -3,7 +3,7 @@
 FLAGS=
 SCALA_VERSION?=2.11
 KAFKA_VERSION?=0.9.0.1
-DOCKER_IMAGE=pygo/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
+DOCKER_IMAGE=aiolibs/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
 
 flake:
 	extra=$$(python -c "import sys;sys.stdout.write('--exclude tests/test_pep492.py') if sys.version_info[:3] < (3, 5, 0) else sys.stdout.write('')"); \
