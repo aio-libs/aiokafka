@@ -15,19 +15,19 @@ AIOKafkaConsumer class
 .. autoclass:: aiokafka.AIOKafkaConsumer
     :members:
 
-Errors handling
----------------
+Error handling
+--------------
 
 Both consumer and producer can raise exceptions that inherit from the `kafka.common.KafkaError` class
-and declared in `kafka.common` module.
+declared in the `kafka.common` module.
 
-Example of exceptions handling:
+Exception handling example:
 
 
 .. code:: python
 
         from kafka.common import KafkaError, KafkaTimeoutError
-        # ... 
+        # ...
         try:
             send_future = yield from producer.send('foobar', b'test data')
             response = yield from send_future  #  wait until message is produced
@@ -46,7 +46,7 @@ differently. Possible consumer errors include:
       Always raised
     * ``OffsetOutOfRangeError`` - if you don't specify `auto_offset_reset` policy
       and started cosumption from not valid offset. Always raised
-    * ``RecordTooLargeError`` - broker has a *MessageSet* larger than 
+    * ``RecordTooLargeError`` - broker has a *MessageSet* larger than
       `max_partition_fetch_bytes`. **async for** - log error, **get*** will
       raise it.
     * ``InvalidMessageError`` - CRC check on MessageSet failed due to connection

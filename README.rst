@@ -7,7 +7,7 @@ aiokafka
     :target: https://coveralls.io/r/aio-libs/aiokafka?branch=master
     :alt: |Coverage|
 
-asyncio client for kafka
+asyncio client for Kafka
 
 
 AIOKafkaProducer
@@ -48,7 +48,7 @@ AIOKafkaConsumer
 ****************
 
 AIOKafkaConsumer is a high-level, asynchronous message consumer.
-It interacts with the assigned kafka Group Coordinator node to allow multiple consumers to load balance consumption of topics (requires kafka >= 0.9.0.0).
+It interacts with the assigned Kafka Group Coordinator node to allow multiple consumers to load balance consumption of topics (requires kafka >= 0.9.0.0).
 
 Example of AIOKafkaConsumer usage:
 
@@ -97,4 +97,3 @@ Running tests::
 To run tests with a specific version of Kafka (default one is 0.9.0.1) use KAFKA_VERSION variable::
 
     make cov KAFKA_VERSION=0.8.2.1
-

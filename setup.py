@@ -13,7 +13,7 @@ if PY_VER >= (3, 4):
 elif PY_VER >= (3, 3):
     install_requires.append('asyncio')
 else:
-    raise RuntimeError("aiokafka doesn't suppport Python earllier than 3.3")
+    raise RuntimeError("aiokafka doesn't suppport Python earlier than 3.3")
 
 
 def read(f):
@@ -62,4 +62,4 @@ setup(name='aiokafka',
       packages=['aiokafka'],
       install_requires=install_requires,
       extras_require=extras_require,
-      include_package_data = True)
+      include_package_data=True)

@@ -5,9 +5,9 @@ Welcome to aiokafka's documentation!
 .. _kafka-python: https://github.com/dpkp/kafka-python
 .. _asyncio: http://docs.python.org/3.4/library/asyncio.html
 
-**aiokafka** is a client for the Apache Kafka distributed stream processing system using the asyncio_.
-It is based on kafka-python_ library and reuses it's internals for protocol parsing, errors, etc. 
-Client is designed to function much like the official java client, with a sprinkling of pythonic interfaces.
+**aiokafka** is a client for the Apache Kafka distributed stream processing system using asyncio_.
+It is based on the kafka-python_ library and reuses its internals for protocol parsing, errors, etc.
+The client is designed to function much like the official Java client, with a sprinkling of Pythonic interfaces.
 
 **aiokafka** is used with 0.9 Kafka brokers and supports fully coordinated consumer groups -- i.e., dynamic
 partition assignment to multiple consumers in the same group.
@@ -21,11 +21,11 @@ AIOKafkaConsumer
 ++++++++++++++++
 
 :class:`~aiokafka.AIOKafkaConsumer` is a high-level message consumer, intended to
-operate as similarly as possible to the official 0.9 java client. Full support
-for coordinated consumer groups requires use of kafka brokers that support the
+operate as similarly as possible to the official 0.9 Java client. Full support
+for coordinated consumer groups requires use of Kafka brokers that support the
 0.9 Group APIs.
 
-See consumer example:
+Here's a consumer example:
 
 .. code:: python
 
@@ -59,9 +59,9 @@ AIOKafkaProducer
 ++++++++++++++++
 
 :class:`~aiokafka.AIOKafkaProducer` is a high-level, asynchronous message producer.
-The class is intended to operate as similarly as possible to the official java client.
+The class is intended to operate as similarly as possible to the official Java client.
 
-See producer example:
+Here's a producer example:
 
 .. code:: python
 
@@ -97,7 +97,7 @@ Installation
 
    pip3 install aiokafka
 
-.. note:: *aiokafka* requires *python-kafka* library and heavily depands on it.
+.. note:: *aiokafka* requires the *python-kafka* library.
 
 
 Optional LZ4 install

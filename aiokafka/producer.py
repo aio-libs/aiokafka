@@ -99,7 +99,7 @@ class AIOKafkaProducer(object):
             each message is assigned to. Called (after key serialization):
             partitioner(key_bytes, all_partitions, available_partitions).
             The default partitioner implementation hashes each non-None key
-            using the same murmur2 algorithm as the java client so that
+            using the same murmur2 algorithm as the Java client so that
             messages with the same key are assigned to the same partition.
             When a key is None, the message is delivered to a random partition
             (filtered to partitions with available leaders only, if possible).
@@ -124,7 +124,7 @@ class AIOKafkaProducer(object):
             probing various APIs. Default: auto
 
     Note:
-        Many configuration parameters are taken from Java Client:
+        Many configuration parameters are taken from the Java client:
         https://kafka.apache.org/documentation.html#producerconfigs
     """
     _PRODUCER_CLIENT_ID_SEQUENCE = 0
