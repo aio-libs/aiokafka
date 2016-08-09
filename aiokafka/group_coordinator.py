@@ -542,7 +542,7 @@ class GroupCoordinator(object):
     @asyncio.coroutine
     def ensure_coordinator_known(self):
         """Block until the coordinator for this group is known
-        (and we have an active connection -- java client uses unsent queue).
+        (and we have an active connection -- Java client uses unsent queue).
         """
         while (yield from self.coordinator_unknown()):
             node_id = self._client.get_random_node()

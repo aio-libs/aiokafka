@@ -206,7 +206,7 @@ class Fetcher:
         we must perform a FetchRequest to as many partitions as we can in a
         node.
 
-        Original java Kafka client processes data differently, as it only
+        Original Java Kafka client processes data differently, as it only
         prefetches data if all messages were given to application (i.e. if
         `self._records` are empty). We don't use this method, cause we allow
         to process partitions separately (by passing `partitions` list to
