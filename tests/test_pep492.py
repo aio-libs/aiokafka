@@ -20,7 +20,11 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         async for m in consumer:
             messages.append(m)
             if len(messages) == 20:
-                break
+                # Flake8==3.0.3 gives
+                #   F999 'break' outside loop
+                # for `async` syntax
+                break  # noqa
+
         self.assert_message_count(messages, 20)
         await consumer.stop()
 
@@ -43,7 +47,10 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
             async for m in consumer:
                 messages.append(m)
                 if len(messages) == 2:
-                    break
+                    # Flake8==3.0.3 gives
+                    #   F999 'break' outside loop
+                    # for `async` syntax
+                    break  # noqa
 
             self.assertEqual(len(cm.output), 1)
             self.assertTrue(
