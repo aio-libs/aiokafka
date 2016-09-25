@@ -1,7 +1,7 @@
 flake8==3.0.4
 pytest
 pytest-cov
-pytest-catchlog
+pytest-catchlog==1.2.2
 docker-py==1.10.3
 coveralls==1.1
 Sphinx==1.4.6
