@@ -4,7 +4,7 @@ pytest-cov
 pytest-catchlog
 docker-py==1.10.3
 coveralls
-Sphinx
+Sphinx==1.4.6
 
 sphinxcontrib-asyncio>=0.2.0
 sphinx_rtd_theme
