@@ -1,10 +1,10 @@
-flake8
-pytest
-pytest-cov
-pytest-catchlog
-docker-py
-coveralls
-Sphinx
+flake8==3.0.4
+pytest==3.0.2
+pytest-cov==2.3.1
+pytest-catchlog==1.2.2
+docker-py==1.10.3
+coveralls==1.1
+Sphinx==1.4.6
 
 sphinxcontrib-asyncio>=0.2.0
-sphinx_rtd_theme
+sphinx-rtd-theme==0.1.9
