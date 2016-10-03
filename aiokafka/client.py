@@ -35,11 +35,11 @@ if isinstance(MetadataRequest, list):
 
 
 if isinstance(GroupCoordinatorRequest, list):
-    GroupCoordinatorRequest =GroupCoordinatorRequest[0]
+    GroupCoordinatorRequest = GroupCoordinatorRequest[0]
 
 
 if isinstance(ProduceRequest, list):
-    ProduceRequest =ProduceRequest[0]
+    ProduceRequest = ProduceRequest[0]
 
 
 class AIOKafkaClient:
