@@ -330,10 +330,10 @@ class AIOKafkaClient:
                 node_id = list(self.cluster.brokers())[0].nodeId
 
         test_cases = [
-            ('0.9', ListGroupsRequest_v0()),
-            ('0.8.2', GroupCoordinatorRequest_v0('aiokafka-default-group')),
-            ('0.8.1', OffsetFetchRequest_v0('aiokafka-default-group', [])),
-            ('0.8.0', MetadataRequest_v0([])),
+            ('0.9', ListGroupsRequest()),
+            ('0.8.2', GroupCoordinatorRequest('aiokafka-default-group')),
+            ('0.8.1', OffsetFetchRequest('aiokafka-default-group', [])),
+            ('0.8.0', MetadataRequest([])),
         ]
 
         # kafka kills the connection when it doesnt recognize an API request
