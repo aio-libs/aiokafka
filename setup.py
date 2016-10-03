@@ -4,7 +4,7 @@ import sys
 from setuptools import setup
 
 
-install_requires = ['kafka-python==1.1.1']
+install_requires = ['kafka-python>=1.1.1']
 
 PY_VER = sys.version_info
 
