@@ -18,6 +18,10 @@ from aiokafka.message_accumulator import MessageAccumulator
 log = logging.getLogger(__name__)
 
 
+if isinstance(ProduceRequest, list):
+    ProduceRequest = ProduceRequest[0]
+
+
 class AIOKafkaProducer(object):
     """A Kafka client that publishes records to the Kafka cluster.
 

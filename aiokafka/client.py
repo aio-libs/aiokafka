@@ -11,6 +11,10 @@ from kafka.common import (KafkaError,
 from kafka.cluster import ClusterMetadata
 from kafka.protocol.metadata import MetadataRequest_v0 as MetadataRequest
 from kafka.protocol.produce import ProduceRequest
+from kafka.protocol.admin import ListGroupsRequest_v0
+from kafka.protocol.commit import (
+    OffsetFetchRequest_v0, GroupCoordinatorRequest_v0)
+from kafka.protocol.metadata import MetadataRequest_v0
 
 from aiokafka.conn import create_conn
 from aiokafka import ensure_future, __version__
@@ -20,6 +24,22 @@ __all__ = ['AIOKafkaClient']
 
 
 log = logging.getLogger('aiokafka')
+
+
+if isinstance(ListGroupsRequest, list):
+    ListGroupsRequest = ListGroupsRequest[0]
+
+
+if isinstance(MetadataRequest, list):
+    MetadataRequest = MetadataRequest[0]
+
+
+if isinstance(GroupCoordinatorRequest, list):
+    GroupCoordinatorRequest =GroupCoordinatorRequest[0]
+
+
+if isinstance(ProduceRequest, list):
+    ProduceRequest =ProduceRequest[0]
 
 
 class AIOKafkaClient:
@@ -310,10 +330,6 @@ class AIOKafkaClient:
                 assert self.cluster.brokers(), 'no brokers in metadata'
                 node_id = list(self.cluster.brokers())[0].nodeId
 
-        from kafka.protocol.admin import ListGroupsRequest_v0
-        from kafka.protocol.commit import (
-            OffsetFetchRequest_v0, GroupCoordinatorRequest_v0)
-        from kafka.protocol.metadata import MetadataRequest_v0
         test_cases = [
             ('0.9', ListGroupsRequest_v0()),
             ('0.8.2', GroupCoordinatorRequest_v0('aiokafka-default-group')),
