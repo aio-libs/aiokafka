@@ -9,12 +9,11 @@ from kafka.common import (KafkaError,
                           KafkaTimeoutError,
                           UnrecognizedBrokerVersion)
 from kafka.cluster import ClusterMetadata
-from kafka.protocol.metadata import MetadataRequest_v0 as MetadataRequest
+from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.produce import ProduceRequest
-from kafka.protocol.admin import ListGroupsRequest_v0
+from kafka.protocol.admin import ListGroupsRequest
 from kafka.protocol.commit import (
-    OffsetFetchRequest_v0, GroupCoordinatorRequest_v0)
-from kafka.protocol.metadata import MetadataRequest_v0
+    OffsetFetchRequest_v0, GroupCoordinatorRequest)
 
 from aiokafka.conn import create_conn
 from aiokafka import ensure_future, __version__
