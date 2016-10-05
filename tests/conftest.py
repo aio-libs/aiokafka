@@ -28,7 +28,7 @@ def docker_ip_address(docker):
     ifname = 'docker0'
     try:
         for network in docker.networks():
-            _ifname = docker.networks()[0]['Options'].get(
+            _ifname = network['Options'].get(
                 'com.docker.network.bridge.name')
             if _ifname is not None:
                 ifname = _ifname
