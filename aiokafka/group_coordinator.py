@@ -492,6 +492,7 @@ class GroupCoordinator(object):
         if not self._enable_auto_commit:
             return
 
+        yield from self.ensure_coordinator_known()
         yield from self.commit_offsets(
             self._subscription.all_consumed_offsets())
 
