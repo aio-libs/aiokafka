@@ -1,6 +1,15 @@
 CHANGES
 --------
 
+0.1.3 (2016-10-18)
+^^^^^^^^^^^^^^^^^^
+
+* Fixed bug with infinite loop on heartbeats with autocommit=True. #44
+* Bumped python-kafka to version 1.1.1
+* Fixed docker test runner with multiple interfaces
+* Minor documentation fixes
+
+
 0.1.2 (2016-04-30)
 ^^^^^^^^^^^^^^^^^^
 

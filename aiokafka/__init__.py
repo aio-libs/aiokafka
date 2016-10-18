@@ -6,7 +6,7 @@ except ImportError:
 import sys  # noqa
 PY_35 = sys.version_info >= (3, 5)
 
-__version__ = '0.1.2'
+__version__ = '0.1.3'
 
 from .client import AIOKafkaClient  # noqa
 from .producer import AIOKafkaProducer  # noqa
