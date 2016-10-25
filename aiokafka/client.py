@@ -102,6 +102,7 @@ class AIOKafkaClient:
     @asyncio.coroutine
     def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
+        # using request v0 for bootstap (bcs api version is not detected yet)
         metadata_request = MetadataRequest[0]([])
         for host, port, _ in self.hosts:
             log.debug("Attempting to bootstrap via node at %s:%s", host, port)
@@ -364,6 +365,8 @@ class AIOKafkaClient:
                 if not conn.connected():
                     yield from conn.connect()
                 assert conn, 'no connection to node with id {}'.format(node_id)
+                # request can be ignored by Kafka broker,
+                # so we send metadata request and wait response
                 task = self._loop.create_task(conn.send(request))
                 yield from asyncio.wait([task], timeout=0.1, loop=self._loop)
                 yield from self.fetch_all_metadata()
