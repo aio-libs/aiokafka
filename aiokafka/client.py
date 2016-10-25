@@ -370,11 +370,8 @@ class AIOKafkaClient:
                 task = self._loop.create_task(conn.send(request))
                 yield from asyncio.wait([task], timeout=0.1, loop=self._loop)
                 yield from self.fetch_all_metadata()
-                if not task.done():
-                    task.cancel()
-                    yield from task
-                    continue
-            except (KafkaError, asyncio.CancelledError):
+                yield from task
+            except (KafkaError, asyncio.CancelledError) as err:
                 continue
             else:
                 return version
