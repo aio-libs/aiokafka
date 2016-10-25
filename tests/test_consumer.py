@@ -1,4 +1,5 @@
 import asyncio
+import time
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.fetcher import RecordTooLargeError
 from aiokafka.producer import AIOKafkaProducer
@@ -66,10 +67,10 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         h = consumer.highwater(p0)
         self.assertEqual(h, 100)
 
-        consumer.seek(p0, offset+90)
+        consumer.seek(p0, offset + 90)
         for i in range(10):
             m = yield from consumer.getone()
-            self.assertEqual(m.value, str(i+90).encode())
+            self.assertEqual(m.value, str(i + 90).encode())
         yield from consumer.stop()
 
         # will ignore, no exception expected
@@ -225,7 +226,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 break
 
         yield from consumer2.stop()
-        if consumer1._api_version < (0, 9):
+        if consumer1._client.api_version < (0, 9):
             # coordinator rebalance feature works with >=Kafka-0.9 only
             return
         self.assertEqual(set(available_msgs), set(result))
@@ -310,8 +311,27 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             compression_type="gzip")
         yield from producer.start()
         yield from self.wait_topic(producer.client, self.topic)
-        msg1 = b'some-message'*10
-        msg2 = b'other-message'*30
+        msg1 = b'some-message' * 10
+        msg2 = b'other-message' * 30
+        yield from producer.send(self.topic, msg1, partition=1)
+        yield from producer.send(self.topic, msg2, partition=1)
+        yield from producer.stop()
+
+        consumer = yield from self.consumer_factory()
+        rmsg1 = yield from consumer.getone()
+        self.assertEqual(rmsg1.value, msg1)
+        rmsg2 = yield from consumer.getone()
+        self.assertEqual(rmsg2.value, msg2)
+
+    @run_until_complete
+    def test_compress_decompress_lz4(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            compression_type="lz4")
+        yield from producer.start()
+        yield from self.wait_topic(producer.client, self.topic)
+        msg1 = b'some-message' * 10
+        msg2 = b'other-message' * 30
         yield from producer.send(self.topic, msg1, partition=1)
         yield from producer.send(self.topic, msg2, partition=1)
         yield from producer.stop()
@@ -352,7 +372,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # Seek should invalidate the remaining message
         tp = TopicPartition(self.topic, rmsg1.partition)
-        consumer.seek(tp, rmsg1.offset+2)
+        consumer.seek(tp, rmsg1.offset + 2)
         rmsg2 = yield from consumer.getone()
         self.assertEqual(rmsg2.value, b'3')
         res = yield from consumer.getmany(timeout_ms=0)
@@ -389,3 +409,28 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         with self.assertRaises(UnknownTopicOrPartitionError):
             yield from consumer.assign([TopicPartition(self.topic, 2222)])
+
+    @run_until_complete
+    def test_check_extended_message_record(self):
+        s_time_ms = time.time() * 1000
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        yield from producer.start()
+        yield from self.wait_topic(producer.client, self.topic)
+        msg1 = b'some-message#1'
+        yield from producer.send(self.topic, msg1, partition=1)
+        yield from producer.stop()
+
+        consumer = yield from self.consumer_factory()
+        rmsg1 = yield from consumer.getone()
+        self.assertEqual(rmsg1.value, msg1)
+        self.assertEqual(rmsg1.serialized_key_size, -1)
+        self.assertEqual(rmsg1.serialized_value_size, 14)
+        if consumer._client.api_version >= (0, 10):
+            self.assertNotEqual(rmsg1.timestamp, None)
+            self.assertTrue(rmsg1.timestamp >= s_time_ms)
+            self.assertEqual(rmsg1.timestamp_type, 0)
+        else:
+            self.assertEqual(rmsg1.timestamp, None)
+            self.assertEqual(rmsg1.timestamp_type, None)

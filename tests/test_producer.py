@@ -31,7 +31,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
-        self.assertNotEqual(producer._api_version, 'auto')
+        self.assertNotEqual(producer.client.api_version, 'auto')
         with self.assertRaises(UnknownTopicOrPartitionError):
             yield from producer.partitions_for('some_topic_name')
         yield from self.wait_topic(producer.client, 'some_topic_name')

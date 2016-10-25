@@ -9,7 +9,7 @@ from kafka.common import (KafkaError,
                           KafkaTimeoutError,
                           UnrecognizedBrokerVersion)
 from kafka.cluster import ClusterMetadata
-from kafka.protocol.metadata import MetadataRequest_v0 as MetadataRequest
+from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.produce import ProduceRequest
 
 from aiokafka.conn import create_conn
@@ -26,8 +26,10 @@ class AIOKafkaClient:
     """This class implements interface for interact with Kafka cluster"""
 
     def __init__(self, *, loop, bootstrap_servers='localhost',
-                 client_id='aiokafka-'+__version__, metadata_max_age_ms=300000,
-                 request_timeout_ms=40000):
+                 client_id='aiokafka-' + __version__,
+                 metadata_max_age_ms=300000,
+                 request_timeout_ms=40000,
+                 api_version='auto'):
         """Initialize an asynchronous kafka client
 
         Keyword Arguments:
@@ -48,11 +50,17 @@ class AIOKafkaClient:
                 which we force a refresh of metadata even if we haven't seen
                 any partition leadership changes to proactively discover any
                 new brokers or partitions. Default: 300000
+            api_version (str): specify which kafka API version to use.
+                AIOKafka supports Kafka API versions >=0.9 only.
+                If set to 'auto', will attempt to infer the broker version by
+                probing various APIs. Default: auto
         """
         self._bootstrap_servers = bootstrap_servers
         self._client_id = client_id
         self._metadata_max_age_ms = metadata_max_age_ms
         self._request_timeout_ms = request_timeout_ms
+        self._api_version = api_version
+        self._version_id = 0  # used to allow backwards compatible evolution
 
         self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
         self._topics = set()  # empty set will fetch all topic metadata
@@ -66,6 +74,14 @@ class AIOKafkaClient:
 
     def __repr__(self):
         return '<AIOKafkaClient client_id=%s>' % self._client_id
+
+    @property
+    def api_version(self):
+        return self._api_version
+
+    @property
+    def version_id(self):
+        return self._version_id
 
     @property
     def hosts(self):
@@ -86,7 +102,7 @@ class AIOKafkaClient:
     @asyncio.coroutine
     def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
-        metadata_request = MetadataRequest([])
+        metadata_request = MetadataRequest[0]([])
         for host, port, _ in self.hosts:
             log.debug("Attempting to bootstrap via node at %s:%s", host, port)
 
@@ -120,6 +136,14 @@ class AIOKafkaClient:
         else:
             raise ConnectionError(
                 'Unable to bootstrap from {}'.format(self.hosts))
+
+        # detect api version if need
+        if self._api_version == 'auto':
+            self._api_version = yield from self.check_version()
+        if type(self._api_version) is not tuple:
+            self._api_version = tuple(
+                map(int, self._api_version.split('.')))
+        self._version_id = 0 if self._api_version < (0, 10) else 1
 
         if self._sync_task is None:
             # starting metadata synchronizer task
@@ -155,7 +179,10 @@ class AIOKafkaClient:
     @asyncio.coroutine
     def _metadata_update(self, cluster_metadata, topics):
         assert isinstance(cluster_metadata, ClusterMetadata)
-        metadata_request = MetadataRequest(list(topics))
+        topics = list(topics)
+        if self.version_id == 1 and not topics:
+            topics = None
+        metadata_request = MetadataRequest[self.version_id](topics)
         nodeids = [b.nodeId for b in self.cluster.brokers()]
         if 'bootstrap' in self._conns:
             nodeids.append('bootstrap')
@@ -310,11 +337,13 @@ class AIOKafkaClient:
                 assert self.cluster.brokers(), 'no brokers in metadata'
                 node_id = list(self.cluster.brokers())[0].nodeId
 
-        from kafka.protocol.admin import ListGroupsRequest_v0
+        from kafka.protocol.admin import (
+            ListGroupsRequest_v0, ApiVersionRequest_v0)
         from kafka.protocol.commit import (
             OffsetFetchRequest_v0, GroupCoordinatorRequest_v0)
         from kafka.protocol.metadata import MetadataRequest_v0
         test_cases = [
+            ('0.10', ApiVersionRequest_v0()),
             ('0.9', ListGroupsRequest_v0()),
             ('0.8.2', GroupCoordinatorRequest_v0('aiokafka-default-group')),
             ('0.8.1', OffsetFetchRequest_v0('aiokafka-default-group', [])),

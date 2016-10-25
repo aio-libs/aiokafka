@@ -5,6 +5,8 @@ pytest-catchlog==1.2.2
 docker-py==1.10.4
 coveralls==1.1
 Sphinx==1.4.8
+lz4tools==1.3.1.2
+xxhash==0.6.1
 
 sphinxcontrib-asyncio>=0.2.0
 sphinx-rtd-theme==0.1.9

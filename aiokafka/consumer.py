@@ -119,7 +119,7 @@ class AIOKafkaConsumer(object):
     """
     def __init__(self, *topics, loop,
                  bootstrap_servers='localhost',
-                 client_id='aiokafka-'+__version__,
+                 client_id='aiokafka-' + __version__,
                  group_id=None,
                  key_deserializer=None, value_deserializer=None,
                  fetch_max_wait_ms=500,
@@ -137,14 +137,14 @@ class AIOKafkaConsumer(object):
                  session_timeout_ms=30000,
                  consumer_timeout_ms=200,
                  api_version='auto'):
-        if api_version not in ('auto', '0.9'):
+        if api_version not in ('auto', '0.9', '0.10'):
             raise ValueError("Unsupported Kafka API version")
         self._client = AIOKafkaClient(
             loop=loop, bootstrap_servers=bootstrap_servers,
             client_id=client_id, metadata_max_age_ms=metadata_max_age_ms,
-            request_timeout_ms=request_timeout_ms)
+            request_timeout_ms=request_timeout_ms,
+            api_version=api_version)
 
-        self._api_version = api_version
         self._group_id = group_id
         self._heartbeat_interval_ms = heartbeat_interval_ms
         self._retry_backoff_ms = retry_backoff_ms
@@ -172,16 +172,9 @@ class AIOKafkaConsumer(object):
     def start(self):
         yield from self._client.bootstrap()
 
-        # Check Broker Version if not set explicitly
-        if self._api_version == 'auto':
-            self._api_version = yield from self._client.check_version()
-        # Convert api_version config to tuple for easy comparisons
-        self._api_version = tuple(
-            map(int, self._api_version.split('.')))
-
-        if self._api_version < (0, 9):
-            raise ValueError(
-                "Unsupported Kafka version: {}".format(self._api_version))
+        if self._client.api_version < (0, 9):
+            raise ValueError("Unsupported Kafka version: {}".format(
+                self._client.api_version))
 
         self._fetcher = Fetcher(
             self._client, self._subscription, loop=self._loop,

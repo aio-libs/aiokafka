@@ -95,7 +95,11 @@ class TestAIOKafkaClient(unittest.TestCase):
         md = client.cluster
         c_brokers = md.brokers()
         self.assertEqual(len(c_brokers), 2)
-        self.assertEqual(sorted(brokers), sorted(list(c_brokers)))
+        expected_brokers = [
+            (0, 'broker_1', 4567, None),
+            (1, 'broker_2', 5678, None)
+        ]
+        self.assertEqual(sorted(expected_brokers), sorted(list(c_brokers)))
         c_topics = md.topics()
         self.assertEqual(len(c_topics), 4)
         self.assertEqual(md.partitions_for_topic('topic_1'), set([0]))

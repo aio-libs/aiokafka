@@ -63,7 +63,8 @@ Example of AIOKafkaConsumer usage:
         while True:
             try:
                 msg = yield from consumer.getone()
-                print("consumed: ", msg.topic, msg.partition, msg.offset, msg.value)
+                print("consumed: ", msg.topic, msg.partition, msg.offset,
+                      msg.key, msg.value, msg.timestamp)
             except KafkaError as err:
                 print("error while consuming message: ", err)
 
@@ -88,7 +89,7 @@ Docker is required to run tests. See https://docs.docker.com/engine/installation
 Setting up tests requirements (assuming you're within virtualenv on ubuntu 14.04+)::
 
     sudo apt-get install -y libsnappy-dev
-    pip install flake8 pytest pytest-cov pytest-catchlog docker-py python-snappy coveralls .
+    pip install -r requirements-dev.txt .
 
 Running tests::
 
@@ -96,4 +97,4 @@ Running tests::
 
 To run tests with a specific version of Kafka (default one is 0.9.0.1) use KAFKA_VERSION variable::
 
-    make cov KAFKA_VERSION=0.8.2.1
+    make cov KAFKA_VERSION=0.10.0.0
