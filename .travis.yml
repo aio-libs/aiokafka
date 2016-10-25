@@ -21,6 +21,7 @@ install:
     - pip install pytest pytest-cov pytest-catchlog docker-py
     - pip install coveralls
     - pip install python-snappy
+    - pip install lz4tools xxhash
     - pip install .
 
 script:
