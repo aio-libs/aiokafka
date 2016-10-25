@@ -143,6 +143,8 @@ class AIOKafkaConnection:
             for _, _, fut in self._requests:
                 fut.set_exception(conn_exc)
             self.close()
+        except asyncio.CancelledError:
+            pass
 
     def _next_correlation_id(self):
         self._correlation_id = (self._correlation_id + 1) % 2**31

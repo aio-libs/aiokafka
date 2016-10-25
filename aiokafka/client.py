@@ -364,8 +364,14 @@ class AIOKafkaClient:
                 if not conn.connected():
                     yield from conn.connect()
                 assert conn, 'no connection to node with id {}'.format(node_id)
-                yield from conn.send(request)
-            except KafkaError:
+                task = self._loop.create_task(conn.send(request))
+                yield from asyncio.wait([task], timeout=0.1, loop=self._loop)
+                yield from self.fetch_all_metadata()
+                if not task.done():
+                    task.cancel()
+                    yield from task
+                    continue
+            except (KafkaError, asyncio.CancelledError):
                 continue
             else:
                 return version

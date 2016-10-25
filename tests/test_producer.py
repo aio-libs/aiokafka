@@ -83,6 +83,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         done, _ = yield from asyncio.wait([fut1, fut2], loop=self.loop)
         for item in done:
             self.assertEqual(item.result(), None)
+        yield from producer.stop()
 
     @run_until_complete
     def test_producer_send_with_serializer(self):
@@ -192,6 +193,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 with self.assertRaises(KafkaTimeoutError):
                     item.result()
 
+        yield from producer.stop()
+
     @run_until_complete
     def test_producer_send_error(self):
         producer = AIOKafkaProducer(
@@ -226,3 +229,4 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 future = yield from producer.send(
                     self.topic, b'text1', partition=0)
                 yield from future
+        yield from producer.stop()

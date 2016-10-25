@@ -158,6 +158,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         node_id = client.get_random_node()
         resp = yield from client.send(node_id, MetadataRequest([]))
         self.assertTrue(isinstance(resp, MetadataResponse))
+        yield from client.close()
 
     @run_until_complete
     def test_check_version(self):
@@ -180,6 +181,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         client._get_conn = asyncio.coroutine(lambda _: None)
         with self.assertRaises(ConnectionError):
             yield from client.check_version()
+        yield from client.close()
 
     @run_until_complete
     def test_metadata_synchronizer(self):
@@ -195,12 +197,12 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
                 client.cluster.failed_update(None)
             mocked.side_effect = dummy
 
-            yield from client.bootstrap()
-            yield from asyncio.sleep(0.15, loop=self.loop)
-            yield from client.close()
+            with self.assertRaises(UnrecognizedBrokerVersion):
+                yield from client.bootstrap()
 
             self.assertNotEqual(
                 len(client._metadata_update.mock_calls), 0)
+        yield from client.close()
 
     @run_until_complete
     def test_metadata_update_fail(self):
@@ -217,3 +219,4 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
             with self.assertRaises(KafkaError):
                 yield from client.fetch_all_metadata()
+        yield from client.close()

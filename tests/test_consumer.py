@@ -97,6 +97,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         task2 = asyncio.async(task(p1, messages), loop=self.loop)
         yield from asyncio.wait([task1, task2], loop=self.loop)
         self.assert_message_count(messages, 200)
+        yield from consumer.stop()
 
     @run_until_complete
     def test_none_group(self):
@@ -121,6 +122,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             message = yield from consumer2.getone()
             messages.append(message)
         self.assert_message_count(messages, 200)
+        yield from consumer1.stop()
+        yield from consumer2.stop()
 
     @run_until_complete
     def test_consumer_poll(self):
@@ -230,6 +233,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             # coordinator rebalance feature works with >=Kafka-0.9 only
             return
         self.assertEqual(set(available_msgs), set(result))
+        yield from consumer1.stop()
+        yield from consumer2.stop()
 
     @run_until_complete
     def test_subscribe_manual(self):
@@ -322,6 +327,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(rmsg1.value, msg1)
         rmsg2 = yield from consumer.getone()
         self.assertEqual(rmsg2.value, msg2)
+        yield from consumer.stop()
 
     @run_until_complete
     def test_compress_decompress_lz4(self):
@@ -341,6 +347,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(rmsg1.value, msg1)
         rmsg2 = yield from consumer.getone()
         self.assertEqual(rmsg2.value, msg2)
+        yield from consumer.stop()
 
     @run_until_complete
     def test_consumer_seek_backward(self):
@@ -359,6 +366,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(rmsg2.value, b'1')
         rmsg2 = yield from consumer.getone()
         self.assertEqual(rmsg2.value, b'2')
+        yield from consumer.stop()
 
     @run_until_complete
     def test_consumer_seek_forward(self):
@@ -377,6 +385,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(rmsg2.value, b'3')
         res = yield from consumer.getmany(timeout_ms=0)
         self.assertEqual(res, {tp: []})
+        yield from consumer.stop()
 
     @run_until_complete
     def test_manual_subscribe_nogroup(self):
@@ -409,6 +418,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         with self.assertRaises(UnknownTopicOrPartitionError):
             yield from consumer.assign([TopicPartition(self.topic, 2222)])
+        yield from consumer.stop()
 
     @run_until_complete
     def test_check_extended_message_record(self):
@@ -434,3 +444,4 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         else:
             self.assertEqual(rmsg1.timestamp, None)
             self.assertEqual(rmsg1.timestamp_type, None)
+        yield from consumer.stop()

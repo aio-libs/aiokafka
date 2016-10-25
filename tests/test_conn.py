@@ -66,7 +66,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         # prepare message
         msg = Message(b'foo')
         request = ProduceRequest(
-            required_acks=0, timeout=10*1000,
+            required_acks=0, timeout=10 * 1000,
             topics=[(b'foo', [(0, [(0, msg.encode())])])])
 
         # produce messages without acknowledge
@@ -74,6 +74,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
             conn.send(request, expect_response=False)
         # make sure futures no stuck in queue
         self.assertEqual(len(conn._requests), 0)
+        conn.close()
 
     @run_until_complete
     def test_send_to_closed(self):
