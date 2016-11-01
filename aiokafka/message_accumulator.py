@@ -9,7 +9,8 @@ from kafka.common import (KafkaError,
 from kafka.protocol.message import Message, MessageSet
 from kafka.protocol.types import Int32, Int64
 from kafka.codec import (has_gzip, has_snappy, has_lz4,
-                         gzip_encode, snappy_encode, lz4_encode)
+                         gzip_encode, snappy_encode,
+                         lz4_encode, lz4_encode_old_kafka)
 
 
 RecordMetadata = collections.namedtuple(
@@ -26,9 +27,16 @@ class MessageBatch:
         'gzip': (has_gzip, gzip_encode, Message.CODEC_GZIP),
         'snappy': (has_snappy, snappy_encode, Message.CODEC_SNAPPY),
         'lz4': (has_lz4, lz4_encode, Message.CODEC_LZ4),
+        'lz4-old-kafka': (has_lz4, lz4_encode_old_kafka, Message.CODEC_LZ4),
     }
 
-    def __init__(self, tp, batch_size, compression_type, ttl, loop):
+    def __init__(self, tp, batch_size, compression_type,
+                 ttl, api_version, loop):
+        # Kafka 0.8/0.9 had a quirky lz4...
+        version_id = 0 if api_version < (0, 10) else 1
+        if compression_type == 'lz4' and version_id == 0:
+            compression_type = 'lz4-old-kafka'
+
         if compression_type:
             checker, _, _ = self._COMPRESSORS[compression_type]
             assert checker(), 'Compression Libraries Not Found'
@@ -42,6 +50,7 @@ class MessageBatch:
         self._loop = loop
         self._ttl = ttl
         self._ctime = loop.time()
+        self._version_id = version_id
 
         # Waiters
         # Set when messages are delivered to Kafka based on ACK setting
@@ -73,7 +82,7 @@ class MessageBatch:
         if self._is_full(key, value):
             return None
 
-        encoded = Message(value, key=key).encode()
+        encoded = Message(value, key=key, magic=self._version_id).encode()
         msg = Int64.encode(self._relative_offset) + Int32.encode(len(encoded))
         msg += encoded
         self._buffer.write(msg)
@@ -94,7 +103,7 @@ class MessageBatch:
                 future.set_result(None)
             else:
                 res = RecordMetadata(self._tp.topic, self._tp.partition,
-                                     self._tp, base_offset+relative_offset)
+                                     self._tp, base_offset + relative_offset)
                 future.set_result(res)
 
     def wait_deliver(self):
@@ -115,7 +124,8 @@ class MessageBatch:
         self._drain_waiter.set_result(None)
         if self._compression_type:
             _, compressor, attrs = self._COMPRESSORS[self._compression_type]
-            msg = Message(compressor(memview[4:].tobytes()), attributes=attrs)
+            msg = Message(compressor(memview[4:].tobytes()), attributes=attrs,
+                          magic=self._version_id)
             encoded = msg.encode()
             # if compressed message is longer than original
             # we should send it as is (not compressed)
@@ -126,12 +136,12 @@ class MessageBatch:
                 memview[:4] = Int32.encode(len(encoded) + 12)
                 memview[4:12] = Int64.encode(0)  # offset 0
                 memview[12:16] = Int32.encode(len(encoded))
-                memview[16:16+len(encoded)] = encoded
+                memview[16:16 + len(encoded)] = encoded
                 self._buffer.seek(0)
                 return
 
         # update batch size (first 4 bytes of buffer)
-        memview[:4] = Int32.encode(self._buffer.tell()-4)
+        memview[:4] = Int32.encode(self._buffer.tell() - 4)
         self._buffer.seek(0)
 
     def data(self):
@@ -153,6 +163,10 @@ class MessageAccumulator:
         self._loop = loop
         self._wait_data_future = asyncio.Future(loop=loop)
         self._closed = False
+        self._api_version = (0, 9)
+
+    def set_api_version(self, api_version):
+        self._api_version = api_version
 
     @asyncio.coroutine
     def close(self):
@@ -175,7 +189,7 @@ class MessageAccumulator:
         if not batch:
             batch = MessageBatch(
                 tp, self._batch_size, self._compression_type,
-                self._batch_ttl, self._loop)
+                self._batch_ttl, self._api_version, self._loop)
             self._batches[tp] = batch
 
             if not self._wait_data_future.done():

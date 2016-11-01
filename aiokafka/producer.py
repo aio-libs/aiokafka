@@ -8,7 +8,7 @@ from kafka.common import (TopicPartition,
                           KafkaError)
 from kafka.partitioner.default import DefaultPartitioner
 from kafka.protocol.message import Message, MessageSet
-from kafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
+from kafka.protocol.produce import ProduceRequest
 import kafka.common as Errors
 
 from aiokafka import ensure_future
@@ -142,7 +142,8 @@ class AIOKafkaProducer(object):
             raise ValueError("Invalid ACKS parameter")
         if compression_type not in ('gzip', 'snappy', 'lz4', None):
             raise ValueError("Invalid compression type!")
-        if api_version not in ('auto', '0.9', '0.8.2', '0.8.1', '0.8.0'):
+        if api_version not in (
+                'auto', '0.10', '0.9', '0.8.2', '0.8.1', '0.8.0'):
             raise ValueError("Unsupported Kafka version")
 
         self._PRODUCER_CLIENT_ID_SEQUENCE += 1
@@ -153,7 +154,6 @@ class AIOKafkaProducer(object):
         if acks == 'all':
             acks = -1
         self._acks = acks
-        self._api_version = api_version
         self._key_serializer = key_serializer
         self._value_serializer = value_serializer
         self._compression_type = compression_type
@@ -164,11 +164,12 @@ class AIOKafkaProducer(object):
         self.client = AIOKafkaClient(
             loop=loop, bootstrap_servers=bootstrap_servers,
             client_id=client_id, metadata_max_age_ms=metadata_max_age_ms,
-            request_timeout_ms=request_timeout_ms)
+            request_timeout_ms=request_timeout_ms,
+            api_version=api_version)
         self._metadata = self.client.cluster
         self._message_accumulator = MessageAccumulator(
             self._metadata, max_batch_size, self._compression_type,
-            self._request_timeout_ms/1000, loop)
+            self._request_timeout_ms / 1000, loop)
         self._sender_task = None
         self._in_flight = set()
         self._closed = False
@@ -182,20 +183,13 @@ class AIOKafkaProducer(object):
         log.debug("Starting the Kafka producer")  # trace
         yield from self.client.bootstrap()
 
-        # Check Broker Version if not set explicitly
-        if self._api_version == 'auto':
-            self._api_version = yield from self.client.check_version()
-
-        # Convert api_version config to tuple for easy comparisons
-        self._api_version = tuple(
-            map(int, self._api_version.split('.')))
-
         if self._compression_type == 'lz4':
-            assert self._api_version >= (0, 8, 2), \
+            assert self.client.api_version >= (0, 8, 2), \
                 'LZ4 Requires >= Kafka 0.8.2 Brokers'
 
         self._sender_task = ensure_future(
             self._sender_routine(), loop=self._loop)
+        self._message_accumulator.set_api_version(self.client.api_version)
         log.debug("Kafka producer started")
 
     @asyncio.coroutine
@@ -279,7 +273,7 @@ class AIOKafkaProducer(object):
             setting. Cancelling this future will not stop event from being
             sent.
         """
-        assert value is not None or self._api_version >= (0, 8, 1), (
+        assert value is not None or self.client.api_version >= (0, 8, 1), (
             'Null messages require kafka >= 0.8.1')
         assert not (value is None and key is None), \
             'Need at least one: key or value'
@@ -364,7 +358,14 @@ class AIOKafkaProducer(object):
             for tp, batch in batches.items():
                 topics[tp.topic].append((tp.partition, batch.data()))
 
-            request = ProduceRequest(
+            if self.client.api_version >= (0, 10):
+                version = 2
+            elif self.client.api_version == (0, 9):
+                version = 1
+            else:
+                version = 0
+
+            request = ProduceRequest[version](
                 required_acks=self._acks,
                 timeout=self._request_timeout_ms,
                 topics=list(topics.items()))
@@ -387,7 +388,11 @@ class AIOKafkaProducer(object):
                     break
 
                 for topic, partitions in response.topics:
-                    for partition, error_code, offset in partitions:
+                    for partition_info in partitions:
+                        if response.API_VERSION < 2:
+                            partition, error_code, offset = partition_info
+                        else:
+                            partition, error_code, offset, _ = partition_info
                         tp = TopicPartition(topic, partition)
                         error = Errors.for_code(error_code)
                         batch = batches.pop(tp, None)

@@ -5,7 +5,7 @@ from itertools import chain
 
 import kafka.common as Errors
 from kafka.common import TopicPartition
-from kafka.protocol.fetch import FetchRequest_v0 as FetchRequest
+from kafka.protocol.fetch import FetchRequest
 from kafka.protocol.message import PartialMessage
 from kafka.protocol.offset import (
     OffsetRequest_v0 as OffsetRequest, OffsetResetStrategy)
@@ -16,7 +16,9 @@ log = logging.getLogger(__name__)
 
 
 ConsumerRecord = collections.namedtuple(
-    "ConsumerRecord", ["topic", "partition", "offset", "key", "value"])
+    "ConsumerRecord", ["topic", "partition", "offset", "timestamp",
+                       "timestamp_type", "key", "value", "checksum",
+                       "serialized_key_size", "serialized_value_size"])
 
 
 class NoOffsetForPartitionError(Errors.KafkaError):
@@ -170,6 +172,9 @@ class Fetcher:
         self._wait_consume_future = None
         self._wait_empty_future = None
 
+        req_version = 2 if client.api_version >= (0, 10) else 1
+        self._fetch_request_class = FetchRequest[req_version]
+
         self._fetch_task = ensure_future(
             self._fetch_requests_routine(), loop=loop)
 
@@ -312,7 +317,7 @@ class Fetcher:
             if node_id in backoff_by_nodes:
                 # At least one partition is still waiting to be consumed
                 continue
-            req = FetchRequest(
+            req = self._fetch_request_class(
                 -1,  # replica_id
                 self._fetch_max_wait_ms,
                 self._fetch_min_bytes,
@@ -655,11 +660,50 @@ class Fetcher:
             if self._check_crcs and not msg.validate_crc():
                 raise Errors.InvalidMessageError(msg)
             elif msg.is_compressed():
-                yield from self._unpack_message_set(tp, msg.decompress())
+                # If relative offset is used, we need to decompress the entire
+                # message first to compute the absolute offset.
+                inner_mset = msg.decompress()
+                if msg.magic > 0:
+                    last_offset, _, _ = inner_mset[-1]
+                    absolute_base_offset = offset - last_offset
+                else:
+                    absolute_base_offset = -1
+
+                for inner_offset, inner_size, inner_msg in inner_mset:
+                    if msg.magic > 0:
+                        # When magic value is greater than 0, the timestamp
+                        # of a compressed message depends on the
+                        # typestamp type of the wrapper message:
+                        if msg.timestamp_type == 0:  # CREATE_TIME (0)
+                            inner_timestamp = inner_msg.timestamp
+                        elif msg.timestamp_type == 1:  # LOG_APPEND_TIME (1)
+                            inner_timestamp = msg.timestamp
+                        else:
+                            raise ValueError('Unknown timestamp type: {0}'
+                                             .format(msg.timestamp_type))
+                    else:
+                        inner_timestamp = msg.timestamp
+
+                    if absolute_base_offset >= 0:
+                        inner_offset += absolute_base_offset
+
+                    key, value = self._deserialize(inner_msg)
+                    yield ConsumerRecord(
+                        tp.topic, tp.partition, inner_offset,
+                        inner_timestamp, msg.timestamp_type,
+                        key, value, inner_msg.crc,
+                        len(inner_msg.key)
+                        if inner_msg.key is not None else -1,
+                        len(inner_msg.value)
+                        if inner_msg.value is not None else -1)
             else:
                 key, value = self._deserialize(msg)
                 yield ConsumerRecord(
-                    tp.topic, tp.partition, offset, key, value)
+                    tp.topic, tp.partition, offset,
+                    msg.timestamp, msg.timestamp_type,
+                    key, value, msg.crc,
+                    len(msg.key) if msg.key is not None else -1,
+                    len(msg.value) if msg.value is not None else -1)
 
     def _deserialize(self, msg):
         if self._key_deserializer:

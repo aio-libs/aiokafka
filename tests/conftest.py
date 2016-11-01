@@ -106,6 +106,8 @@ def setup_test_class_serverless(request, loop):
 def setup_test_class(request, loop, kafka_server):
     request.cls.loop = loop
     request.cls.kafka_host, request.cls.kafka_port = kafka_server
+    if hasattr(request.cls, 'wait_kafka'):
+        request.cls.wait_kafka()
 
 
 def pytest_ignore_collect(path, config):
