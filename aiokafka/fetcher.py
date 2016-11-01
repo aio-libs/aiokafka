@@ -172,11 +172,8 @@ class Fetcher:
         self._wait_consume_future = None
         self._wait_empty_future = None
 
-        if type(client.api_version) is tuple and client.api_version >= (0, 10):
-            version = 2
-        else:
-            version = 1
-        self._fetch_request_class = FetchRequest[version]
+        req_version = 2 if client.api_version >= (0, 10) else 1
+        self._fetch_request_class = FetchRequest[req_version]
 
         self._fetch_task = ensure_future(
             self._fetch_requests_routine(), loop=loop)

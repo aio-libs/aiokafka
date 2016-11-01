@@ -31,8 +31,9 @@ class MessageBatch:
     }
 
     def __init__(self, tp, batch_size, compression_type,
-                 ttl, version_id, loop):
+                 ttl, api_version, loop):
         # Kafka 0.8/0.9 had a quirky lz4...
+        version_id = 0 if api_version < (0, 10) else 1
         if compression_type == 'lz4' and version_id == 0:
             compression_type = 'lz4-old-kafka'
 
@@ -162,10 +163,10 @@ class MessageAccumulator:
         self._loop = loop
         self._wait_data_future = asyncio.Future(loop=loop)
         self._closed = False
-        self._version_id = 0
+        self._api_version = (0, 9)
 
-    def set_version_id(self, version_id):
-        self._version_id = version_id
+    def set_api_version(self, api_version):
+        self._api_version = api_version
 
     @asyncio.coroutine
     def close(self):
@@ -188,7 +189,7 @@ class MessageAccumulator:
         if not batch:
             batch = MessageBatch(
                 tp, self._batch_size, self._compression_type,
-                self._batch_ttl, self._version_id, self._loop)
+                self._batch_ttl, self._api_version, self._loop)
             self._batches[tp] = batch
 
             if not self._wait_data_future.done():

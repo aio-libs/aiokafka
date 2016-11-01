@@ -60,7 +60,6 @@ class AIOKafkaClient:
         self._metadata_max_age_ms = metadata_max_age_ms
         self._request_timeout_ms = request_timeout_ms
         self._api_version = api_version
-        self._version_id = 0  # used to allow backwards compatible evolution
 
         self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
         self._topics = set()  # empty set will fetch all topic metadata
@@ -77,11 +76,10 @@ class AIOKafkaClient:
 
     @property
     def api_version(self):
-        return self._api_version
-
-    @property
-    def version_id(self):
-        return self._version_id
+        if type(self._api_version) is tuple:
+            return self._api_version
+        # unknown api version, return minimal supported version
+        return (0, 9)
 
     @property
     def hosts(self):
@@ -144,7 +142,6 @@ class AIOKafkaClient:
         if type(self._api_version) is not tuple:
             self._api_version = tuple(
                 map(int, self._api_version.split('.')))
-        self._version_id = 0 if self._api_version < (0, 10) else 1
 
         if self._sync_task is None:
             # starting metadata synchronizer task
@@ -181,9 +178,10 @@ class AIOKafkaClient:
     def _metadata_update(self, cluster_metadata, topics):
         assert isinstance(cluster_metadata, ClusterMetadata)
         topics = list(topics)
-        if self.version_id == 1 and not topics:
+        version_id = 0 if self.api_version < (0, 10) else 1
+        if version_id == 1 and not topics:
             topics = None
-        metadata_request = MetadataRequest[self.version_id](topics)
+        metadata_request = MetadataRequest[version_id](topics)
         nodeids = [b.nodeId for b in self.cluster.brokers()]
         if 'bootstrap' in self._conns:
             nodeids.append('bootstrap')
@@ -371,7 +369,7 @@ class AIOKafkaClient:
                 yield from asyncio.wait([task], timeout=0.1, loop=self._loop)
                 yield from self.fetch_all_metadata()
                 yield from task
-            except (KafkaError, asyncio.CancelledError) as err:
+            except (KafkaError, asyncio.CancelledError):
                 continue
             else:
                 return version

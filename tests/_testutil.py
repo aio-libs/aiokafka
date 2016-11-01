@@ -37,14 +37,12 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 
     @classmethod
     def wait_kafka(cls):
-        super().setUpClass()
         cls.hosts = ['{}:{}'.format(cls.kafka_host, cls.kafka_port)]
 
         # Reconnecting until Kafka in docker becomes available
         client = AIOKafkaClient(
             loop=cls.loop, bootstrap_servers=cls.hosts)
-        if cls.topic:
-            client.add_topic(cls.topic)
+
         for i in range(500):
             try:
                 cls.loop.run_until_complete(client.bootstrap())

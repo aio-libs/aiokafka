@@ -189,7 +189,7 @@ class AIOKafkaProducer(object):
 
         self._sender_task = ensure_future(
             self._sender_routine(), loop=self._loop)
-        self._message_accumulator.set_version_id(self.client.version_id)
+        self._message_accumulator.set_api_version(self.client.api_version)
         log.debug("Kafka producer started")
 
     @asyncio.coroutine
