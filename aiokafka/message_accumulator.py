@@ -176,7 +176,7 @@ class MessageAccumulator:
 
     @asyncio.coroutine
     def add_message(self, tp, key, value, timeout):
-        """Add message to batch by topic-partition
+        """ Add message to batch by topic-partition
         If batch is already full this method waits (`ttl` seconds maximum)
         until batch is drained by send task
         """
@@ -210,8 +210,9 @@ class MessageAccumulator:
         return future
 
     def data_waiter(self):
-        """return waiter future that will be resolved when accumulator contain
-        some data for drain"""
+        """ Return waiter future that will be resolved when accumulator contain
+        some data for drain
+        """
         return self._wait_data_future
 
     def _pop_batch(self, tp):

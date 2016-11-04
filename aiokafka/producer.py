@@ -265,13 +265,14 @@ class AIOKafkaProducer(object):
                 key_serializer.
 
         Returns:
-            asyncio.Future: future object that will be set when message is
-                            processed
+            `asyncio.Future` object that will be set when message is
+            processed
 
         Note:
             The returned future will wait based on `request_timeout_ms`
-            setting. Cancelling this future will not stop event from being
-            sent.
+            setting. Cancelling the returned future **will not** stop event
+            from being sent, but cancelling the ``send`` coroutine itself
+            **will**.
         """
         assert value is not None or self.client.api_version >= (0, 8, 1), (
             'Null messages require kafka >= 0.8.1')
