@@ -265,8 +265,13 @@ class AIOKafkaProducer(object):
                 key_serializer.
 
         Returns:
-            `asyncio.Future` object that will be set when message is
+            asyncio.Future: object that will be set when message is
             processed
+
+        Raises:
+            kafka.KafkaTimeoutError: if we can't schedule this record (
+                pending buffer is full) in up to `request_timeout_ms`
+                milliseconds.
 
         Note:
             The returned future will wait based on `request_timeout_ms`
