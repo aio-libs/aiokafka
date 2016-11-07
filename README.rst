@@ -38,8 +38,10 @@ Example of AIOKafkaProducer usage:
 
     loop = asyncio.get_event_loop()
     producer = AIOKafkaProducer(loop=loop, bootstrap_servers='localhost:9092')
+    # Bootstrap client, will get initial cluster metadata
     loop.run_until_complete(producer.start())
     loop.run_until_complete(produce(loop))
+    # Wait for all pending messages to be delivered or expire
     loop.run_until_complete(producer.stop())
     loop.close()
 
@@ -71,11 +73,13 @@ Example of AIOKafkaConsumer usage:
     loop = asyncio.get_event_loop()
     consumer = AIOKafkaConsumer(
         'topic1', 'topic2', loop=loop, bootstrap_servers='localhost:1234')
+    # Bootstrap client, will get initial cluster metadata
     loop.run_until_complete(consumer.start())
     c_task = loop.create_task(consume_task(consumer))
     try:
         loop.run_forever()
     finally:
+        # Will gracefully leave consumer group; perform autocommit if enabled
         loop.run_until_complete(consumer.stop())
         c_task.cancel()
         loop.close()
@@ -84,7 +88,8 @@ Example of AIOKafkaConsumer usage:
 Running tests
 -------------
 
-Docker is required to run tests. See https://docs.docker.com/engine/installation for installation notes.
+Docker is required to run tests. See https://docs.docker.com/engine/installation for installation notes. Also note, that `lz4` compression libraries for python will require `python-dev` package,
+or python source header files for compilation on Linux.
 
 Setting up tests requirements (assuming you're within virtualenv on ubuntu 14.04+)::
 

@@ -49,7 +49,8 @@ Here's a consumer example:
         while True:
             try:
                 msg = yield from consumer.getone()
-                print("consumed: ", msg.topic, msg.partition, msg.offset, msg.value)
+                print("consumed: ", msg.topic, msg.partition, msg.offset,
+                      msg.key, msg.value, msg.timestamp)
             except KafkaError as err:
                 print("error while consuming message: ", err)
 
