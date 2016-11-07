@@ -18,8 +18,7 @@ AIOKafkaConsumer class
 Error handling
 --------------
 
-Both consumer and producer can raise exceptions that inherit from the `kafka.common.KafkaError` class
-declared in the `kafka.common` module.
+Both consumer and producer can raise exceptions that inherit from the `kafka.errors.KafkaError` class declared in the `kafka.errors` module.
 
 Exception handling example:
 

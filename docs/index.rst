@@ -5,11 +5,24 @@ Welcome to aiokafka's documentation!
 .. _kafka-python: https://github.com/dpkp/kafka-python
 .. _asyncio: http://docs.python.org/3.4/library/asyncio.html
 
+.. image:: https://img.shields.io/badge/kafka-0.10%2C%200.9-brightgreen.svg
+    :target: http://aiokafka.readthedocs.io/en/stable/index.html
+.. image:: https://img.shields.io/pypi/pyversions/aiokafka.svg
+    :target: http://aiokafka.readthedocs.io/en/stable/index.html
+.. image:: https://coveralls.io/repos/github/aio-libs/aiokafka/badge.svg?branch=master
+    :target: https://coveralls.io/github/aio-libs/aiokafka?branch=master
+    :alt: |Coverage|
+.. image:: https://travis-ci.org/aio-libs/aiokafka.svg?branch=master
+    :target: https://travis-ci.org/aio-libs/aiokafka
+    :alt: |Build status|
+.. image:: https://img.shields.io/badge/license-Apache%202-blue.svg
+    :target: https://github.com/aio-libs/aiokafka/blob/master/LICENSE
+
 **aiokafka** is a client for the Apache Kafka distributed stream processing system using asyncio_.
 It is based on the kafka-python_ library and reuses its internals for protocol parsing, errors, etc.
 The client is designed to function much like the official Java client, with a sprinkling of Pythonic interfaces.
 
-**aiokafka** is used with 0.9 Kafka brokers and supports fully coordinated consumer groups -- i.e., dynamic
+**aiokafka** is used with 0.9/0.10 Kafka brokers and supports fully coordinated consumer groups -- i.e., dynamic
 partition assignment to multiple consumers in the same group.
 
 
@@ -21,9 +34,7 @@ AIOKafkaConsumer
 ++++++++++++++++
 
 :class:`~aiokafka.AIOKafkaConsumer` is a high-level message consumer, intended to
-operate as similarly as possible to the official 0.9 Java client. Full support
-for coordinated consumer groups requires use of Kafka brokers that support the
-0.9 Group APIs.
+operate as similarly as possible to the official Java client.
 
 Here's a consumer example:
 
@@ -45,11 +56,13 @@ Here's a consumer example:
     loop = asyncio.get_event_loop()
     consumer = AIOKafkaConsumer(
         'topic1', 'topic2', loop=loop, bootstrap_servers='localhost:1234')
+    # Bootstrap client, will get initial cluster metadata
     loop.run_until_complete(consumer.start())
     c_task = loop.create_task(consume_task(consumer))
     try:
         loop.run_forever()
     finally:
+        # Will gracefully leave consumer group; perform autocommit if enabled
         loop.run_until_complete(consumer.stop())
         c_task.cancel()
         loop.close()
@@ -84,8 +97,10 @@ Here's a producer example:
 
     loop = asyncio.get_event_loop()
     producer = AIOKafkaProducer(loop=loop, bootstrap_servers='localhost:9092')
+    # Bootstrap client, will get initial cluster metadata
     loop.run_until_complete(producer.start())
     loop.run_until_complete(produce(loop))
+    # Wait for all pending messages to be delivered or expire
     loop.run_until_complete(producer.stop())
     loop.close()
 
