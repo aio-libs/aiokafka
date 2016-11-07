@@ -7,11 +7,12 @@ CHANGES
 * Bumped python-kafka version to 1.3.1 and Kafka to 0.10.1.0.
 * Fixed auto version detection, to correctly handle 0.10.0.0 version
 * Updated Fetch and Produce requests to use v2 with v0.10.0 message format on brokers.
-This allows a ``timestamp`` to be associated with messages.
+  This allows a ``timestamp`` to be associated with messages.
 * Changed lz4 compression framing, as it was changed due to KIP-57 in new message format.
 * Minor refactorings
 
 Big thanks to @fabregas for the hard work on this release (PR #60)
+
 
 0.1.3 (2016-10-18)
 ^^^^^^^^^^^^^^^^^^
