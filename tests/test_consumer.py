@@ -445,3 +445,24 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             self.assertEqual(rmsg1.timestamp, None)
             self.assertEqual(rmsg1.timestamp_type, None)
         yield from consumer.stop()
+
+    @run_until_complete
+    def test_equal_consumption(self):
+        # A strange use case of kafka-python, that can be reproduced in
+        # aiokafka https://github.com/dpkp/kafka-python/issues/675
+        yield from self.send_messages(0, list(range(200)))
+        yield from self.send_messages(1, list(range(200)))
+
+        partition_consumption = [0, 0]
+        for x in range(10):
+            consumer = yield from self.consumer_factory(
+                max_partition_fetch_bytes=10000)
+            for x in range(10):
+                msg = yield from consumer.getone()
+                partition_consumption[msg.partition] += 1
+            yield from consumer.stop()
+
+        diff = abs(partition_consumption[0] - partition_consumption[1])
+        # We are good as long as it's not 100%, as we do rely on randomness of
+        # a shuffle in code. Ideally it should be 50/50 (0 diff) thou
+        self.assertNotEqual(diff / sum(partition_consumption), 1.0)

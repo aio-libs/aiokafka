@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import logging
+import random
 from itertools import chain
 
 import kafka.common as Errors
@@ -314,6 +315,11 @@ class Fetcher:
 
         requests = []
         for node_id, partition_data in fetchable.items():
+            # Shuffle partition data to help get more equal consumption
+            partition_data = list(partition_data.items())
+            random.shuffle(partition_data)  # shuffle topics
+            for _, partition in partition_data:
+                random.shuffle(partition)  # shuffle partitions
             if node_id in backoff_by_nodes:
                 # At least one partition is still waiting to be consumed
                 continue
@@ -321,7 +327,7 @@ class Fetcher:
                 -1,  # replica_id
                 self._fetch_max_wait_ms,
                 self._fetch_min_bytes,
-                partition_data.items())
+                partition_data)
             requests.append((node_id, req))
         if backoff_by_nodes:
             # Return min time til any node will be ready to send event

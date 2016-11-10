@@ -335,6 +335,7 @@ class AIOKafkaProducer(object):
                 # wait when:
                 # * At least one of produce task is finished
                 # * Data for new partition arrived
+                # * Metadata update if partition leader unknown
                 done, _ = yield from asyncio.wait(
                     waiters,
                     return_when=asyncio.FIRST_COMPLETED,
