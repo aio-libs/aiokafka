@@ -4,7 +4,7 @@ CHANGES
 0.1.4 (2016-11-07)
 ^^^^^^^^^^^^^^^^^^
 
-* Bumped python-kafka version to 1.3.1 and Kafka to 0.10.1.0.
+* Bumped kafka-python version to 1.3.1 and Kafka to 0.10.1.0.
 * Fixed auto version detection, to correctly handle 0.10.0.0 version
 * Updated Fetch and Produce requests to use v2 with v0.10.0 message format on brokers.
   This allows a ``timestamp`` to be associated with messages.
@@ -18,7 +18,7 @@ Big thanks to @fabregas for the hard work on this release (PR #60)
 ^^^^^^^^^^^^^^^^^^
 
 * Fixed bug with infinite loop on heartbeats with autocommit=True. #44
-* Bumped python-kafka to version 1.1.1
+* Bumped kafka-python to version 1.1.1
 * Fixed docker test runner with multiple interfaces
 * Minor documentation fixes
 

@@ -113,7 +113,7 @@ Installation
 
    pip3 install aiokafka
 
-.. note:: *aiokafka* requires the *python-kafka* library.
+.. note:: *aiokafka* requires the *kafka-python* library.
 
 
 Optional LZ4 install
