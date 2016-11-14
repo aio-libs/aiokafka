@@ -465,4 +465,4 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         diff = abs(partition_consumption[0] - partition_consumption[1])
         # We are good as long as it's not 100%, as we do rely on randomness of
         # a shuffle in code. Ideally it should be 50/50 (0 diff) thou
-        self.assertNotEqual(diff / sum(partition_consumption), 1.0)
+        self.assertLess(diff / sum(partition_consumption), 1.0)
