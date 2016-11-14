@@ -466,3 +466,29 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # We are good as long as it's not 100%, as we do rely on randomness of
         # a shuffle in code. Ideally it should be 50/50 (0 diff) thou
         self.assertLess(diff / sum(partition_consumption), 1.0)
+
+    @run_until_complete
+    def test_max_poll_records(self):
+        # A strange use case of kafka-python, that can be reproduced in
+        # aiokafka https://github.com/dpkp/kafka-python/issues/675
+        yield from self.send_messages(0, list(range(100)))
+
+        consumer = yield from self.consumer_factory(
+            max_poll_records=48)
+        data = yield from consumer.getmany(timeout_ms=1000)
+        count = sum(map(len, data.values()))
+        self.assertEqual(count, 48)
+        data = yield from consumer.getmany(timeout_ms=1000, max_records=42)
+        count = sum(map(len, data.values()))
+        self.assertEqual(count, 42)
+        data = yield from consumer.getmany(timeout_ms=1000, max_records=None)
+        count = sum(map(len, data.values()))
+        self.assertEqual(count, 10)
+
+        with self.assertRaises(ValueError):
+            data = yield from consumer.getmany(max_records=0)
+        yield from consumer.stop()
+
+        with self.assertRaises(ValueError):
+            consumer = yield from self.consumer_factory(
+                max_poll_records=0)
