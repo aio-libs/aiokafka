@@ -23,7 +23,7 @@ extras_require = {'snappy': ['python-snappy>=0.5'], }
 
 
 def read_version():
-    regexp = re.compile(r"^__version__\W*=\W*'([\d.abrc]+)'")
+    regexp = re.compile(r"^__version__\W*=\W*'([\d.abrcdev]+)'")
     init_py = os.path.join(os.path.dirname(__file__),
                            'aiokafka', '__init__.py')
     with open(init_py) as f:
