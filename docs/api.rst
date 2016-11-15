@@ -20,6 +20,43 @@ AIOKafkaConsumer class
 .. autoclass:: aiokafka.AIOKafkaConsumer
     :members:
 
+Helpers
+-------
+
+.. _helpers:
+
+.. automodule:: aiokafka.helpers
+    :members:
+
+.. _ssl_auth:
+
+
+SSL Authentication
+------------------
+
+Security is not an easy thing, at least when you want to do it right. Before
+diving in on how to setup `aiokafka` to work with SSL, make sure there is
+a need for SSL Authentication and go through the
+`official documentation <http://kafka.apache.org/documentation.html#security_ssl>`_
+for SSL support in Kafka itself.
+
+`aiokafka` provides only ``ssl_context`` as a parameter for Consumer and
+Producer classes. This is done intentionally, as it is recommended that you
+read through the
+`python ssl documentation <https://docs.python.org/3/library/ssl.html#security-considerations>`_
+to have some understanding on the topic. Although if you know what you are
+doing, there is a simple helper function `aiokafka.helpers.create_ssl_context`_,
+that will create an ``ssl.SSLContext`` based on similar params to `kafka-python`.
+
+A few notes on Kafka's SSL store types. Java uses **JKS** store type, that
+contains normal certificates, same as ones OpenSSL (and Python, as it's based
+on OpenSSL) uses, but encodes them into a single, encrypted file, protected by
+another password. Just look the internet on how to extract `CARoot`,
+`Certificate` and `Key` from JKS store.
+
+See also the :ref:`ssl_example` example.
+
+
 Error handling
 --------------
 
@@ -39,6 +76,7 @@ Exception handling example:
             print("produce timeout... maybe we want to resend data again?")
         except KafkaError as err:
             print("some kafka error on produce: {}".format(err))
+
 
 Consumer errors
 ^^^^^^^^^^^^^^^

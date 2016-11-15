@@ -14,6 +14,7 @@ from kafka.protocol.produce import ProduceResponse_v0 as ProduceResponse
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 from aiokafka.producer import AIOKafkaProducer
+from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.message_accumulator import ProducerClosed
 
 
@@ -230,3 +231,43 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                     self.topic, b'text1', partition=0)
                 yield from future
         yield from producer.stop()
+
+    @run_until_complete
+    def test_producer_ssl(self):
+        # Produce by SSL consume by PLAINTEXT
+        topic = "test_ssl_produce"
+        context = self.create_ssl_context()
+        producer = AIOKafkaProducer(
+            loop=self.loop,
+            bootstrap_servers=[
+                "{}:{}".format(self.kafka_host, self.kafka_ssl_port)],
+            security_protocol="SSL", ssl_context=context)
+        yield from producer.start()
+        yield from self.wait_topic(producer.client, topic)
+        yield from producer.send_and_wait(topic=topic, value=b"Super msg")
+        yield from producer.stop()
+
+        consumer = AIOKafkaConsumer(
+            topic, loop=self.loop,
+            bootstrap_servers=self.hosts,
+            enable_auto_commit=True,
+            auto_offset_reset="earliest")
+        yield from consumer.start()
+        msg = yield from consumer.getone()
+        self.assertEqual(msg.value, b"Super msg")
+        yield from consumer.stop()
+
+    def test_producer_arguments(self):
+        with self.assertRaisesRegexp(
+                ValueError, "`security_protocol` should be SSL or PLAINTEXT"):
+            AIOKafkaProducer(
+                loop=self.loop,
+                bootstrap_servers=self.hosts,
+                security_protocol="SOME")
+        with self.assertRaisesRegexp(
+                ValueError, "`ssl_context` is mandatory if "
+                            "security_protocol=='SSL'"):
+            AIOKafkaProducer(
+                loop=self.loop,
+                bootstrap_servers=self.hosts,
+                security_protocol="SSL", ssl_context=None)

@@ -7,6 +7,9 @@ import socket
 import struct
 import uuid
 import sys
+import shutil
+import pathlib
+import subprocess
 
 
 def pytest_addoption(parser):
@@ -19,6 +22,36 @@ def pytest_addoption(parser):
 @pytest.fixture(scope='session')
 def docker():
     return libdocker.Client(version='auto')
+
+
+@pytest.yield_fixture(scope='session')
+def ssl_folder(docker_ip_address):
+    ssl_dir = pathlib.Path('ssl_cert')
+    if ssl_dir.exists():
+        shutil.rmtree(str(ssl_dir))
+
+    ssl_dir.mkdir()
+    p = subprocess.Popen(
+        "bash ../gen-ssl-certs.sh ca ca-cert {}".format(docker_ip_address),
+        shell=True, stdout=subprocess.DEVNULL,
+        cwd=str(ssl_dir), stderr=subprocess.DEVNULL)
+    p.wait()
+    p = subprocess.Popen(
+        "bash ../gen-ssl-certs.sh -k server ca-cert br_ {}".format(
+            docker_ip_address),
+        shell=True, stdout=subprocess.DEVNULL,
+        cwd=str(ssl_dir), stderr=subprocess.DEVNULL,)
+    p.wait()
+    p = subprocess.Popen(
+        "bash ../gen-ssl-certs.sh client ca-cert cl_ {}".format(
+            docker_ip_address),
+        shell=True, stdout=subprocess.DEVNULL,
+        cwd=str(ssl_dir), stderr=subprocess.DEVNULL,)
+    p.wait()
+
+    yield ssl_dir
+
+    shutil.rmtree(str(ssl_dir))
 
 
 @pytest.fixture(scope='session')
@@ -57,27 +90,42 @@ def session_id():
 
 
 @pytest.yield_fixture(scope='session')
-def kafka_server(request, docker, docker_ip_address, unused_port, session_id):
+def kafka_server(request, docker, docker_ip_address,
+                 unused_port, session_id, ssl_folder):
     image = request.config.getoption('--docker-image')
-    docker.pull(image)
+    # Don't pull image if it available localy. Helps when developing new docker
+    # builds
+    if not docker.images(image):
+        docker.pull(image)
     kafka_host = docker_ip_address
     kafka_port = unused_port()
+    kafka_ssl_port = unused_port()
     container = docker.create_container(
         image=image,
-        name='aiokafka-tests-{}'.format(session_id),
-        ports=[2181, 9092],
+        name='aiokafka-tests',
+        # name='aiokafka-tests-{}'.format(session_id),
+        ports=[2181, 9092, 9093],
+        volumes=['/ssl_cert'],
         environment={
             'ADVERTISED_HOST': kafka_host,
             'ADVERTISED_PORT': kafka_port,
+            'ADVERTISED_SSL_PORT': kafka_ssl_port,
             'NUM_PARTITIONS': 2
         },
         host_config=docker.create_host_config(
             port_bindings={
                 2181: (kafka_host, unused_port()),
-                9092: (kafka_host, kafka_port)
+                9092: (kafka_host, kafka_port),
+                9093: (kafka_host, kafka_ssl_port)
+            },
+            binds={
+                str(ssl_folder.resolve()): {
+                    "bind": "/ssl_cert",
+                    "mode": "ro"
+                }
             }))
     docker.start(container=container['Id'])
-    yield kafka_host, kafka_port
+    yield kafka_host, kafka_port, kafka_ssl_port
     docker.kill(container=container['Id'])
     docker.remove_container(container['Id'])
 
@@ -98,14 +146,29 @@ def loop(request):
 
 
 @pytest.fixture(scope='class')
-def setup_test_class_serverless(request, loop):
+def setup_test_class_serverless(request, loop, ssl_folder):
     request.cls.loop = loop
+    request.cls.ssl_folder = ssl_folder
 
 
 @pytest.fixture(scope='class')
-def setup_test_class(request, loop, kafka_server):
+def setup_test_class(request, loop, kafka_server, ssl_folder):
     request.cls.loop = loop
-    request.cls.kafka_host, request.cls.kafka_port = kafka_server
+    khost, kport, ksslport = kafka_server
+    request.cls.kafka_host = khost
+    request.cls.kafka_port = kport
+    request.cls.kafka_ssl_port = ksslport
+    request.cls.ssl_folder = ssl_folder
+
+    def _create_context(self):
+        from aiokafka.helpers import create_ssl_context
+        return create_ssl_context(
+            cafile=str(ssl_folder / "ca-cert"),
+            certfile=str(ssl_folder / "cl_client.pem"),
+            keyfile=str(ssl_folder / "cl_client.key"),
+            password="abcdefgh")
+
+    request.cls.create_ssl_context = _create_context
     if hasattr(request.cls, 'wait_kafka'):
         request.cls.wait_kafka()
 

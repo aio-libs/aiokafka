@@ -61,3 +61,5 @@ target/
 .idea
 
 kafka_2*
+
+/ssl_cert
