@@ -1,6 +1,9 @@
 .. _api-doc:
+
 API Documentation
 =================
+
+.. _aiokafka-producer:
 
 AIOKafkaProducer class
 ----------------------
@@ -8,6 +11,8 @@ AIOKafkaProducer class
 .. autoclass:: aiokafka.AIOKafkaProducer
     :members:
 
+
+.. _aiokafka-consumer:
 
 AIOKafkaConsumer class
 ----------------------

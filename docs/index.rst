@@ -188,6 +188,7 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   kafka-python_difference
    api
    examples
 

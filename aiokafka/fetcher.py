@@ -200,7 +200,7 @@ class Fetcher:
 
         The algorithm:
         * Group partitions per node, which is the leader for it.
-        * If all partitions for this node need prefetch - do it right alway
+        * If all partitions for this node need prefetch - do it right away
         * If any partition has some data (in `self._records`) wait up till
           `prefetch_backoff` so application can consume data from it.
         * If data in `self._records` is not consumed up to
