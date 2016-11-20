@@ -72,14 +72,16 @@ class FetchResult:
                 self._subscriptions.assignment[tp].position += 1
                 return msg
 
-    def getall(self):
+    def getall(self, max_records=None):
         tp = self._topic_partition
         if not self._check_assignment(tp):
             return []
 
+        if max_records is None:
+            max_records = len(self._messages)
         ret_list = []
         while True:
-            if not self._messages:
+            if not self._messages or len(ret_list) == max_records:
                 return ret_list
 
             msg = self._messages.popleft()
@@ -88,6 +90,9 @@ class FetchResult:
                 # It is also possible that the user called seek()
                 self._subscriptions.assignment[tp].position += 1
                 ret_list.append(msg)
+
+    def has_more(self):
+        return bool(self._messages)
 
 
 class FetchError:
@@ -625,7 +630,7 @@ class Fetcher:
         return (yield from self.next_record(partitions))
 
     @asyncio.coroutine
-    def fetched_records(self, partitions, timeout=0):
+    def fetched_records(self, partitions, timeout=0, max_records=None):
         """ Returns previously fetched records and updates consumed offsets.
         """
         drained = {}
@@ -634,12 +639,18 @@ class Fetcher:
                 continue
             res_or_error = self._records[tp]
             if type(res_or_error) == FetchResult:
-                drained[tp] = res_or_error.getall()
-                # We processed all messages - request new ones
-                del self._records[tp]
-                self._notify(self._wait_consume_future)
+                drained[tp] = res_or_error.getall(max_records)
+                if max_records is not None:
+                    max_records -= len(drained[tp])
+                    assert max_records >= 0  # Just in case
+                    if max_records == 0:
+                        break
+                if not res_or_error.has_more():
+                    # We processed all messages - request new ones
+                    del self._records[tp]
+                    self._notify(self._wait_consume_future)
             else:
-                # We already got some of messages from other partition -
+                # We already got some messages from another partition -
                 # return them. We will raise this error on next call
                 if drained:
                     return drained
@@ -658,7 +669,8 @@ class Fetcher:
             [self._wait_empty_future], timeout=timeout, loop=self._loop)
 
         if done:
-            return (yield from self.fetched_records(partitions, 0))
+            return (yield from self.fetched_records(
+                partitions, 0, max_records=max_records))
         return {}
 
     def _unpack_message_set(self, tp, messages):

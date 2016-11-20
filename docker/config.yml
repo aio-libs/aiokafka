@@ -7,5 +7,8 @@ versions:
     kafka: "0.10.0.0"
     scala: "2.11"
   -
+    kafka: "0.10.0.1"
+    scala: "2.11"
+  -
     kafka: "0.10.1.0"
     scala: "2.11"

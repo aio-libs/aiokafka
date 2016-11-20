@@ -63,6 +63,8 @@ class AIOKafkaConsumer(object):
             send messages larger than the consumer can fetch. If that
             happens, the consumer can get stuck trying to fetch a large
             message on a certain partition. Default: 1048576.
+        max_poll_records (int): The maximum number of records returned in a
+            single call to ``getmany()``. Defaults ``None``, no limit.
         request_timeout_ms (int): Client request timeout in milliseconds.
             Default: 40000.
         retry_backoff_ms (int): Milliseconds to backoff when retrying on
@@ -136,6 +138,7 @@ class AIOKafkaConsumer(object):
                  heartbeat_interval_ms=3000,
                  session_timeout_ms=30000,
                  consumer_timeout_ms=200,
+                 max_poll_records=None,
                  api_version='auto'):
         if api_version not in ('auto', '0.9', '0.10'):
             raise ValueError("Unsupported Kafka API version")
@@ -156,6 +159,10 @@ class AIOKafkaConsumer(object):
         self._fetch_min_bytes = fetch_min_bytes
         self._fetch_max_wait_ms = fetch_max_wait_ms
         self._max_partition_fetch_bytes = max_partition_fetch_bytes
+        if max_poll_records is not None and (
+                not isinstance(max_poll_records, int) or max_poll_records < 1):
+            raise ValueError("`max_poll_records` should be positive Integer")
+        self._max_poll_records = max_poll_records
         self._consumer_timeout = consumer_timeout_ms / 1000
         self._check_crcs = check_crcs
         self._subscription = SubscriptionState(auto_offset_reset)
@@ -588,7 +595,7 @@ class AIOKafkaConsumer(object):
         return msg
 
     @asyncio.coroutine
-    def getmany(self, *partitions, timeout_ms=0):
+    def getmany(self, *partitions, timeout_ms=0, max_records=None):
         """Get messages from assigned topics / partitions.
 
         Prefetched messages are returned in batches by topic-partition.
@@ -622,9 +629,14 @@ class AIOKafkaConsumer(object):
 
         """
         assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
+        if max_records is not None and (
+                not isinstance(max_records, int) or max_records < 1):
+            raise ValueError("`max_records` must be a positive Integer")
 
         timeout = timeout_ms / 1000
-        records = yield from self._fetcher.fetched_records(partitions, timeout)
+        records = yield from self._fetcher.fetched_records(
+            partitions, timeout,
+            max_records=max_records or self._max_poll_records)
         return records
 
     if PY_35:
