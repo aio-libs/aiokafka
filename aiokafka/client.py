@@ -94,8 +94,15 @@ class AIOKafkaClient:
             except asyncio.CancelledError:
                 pass
             self._sync_task = None
+        futs = []
+        # Be careful to wait for graceful closure of all connections, so we
+        # process all pending buffers.
         for conn in self._conns.values():
-            conn.close()
+            fut = conn.close()
+            if fut is not None:
+                futs.append(fut)
+        if futs:
+            yield from asyncio.gather(*futs, loop=self._loop)
 
     @asyncio.coroutine
     def bootstrap(self):

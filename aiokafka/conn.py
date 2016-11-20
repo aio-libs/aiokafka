@@ -12,6 +12,9 @@ from aiokafka import ensure_future
 __all__ = ['AIOKafkaConnection', 'create_conn']
 
 
+READER_LIMIT = 2 ** 16
+
+
 @asyncio.coroutine
 def create_conn(host, port, *, loop=None, client_id='aiokafka',
                 request_timeout_ms=40000, api_version=(0, 8, 2)):
@@ -22,6 +25,17 @@ def create_conn(host, port, *, loop=None, client_id='aiokafka',
         request_timeout_ms=request_timeout_ms, api_version=api_version)
     yield from conn.connect()
     return conn
+
+
+class AIOKafkaProtocol(asyncio.StreamReaderProtocol):
+
+    def __init__(self, *args, loop, **kw):
+        self.closed_fut = asyncio.Future(loop=loop)
+        super().__init__(*args, loop=loop, **kw)
+
+    def connection_lost(self, exc):
+        super().connection_lost(exc)
+        self.closed_fut.set_result(None)
 
 
 class AIOKafkaConnection:
@@ -35,7 +49,7 @@ class AIOKafkaConnection:
                  request_timeout_ms=40000, api_version=(0, 8, 2)):
         self._host = host
         self._port = port
-        self._reader = self._writer = None
+        self._reader = self._writer = self._protocol = None
         self._loop = loop
         self._requests = []
         self._read_task = None
@@ -46,10 +60,16 @@ class AIOKafkaConnection:
 
     @asyncio.coroutine
     def connect(self):
-        future = asyncio.open_connection(self.host, self.port, loop=self._loop)
-        self._reader, self._writer = yield from asyncio.wait_for(
-            future, self._request_timeout, loop=self._loop)
+        loop = self._loop
+        reader = asyncio.StreamReader(limit=READER_LIMIT, loop=loop)
+        protocol = AIOKafkaProtocol(reader, loop=loop)
+        transport, _ = yield from loop.create_connection(
+            lambda: protocol, self.host, self.port)
+        writer = asyncio.StreamWriter(transport, protocol, reader, loop)
+        self._reader, self._writer, self._protocol = reader, writer, protocol
+
         self._read_task = ensure_future(self._read(), loop=self._loop)
+        return reader, writer
 
     def __repr__(self):
         return "<AIOKafkaConnection host={0.host} port={0.port}>".format(self)
@@ -96,9 +116,18 @@ class AIOKafkaConnection:
             self._writer.close()
             self._writer = self._reader = None
             self._read_task.cancel()
+            self._read_task = None
+            error = Errors.ConnectionError(
+                "Connection at {0}:{1} closed".format(
+                    self._host, self._port))
             for _, _, fut in self._requests:
-                fut.cancel()
+                if not fut.done():
+                    fut.set_exception(error)
             self._requests = []
+            # transport.close() will close socket, but not right ahead. Return
+            # a future in case we need to wait on it.
+            return self._protocol.closed_fut
+        return None
 
     @asyncio.coroutine
     def _read(self):
