@@ -11,6 +11,7 @@ from functools import wraps
 from kafka.common import ConnectionError
 from aiokafka.client import AIOKafkaClient
 from aiokafka.producer import AIOKafkaProducer
+from aiokafka.helpers import create_ssl_context
 
 
 __all__ = ['KafkaIntegrationTestCase', 'random_string']
@@ -117,6 +118,13 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 
     def key(self, k):
         return k.encode('utf-8')
+
+    def create_ssl_context(self):
+        return create_ssl_context(
+            cafile=str(self.ssl_folder / "ca-cert"),
+            certfile=str(self.ssl_folder / "cl_client.pem"),
+            keyfile=str(self.ssl_folder / "cl_client.key"),
+            password="abcdefgh")
 
 
 def random_string(length):
