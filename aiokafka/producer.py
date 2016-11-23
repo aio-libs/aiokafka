@@ -122,6 +122,12 @@ class AIOKafkaProducer(object):
         api_version (str): specify which kafka API version to use.
             If set to 'auto', will attempt to infer the broker version by
             probing various APIs. Default: auto
+        security_protocol (str): Protocol used to communicate with brokers.
+            Valid values are: PLAINTEXT, SSL. Default: PLAINTEXT.
+        ssl_context (ssl.SSLContext): pre-configured SSLContext for wrapping
+            socket connections. Directly passed into asyncio's
+            `create_connection`_. For more information see :ref:`ssl_auth`.
+            Default: None.
 
     Note:
         Many configuration parameters are taken from the Java client:
@@ -137,7 +143,8 @@ class AIOKafkaProducer(object):
                  compression_type=None, max_batch_size=16384,
                  partitioner=DefaultPartitioner(), max_request_size=1048576,
                  linger_ms=0, send_backoff_ms=100,
-                 retry_backoff_ms=100):
+                 retry_backoff_ms=100, security_protocol="PLAINTEXT",
+                 ssl_context=None):
         if acks not in (0, 1, -1, 'all'):
             raise ValueError("Invalid ACKS parameter")
         if compression_type not in ('gzip', 'snappy', 'lz4', None):
@@ -165,7 +172,8 @@ class AIOKafkaProducer(object):
             loop=loop, bootstrap_servers=bootstrap_servers,
             client_id=client_id, metadata_max_age_ms=metadata_max_age_ms,
             request_timeout_ms=request_timeout_ms,
-            api_version=api_version)
+            api_version=api_version, security_protocol=security_protocol,
+            ssl_context=ssl_context)
         self._metadata = self.client.cluster
         self._message_accumulator = MessageAccumulator(
             self._metadata, max_batch_size, self._compression_type,

@@ -11,7 +11,7 @@ from kafka.consumer.subscription_state import SubscriptionState
 from aiokafka.client import AIOKafkaClient
 from aiokafka.group_coordinator import GroupCoordinator
 from aiokafka.fetcher import Fetcher
-from aiokafka import __version__,  ensure_future, PY_35
+from aiokafka import __version__, ensure_future, PY_35
 
 log = logging.getLogger(__name__)
 
@@ -24,6 +24,10 @@ class AIOKafkaConsumer(object):
     brokers. It also interacts with the assigned kafka Group Coordinator node
     to allow multiple consumers to load balance consumption of topics (feature
     of kafka >= 0.9.0.0).
+
+    .. _create_connection:
+        https://docs.python.org/3/library/asyncio-eventloop.html\
+        #creating-connections
 
     Arguments:
         *topics (str): optional list of topics to subscribe to. If not set,
@@ -112,7 +116,12 @@ class AIOKafkaConsumer(object):
             AIOKafkaConsumer supports Kafka API versions >=0.9 only.
             If set to 'auto', will attempt to infer the broker version by
             probing various APIs. Default: auto
-
+        security_protocol (str): Protocol used to communicate with brokers.
+            Valid values are: PLAINTEXT, SSL. Default: PLAINTEXT.
+        ssl_context (ssl.SSLContext): pre-configured SSLContext for wrapping
+            socket connections. Directly passed into asyncio's
+            `create_connection`_. For more information see :ref:`ssl_auth`.
+            Default: None.
 
     Note:
         Many configuration parameters are taken from Java Client:
@@ -139,6 +148,8 @@ class AIOKafkaConsumer(object):
                  session_timeout_ms=30000,
                  consumer_timeout_ms=200,
                  max_poll_records=None,
+                 ssl_context=None,
+                 security_protocol='PLAINTEXT',
                  api_version='auto'):
         if api_version not in ('auto', '0.9', '0.10'):
             raise ValueError("Unsupported Kafka API version")
@@ -146,7 +157,9 @@ class AIOKafkaConsumer(object):
             loop=loop, bootstrap_servers=bootstrap_servers,
             client_id=client_id, metadata_max_age_ms=metadata_max_age_ms,
             request_timeout_ms=request_timeout_ms,
-            api_version=api_version)
+            api_version=api_version,
+            ssl_context=ssl_context,
+            security_protocol=security_protocol)
 
         self._group_id = group_id
         self._heartbeat_interval_ms = heartbeat_interval_ms

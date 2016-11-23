@@ -23,43 +23,56 @@ log = logging.getLogger('aiokafka')
 
 
 class AIOKafkaClient:
-    """This class implements interface for interact with Kafka cluster"""
+    """Initialize an asynchronous kafka client
+
+    Keyword Arguments:
+        bootstrap_servers: 'host[:port]' string (or list of 'host[:port]'
+            strings) that the consumer should contact to bootstrap initial
+            cluster metadata. This does not have to be the full node list.
+            It just needs to have at least one broker that will respond to
+            Metadata API Request. Default port is 9092. If no servers are
+            specified, will default to localhost:9092.
+        client_id (str): a name for this client. This string is passed in
+            each request to servers and can be used to identify specific
+            server-side log entries that correspond to this client. Also
+            submitted to GroupCoordinator for logging with respect to
+            consumer group administration. Default: 'aiokafka-{ver}'
+        request_timeout_ms (int): Client request timeout in milliseconds.
+            Default: 40000.
+        metadata_max_age_ms (int): The period of time in milliseconds after
+            which we force a refresh of metadata even if we haven't seen
+            any partition leadership changes to proactively discover any
+            new brokers or partitions. Default: 300000
+        api_version (str): specify which kafka API version to use.
+            AIOKafka supports Kafka API versions >=0.9 only.
+            If set to 'auto', will attempt to infer the broker version by
+            probing various APIs. Default: auto
+        security_protocol (str): Protocol used to communicate with brokers.
+            Valid values are: PLAINTEXT, SSL. Default: PLAINTEXT.
+        ssl_context (ssl.SSLContext): pre-configured SSLContext for wrapping
+            socket connections. For more information see :ref:`ssl_auth`.
+            Default: None.
+    """
 
     def __init__(self, *, loop, bootstrap_servers='localhost',
                  client_id='aiokafka-' + __version__,
                  metadata_max_age_ms=300000,
                  request_timeout_ms=40000,
+                 ssl_context=None,
+                 security_protocol='PLAINTEXT',
                  api_version='auto'):
-        """Initialize an asynchronous kafka client
-
-        Keyword Arguments:
-            bootstrap_servers: 'host[:port]' string (or list of 'host[:port]'
-                strings) that the consumer should contact to bootstrap initial
-                cluster metadata. This does not have to be the full node list.
-                It just needs to have at least one broker that will respond to
-                Metadata API Request. Default port is 9092. If no servers are
-                specified, will default to localhost:9092.
-            client_id (str): a name for this client. This string is passed in
-                each request to servers and can be used to identify specific
-                server-side log entries that correspond to this client. Also
-                submitted to GroupCoordinator for logging with respect to
-                consumer group administration. Default: 'aiokafka-{ver}'
-            request_timeout_ms (int): Client request timeout in milliseconds.
-                Default: 40000.
-            metadata_max_age_ms (int): The period of time in milliseconds after
-                which we force a refresh of metadata even if we haven't seen
-                any partition leadership changes to proactively discover any
-                new brokers or partitions. Default: 300000
-            api_version (str): specify which kafka API version to use.
-                AIOKafka supports Kafka API versions >=0.9 only.
-                If set to 'auto', will attempt to infer the broker version by
-                probing various APIs. Default: auto
-        """
+        if security_protocol not in ('SSL', 'PLAINTEXT'):
+            raise ValueError("`security_protocol` should be SSL or PLAINTEXT")
+        if security_protocol == "SSL" and ssl_context is None:
+            raise ValueError(
+                "`ssl_context` is mandatory if security_protocol=='SSL'")
         self._bootstrap_servers = bootstrap_servers
         self._client_id = client_id
         self._metadata_max_age_ms = metadata_max_age_ms
         self._request_timeout_ms = request_timeout_ms
         self._api_version = api_version
+        self._security_protocol = security_protocol
+        self._ssl_context = ssl_context
 
         self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
         self._topics = set()  # empty set will fetch all topic metadata
@@ -113,7 +126,9 @@ class AIOKafkaClient:
             try:
                 bootstrap_conn = yield from create_conn(
                     host, port, loop=self._loop, client_id=self._client_id,
-                    request_timeout_ms=self._request_timeout_ms)
+                    request_timeout_ms=self._request_timeout_ms,
+                    ssl_context=self._ssl_context,
+                    security_protocol=self._security_protocol)
             except (OSError, asyncio.TimeoutError) as err:
                 log.error('Unable connect to "%s:%s": %s', host, port, err)
                 continue
@@ -280,7 +295,9 @@ class AIOKafkaClient:
                 self._conns[node_id] = yield from create_conn(
                     broker.host, broker.port, loop=self._loop,
                     client_id=self._client_id,
-                    request_timeout_ms=self._request_timeout_ms)
+                    request_timeout_ms=self._request_timeout_ms,
+                    ssl_context=self._ssl_context,
+                    security_protocol=self._security_protocol)
         except (OSError, asyncio.TimeoutError) as err:
             log.error('Unable connect to node with id %s: %s', node_id, err)
             return None

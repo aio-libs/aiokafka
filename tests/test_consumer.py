@@ -492,3 +492,40 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(ValueError):
             consumer = yield from self.consumer_factory(
                 max_poll_records=0)
+
+    @run_until_complete
+    def test_ssl_consume(self):
+        # Produce by PLAINTEXT, Consume by SSL
+        # Send 3 messages
+        yield from self.send_messages(0, [1, 2, 3])
+
+        context = self.create_ssl_context()
+        group = "group-{}".format(self.id())
+        consumer = AIOKafkaConsumer(
+            self.topic, loop=self.loop, group_id=group,
+            bootstrap_servers=[
+                "{}:{}".format(self.kafka_host, self.kafka_ssl_port)],
+            enable_auto_commit=True,
+            auto_offset_reset="earliest",
+            security_protocol="SSL", ssl_context=context)
+        yield from consumer.start()
+        results = yield from consumer.getmany(timeout_ms=1000)
+        [msgs] = results.values()  # only 1 partition anyway
+        msgs = [msg.value for msg in msgs]
+        self.assertEqual(msgs, [b"1", b"2", b"3"])
+        yield from consumer.stop()
+
+    def test_consumer_arguments(self):
+        with self.assertRaisesRegexp(
+                ValueError, "`security_protocol` should be SSL or PLAINTEXT"):
+            AIOKafkaConsumer(
+                self.topic, loop=self.loop,
+                bootstrap_servers=self.hosts,
+                security_protocol="SOME")
+        with self.assertRaisesRegexp(
+                ValueError, "`ssl_context` is mandatory if "
+                            "security_protocol=='SSL'"):
+            AIOKafkaConsumer(
+                self.topic, loop=self.loop,
+                bootstrap_servers=self.hosts,
+                security_protocol="SSL", ssl_context=None)

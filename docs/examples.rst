@@ -10,3 +10,4 @@ Examples
    Group consumer <examples/group_consumer>
    Custom partitioner <examples/custom_partitioner>
    Python 3.5 async syntax <examples/python35_examples>
+   SSL usage <examples/ssl_consume_produce>

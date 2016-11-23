@@ -17,12 +17,15 @@ READER_LIMIT = 2 ** 16
 
 @asyncio.coroutine
 def create_conn(host, port, *, loop=None, client_id='aiokafka',
-                request_timeout_ms=40000, api_version=(0, 8, 2)):
+                request_timeout_ms=40000, api_version=(0, 8, 2),
+                ssl_context=None, security_protocol="PLAINTEXT"):
     if loop is None:
         loop = asyncio.get_event_loop()
     conn = AIOKafkaConnection(
         host, port, loop=loop, client_id=client_id,
-        request_timeout_ms=request_timeout_ms, api_version=api_version)
+        request_timeout_ms=request_timeout_ms,
+        api_version=api_version,
+        ssl_context=ssl_context, security_protocol=security_protocol)
     yield from conn.connect()
     return conn
 
@@ -47,30 +50,43 @@ class AIOKafkaConnection:
     log = logging.getLogger(__name__)
 
     def __init__(self, host, port, *, loop, client_id='aiokafka',
-                 request_timeout_ms=40000, api_version=(0, 8, 2)):
+                 request_timeout_ms=40000, api_version=(0, 8, 2),
+                 ssl_context=None, security_protocol="PLAINTEXT"):
+        self._loop = loop
         self._host = host
         self._port = port
-        self._reader = self._writer = self._protocol = None
-        self._loop = loop
-        self._requests = []
-        self._read_task = None
-        self._correlation_id = 0
         self._request_timeout = request_timeout_ms / 1000
         self._api_version = api_version
         self._client_id = client_id
+        self._ssl_context = ssl_context
+        self._secutity_protocol = security_protocol
+
+        self._reader = self._writer = self._protocol = None
+        self._requests = []
+        self._read_task = None
+        self._correlation_id = 0
         self._closed_fut = asyncio.Future(loop=loop)
 
     @asyncio.coroutine
     def connect(self):
         loop = self._loop
+        if self._secutity_protocol == "PLAINTEXT":
+            ssl = None
+        else:
+            assert self._secutity_protocol == "SSL"
+            assert self._ssl_context is not None
+            ssl = self._ssl_context
+        # Create streams same as `open_connection`, but using custom protocol
         reader = asyncio.StreamReader(limit=READER_LIMIT, loop=loop)
         protocol = AIOKafkaProtocol(self._closed_fut, reader, loop=loop)
-        transport, _ = yield from loop.create_connection(
-            lambda: protocol, self.host, self.port)
+        transport, _ = yield from asyncio.wait_for(
+            loop.create_connection(
+                lambda: protocol, self.host, self.port, ssl=ssl),
+            loop=loop, timeout=self._request_timeout)
         writer = asyncio.StreamWriter(transport, protocol, reader, loop)
         self._reader, self._writer, self._protocol = reader, writer, protocol
-
-        self._read_task = ensure_future(self._read(), loop=self._loop)
+        # Start reader task.
+        self._read_task = ensure_future(self._read(), loop=loop)
         return reader, writer
 
     def __repr__(self):

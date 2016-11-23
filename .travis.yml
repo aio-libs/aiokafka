@@ -23,6 +23,7 @@ install:
     - pip install codecov
     - pip install python-snappy
     - pip install lz4tools xxhash
+    - pip install pathlib
     - pip install .
 
 script:
