@@ -29,13 +29,14 @@ def create_conn(host, port, *, loop=None, client_id='aiokafka',
 
 class AIOKafkaProtocol(asyncio.StreamReaderProtocol):
 
-    def __init__(self, *args, loop, **kw):
-        self.closed_fut = asyncio.Future(loop=loop)
+    def __init__(self, closed_fut, *args, loop, **kw):
+        self._closed_fut = closed_fut
         super().__init__(*args, loop=loop, **kw)
 
     def connection_lost(self, exc):
         super().connection_lost(exc)
-        self.closed_fut.set_result(None)
+        if not self._closed_fut.cancelled():
+            self._closed_fut.set_result(None)
 
 
 class AIOKafkaConnection:
@@ -57,12 +58,13 @@ class AIOKafkaConnection:
         self._request_timeout = request_timeout_ms / 1000
         self._api_version = api_version
         self._client_id = client_id
+        self._closed_fut = asyncio.Future(loop=loop)
 
     @asyncio.coroutine
     def connect(self):
         loop = self._loop
         reader = asyncio.StreamReader(limit=READER_LIMIT, loop=loop)
-        protocol = AIOKafkaProtocol(reader, loop=loop)
+        protocol = AIOKafkaProtocol(self._closed_fut, reader, loop=loop)
         transport, _ = yield from loop.create_connection(
             lambda: protocol, self.host, self.port)
         writer = asyncio.StreamWriter(transport, protocol, reader, loop)
@@ -124,10 +126,9 @@ class AIOKafkaConnection:
                 if not fut.done():
                     fut.set_exception(error)
             self._requests = []
-            # transport.close() will close socket, but not right ahead. Return
-            # a future in case we need to wait on it.
-            return self._protocol.closed_fut
-        return None
+        # transport.close() will close socket, but not right ahead. Return
+        # a future in case we need to wait on it.
+        return self._closed_fut
 
     @asyncio.coroutine
     def _read(self):
