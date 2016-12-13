@@ -529,3 +529,16 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.topic, loop=self.loop,
                 bootstrap_servers=self.hosts,
                 security_protocol="SSL", ssl_context=None)
+
+    @run_until_complete
+    def test_consumer_group_without_subscription(self):
+        consumer = AIOKafkaConsumer(
+            loop=self.loop,
+            group_id='group-{}'.format(self.id()),
+            bootstrap_servers=self.hosts,
+            enable_auto_commit=False,
+            auto_offset_reset='earliest',
+            heartbeat_interval_ms=100)
+        yield from consumer.start()
+        yield from asyncio.sleep(0.2, loop=self.loop)
+        yield from consumer.stop()
