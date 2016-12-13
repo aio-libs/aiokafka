@@ -787,6 +787,9 @@ class GroupCoordinator(object):
 
         while True:
             yield from asyncio.sleep(sleep_time, loop=self.loop)
+            if not self._subscription.partitions_auto_assigned():
+                # no partitions assigned yet, just wait
+                continue
 
             try:
                 yield from self.ensure_active_group()
