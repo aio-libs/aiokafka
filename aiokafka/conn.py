@@ -65,11 +65,12 @@ class AIOKafkaConnection:
         self._requests = []
         self._read_task = None
         self._correlation_id = 0
-        self._closed_fut = asyncio.Future(loop=loop)
+        self._closed_fut = None
 
     @asyncio.coroutine
     def connect(self):
         loop = self._loop
+        self._closed_fut = asyncio.Future(loop=loop)
         if self._secutity_protocol == "PLAINTEXT":
             ssl = None
         else:
