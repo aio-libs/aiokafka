@@ -188,7 +188,8 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(
             loop=self.loop,
             bootstrap_servers=self.hosts,
-            metadata_max_age_ms=100)
+            api_version="0.9",
+            metadata_max_age_ms=10)
 
         with mock.patch.object(
                 AIOKafkaClient, '_metadata_update') as mocked:
@@ -197,8 +198,9 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
                 client.cluster.failed_update(None)
             mocked.side_effect = dummy
 
-            with self.assertRaises(UnrecognizedBrokerVersion):
-                yield from client.bootstrap()
+            yield from client.bootstrap()
+            # wait synchronizer task timeout
+            yield from asyncio.sleep(0.1, loop=self.loop)
 
             self.assertNotEqual(
                 len(client._metadata_update.mock_calls), 0)

@@ -390,8 +390,8 @@ class AIOKafkaClient:
                 task = self._loop.create_task(conn.send(request))
                 yield from asyncio.wait([task], timeout=0.1, loop=self._loop)
                 try:
-                    yield from self.fetch_all_metadata()
-                except asyncio.CancelledError:
+                    yield from conn.send(MetadataRequest_v0([]))
+                except KafkaError:
                     # metadata request can be cancelled in case
                     # of invalid correlationIds order
                     pass

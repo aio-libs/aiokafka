@@ -606,28 +606,30 @@ class Fetcher:
             * Assure message marked for autocommit
 
         """
-        for tp in list(self._records.keys()):
-            if partitions and tp not in partitions:
-                continue
-            res_or_error = self._records[tp]
-            if type(res_or_error) == FetchResult:
-                message = res_or_error.getone()
-                if message is None:
-                    # We already processed all messages, request new ones
+        while True:
+            for tp in list(self._records.keys()):
+                if partitions and tp not in partitions:
+                    continue
+                res_or_error = self._records[tp]
+                if type(res_or_error) == FetchResult:
+                    message = res_or_error.getone()
+                    if message is None:
+                        # We already processed all messages, request new ones
+                        del self._records[tp]
+                        self._notify(self._wait_consume_future)
+                    else:
+                        return message
+                else:
+                    # Remove error, so we can fetch on partition again
                     del self._records[tp]
                     self._notify(self._wait_consume_future)
-                else:
-                    return message
-            else:
-                # Remove error, so we can fetch on partition again
-                del self._records[tp]
-                self._notify(self._wait_consume_future)
-                res_or_error.check_raise()
-        # No messages ready. Wait for some to arrive
-        if self._wait_empty_future is None or self._wait_empty_future.done():
-            self._wait_empty_future = asyncio.Future(loop=self._loop)
-        yield from asyncio.shield(self._wait_empty_future, loop=self._loop)
-        return (yield from self.next_record(partitions))
+                    res_or_error.check_raise()
+
+            # No messages ready. Wait for some to arrive
+            if self._wait_empty_future is None \
+                    or self._wait_empty_future.done():
+                self._wait_empty_future = asyncio.Future(loop=self._loop)
+            yield from asyncio.shield(self._wait_empty_future, loop=self._loop)
 
     @asyncio.coroutine
     def fetched_records(self, partitions, timeout=0, max_records=None):
