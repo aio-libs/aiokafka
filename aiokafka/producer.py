@@ -243,9 +243,15 @@ class AIOKafkaProducer(object):
 
         # add topic to metadata topic list if it is not there already.
         self.client.add_topic(topic)
-        yield from self.client.force_metadata_update()
-        if topic not in self.client.cluster.topics():
-            raise UnknownTopicOrPartitionError()
+
+        t0 = self._loop.time()
+        while True:
+            yield from self.client.force_metadata_update()
+            if topic in self.client.cluster.topics():
+                break
+            if (self._loop.time() - t0) > (self._request_timeout_ms / 1000):
+                raise UnknownTopicOrPartitionError()
+            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
 
         return self._metadata.partitions_for_topic(topic)
 

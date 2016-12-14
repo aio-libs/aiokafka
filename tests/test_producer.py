@@ -14,6 +14,7 @@ from kafka.protocol.produce import ProduceResponse_v0 as ProduceResponse
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 from aiokafka.producer import AIOKafkaProducer
+from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.message_accumulator import ProducerClosed
 
@@ -33,9 +34,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
         self.assertNotEqual(producer.client.api_version, 'auto')
-        with self.assertRaises(UnknownTopicOrPartitionError):
-            yield from producer.partitions_for('some_topic_name')
-        yield from self.wait_topic(producer.client, 'some_topic_name')
         partitions = yield from producer.partitions_for('some_topic_name')
         self.assertEqual(len(partitions), 2)
         self.assertEqual(partitions, set([0, 1]))
@@ -43,11 +41,26 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(producer._closed, True)
 
     @run_until_complete
+    def test_producer_notopic(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, request_timeout_ms=100,
+            bootstrap_servers=self.hosts)
+        yield from producer.start()
+        with mock.patch.object(
+                AIOKafkaClient, '_metadata_update') as mocked:
+            @asyncio.coroutine
+            def dummy(*d, **kw):
+                return
+            mocked.side_effect = dummy
+            with self.assertRaises(UnknownTopicOrPartitionError):
+                yield from producer.send_and_wait('some_topic', b'hello')
+        yield from producer.stop()
+
+    @run_until_complete
     def test_producer_send(self):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
-        yield from self.wait_topic(producer.client, self.topic)
         with self.assertRaisesRegexp(AssertionError, 'value must be bytes'):
             yield from producer.send(self.topic, 'hello, Kafka!')
         future = yield from producer.send(self.topic, b'hello, Kafka!')
@@ -76,7 +89,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts, acks=0)
         yield from producer.start()
-        yield from self.wait_topic(producer.client, self.topic)
         fut1 = yield from producer.send(
             self.topic, b'hello, Kafka!', partition=0)
         fut2 = yield from producer.send(
@@ -100,7 +112,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             key_serializer=key_serializer, acks='all',
             max_request_size=1000)
         yield from producer.start()
-        yield from self.wait_topic(producer.client, self.topic)
         key = 'some key'
         value = {'strKey': 23523.443, 23: 'STRval'}
         future = yield from producer.send(self.topic, value, key=key)
@@ -134,7 +145,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             compression_type='gzip')
 
         yield from producer.start()
-        yield from self.wait_topic(producer.client, self.topic)
 
         # short message will not be compressed
         future = yield from producer.send(
@@ -156,7 +166,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             loop=self.loop, bootstrap_servers=self.hosts,
             request_timeout_ms=200)
         yield from producer.start()
-        yield from self.wait_topic(producer.client, self.topic)
 
         with mock.patch.object(
                 ClusterMetadata, 'leader_for_partition') as mocked:
@@ -243,7 +252,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 "{}:{}".format(self.kafka_host, self.kafka_ssl_port)],
             security_protocol="SSL", ssl_context=context)
         yield from producer.start()
-        yield from self.wait_topic(producer.client, topic)
         yield from producer.send_and_wait(topic=topic, value=b"Super msg")
         yield from producer.stop()
 
