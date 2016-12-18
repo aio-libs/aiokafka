@@ -1,6 +1,19 @@
 CHANGES
 --------
 
+0.2.0 (2016-12-18)
+^^^^^^^^^^^^^^^^^^
+
+* Added SSL support. (PR #81 by Drizzt1991)
+* Fixed UnknownTopicOrPartitionError error on first message for autocreated topic (PR #96 by fabregas)
+* Fixed `next_record` recursion (PR #94 by fabregas)
+* Fixed Heartbeat fail if no consumers (PR #92 by fabregas)
+* Added docs addressing kafka-python and aiokafka differences (PR #70 by Drizzt1991)
+* Added `max_poll_records` option for Consumer (PR #72 by Drizzt1991)
+* Fix kafka-python typos in docs (PR #69 by jeffwidman)
+* Topics and partitions are now randomized on each Fetch request (PR #66 by Drizzt1991)
+
+
 0.1.4 (2016-11-07)
 ^^^^^^^^^^^^^^^^^^
 
