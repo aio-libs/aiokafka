@@ -5,6 +5,10 @@ SCALA_VERSION?=2.11
 KAFKA_VERSION?=0.10.1.0
 DOCKER_IMAGE=aiolibs/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
 
+setup:
+	pip install -r requirements-dev.txt
+	pip install -Ue .
+
 flake:
 	extra=$$(python -c "import sys;sys.stdout.write('--exclude tests/test_pep492.py') if sys.version_info[:3] < (3, 5, 0) else sys.stdout.write('')"); \
 	flake8 aiokafka tests $$extra
