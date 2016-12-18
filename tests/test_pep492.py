@@ -1,3 +1,4 @@
+import asyncio
 from aiokafka.consumer import AIOKafkaConsumer
 from kafka.common import OffsetOutOfRangeError
 from ._testutil import (
@@ -73,3 +74,24 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(OffsetOutOfRangeError):
             async for m in consumer:
                 print(m)
+
+    @run_until_complete
+    async def test_consumer_stops_iter(self):
+        consumer = AIOKafkaConsumer(
+            self.topic, loop=self.loop,
+            bootstrap_servers=self.hosts,
+            auto_offset_reset=None)
+        await consumer.start()
+
+        async def iterator():
+            async for msg in consumer:
+                assert False, "No items should be here, got {}".format(msg)
+
+        task = self.loop.create_task(iterator())
+        await asyncio.sleep(0.1, loop=self.loop)
+        # As we didn't input any data into Kafka
+        self.assertFalse(task.done())
+
+        await consumer.stop()
+        # Should just stop iterator, no errors
+        await task

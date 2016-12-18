@@ -4,6 +4,7 @@ from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.fetcher import RecordTooLargeError
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
+from aiokafka import ConsumerStoppedError
 
 from kafka.common import (
     TopicPartition, OffsetAndMetadata, IllegalStateError,
@@ -540,7 +541,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 bootstrap_servers=self.hosts,
                 security_protocol="SSL", ssl_context=None)
 
-    @run_until_complete
     def test_consumer_group_without_subscription(self):
         consumer = AIOKafkaConsumer(
             loop=self.loop,
@@ -656,3 +656,30 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         yield from consumer1.stop()
         yield from consumer2.stop()
+
+    def test_consumer_stops_getone(self):
+        # If we have a fetch in progress it should be cancelled if consumer is
+        # stoped
+        consumer = yield from self.consumer_factory()
+        task = self.loop.create_task(consumer.getone())
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        # As we didn't input any data into Kafka
+        self.assertFalse(task.done())
+
+        yield from consumer.stop()
+        with self.assertRaises(ConsumerStoppedError):
+            yield from task
+
+    @run_until_complete
+    def test_consumer_stops_getmany(self):
+        # If we have a fetch in progress it should be cancelled if consumer is
+        # stoped
+        consumer = yield from self.consumer_factory()
+        task = self.loop.create_task(consumer.getmany(timeout_ms=10000))
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        # As we didn't input any data into Kafka
+        self.assertFalse(task.done())
+
+        yield from consumer.stop()
+        with self.assertRaises(ConsumerStoppedError):
+            yield from task
