@@ -8,6 +8,8 @@ import struct
 import uuid
 import sys
 import pathlib
+import shutil
+import subprocess
 
 
 def pytest_addoption(parser):
@@ -24,8 +26,29 @@ def docker():
 
 @pytest.fixture(scope='session')
 def ssl_folder(docker_ip_address):
-    # Just in case we will need it dynamic in tests later.
     ssl_dir = pathlib.Path('tests/ssl_cert')
+    if ssl_dir.exists():
+        shutil.rmtree(str(ssl_dir))
+
+    ssl_dir.mkdir()
+    p = subprocess.Popen(
+        "bash ../../gen-ssl-certs.sh ca ca-cert {}".format(docker_ip_address),
+        shell=True, stdout=subprocess.DEVNULL,
+        cwd=str(ssl_dir), stderr=subprocess.DEVNULL)
+    p.wait()
+    p = subprocess.Popen(
+        "bash ../../gen-ssl-certs.sh -k server ca-cert br_ {}".format(
+            docker_ip_address),
+        shell=True, stdout=subprocess.DEVNULL,
+        cwd=str(ssl_dir), stderr=subprocess.DEVNULL,)
+    p.wait()
+    p = subprocess.Popen(
+        "bash ../../gen-ssl-certs.sh client ca-cert cl_ {}".format(
+            docker_ip_address),
+        shell=True, stdout=subprocess.DEVNULL,
+        cwd=str(ssl_dir), stderr=subprocess.DEVNULL,)
+    p.wait()
+
     return ssl_dir
 
 
