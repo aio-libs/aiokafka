@@ -94,12 +94,12 @@ or python source header files for compilation on Linux.
 Setting up tests requirements (assuming you're within virtualenv on ubuntu 14.04+)::
 
     sudo apt-get install -y libsnappy-dev
-    pip install -r requirements-dev.txt .
+    make setup
 
 Running tests::
 
     make cov
 
-To run tests with a specific version of Kafka (default one is 0.9.0.1) use KAFKA_VERSION variable::
+To run tests with a specific version of Kafka (default one is 0.10.1.0) use KAFKA_VERSION variable::
 
     make cov KAFKA_VERSION=0.10.0.0
