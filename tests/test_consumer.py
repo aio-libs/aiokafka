@@ -412,9 +412,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             loop=self.loop, group_id=None,
             bootstrap_servers=self.hosts, auto_offset_reset='earliest',
             enable_auto_commit=False)
-        consumer.subscribe(topics=('some_topic_unknown',))
-        with self.assertRaises(UnknownTopicOrPartitionError):
-            yield from consumer.start()
+        yield from consumer.start()
 
         with self.assertRaises(UnknownTopicOrPartitionError):
             yield from consumer.assign([TopicPartition(self.topic, 2222)])
@@ -541,4 +539,21 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             heartbeat_interval_ms=100)
         yield from consumer.start()
         yield from asyncio.sleep(0.2, loop=self.loop)
+        yield from consumer.stop()
+
+    @run_until_complete
+    def test_consumer_wait_topic(self):
+        topic = "some-test-topic-for-autocreate"
+        consumer = AIOKafkaConsumer(
+            topic, loop=self.loop, bootstrap_servers=self.hosts)
+        yield from consumer.start()
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        yield from producer.start()
+        yield from producer.send(topic, b'test msg')
+        yield from producer.stop()
+
+        data = yield from consumer.getone()
+        self.assertEqual(data.value, b'test msg')
         yield from consumer.stop()

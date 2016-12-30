@@ -7,6 +7,7 @@ from kafka.common import (KafkaError,
                           ConnectionError,
                           NodeNotReadyError,
                           KafkaTimeoutError,
+                          UnknownTopicOrPartitionError,
                           UnrecognizedBrokerVersion)
 from kafka.cluster import ClusterMetadata
 from kafka.protocol.metadata import MetadataRequest
@@ -43,6 +44,8 @@ class AIOKafkaClient:
             which we force a refresh of metadata even if we haven't seen
             any partition leadership changes to proactively discover any
             new brokers or partitions. Default: 300000
+        retry_backoff_ms (int): Milliseconds to backoff when retrying on
+            errors. Default: 100.
         api_version (str): specify which kafka API version to use.
             AIOKafka supports Kafka API versions >=0.9 only.
             If set to 'auto', will attempt to infer the broker version by
@@ -58,6 +61,7 @@ class AIOKafkaClient:
                  client_id='aiokafka-' + __version__,
                  metadata_max_age_ms=300000,
                  request_timeout_ms=40000,
+                 retry_backoff_ms=100,
                  ssl_context=None,
                  security_protocol='PLAINTEXT',
                  api_version='auto'):
@@ -73,6 +77,7 @@ class AIOKafkaClient:
         self._api_version = api_version
         self._security_protocol = security_protocol
         self._ssl_context = ssl_context
+        self._retry_backoff = retry_backoff_ms / 1000
 
         self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
         self._topics = set()  # empty set will fetch all topic metadata
@@ -402,3 +407,36 @@ class AIOKafkaClient:
                 return version
 
         raise UnrecognizedBrokerVersion()
+
+    @asyncio.coroutine
+    def _wait_on_metadata(self, topic):
+        """
+        Wait for cluster metadata including partitions for the given topic to
+        be available.
+
+        Arguments:
+            topic (str): topic we want metadata for
+
+        Returns:
+            set: partition ids for the topic
+
+        Raises:
+            UnknownTopicOrPartitionError: if no topic or partitions found
+                in cluster metadata
+        """
+        if topic in self.cluster.topics():
+            return self.cluster.partitions_for_topic(topic)
+
+        # add topic to metadata topic list if it is not there already.
+        self.add_topic(topic)
+
+        t0 = self._loop.time()
+        while True:
+            yield from self.force_metadata_update()
+            if topic in self.cluster.topics():
+                break
+            if (self._loop.time() - t0) > (self._request_timeout_ms / 1000):
+                raise UnknownTopicOrPartitionError()
+            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+
+        return self.cluster.partitions_for_topic(topic)

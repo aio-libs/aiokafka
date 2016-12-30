@@ -4,7 +4,6 @@ import collections
 
 from kafka.common import (TopicPartition,
                           MessageSizeTooLargeError,
-                          UnknownTopicOrPartitionError,
                           KafkaError)
 from kafka.partitioner.default import DefaultPartitioner
 from kafka.protocol.message import Message, MessageSet
@@ -172,6 +171,7 @@ class AIOKafkaProducer(object):
             loop=loop, bootstrap_servers=bootstrap_servers,
             client_id=client_id, metadata_max_age_ms=metadata_max_age_ms,
             request_timeout_ms=request_timeout_ms,
+            retry_backoff_ms=retry_backoff_ms,
             api_version=api_version, security_protocol=security_protocol,
             ssl_context=ssl_context)
         self._metadata = self.client.cluster
@@ -220,40 +220,7 @@ class AIOKafkaProducer(object):
     @asyncio.coroutine
     def partitions_for(self, topic):
         """Returns set of all known partitions for the topic."""
-        return (yield from self._wait_on_metadata(topic))
-
-    @asyncio.coroutine
-    def _wait_on_metadata(self, topic):
-        """
-        Wait for cluster metadata including partitions for the given topic to
-        be available.
-
-        Arguments:
-            topic (str): topic we want metadata for
-
-        Returns:
-            set: partition ids for the topic
-
-        Raises:
-            UnknownTopicOrPartitionError: if no topic or partitions found
-                in cluster metadata
-        """
-        if topic in self.client.cluster.topics():
-            return self._metadata.partitions_for_topic(topic)
-
-        # add topic to metadata topic list if it is not there already.
-        self.client.add_topic(topic)
-
-        t0 = self._loop.time()
-        while True:
-            yield from self.client.force_metadata_update()
-            if topic in self.client.cluster.topics():
-                break
-            if (self._loop.time() - t0) > (self._request_timeout_ms / 1000):
-                raise UnknownTopicOrPartitionError()
-            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
-
-        return self._metadata.partitions_for_topic(topic)
+        return (yield from self.client._wait_on_metadata(topic))
 
     @asyncio.coroutine
     def send(self, topic, value=None, key=None, partition=None):
@@ -299,7 +266,7 @@ class AIOKafkaProducer(object):
             'Need at least one: key or value'
 
         # first make sure the metadata for the topic is available
-        yield from self._wait_on_metadata(topic)
+        yield from self.client._wait_on_metadata(topic)
 
         key_bytes, value_bytes = self._serialize(topic, key, value)
         partition = self._partition(topic, partition, key, value,
