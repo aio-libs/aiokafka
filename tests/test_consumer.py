@@ -547,6 +547,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             topic, loop=self.loop, bootstrap_servers=self.hosts)
         yield from consumer.start()
+        consume_task = self.loop.create_task(consumer.getone())
+        # just to be sure getone does not fail (before produce)
+        yield from asyncio.sleep(0.5, loop=self.loop)
 
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
@@ -554,6 +557,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from producer.send(topic, b'test msg')
         yield from producer.stop()
 
-        data = yield from consumer.getone()
+        data = yield from consume_task
         self.assertEqual(data.value, b'test msg')
         yield from consumer.stop()
