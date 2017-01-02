@@ -157,6 +157,7 @@ class AIOKafkaConsumer(object):
             loop=loop, bootstrap_servers=bootstrap_servers,
             client_id=client_id, metadata_max_age_ms=metadata_max_age_ms,
             request_timeout_ms=request_timeout_ms,
+            retry_backoff_ms=retry_backoff_ms,
             api_version=api_version,
             ssl_context=ssl_context,
             security_protocol=security_protocol)
@@ -191,6 +192,7 @@ class AIOKafkaConsumer(object):
     @asyncio.coroutine
     def start(self):
         yield from self._client.bootstrap()
+        yield from self._wait_topics()
 
         if self._client.api_version < (0, 9):
             raise ValueError("Unsupported Kafka version: {}".format(
@@ -234,6 +236,13 @@ class AIOKafkaConsumer(object):
             self._subscription.assign_from_user(partitions)
             yield from self._update_fetch_positions(
                 self._subscription.missing_fetch_positions())
+
+    @asyncio.coroutine
+    def _wait_topics(self):
+        if not self._subscription.subscription:
+            return
+        for topic in self._subscription.subscription:
+            yield from self._client._wait_on_metadata(topic)
 
     def assign(self, partitions):
         """Manually assign a list of TopicPartitions to this consumer.
