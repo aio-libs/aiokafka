@@ -667,8 +667,12 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertFalse(task.done())
 
         yield from consumer.stop()
+        # Check that pending call was cancelled
         with self.assertRaises(ConsumerStoppedError):
             yield from task
+        # Check that any subsequent call will also raise ConsumerStoppedError
+        with self.assertRaises(ConsumerStoppedError):
+            yield from consumer.getone()
 
     @run_until_complete
     def test_consumer_stops_getmany(self):
@@ -681,5 +685,16 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertFalse(task.done())
 
         yield from consumer.stop()
+        # Interrupted call should just return 0 results. This will allow the
+        # user to check for cancellation himself.
+        self.assertTrue(task.done())
+        self.assertEqual(task.result(), {})
+        # Any later call will raise ConsumerStoppedError as consumer closed
+        # all connections and can't continue operating.
         with self.assertRaises(ConsumerStoppedError):
-            yield from task
+            yield from self.loop.create_task(
+                consumer.getmany(timeout_ms=10000))
+        # Just check no spetial case on timeout_ms=0
+        with self.assertRaises(ConsumerStoppedError):
+            yield from self.loop.create_task(
+                consumer.getmany(timeout_ms=0))

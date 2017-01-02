@@ -701,6 +701,8 @@ class AIOKafkaConsumer(object):
             while True:
                 try:
                     return (yield from self.getone())
+                except ConsumerStoppedError:
+                    raise StopAsyncIteration
                 except (TopicAuthorizationFailedError,
                         OffsetOutOfRangeError) as err:
                     raise err
