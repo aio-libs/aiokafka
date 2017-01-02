@@ -1,6 +1,12 @@
 CHANGES
 --------
 
+0.2.x (xxxx-xx-xx)
+^^^^^^^^^^^^^^^^^^
+
+* Add a check to wait topic autocreation in Consumer, instead of raising UnknownTopicOrPartitionError (PR #92 by fabregas)
+
+
 0.2.0 (2016-12-18)
 ^^^^^^^^^^^^^^^^^^
 

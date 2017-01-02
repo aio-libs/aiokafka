@@ -9,6 +9,7 @@ import pytest
 from functools import wraps
 
 from kafka.common import ConnectionError
+from kafka.consumer.subscription_state import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.helpers import create_ssl_context
@@ -30,6 +31,31 @@ def run_until_complete(fun):
     return wrapper
 
 
+class StubRebalanceListener(ConsumerRebalanceListener):
+
+    def __init__(self, *, loop):
+        self.assigns = asyncio.Queue(loop=loop)
+        self.revokes = asyncio.Queue(loop=loop)
+        self.assigned = None
+        self.revoked = None
+
+    @asyncio.coroutine
+    def wait_assign(self):
+        return (yield from self.assigns.get())
+
+    def reset(self):
+        while not self.assigns.empty():
+            self.assigns.get_nowait()
+        while not self.revokes.empty():
+            self.revokes.get_nowait()
+
+    def on_partitions_revoked(self, revoked):
+        self.revokes.put_nowait(revoked)
+
+    def on_partitions_assigned(self, assigned):
+        self.assigns.put_nowait(assigned)
+
+
 @pytest.mark.usefixtures('setup_test_class')
 class KafkaIntegrationTestCase(unittest.TestCase):
 
@@ -47,6 +73,10 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         for i in range(500):
             try:
                 cls.loop.run_until_complete(client.bootstrap())
+                # Wait for broker to look for others.
+                if not client.cluster.brokers():
+                    time.sleep(0.1)
+                    continue
             except ConnectionError:
                 time.sleep(0.1)
             else:

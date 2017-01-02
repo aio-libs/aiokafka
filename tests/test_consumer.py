@@ -3,12 +3,14 @@ import time
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.fetcher import RecordTooLargeError
 from aiokafka.producer import AIOKafkaProducer
+from aiokafka.client import AIOKafkaClient
 
 from kafka.common import (
     TopicPartition, OffsetAndMetadata, IllegalStateError,
     UnknownTopicOrPartitionError)
 from ._testutil import (
-    KafkaIntegrationTestCase, run_until_complete, random_string)
+    KafkaIntegrationTestCase, StubRebalanceListener,
+    run_until_complete, random_string)
 
 
 class TestConsumerIntegration(KafkaIntegrationTestCase):
@@ -550,6 +552,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consume_task = self.loop.create_task(consumer.getone())
         # just to be sure getone does not fail (before produce)
         yield from asyncio.sleep(0.5, loop=self.loop)
+        self.assertFalse(consume_task.done())
 
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
@@ -560,3 +563,86 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         data = yield from consume_task
         self.assertEqual(data.value, b'test msg')
         yield from consumer.stop()
+
+    @run_until_complete
+    def test_consumer_subscribe_pattern_with_autocreate(self):
+        pattern = "^some-autocreate-pattern-.*$"
+        consumer = AIOKafkaConsumer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            metadata_max_age_ms=200, group_id="some_group",
+            auto_offset_reset="earliest")
+        yield from consumer.start()
+        consumer.subscribe(pattern=pattern)
+        # Start getter for the topics. Should not create any topics
+        consume_task = self.loop.create_task(consumer.getone())
+        yield from asyncio.sleep(0.3, loop=self.loop)
+        self.assertFalse(consume_task.done())
+        self.assertEqual(consumer.subscription(), set())
+
+        # Now lets autocreate the topic by fetching metadata for it.
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        yield from producer.start()
+        my_topic = "some-autocreate-pattern-1"
+        yield from producer.client._wait_on_metadata(my_topic)
+        # Wait for consumer to refresh metadata with new topic
+        yield from asyncio.sleep(0.3, loop=self.loop)
+        self.assertFalse(consume_task.done())
+        self.assertEqual(consumer._client.cluster.topics(), {my_topic})
+        self.assertEqual(consumer.subscription(), {my_topic})
+
+        # Now lets actualy produce some data and verify that it is consumed
+        yield from producer.send(my_topic, b'test msg')
+        data = yield from consume_task
+        self.assertEqual(data.value, b'test msg')
+
+        yield from producer.stop()
+        yield from consumer.stop()
+
+    @run_until_complete
+    def test_consumer_rebalance_on_new_topic(self):
+        # Test will create a consumer group and check if adding new topic
+        # will trigger a group rebalance and assign partitions
+        pattern = "^another-autocreate-pattern-.*$"
+        listener1 = StubRebalanceListener(loop=self.loop)
+        listener2 = StubRebalanceListener(loop=self.loop)
+        consumer1 = AIOKafkaConsumer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            metadata_max_age_ms=200, group_id="test-autocreate-rebalance",
+            heartbeat_interval_ms=100)
+        consumer1.subscribe(pattern=pattern, listener=listener1)
+        yield from consumer1.start()
+        consumer2 = AIOKafkaConsumer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            metadata_max_age_ms=200, group_id="test-autocreate-rebalance",
+            heartbeat_interval_ms=100)
+        consumer2.subscribe(pattern=pattern, listener=listener2)
+        yield from consumer2.start()
+        yield from asyncio.sleep(0.5, loop=self.loop)
+        # bootstrap will take care of the initial group assignment
+        self.assertEqual(consumer1.assignment(), set())
+        self.assertEqual(consumer2.assignment(), set())
+        listener1.reset()
+        listener2.reset()
+
+        # Lets force autocreation of a topic
+        my_topic = "another-autocreate-pattern-1"
+        client = AIOKafkaClient(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            client_id="test_autocreate")
+        yield from client.bootstrap()
+        yield from client._wait_on_metadata(my_topic)
+
+        # Wait for group to stabilize
+        assign1 = yield from listener1.wait_assign()
+        assign2 = yield from listener2.wait_assign()
+        # We expect 2 partitons for autocreated topics
+        my_partitions = set([
+            TopicPartition(my_topic, 0), TopicPartition(my_topic, 1)])
+        self.assertEqual(assign1 | assign2, my_partitions)
+        self.assertEqual(
+            consumer1.assignment() | consumer2.assignment(),
+            my_partitions)
+
+        yield from consumer1.stop()
+        yield from consumer2.stop()
