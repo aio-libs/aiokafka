@@ -11,6 +11,7 @@ from kafka.consumer.subscription_state import SubscriptionState
 
 from aiokafka.client import AIOKafkaClient
 from aiokafka.group_coordinator import GroupCoordinator
+from aiokafka.errors import ConsumerStoppedError
 from aiokafka.fetcher import Fetcher
 from aiokafka import __version__, ensure_future, PY_35
 
@@ -627,6 +628,8 @@ class AIOKafkaConsumer(object):
 
         """
         assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
+        if self._closed:
+            raise ConsumerStoppedError()
 
         msg = yield from self._fetcher.next_record(partitions)
         return msg
@@ -666,6 +669,9 @@ class AIOKafkaConsumer(object):
 
         """
         assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
+        if self._closed:
+            raise ConsumerStoppedError()
+
         if max_records is not None and (
                 not isinstance(max_records, int) or max_records < 1):
             raise ValueError("`max_records` must be a positive Integer")
@@ -679,6 +685,8 @@ class AIOKafkaConsumer(object):
     if PY_35:
         @asyncio.coroutine
         def __aiter__(self):
+            if self._closed:
+                raise ConsumerStoppedError()
             return self
 
         @asyncio.coroutine
