@@ -74,7 +74,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
 
         with self.assertRaises(OffsetOutOfRangeError):
             async for m in consumer:
-                print(m)
+                print(m)  # pragma: no cover
 
     @run_until_complete
     async def test_consumer_stops_iter(self):
@@ -85,7 +85,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         await consumer.start()
 
         async def iterator():
-            async for msg in consumer:
+            async for msg in consumer:  # pragma: no cover
                 assert False, "No items should be here, got {}".format(msg)
 
         task = self.loop.create_task(iterator())

@@ -231,10 +231,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             if len(result) == len(available_msgs):
                 break
 
-        yield from consumer2.stop()
-        if consumer1._client.api_version < (0, 9):
-            # coordinator rebalance feature works with >=Kafka-0.9 only
-            return
         self.assertEqual(set(available_msgs), set(result))
         yield from consumer1.stop()
         yield from consumer2.stop()
@@ -541,6 +537,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 bootstrap_servers=self.hosts,
                 security_protocol="SSL", ssl_context=None)
 
+    @run_until_complete
     def test_consumer_group_without_subscription(self):
         consumer = AIOKafkaConsumer(
             loop=self.loop,
@@ -657,6 +654,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from consumer1.stop()
         yield from consumer2.stop()
 
+    @run_until_complete
     def test_consumer_stops_getone(self):
         # If we have a fetch in progress it should be cancelled if consumer is
         # stoped

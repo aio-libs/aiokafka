@@ -3,7 +3,6 @@ import string
 import random
 import time
 import unittest
-import uuid
 import pytest
 
 from functools import wraps
@@ -136,18 +135,6 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 
         # Make sure there are no duplicates
         self.assertEquals(len(set(messages)), num_messages)
-
-    def msgs(self, iterable):
-        return [self.msg(x) for x in iterable]
-
-    def msg(self, s):
-        if s not in self._messages:
-            self._messages[s] = '%s-%s-%s' % (s, self.id(), str(uuid.uuid4()))
-
-        return self._messages[s].encode('utf-8')
-
-    def key(self, k):
-        return k.encode('utf-8')
 
     def create_ssl_context(self):
         return create_ssl_context(

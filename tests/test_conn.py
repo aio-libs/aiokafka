@@ -84,10 +84,6 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         with self.assertRaises(ConnectionError):
             yield from conn.send(request)
 
-        @asyncio.coroutine
-        def invoke_osserror(*a, **kw):
-            yield from asyncio.sleep(0.1, loop=self.loop)
-            raise OSError('mocked writer is closed')
         conn._writer = mock.MagicMock()
         conn._writer.write.side_effect = OSError('mocked writer is closed')
 
