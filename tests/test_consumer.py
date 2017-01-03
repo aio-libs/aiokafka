@@ -319,7 +319,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(ValueError):
             consumer.subscribe(topics=(), pattern=None)
         with self.assertRaises(ValueError):
-            consumer.subscribe(pattern="")
+            consumer.subscribe(pattern="^(spome(")
 
     @run_until_complete
     def test_compress_decompress(self):
