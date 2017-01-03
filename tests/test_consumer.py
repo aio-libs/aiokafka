@@ -312,6 +312,16 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from consumer.stop()
 
     @run_until_complete
+    def test_subscribe_errors(self):
+        consumer = yield from self.consumer_factory()
+        with self.assertRaises(ValueError):
+            consumer.subscribe(topics=(self.topic, ), pattern="some")
+        with self.assertRaises(ValueError):
+            consumer.subscribe(topics=(), pattern=None)
+        with self.assertRaises(ValueError):
+            consumer.subscribe(pattern="")
+
+    @run_until_complete
     def test_compress_decompress(self):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts,

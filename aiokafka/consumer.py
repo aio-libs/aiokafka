@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 
 from kafka.common import (OffsetAndMetadata, TopicPartition,
                           KafkaError, UnknownTopicOrPartitionError,
@@ -524,6 +525,12 @@ class AIOKafkaConsumer(object):
         if topics and pattern:
             raise ValueError(
                 "You can't provide both `topics` and `pattern`")
+        if pattern:
+            try:
+                re.compile(pattern)
+            except re.error as err:
+                raise ValueError(
+                    "{!r} is not a valid pattern: {}".format(pattern, err))
 
         # SubscriptionState handles error checking
         self._subscription.subscribe(topics=topics,
