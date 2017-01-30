@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 
 from kafka.common import (OffsetAndMetadata, TopicPartition,
                           KafkaError, UnknownTopicOrPartitionError,
@@ -514,9 +515,23 @@ class AIOKafkaConsumer(object):
                through this interface are from topics subscribed in this call.
         Raises:
             IllegalStateError: if called after previously calling assign()
-            AssertionError: if neither topics or pattern is provided
+            ValueError: if neither topics or pattern is provided or both
+               are provided
             TypeError: if listener is not a ConsumerRebalanceListener
         """
+        if not (topics or pattern):
+            raise ValueError(
+                "You should provide either `topics` or `pattern`")
+        if topics and pattern:
+            raise ValueError(
+                "You can't provide both `topics` and `pattern`")
+        if pattern:
+            try:
+                re.compile(pattern)
+            except re.error as err:
+                raise ValueError(
+                    "{!r} is not a valid pattern: {}".format(pattern, err))
+
         # SubscriptionState handles error checking
         self._subscription.subscribe(topics=topics,
                                      pattern=pattern,
