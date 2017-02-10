@@ -13,7 +13,8 @@ from kafka.consumer.subscription_state import (
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
-from aiokafka.group_coordinator import GroupCoordinator
+from aiokafka.group_coordinator import (
+    GroupCoordinator, CoordinatorGroupRebalance)
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 
@@ -126,6 +127,16 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             client, subscription, loop=self.loop,
             retry_backoff_ms=10)
 
+        @asyncio.coroutine
+        def do_rebalance():
+            rebalance = CoordinatorGroupRebalance(
+                coordinator, coordinator.group_id, coordinator.coordinator_id,
+                subscription.subscription, coordinator._assignors,
+                coordinator._session_timeout_ms,
+                coordinator._retry_backoff_ms,
+                loop=self.loop)
+            yield from rebalance.perform_group_join()
+
         yield from client.bootstrap()
         yield from self.wait_topic(client, 'topic1')
 
@@ -134,17 +145,18 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         # no exception expected, just wait
         mocked.send.side_effect = Errors.GroupLoadInProgressError()
-        yield from coordinator._perform_group_join()
+        yield from do_rebalance()
         self.assertEqual(coordinator.need_rejoin(), True)
 
         mocked.send.side_effect = Errors.InvalidGroupIdError()
-        yield from coordinator._perform_group_join()
+        with self.assertRaises(Errors.InvalidGroupIdError):
+            yield from do_rebalance()
         self.assertEqual(coordinator.need_rejoin(), True)
 
         # no exception expected, member_id should be reseted
         coordinator.member_id = 'some_invalid_member_id'
         mocked.send.side_effect = Errors.UnknownMemberIdError()
-        yield from coordinator._perform_group_join()
+        yield from do_rebalance()
         self.assertEqual(coordinator.need_rejoin(), True)
         self.assertEqual(
             coordinator.member_id, JoinGroupRequest.UNKNOWN_MEMBER_ID)
@@ -152,7 +164,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # no exception expected, coordinator_id should be reseted
         coordinator.coordinator_id = 'some_id'
         mocked.send.side_effect = Errors.GroupCoordinatorNotAvailableError()
-        yield from coordinator._perform_group_join()
+        yield from do_rebalance()
         self.assertEqual(coordinator.need_rejoin(), True)
         self.assertEqual(coordinator.coordinator_id, None)
         yield from client.close()
@@ -166,8 +178,18 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             client, subscription, loop=self.loop,
             heartbeat_interval_ms=20000)
 
+        @asyncio.coroutine
+        def do_sync_group():
+            rebalance = CoordinatorGroupRebalance(
+                coordinator, coordinator.group_id, coordinator.coordinator_id,
+                subscription.subscription, coordinator._assignors,
+                coordinator._session_timeout_ms,
+                coordinator._retry_backoff_ms,
+                loop=self.loop)
+            yield from rebalance._on_join_follower()
+
         with self.assertRaises(GroupCoordinatorNotAvailableError):
-            yield from coordinator._on_join_follower()
+            yield from do_sync_group()
 
         mocked = mock.MagicMock()
         coordinator._client = mocked
@@ -176,19 +198,19 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator.coordinator_unknown = asyncio.coroutine(lambda: False)
         mocked.send.side_effect = Errors.UnknownMemberIdError()
         with self.assertRaises(Errors.UnknownMemberIdError):
-            yield from coordinator._on_join_follower()
+            yield from do_sync_group()
             self.assertEqual(
                 coordinator.member_id, JoinGroupRequest.UNKNOWN_MEMBER_ID)
 
         mocked.send.side_effect = Errors.NotCoordinatorForGroupError()
         coordinator.coordinator_id = 'some_id'
         with self.assertRaises(Errors.NotCoordinatorForGroupError):
-            yield from coordinator._on_join_follower()
+            yield from do_sync_group()
             self.assertEqual(coordinator.coordinator_id, None)
 
         mocked.send.side_effect = KafkaError()
         with self.assertRaises(KafkaError):
-            yield from coordinator._on_join_follower()
+            yield from do_sync_group()
 
         # client sends LeaveGroupRequest to group coordinator
         # if generation > 0 (means that client is a member of group)
@@ -363,6 +385,77 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 Errors.NotCoordinatorForGroupError,
                 Errors.NoError, Errors.NoError, Errors.NoError)
             yield from coordinator.fetch_committed_offsets(offsets)
+
+        yield from coordinator.close()
+        yield from client.close()
+
+    @run_until_complete
+    def test_coordinator_subscription_replace_on_rebalance(self):
+        # See issue #88
+        client = AIOKafkaClient(
+            metadata_max_age_ms=2000, loop=self.loop,
+            bootstrap_servers=self.hosts)
+        yield from client.bootstrap()
+        yield from self.wait_topic(client, 'topic1')
+        yield from self.wait_topic(client, 'topic2')
+        subscription = SubscriptionState('earliest')
+        subscription.subscribe(topics=('topic1',))
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            group_id='race-rebalance-subscribe-replace',
+            heartbeat_interval_ms=1000)
+
+        _perform_assignment = coordinator._perform_assignment
+        with mock.patch.object(coordinator, '_perform_assignment') as mocked:
+
+            def _new(*args, **kw):
+                # Change the subscription to different topic before we finish
+                # rebalance
+                res = _perform_assignment(*args, **kw)
+                subscription.subscribe(topics=('topic2', ))
+                client.set_topics(('topic2', ))
+                return res
+            mocked.side_effect = _new
+
+            yield from coordinator.ensure_active_group()
+            # yield from asyncio.sleep(10, loop=self.loop)
+            self.assertEqual(subscription.needs_partition_assignment, False)
+            topics = set([tp.topic for tp in subscription.assignment])
+            self.assertEqual(topics, {'topic2'})
+
+        yield from coordinator.close()
+        yield from client.close()
+
+    @run_until_complete
+    def test_coordinator_subscription_append_on_rebalance(self):
+        # same as above, but with adding topics instead of replacing them
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        yield from client.bootstrap()
+        yield from self.wait_topic(client, 'topic1')
+        yield from self.wait_topic(client, 'topic2')
+        subscription = SubscriptionState('earliest')
+        subscription.subscribe(topics=('topic1',))
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            group_id='race-rebalance-subscribe-append',
+            heartbeat_interval_ms=20000000)
+
+        _perform_assignment = coordinator._perform_assignment
+        with mock.patch.object(coordinator, '_perform_assignment') as mocked:
+
+            def _new(*args, **kw):
+                # Change the subscription to different topic before we finish
+                # rebalance
+                res = _perform_assignment(*args, **kw)
+                subscription.subscribe(topics=('topic1', 'topic2', ))
+                client.set_topics(('topic1', 'topic2', ))
+                return res
+            mocked.side_effect = _new
+
+            yield from coordinator.ensure_active_group()
+            self.assertEqual(subscription.needs_partition_assignment, False)
+            topics = set([tp.topic for tp in subscription.assignment])
+            self.assertEqual(topics, {'topic1', 'topic2'})
 
         yield from coordinator.close()
         yield from client.close()

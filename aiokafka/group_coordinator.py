@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import logging
+from copy import copy
 
 import kafka.common as Errors
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
@@ -45,6 +46,14 @@ class GroupCoordinator(object):
        leader and begins processing.
        Between each phase coordinator awaits all clients to respond. If some
        do not respond in time - it will revoke their membership
+
+    NOTE: Try to maintain same log messages and behaviour as Java and
+          kafka-python clients:
+
+        https://github.com/apache/kafka/blob/0.10.1.1/clients/src/main/java/\
+          org/apache/kafka/clients/consumer/internals/AbstractCoordinator.java
+        https://github.com/apache/kafka/blob/0.10.1.1/clients/src/main/java/\
+          org/apache/kafka/clients/consumer/internals/ConsumerCoordinator.java
     """
     def __init__(self, client, subscription, *, loop,
                  group_id='aiokafka-default-group',
@@ -198,6 +207,9 @@ class GroupCoordinator(object):
             self._partitions_per_topic[topic] = set(partitions)
 
         if self._partitions_per_topic != old_partitions_per_topic:
+            log.debug("Metadata for topic has changed from %s to %s. "
+                      "Rejoining group.", old_partitions_per_topic,
+                      self._partitions_per_topic)
             return True
         return False
 
@@ -261,7 +273,7 @@ class GroupCoordinator(object):
         assignment = ConsumerProtocol.ASSIGNMENT.decode(
             member_assignment_bytes)
 
-        # set the flag to refresh last committed offsets
+        # Will be used by Consumer.committed and Consumer.seek_to_commited API
         self._subscription.needs_fetch_committed_offsets = True
 
         # update partition assignment
@@ -592,182 +604,28 @@ class GroupCoordinator(object):
 
             while self.need_rejoin():
                 yield from self.ensure_coordinator_known()
+                # Here we create a copy of subscription so we can check if it
+                # changed during rebalance.
+                subscription = copy(self._subscription.subscription)
+                _pending_join_group = CoordinatorGroupRebalance(
+                    self, self.group_id, self.coordinator_id,
+                    subscription, self._assignors, self._session_timeout_ms,
+                    self._retry_backoff_ms, loop=self.loop)
+                assignment = (
+                    yield from _pending_join_group.perform_group_join())
 
-                yield from self._perform_group_join()
-
-    @asyncio.coroutine
-    def _perform_group_join(self):
-        """Join the group and return the assignment for the next generation.
-
-        This function handles both JoinGroup and SyncGroup, delegating to
-        _perform_assignment() if elected leader by the coordinator.
-
-        Returns:
-            Future: resolves to the encoded-bytes assignment returned from the
-                group leader
-        """
-        # send a join group request to the coordinator
-        log.debug("(Re-)joining group %s", self.group_id)
-
-        topics = self._subscription.subscription
-        assert topics is not None, 'Consumer has not subscribed to topics'
-        metadata_list = []
-        for assignor in self._assignors:
-            metadata = assignor.metadata(topics)
-            if not isinstance(metadata, bytes):
-                metadata = metadata.encode()
-            group_protocol = (assignor.name, metadata)
-            metadata_list.append(group_protocol)
-
-        request = JoinGroupRequest(
-            self.group_id,
-            self._session_timeout_ms,
-            self.member_id,
-            ConsumerProtocol.PROTOCOL_TYPE,
-            metadata_list)
-
-        # create the request for the coordinator
-        log.debug("Issuing request (%s) to coordinator %s",
-                  request, self.coordinator_id)
-        try:
-            response = yield from self._send_req(self.coordinator_id, request)
-        except Errors.GroupLoadInProgressError:
-            log.debug("Attempt to join group %s rejected since coordinator is"
-                      " loading the group.", self.group_id)
-        except Errors.UnknownMemberIdError:
-            # reset the member id and retry immediately
-            self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
-            log.info(
-                "Attempt to join group %s failed due to unknown member id,"
-                " resetting and retrying.", self.group_id)
-            return
-        except (Errors.GroupCoordinatorNotAvailableError,
-                Errors.NotCoordinatorForGroupError):
-            # re-discover the coordinator and retry with backoff
-            self.coordinator_dead()
-            log.info("Attempt to join group %s failed due to obsolete "
-                     "coordinator information, retrying.", self.group_id)
-        except Errors.KafkaError as err:
-            log.error(
-                "Error in join group '%s' response: %s", self.group_id, err)
-        else:
-            log.debug("Join group response %s", response)
-            self.member_id = response.member_id
-            self.generation = response.generation_id
-            self.rejoin_needed = False
-            self.protocol = response.group_protocol
-            log.info("Joined group '%s' (generation %s) with member_id %s",
-                     self.group_id, self.generation, self.member_id)
-
-            if response.leader_id == response.member_id:
-                log.info("Elected group leader -- performing partition"
-                         " assignments using %s", self.protocol)
-                cor = self._on_join_leader(response)
-            else:
-                cor = self._on_join_follower()
-
-            try:
-                member_assignment_bytes = yield from cor
-            except (Errors.UnknownMemberIdError,
-                    Errors.RebalanceInProgressError,
-                    Errors.IllegalGenerationError):
-                pass
-            except Errors.KafkaError as err:
-                if err.retriable is False:
-                    raise err
-            else:
-                self._on_join_complete(self.generation, self.member_id,
-                                       self.protocol, member_assignment_bytes)
-                self.needs_join_prepare = True
-                return
-
-        # backoff wait - failure case
-        yield from asyncio.sleep(
-            self._retry_backoff_ms / 1000, loop=self.loop)
-
-    @asyncio.coroutine
-    def _on_join_follower(self):
-        # send follower's sync group with an empty assignment
-        request = SyncGroupRequest(
-            self.group_id,
-            self.generation,
-            self.member_id,
-            {})
-        log.debug("Issuing follower SyncGroup (%s) to coordinator %s",
-                  request, self.coordinator_id)
-        return (yield from self._send_sync_group_request(request))
-
-    @asyncio.coroutine
-    def _on_join_leader(self, response):
-        """
-        Perform leader synchronization and send back the assignment
-        for the group via SyncGroupRequest
-
-        Arguments:
-            response (JoinResponse): broker response to parse
-
-        Returns:
-            Future: resolves to member assignment encoded-bytes
-        """
-        try:
-            group_assignment = self._perform_assignment(
-                response.leader_id,
-                response.group_protocol,
-                response.members)
-        except Exception as e:
-            raise Errors.KafkaError(str(e))
-
-        assignment_req = []
-        for member_id, assignment in group_assignment.items():
-            if not isinstance(assignment, bytes):
-                assignment = assignment.encode()
-            assignment_req.append((member_id, assignment))
-
-        request = SyncGroupRequest(
-            self.group_id,
-            self.generation,
-            self.member_id,
-            assignment_req)
-
-        log.debug("Issuing leader SyncGroup (%s) to coordinator %s",
-                  request, self.coordinator_id)
-        return (yield from self._send_sync_group_request(request))
-
-    @asyncio.coroutine
-    def _send_sync_group_request(self, request):
-        if (yield from self.coordinator_unknown()):
-            raise Errors.GroupCoordinatorNotAvailableError()
-
-        response = None
-        try:
-            response = yield from self._send_req(self.coordinator_id, request)
-            log.debug(
-                "Received successful sync group response for group %s: %s",
-                self.group_id, response)
-            return response.member_assignment
-        except Errors.RebalanceInProgressError as err:
-            log.info("SyncGroup for group %s failed due to coordinator"
-                     " rebalance, rejoining the group", self.group_id)
-            raise err
-        except (Errors.UnknownMemberIdError,
-                Errors.IllegalGenerationError) as err:
-            log.info("SyncGroup for group %s failed due to %s,"
-                     " rejoining the group", self.group_id, err)
-            self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
-            raise err
-        except (Errors.GroupCoordinatorNotAvailableError,
-                Errors.NotCoordinatorForGroupError) as err:
-            log.info("SyncGroup for group %s failed due to %s, will find new"
-                     " coordinator and rejoin", self.group_id, err)
-            self.coordinator_dead()
-            raise err
-        except Errors.KafkaError as err:
-            log.error("Error from SyncGroup: %s", err)
-            raise err
-        finally:
-            if response is None:
-                # Always rejoin on error
-                self.rejoin_needed = True
+                if (subscription != self._subscription.subscription):
+                    log.debug("Subscription changed during rebalance "
+                              "from %s to %s. Rejoining group.",
+                              subscription, self._subscription.subscription)
+                    continue
+                if assignment is not None:
+                    self.needs_join_prepare = False
+                    protocol, member_assignment_bytes = assignment
+                    self._on_join_complete(
+                        self.generation, self.member_id,
+                        protocol, member_assignment_bytes)
+                    return
 
     def coordinator_dead(self, error=None):
         """Mark the current coordinator as dead."""
@@ -846,3 +704,213 @@ class GroupCoordinator(object):
                     "Heartbeat session expired - marking coordinator dead")
                 self.coordinator_dead()
                 continue
+
+
+class CoordinatorGroupRebalance:
+    """ An adapter, that encapsulates rebalance logic and will have a copy of
+        assigned topics, so we can detect assignment changes. This includes
+        subscription pattern changes.
+
+        `coordinator` object will be used to modify:
+            * member_id
+            * generation
+            * rejoin_needed
+        and call methods:
+            * _perform_assignment
+            * coordinator_dead
+            * coordinator_unknown
+
+        On how to handle cases read in https://cwiki.apache.org/confluence/\
+            display/KAFKA/Kafka+Client-side+Assignment+Proposal
+    """
+
+    __slots__ = ("_coordinator", "group_id", "coordinator_id", "_subscription",
+                 "_assignors", "_session_timeout_ms", "_retry_backoff_ms",
+                 "loop")
+
+    def __init__(self, coordinator, group_id, coordinator_id, subscription,
+                 assignors, session_timeout_ms, retry_backoff_ms, *, loop):
+        self._coordinator = coordinator
+        self.group_id = group_id
+        self.coordinator_id = coordinator_id
+        self.loop = loop
+
+        self._subscription = subscription
+        self._assignors = assignors
+        self._session_timeout_ms = session_timeout_ms
+        self._retry_backoff_ms = retry_backoff_ms
+
+    @asyncio.coroutine
+    def perform_group_join(self):
+        """Join the group and return the assignment for the next generation.
+
+        This function handles both JoinGroup and SyncGroup, delegating to
+        _perform_assignment() if elected as leader by the coordinator node.
+
+        Returns encoded-bytes assignment returned from the group leader
+        """
+        # send a join group request to the coordinator
+        log.info("(Re-)joining group %s", self.group_id)
+
+        topics = self._subscription
+        assert topics is not None, 'Consumer has not subscribed to topics'
+        metadata_list = []
+        for assignor in self._assignors:
+            metadata = assignor.metadata(topics)
+            if not isinstance(metadata, bytes):
+                metadata = metadata.encode()
+            group_protocol = (assignor.name, metadata)
+            metadata_list.append(group_protocol)
+
+        request = JoinGroupRequest(
+            self.group_id,
+            self._session_timeout_ms,
+            self._coordinator.member_id,
+            ConsumerProtocol.PROTOCOL_TYPE,
+            metadata_list)
+
+        # create the request for the coordinator
+        log.debug("Sending JoinGroup (%s) to coordinator %s",
+                  request, self.coordinator_id)
+        try:
+            response = yield from self._coordinator._send_req(
+                self.coordinator_id, request)
+        except Errors.GroupLoadInProgressError:
+            log.debug("Attempt to join group %s rejected since coordinator is"
+                      " loading the group.", self.group_id)
+        except Errors.UnknownMemberIdError:
+            # reset the member id and retry immediately
+            self._coordinator.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
+            log.info(
+                "Attempt to join group %s failed due to unknown member id,"
+                " resetting and retrying.", self.group_id)
+            return
+        except (Errors.GroupCoordinatorNotAvailableError,
+                Errors.NotCoordinatorForGroupError):
+            # re-discover the coordinator and retry with backoff
+            self._coordinator.coordinator_dead()
+            log.info("Attempt to join group %s failed due to obsolete "
+                     "coordinator information, retrying.", self.group_id)
+        except Errors.KafkaError as err:
+            log.error(
+                "Error in join group '%s' response: %s", self.group_id, err)
+            if not err.retriable:
+                raise
+        else:
+            log.debug("Join group response %s", response)
+            self._coordinator.member_id = response.member_id
+            self._coordinator.generation = response.generation_id
+            self._coordinator.rejoin_needed = False
+            protocol = response.group_protocol
+            log.info("Joined group '%s' (generation %s) with member_id %s",
+                     self.group_id, response.generation_id, response.member_id)
+
+            if response.leader_id == response.member_id:
+                log.info("Elected group leader -- performing partition"
+                         " assignments using %s", protocol)
+                cor = self._on_join_leader(response)
+            else:
+                cor = self._on_join_follower()
+
+            try:
+                member_assignment_bytes = yield from cor
+            except (Errors.UnknownMemberIdError,
+                    Errors.RebalanceInProgressError,
+                    Errors.IllegalGenerationError):
+                # The current group is already not correct, maybe we were too
+                # slow and timeouted or a new rebalance is required.
+                pass
+            except Errors.KafkaError as err:
+                if not err.retriable:
+                    raise
+            else:
+                return (protocol, member_assignment_bytes)
+
+        # backoff wait - failure case
+        yield from asyncio.sleep(
+            self._retry_backoff_ms / 1000, loop=self.loop)
+
+    @asyncio.coroutine
+    def _on_join_follower(self):
+        # send follower's sync group with an empty assignment
+        request = SyncGroupRequest(
+            self.group_id,
+            self._coordinator.generation,
+            self._coordinator.member_id,
+            {})
+        log.debug("Issuing follower SyncGroup (%s) to coordinator %s",
+                  request, self.coordinator_id)
+        return (yield from self._send_sync_group_request(request))
+
+    @asyncio.coroutine
+    def _on_join_leader(self, response):
+        """
+        Perform leader synchronization and send back the assignment
+        for the group via SyncGroupRequest
+
+        Arguments:
+            response (JoinResponse): broker response to parse
+
+        Returns:
+            Future: resolves to member assignment encoded-bytes
+        """
+        try:
+            group_assignment = self._coordinator._perform_assignment(
+                response.leader_id,
+                response.group_protocol,
+                response.members)
+        except Exception as e:
+            raise Errors.KafkaError(repr(e))
+
+        assignment_req = []
+        for member_id, assignment in group_assignment.items():
+            if not isinstance(assignment, bytes):
+                assignment = assignment.encode()
+            assignment_req.append((member_id, assignment))
+
+        request = SyncGroupRequest(
+            self.group_id,
+            self._coordinator.generation,
+            self._coordinator.member_id,
+            assignment_req)
+
+        log.debug("Issuing leader SyncGroup (%s) to coordinator %s",
+                  request, self.coordinator_id)
+        return (yield from self._send_sync_group_request(request))
+
+    @asyncio.coroutine
+    def _send_sync_group_request(self, request):
+        if (yield from self._coordinator.coordinator_unknown()):
+            raise Errors.GroupCoordinatorNotAvailableError()
+
+        response = None
+        try:
+            response = yield from self._coordinator._send_req(
+                self.coordinator_id, request)
+            log.debug(
+                "Received successful sync group response for group %s: %s",
+                self.group_id, response)
+            return response.member_assignment
+        except Errors.RebalanceInProgressError as err:
+            log.info("SyncGroup for group %s failed due to coordinator"
+                     " rebalance, rejoining the group", self.group_id)
+            raise err
+        except (Errors.UnknownMemberIdError,
+                Errors.IllegalGenerationError) as err:
+            log.info("SyncGroup for group %s failed due to %s,"
+                     " rejoining the group", self.group_id, err)
+            self._coordinator.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
+            raise err
+        except (Errors.GroupCoordinatorNotAvailableError,
+                Errors.NotCoordinatorForGroupError) as err:
+            log.info("SyncGroup for group %s failed due to %s, will find new"
+                     " coordinator and rejoin", self.group_id, err)
+            self._coordinator.coordinator_dead()
+            raise err
+        except Errors.KafkaError as err:
+            log.error("Error from SyncGroup: %s", err)
+            raise err
+        finally:
+            if response is None:
+                # Always rejoin on error
+                self._coordinator.rejoin_needed = True
