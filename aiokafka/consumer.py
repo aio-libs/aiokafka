@@ -8,12 +8,18 @@ from kafka.common import (OffsetAndMetadata, TopicPartition,
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.consumer.subscription_state import SubscriptionState
 
+from aiokafka import __version__, ensure_future, PY_35
 from aiokafka.client import AIOKafkaClient
+from aiokafka.deprecate import FunctionToCoroDeprecation
 from aiokafka.group_coordinator import GroupCoordinator
 from aiokafka.fetcher import Fetcher
-from aiokafka import __version__, ensure_future, PY_35
 
 log = logging.getLogger(__name__)
+
+
+DEPRECATION_WARN = (
+    "Using `{}` as a function is deprecated and will be "
+    "prohibited in v0.3.0")
 
 
 class AIOKafkaConsumer(object):
@@ -274,6 +280,9 @@ class AIOKafkaConsumer(object):
         self._subscription.assign_from_user(partitions)
         self._on_change_subscription()
         self._client.set_topics([tp.topic for tp in partitions])
+        return FunctionToCoroDeprecation(
+            asyncio.sleep(0, loop=self._loop),
+            DEPRECATION_WARN.format("assign"))
 
     def assignment(self):
         """Get the TopicPartitions currently assigned to this consumer.
@@ -529,6 +538,9 @@ class AIOKafkaConsumer(object):
         else:
             self._client.set_topics(self._subscription.group_subscription())
             log.debug("Subscribed to topic(s): %s", topics)
+        return FunctionToCoroDeprecation(
+            asyncio.sleep(0, loop=self._loop),
+            DEPRECATION_WARN.format("subscribe"))
 
     def subscription(self):
         """Get the current topic subscription.
@@ -544,6 +556,9 @@ class AIOKafkaConsumer(object):
         self._client.set_topics([])
         log.debug(
             "Unsubscribed all topics or patterns and assigned partitions")
+        return FunctionToCoroDeprecation(
+            asyncio.sleep(0, loop=self._loop),
+            DEPRECATION_WARN.format("unsubscribe"))
 
     @asyncio.coroutine
     def _update_fetch_positions(self, partitions):
