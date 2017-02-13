@@ -4,6 +4,10 @@ sudo: required
 services:
   - docker
 
+branches:
+  only:
+    - master
+
 python:
     - 3.3
     - 3.4
