@@ -586,12 +586,12 @@ class Fetcher:
             return offset
         elif error_type in (Errors.NotLeaderForPartitionError,
                             Errors.UnknownTopicOrPartitionError):
-            log.warning("Attempt to fetch offsets for partition %s failed due"
-                        " to obsolete leadership information, retrying.",
-                        partition)
+            log.debug("Attempt to fetch offsets for partition %s failed due"
+                      " to obsolete leadership information, retrying.",
+                      partition)
             raise error_type(partition)
         else:
-            log.error(
+            log.warning(
                 "Attempt to fetch offsets for partition %s failed due to:"
                 " %s", partition, error_type)
             raise error_type(partition)

@@ -216,7 +216,7 @@ class AIOKafkaClient:
 
             if conn is None:
                 continue
-            log.debug("Sending metadata request %s to %s",
+            log.debug("Sending metadata request %s to node %s",
                       metadata_request, node_id)
 
             try:
