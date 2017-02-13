@@ -607,12 +607,12 @@ class GroupCoordinator(object):
                 # Here we create a copy of subscription so we can check if it
                 # changed during rebalance.
                 subscription = copy(self._subscription.subscription)
-                _pending_join_group = CoordinatorGroupRebalance(
+                rebalance = CoordinatorGroupRebalance(
                     self, self.group_id, self.coordinator_id,
                     subscription, self._assignors, self._session_timeout_ms,
                     self._retry_backoff_ms, loop=self.loop)
                 assignment = (
-                    yield from _pending_join_group.perform_group_join())
+                    yield from rebalance.perform_group_join())
 
                 if (subscription != self._subscription.subscription):
                     log.debug("Subscription changed during rebalance "
@@ -620,11 +620,11 @@ class GroupCoordinator(object):
                               subscription, self._subscription.subscription)
                     continue
                 if assignment is not None:
-                    self.needs_join_prepare = False
                     protocol, member_assignment_bytes = assignment
                     self._on_join_complete(
                         self.generation, self.member_id,
                         protocol, member_assignment_bytes)
+                    self.needs_join_prepare = True
                     return
 
     def coordinator_dead(self, error=None):
