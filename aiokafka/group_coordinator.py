@@ -61,7 +61,8 @@ class GroupCoordinator(object):
                  session_timeout_ms=30000, heartbeat_interval_ms=3000,
                  retry_backoff_ms=100,
                  enable_auto_commit=True, auto_commit_interval_ms=5000,
-                 assignors=(RoundRobinPartitionAssignor,)
+                 assignors=(RoundRobinPartitionAssignor,),
+                 exclude_internal_topics=True
                  ):
         """Initialize the coordination manager.
 
@@ -97,6 +98,7 @@ class GroupCoordinator(object):
         self._session_timeout_ms = session_timeout_ms
         self._heartbeat_interval_ms = heartbeat_interval_ms
         self._retry_backoff_ms = retry_backoff_ms
+        self._exclude_internal_topics = exclude_internal_topics
         self.generation = OffsetCommitRequest.DEFAULT_GENERATION_ID
         self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
         self.group_id = group_id
@@ -185,12 +187,11 @@ class GroupCoordinator(object):
     def _handle_metadata_update(self, cluster):
         if self._subscription.subscribed_pattern:
             topics = []
-            for topic in cluster.topics():
+            for topic in cluster.topics(self._exclude_internal_topics):
                 if self._subscription.subscribed_pattern.match(topic):
                     topics.append(topic)
 
             self._subscription.change_subscription(topics)
-            self._client.set_topics(self._subscription.group_subscription())
 
         # check if there are any changes to the metadata which should trigger
         # a rebalance
@@ -254,7 +255,8 @@ class GroupCoordinator(object):
         # the group is interested in, which ensures that all metadata changes
         # will eventually be seen
         self._subscription.group_subscribe(all_subscribed_topics)
-        self._client.set_topics(self._subscription.group_subscription())
+        if not self._subscription.subscribed_pattern:
+            self._client.set_topics(self._subscription.group_subscription())
 
         log.debug("Performing assignment for group %s using strategy %s"
                   " with subscriptions %s", self.group_id, assignor.name,

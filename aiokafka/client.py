@@ -264,8 +264,12 @@ class AIOKafkaClient:
             topic (str): topic to track
         """
         if topic in self._topics:
-            return
+            res = asyncio.Future(loop=self._loop)
+            res.set_result(True)
+        else:
+            res = self.force_metadata_update()
         self._topics.add(topic)
+        return res
 
     def set_topics(self, topics):
         """Set specific topics to track for metadata.
@@ -273,10 +277,13 @@ class AIOKafkaClient:
         Arguments:
             topics (list of str): topics to track
         """
-        if set(topics).difference(self._topics):
-            self._topics = set(topics)
-            # update metadata in async manner
-            self.force_metadata_update()
+        if not topics or set(topics).difference(self._topics):
+            res = self.force_metadata_update()
+        else:
+            res = asyncio.Future(loop=self._loop)
+            res.set_result(True)
+        self._topics = set(topics)
+        return res
 
     @asyncio.coroutine
     def _get_conn(self, node_id):
