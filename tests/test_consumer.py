@@ -595,7 +595,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Wait for consumer to refresh metadata with new topic
         yield from asyncio.sleep(0.3, loop=self.loop)
         self.assertFalse(consume_task.done())
-        self.assertEqual(consumer._client.cluster.topics(), {my_topic})
+        self.assertTrue(consumer._client.cluster.topics() >= {my_topic})
         self.assertEqual(consumer.subscription(), {my_topic})
 
         # Add another topic
@@ -604,8 +604,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Wait for consumer to refresh metadata with new topic
         yield from asyncio.sleep(0.3, loop=self.loop)
         self.assertFalse(consume_task.done())
-        self.assertEqual(consumer._client.cluster.topics(), {
-            my_topic, my_topic2})
+        self.assertTrue(consumer._client.cluster.topics() >=
+                        {my_topic, my_topic2})
         self.assertEqual(consumer.subscription(), {my_topic, my_topic2})
 
         # Now lets actualy produce some data and verify that it is consumed
@@ -729,7 +729,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     def test_exclude_internal_topics(self):
         # Create random topic
-        my_topic = "some_topic"
+        my_topic = "some_noninternal_topic"
         client = AIOKafkaClient(
             loop=self.loop, bootstrap_servers=self.hosts,
             client_id="test_autocreate")
@@ -746,9 +746,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             exclude_internal_topics=False)
         consumer.subscribe(pattern=pattern)
         yield from consumer.start()
-        self.assertEqual(consumer.subscription(),
-                         {"some_topic", "__consumer_offsets"})
+        self.assertIn("__consumer_offsets", consumer.subscription())
         yield from consumer._client.force_metadata_update()
-        self.assertEqual(consumer.subscription(),
-                         {"some_topic", "__consumer_offsets"})
+        self.assertIn("__consumer_offsets", consumer.subscription())
         yield from consumer.stop()
