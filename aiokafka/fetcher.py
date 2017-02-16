@@ -12,6 +12,7 @@ from kafka.protocol.offset import (
     OffsetRequest_v0 as OffsetRequest, OffsetResetStrategy)
 
 from aiokafka import ensure_future
+from aiokafka.errors import ConsumerStoppedError
 
 log = logging.getLogger(__name__)
 
@@ -191,6 +192,11 @@ class Fetcher:
             yield from self._fetch_task
         except asyncio.CancelledError:
             pass
+
+        # Fail all pending fetchone/fetchall calls
+        if self._wait_empty_future is not None and \
+                not self._wait_empty_future.done():
+            self._wait_empty_future.set_exception(ConsumerStoppedError())
 
         for x in self._fetch_tasks:
             x.cancel()
@@ -671,8 +677,9 @@ class Fetcher:
             [self._wait_empty_future], timeout=timeout, loop=self._loop)
 
         if done:
+            # By using timeout=0 we make sure there is no recursion here
             return (yield from self.fetched_records(
-                partitions, 0, max_records=max_records))
+                partitions, timeout=0, max_records=max_records))
         return {}
 
     def _unpack_message_set(self, tp, messages):

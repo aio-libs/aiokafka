@@ -199,14 +199,14 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         mocked.send.side_effect = Errors.UnknownMemberIdError()
         with self.assertRaises(Errors.UnknownMemberIdError):
             yield from do_sync_group()
-            self.assertEqual(
-                coordinator.member_id, JoinGroupRequest.UNKNOWN_MEMBER_ID)
+        self.assertEqual(
+            coordinator.member_id, JoinGroupRequest.UNKNOWN_MEMBER_ID)
 
         mocked.send.side_effect = Errors.NotCoordinatorForGroupError()
         coordinator.coordinator_id = 'some_id'
         with self.assertRaises(Errors.NotCoordinatorForGroupError):
             yield from do_sync_group()
-            self.assertEqual(coordinator.coordinator_id, None)
+        self.assertEqual(coordinator.coordinator_id, None)
 
         mocked.send.side_effect = KafkaError()
         with self.assertRaises(KafkaError):

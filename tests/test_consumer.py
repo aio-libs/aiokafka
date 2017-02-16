@@ -4,6 +4,7 @@ from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.fetcher import RecordTooLargeError
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
+from aiokafka import ConsumerStoppedError
 
 from kafka.common import (
     TopicPartition, OffsetAndMetadata, IllegalStateError,
@@ -230,10 +231,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             if len(result) == len(available_msgs):
                 break
 
-        yield from consumer2.stop()
-        if consumer1._client.api_version < (0, 9):
-            # coordinator rebalance feature works with >=Kafka-0.9 only
-            return
         self.assertEqual(set(available_msgs), set(result))
         yield from consumer1.stop()
         yield from consumer2.stop()
@@ -656,3 +653,46 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         yield from consumer1.stop()
         yield from consumer2.stop()
+
+    @run_until_complete
+    def test_consumer_stops_getone(self):
+        # If we have a fetch in progress it should be cancelled if consumer is
+        # stoped
+        consumer = yield from self.consumer_factory()
+        task = self.loop.create_task(consumer.getone())
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        # As we didn't input any data into Kafka
+        self.assertFalse(task.done())
+
+        yield from consumer.stop()
+        # Check that pending call was cancelled
+        with self.assertRaises(ConsumerStoppedError):
+            yield from task
+        # Check that any subsequent call will also raise ConsumerStoppedError
+        with self.assertRaises(ConsumerStoppedError):
+            yield from consumer.getone()
+
+    @run_until_complete
+    def test_consumer_stops_getmany(self):
+        # If we have a fetch in progress it should be cancelled if consumer is
+        # stoped
+        consumer = yield from self.consumer_factory()
+        task = self.loop.create_task(consumer.getmany(timeout_ms=10000))
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        # As we didn't input any data into Kafka
+        self.assertFalse(task.done())
+
+        yield from consumer.stop()
+        # Interrupted call should just return 0 results. This will allow the
+        # user to check for cancellation himself.
+        self.assertTrue(task.done())
+        self.assertEqual(task.result(), {})
+        # Any later call will raise ConsumerStoppedError as consumer closed
+        # all connections and can't continue operating.
+        with self.assertRaises(ConsumerStoppedError):
+            yield from self.loop.create_task(
+                consumer.getmany(timeout_ms=10000))
+        # Just check no spetial case on timeout_ms=0
+        with self.assertRaises(ConsumerStoppedError):
+            yield from self.loop.create_task(
+                consumer.getmany(timeout_ms=0))
