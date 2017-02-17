@@ -124,6 +124,10 @@ class AIOKafkaConsumer(object):
             socket connections. Directly passed into asyncio's
             `create_connection`_. For more information see :ref:`ssl_auth`.
             Default: None.
+        exclude_internal_topics (bool): Whether records from internal topics
+            (such as offsets) should be exposed to the consumer. If set to True
+            the only way to receive records from an internal topic is
+            subscribing to it. Requires 0.10+ Default: True
 
     Note:
         Many configuration parameters are taken from Java Client:
@@ -152,7 +156,8 @@ class AIOKafkaConsumer(object):
                  max_poll_records=None,
                  ssl_context=None,
                  security_protocol='PLAINTEXT',
-                 api_version='auto'):
+                 api_version='auto',
+                 exclude_internal_topics=True):
         if api_version not in ('auto', '0.9', '0.10'):
             raise ValueError("Unsupported Kafka API version")
         self._client = AIOKafkaClient(
@@ -175,6 +180,7 @@ class AIOKafkaConsumer(object):
         self._fetch_min_bytes = fetch_min_bytes
         self._fetch_max_wait_ms = fetch_max_wait_ms
         self._max_partition_fetch_bytes = max_partition_fetch_bytes
+        self._exclude_internal_topics = exclude_internal_topics
         if max_poll_records is not None and (
                 not isinstance(max_poll_records, int) or max_poll_records < 1):
             raise ValueError("`max_poll_records` should be positive Integer")
@@ -219,7 +225,8 @@ class AIOKafkaConsumer(object):
                 retry_backoff_ms=self._retry_backoff_ms,
                 enable_auto_commit=self._enable_auto_commit,
                 auto_commit_interval_ms=self._auto_commit_interval_ms,
-                assignors=self._partition_assignment_strategy)
+                assignors=self._partition_assignment_strategy,
+                exclude_internal_topics=self._exclude_internal_topics)
             self._coordinator.on_group_rebalanced(
                 self._on_change_subscription)
 
@@ -537,6 +544,10 @@ class AIOKafkaConsumer(object):
         self._subscription.subscribe(topics=topics,
                                      pattern=pattern,
                                      listener=listener)
+        # There's a bug in subscription, that pattern is not unset if we change
+        # from pattern to simple topic subscription
+        if not pattern:
+            self._subscription.subscribed_pattern = None
 
         # regex will need all topic metadata
         if pattern is not None:

@@ -595,8 +595,18 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Wait for consumer to refresh metadata with new topic
         yield from asyncio.sleep(0.3, loop=self.loop)
         self.assertFalse(consume_task.done())
-        self.assertEqual(consumer._client.cluster.topics(), {my_topic})
+        self.assertTrue(consumer._client.cluster.topics() >= {my_topic})
         self.assertEqual(consumer.subscription(), {my_topic})
+
+        # Add another topic
+        my_topic2 = "some-autocreate-pattern-2"
+        yield from producer.client._wait_on_metadata(my_topic2)
+        # Wait for consumer to refresh metadata with new topic
+        yield from asyncio.sleep(0.3, loop=self.loop)
+        self.assertFalse(consume_task.done())
+        self.assertTrue(consumer._client.cluster.topics() >=
+                        {my_topic, my_topic2})
+        self.assertEqual(consumer.subscription(), {my_topic, my_topic2})
 
         # Now lets actualy produce some data and verify that it is consumed
         yield from producer.send(my_topic, b'test msg')
@@ -611,6 +621,10 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Test will create a consumer group and check if adding new topic
         # will trigger a group rebalance and assign partitions
         pattern = "^another-autocreate-pattern-.*$"
+        client = AIOKafkaClient(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            client_id="test_autocreate")
+        yield from client.bootstrap()
         listener1 = StubRebalanceListener(loop=self.loop)
         listener2 = StubRebalanceListener(loop=self.loop)
         consumer1 = AIOKafkaConsumer(
@@ -634,10 +648,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # Lets force autocreation of a topic
         my_topic = "another-autocreate-pattern-1"
-        client = AIOKafkaClient(
-            loop=self.loop, bootstrap_servers=self.hosts,
-            client_id="test_autocreate")
-        yield from client.bootstrap()
         yield from client._wait_on_metadata(my_topic)
 
         # Wait for group to stabilize
@@ -651,8 +661,27 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             consumer1.assignment() | consumer2.assignment(),
             my_partitions)
 
+        # Lets add another topic
+        listener1.reset()
+        listener2.reset()
+        my_topic2 = "another-autocreate-pattern-2"
+        yield from client._wait_on_metadata(my_topic2)
+
+        # Wait for group to stabilize
+        assign1 = yield from listener1.wait_assign()
+        assign2 = yield from listener2.wait_assign()
+        # We expect 2 partitons for autocreated topics
+        my_partitions = set([
+            TopicPartition(my_topic, 0), TopicPartition(my_topic, 1),
+            TopicPartition(my_topic2, 0), TopicPartition(my_topic2, 1)])
+        self.assertEqual(assign1 | assign2, my_partitions)
+        self.assertEqual(
+            consumer1.assignment() | consumer2.assignment(),
+            my_partitions)
+
         yield from consumer1.stop()
         yield from consumer2.stop()
+        yield from client.close()
 
     @run_until_complete
     def test_consumer_stops_getone(self):
@@ -696,3 +725,28 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(ConsumerStoppedError):
             yield from self.loop.create_task(
                 consumer.getmany(timeout_ms=0))
+
+    @run_until_complete
+    def test_exclude_internal_topics(self):
+        # Create random topic
+        my_topic = "some_noninternal_topic"
+        client = AIOKafkaClient(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            client_id="test_autocreate")
+        yield from client.bootstrap()
+        yield from client._wait_on_metadata(my_topic)
+        yield from client.close()
+
+        # Check if only it will be subscribed
+        pattern = "^.*$"
+        consumer = AIOKafkaConsumer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            metadata_max_age_ms=200, group_id="some_group_1",
+            auto_offset_reset="earliest",
+            exclude_internal_topics=False)
+        consumer.subscribe(pattern=pattern)
+        yield from consumer.start()
+        self.assertIn("__consumer_offsets", consumer.subscription())
+        yield from consumer._client.force_metadata_update()
+        self.assertIn("__consumer_offsets", consumer.subscription())
+        yield from consumer.stop()
