@@ -46,7 +46,7 @@ class FetchResult:
             return self._backoff - lifetime
         return 0
 
-    def _check_assignment(self, tp):
+    def check_assignment(self, tp):
         if self._subscriptions.needs_partition_assignment or \
                 not self._subscriptions.is_fetchable(tp):
             # this can happen when a rebalance happened before
@@ -59,38 +59,55 @@ class FetchResult:
 
     def getone(self):
         tp = self._topic_partition
-        if not self._check_assignment(tp):
+        if not self.check_assignment(tp):
             return
 
+        tp_assignment = self._subscriptions.assignment[tp]
         while True:
             if not self._messages:
                 return
 
             msg = self._messages.popleft()
-            if msg.offset == self._subscriptions.assignment[tp].position:
-                # Compressed messagesets may include earlier messages
-                # It is also possible that the user called seek()
-                self._subscriptions.assignment[tp].position += 1
-                return msg
+            if msg.offset < tp_assignment.position:
+                # Probably just a compressed messageset, it's ok.
+                continue
+            elif (msg.offset > tp_assignment.position and
+                    tp_assignment.drop_pending_message_set):
+                # We seeked to a different position between `get*` calls,
+                # so we can't verify if the message is correct.
+                self._messages.clear()
+                return
+
+            tp_assignment.position = msg.offset + 1
+            return msg
 
     def getall(self, max_records=None):
         tp = self._topic_partition
-        if not self._check_assignment(tp):
+        if not self.check_assignment(tp) or not self._messages:
             return []
 
         if max_records is None:
             max_records = len(self._messages)
+
+        tp_assignment = self._subscriptions.assignment[tp]
+        if self._messages[0].offset > tp_assignment.position:
+            if tp_assignment.drop_pending_message_set:
+                # We seeked to a different position between `get*` calls,
+                # so we can't verify if the message is correct.
+                self._messages.clear()
+                return []
+
         ret_list = []
         while True:
             if not self._messages or len(ret_list) == max_records:
                 return ret_list
 
             msg = self._messages.popleft()
-            if msg.offset == self._subscriptions.assignment[tp].position:
-                # Compressed messagesets may include earlier messages
-                # It is also possible that the user called seek()
-                self._subscriptions.assignment[tp].position += 1
-                ret_list.append(msg)
+            if msg.offset < tp_assignment.position:
+                # Probably just a compressed messageset, it's ok.
+                continue
+            tp_assignment.position = msg.offset + 1
+            ret_list.append(msg)
 
     def has_more(self):
         return bool(self._messages)
@@ -266,7 +283,7 @@ class Fetcher:
                     self._fetch_tasks -= done_fetches
         except asyncio.CancelledError:
             pass
-        except Exception:  # noqa
+        except Exception:  # pragma: no cover
             log.error("Unexpected error in fetcher routine", exc_info=True)
 
     def _notify(self, future):
@@ -374,11 +391,14 @@ class Fetcher:
                               " since it is no longer fetchable", tp)
 
                 elif error_type is Errors.NoError:
-                    self._subscriptions.assignment[tp].highwater = highwater
+                    tp_assignment = self._subscriptions.assignment[tp]
+                    tp_assignment.highwater = highwater
 
-                    # we are interested in this fetch only if the beginning
+                    # we are sure in this fetch only if the beginning
                     # offset matches the current consumed position
                     fetch_offset = fetch_offsets[tp]
+                    if fetch_offset == tp_assignment.position:
+                        tp_assignment.drop_pending_message_set = False
                     partial = None
                     if messages and \
                             isinstance(messages[-1][-1], PartialMessage):
@@ -401,6 +421,7 @@ class Fetcher:
                             subscriptions=self._subscriptions,
                             backoff=self._prefetch_backoff,
                             loop=self._loop)
+
                         # We added at least 1 successful record
                         needs_wakeup = True
                     elif partial:

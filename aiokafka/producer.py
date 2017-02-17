@@ -325,7 +325,7 @@ class AIOKafkaProducer(object):
 
         except asyncio.CancelledError:
             pass
-        except Exception:  # noqa
+        except Exception:  # pragma: no cover
             log.error("Unexpected error in sender routine", exc_info=True)
 
     @asyncio.coroutine
