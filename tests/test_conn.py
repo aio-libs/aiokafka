@@ -55,6 +55,34 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         self.assertIsInstance(response, MetadataResponse)
 
     @run_until_complete
+    def test_connections_max_idle_ms(self):
+        host, port = self.kafka_host, self.kafka_port
+        conn = yield from create_conn(
+            host, port, loop=self.loop, max_idle_ms=200)
+        self.assertEqual(conn.connected(), True)
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        # Do some work
+        request = MetadataRequest([])
+        yield from conn.send(request)
+        yield from asyncio.sleep(0.15, loop=self.loop)
+        # Check if we're stil connected after 250ms, as we were not idle
+        self.assertEqual(conn.connected(), True)
+
+        # It shouldn't break if we have a long running call either
+        readexactly = conn._reader.readexactly
+        with mock.patch.object(conn._reader, 'readexactly') as mocked:
+            @asyncio.coroutine
+            def long_read(n):
+                yield from asyncio.sleep(0.2, loop=self.loop)
+                return (yield from readexactly(n))
+            mocked.side_effect = long_read
+            yield from conn.send(MetadataRequest([]))
+        self.assertEqual(conn.connected(), True)
+
+        yield from asyncio.sleep(0.2, loop=self.loop)
+        self.assertEqual(conn.connected(), False)
+
+    @run_until_complete
     def test_send_without_response(self):
         """Imitate producer without acknowledge, in this case client produces
         messages and kafka does not send response, and we make sure that
