@@ -4,6 +4,7 @@ FLAGS=
 SCALA_VERSION?=2.11
 KAFKA_VERSION?=0.10.1.0
 DOCKER_IMAGE=aiolibs/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
+DIFF_BRANCH=origin/master
 
 setup:
 	pip install -r requirements-dev.txt
@@ -22,6 +23,13 @@ vtest: flake
 cov cover coverage: flake
 	py.test -s --no-print-logs --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 	@echo "open file://`pwd`/htmlcov/index.html"
+
+coverage.xml: .coverage
+	coverage xml
+
+diff-cov: coverage.xml
+	git fetch
+	diff-cover coverage.xml --html-report diff-cover.html --compare-branch=$(DIFF_BRANCH)
 
 clean:
 	rm -rf `find . -name __pycache__`
