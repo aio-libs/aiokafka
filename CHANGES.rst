@@ -1,10 +1,16 @@
 CHANGES
 --------
 
-0.2.x (xxxx-xx-xx)
+0.2.1 (2017-02-19)
 ^^^^^^^^^^^^^^^^^^
 
 * Add a check to wait topic autocreation in Consumer, instead of raising UnknownTopicOrPartitionError (PR #92 by fabregas)
+* Consumer now stops consumption after `consumer.stop()` call. Any new `get*` calls will result in ConsumerStoppedError (PR #81)
+* Added `exclude_internal_topics` option for Consumer (PR #111)
+* Better support for pattern subscription when used with `group_id` (part of PR #111)
+* Fix for Consumer `subscribe` and JoinGroup race condition (issue #88). Coordinator will now notice subscription changes during rebalance and will join group again. (PR #106)
+* Changed logging messages according to KAFKA-3318. Now INFO level should be less messy and more informative. (PR #110)
+* Add support for connections_max_idle_ms config (PR #113)
 
 
 0.2.0 (2016-12-18)
