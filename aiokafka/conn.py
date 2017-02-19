@@ -18,14 +18,16 @@ READER_LIMIT = 2 ** 16
 @asyncio.coroutine
 def create_conn(host, port, *, loop=None, client_id='aiokafka',
                 request_timeout_ms=40000, api_version=(0, 8, 2),
-                ssl_context=None, security_protocol="PLAINTEXT"):
+                ssl_context=None, security_protocol="PLAINTEXT",
+                max_idle_ms=None):
     if loop is None:
         loop = asyncio.get_event_loop()
     conn = AIOKafkaConnection(
         host, port, loop=loop, client_id=client_id,
         request_timeout_ms=request_timeout_ms,
         api_version=api_version,
-        ssl_context=ssl_context, security_protocol=security_protocol)
+        ssl_context=ssl_context, security_protocol=security_protocol,
+        max_idle_ms=max_idle_ms)
     yield from conn.connect()
     return conn
 
@@ -51,7 +53,8 @@ class AIOKafkaConnection:
 
     def __init__(self, host, port, *, loop, client_id='aiokafka',
                  request_timeout_ms=40000, api_version=(0, 8, 2),
-                 ssl_context=None, security_protocol="PLAINTEXT"):
+                 ssl_context=None, security_protocol="PLAINTEXT",
+                 max_idle_ms=None):
         self._loop = loop
         self._host = host
         self._port = port
@@ -66,6 +69,10 @@ class AIOKafkaConnection:
         self._read_task = None
         self._correlation_id = 0
         self._closed_fut = None
+
+        self._max_idle_ms = max_idle_ms
+        self._last_action = loop.time()
+        self._idle_handle = None
 
     @asyncio.coroutine
     def connect(self):
@@ -88,7 +95,27 @@ class AIOKafkaConnection:
         self._reader, self._writer, self._protocol = reader, writer, protocol
         # Start reader task.
         self._read_task = ensure_future(self._read(), loop=loop)
+        # Start idle checker
+        if self._max_idle_ms is not None:
+            self._idle_handle = self._loop.call_soon(self._idle_check)
         return reader, writer
+
+    def _idle_check(self):
+        idle_for = self._loop.time() - self._last_action
+        timeout = self._max_idle_ms / 1000
+        # If we have any pending requests, we are assumed to be not idle.
+        # it's up to `request_timeout_ms` to break those.
+        if (idle_for >= timeout) and not self._requests:
+            self.close()
+        else:
+            if self._requests:
+                # We must wait at least max_idle_ms anyway. Mostly this setting
+                # is quite high so we shouldn't spend many CPU on this
+                wake_up_in = timeout
+            else:
+                wake_up_in = timeout - idle_for
+            self._idle_handle = self._loop.call_later(
+                wake_up_in, self._idle_check)
 
     def __repr__(self):
         return "<AIOKafkaConnection host={0.host} port={0.port}>".format(self)
@@ -143,6 +170,8 @@ class AIOKafkaConnection:
                 if not fut.done():
                     fut.set_exception(error)
             self._requests = []
+        if self._idle_handle is not None:
+            self._idle_handle.cancel()
         # transport.close() will close socket, but not right ahead. Return
         # a future in case we need to wait on it.
         return self._closed_fut
@@ -182,6 +211,8 @@ class AIOKafkaConnection:
                     self.log.debug('%s Response %d: %s',
                                    self, correlation_id, response)
                     fut.set_result(response)
+                # Update idle timer.
+                self._last_action = self._loop.time()
         except (OSError, EOFError, ConnectionError) as exc:
             conn_exc = Errors.ConnectionError(
                 "Connection at {0}:{1} broken".format(self._host, self._port))

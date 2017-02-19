@@ -128,6 +128,8 @@ class AIOKafkaConsumer(object):
             (such as offsets) should be exposed to the consumer. If set to True
             the only way to receive records from an internal topic is
             subscribing to it. Requires 0.10+ Default: True
+        connections_max_idle_ms (int): Close idle connections after the number
+            of milliseconds specified by this config. Default: 540000 (9hours).
 
     Note:
         Many configuration parameters are taken from Java Client:
@@ -157,7 +159,8 @@ class AIOKafkaConsumer(object):
                  ssl_context=None,
                  security_protocol='PLAINTEXT',
                  api_version='auto',
-                 exclude_internal_topics=True):
+                 exclude_internal_topics=True,
+                 connections_max_idle_ms=540000):
         if api_version not in ('auto', '0.9', '0.10'):
             raise ValueError("Unsupported Kafka API version")
         self._client = AIOKafkaClient(
@@ -167,7 +170,8 @@ class AIOKafkaConsumer(object):
             retry_backoff_ms=retry_backoff_ms,
             api_version=api_version,
             ssl_context=ssl_context,
-            security_protocol=security_protocol)
+            security_protocol=security_protocol,
+            connections_max_idle_ms=connections_max_idle_ms)
 
         self._group_id = group_id
         self._heartbeat_interval_ms = heartbeat_interval_ms

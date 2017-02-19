@@ -55,6 +55,9 @@ class AIOKafkaClient:
         ssl_context (ssl.SSLContext): pre-configured SSLContext for wrapping
             socket connections. For more information see :ref:`ssl_auth`.
             Default: None.
+        connections_max_idle_ms (int): Close idle connections after the number
+            of milliseconds specified by this config. Specifying `None` will
+            disable idle checks. Default: 540000 (9hours).
     """
 
     def __init__(self, *, loop, bootstrap_servers='localhost',
@@ -64,7 +67,8 @@ class AIOKafkaClient:
                  retry_backoff_ms=100,
                  ssl_context=None,
                  security_protocol='PLAINTEXT',
-                 api_version='auto'):
+                 api_version='auto',
+                 connections_max_idle_ms=540000):
         if security_protocol not in ('SSL', 'PLAINTEXT'):
             raise ValueError("`security_protocol` should be SSL or PLAINTEXT")
         if security_protocol == "SSL" and ssl_context is None:
@@ -78,6 +82,7 @@ class AIOKafkaClient:
         self._security_protocol = security_protocol
         self._ssl_context = ssl_context
         self._retry_backoff = retry_backoff_ms / 1000
+        self._connections_max_idle_ms = connections_max_idle_ms
 
         self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
         self._topics = set()  # empty set will fetch all topic metadata
@@ -133,7 +138,8 @@ class AIOKafkaClient:
                     host, port, loop=self._loop, client_id=self._client_id,
                     request_timeout_ms=self._request_timeout_ms,
                     ssl_context=self._ssl_context,
-                    security_protocol=self._security_protocol)
+                    security_protocol=self._security_protocol,
+                    max_idle_ms=self._connections_max_idle_ms)
             except (OSError, asyncio.TimeoutError) as err:
                 log.error('Unable connect to "%s:%s": %s', host, port, err)
                 continue
