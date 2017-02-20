@@ -240,6 +240,7 @@ class GroupCoordinator(object):
                               " for group %s failed on_partitions_revoked",
                               self._subscription.listener, self.group_id)
 
+    @asyncio.coroutine
     def _perform_assignment(self, leader_id, assignment_strategy, members):
         assignor = self._lookup_assignor(assignment_strategy)
         assert assignor, \
@@ -256,7 +257,11 @@ class GroupCoordinator(object):
         # will eventually be seen
         self._subscription.group_subscribe(all_subscribed_topics)
         if not self._subscription.subscribed_pattern:
-            self._client.set_topics(self._subscription.group_subscription())
+            self._client.set_topics(
+                self._subscription.group_subscription())
+        # If somewhere we forced a metadata update (like in some `set_topics`
+        # call) we should wait for it before performing assignment
+        yield from self._client._maybe_wait_metadata()
 
         log.debug("Performing assignment for group %s using strategy %s"
                   " with subscriptions %s", self.group_id, assignor.name,
@@ -877,10 +882,11 @@ class CoordinatorGroupRebalance:
             Future: resolves to member assignment encoded-bytes
         """
         try:
-            group_assignment = self._coordinator._perform_assignment(
-                response.leader_id,
-                response.group_protocol,
-                response.members)
+            group_assignment = \
+                yield from self._coordinator._perform_assignment(
+                    response.leader_id,
+                    response.group_protocol,
+                    response.members)
         except Exception as e:
             raise Errors.KafkaError(repr(e))
 
