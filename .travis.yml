@@ -7,7 +7,7 @@ services:
 branches:
   only:
     - master
-    - /^v.*$/
+    - /^v\d+\.\d+\.\d+$/
 
 python:
     - 3.3
