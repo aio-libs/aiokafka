@@ -89,9 +89,16 @@ class KafkaIntegrationTestCase(unittest.TestCase):
             self.topic = "topic-{}-{}".format(
                 self.id()[self.id().rindex(".") + 1:],
                 random_string(10).decode('utf-8'))
+        self._cleanup = []
 
     def tearDown(self):
         super().tearDown()
+        for coro, args, kw in reversed(self._cleanup):
+            self.loop.run_until_complete(coro(*args, **kw))
+
+    def add_cleanup(self, cb_or_coro, *args, **kw):
+        self._cleanup.append(
+            (cb_or_coro, args, kw))
 
     @asyncio.coroutine
     def wait_topic(self, client, topic):
