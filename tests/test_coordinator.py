@@ -508,3 +508,44 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             self.assertEqual(
                 set(subscription.assignment.keys()),
                 {TopicPartition("topic2", 0), TopicPartition("topic2", 1)})
+
+    @run_until_complete
+    def test_coordinator_metadata_change_by_broker(self):
+        # Issue #108. We can have a misleading metadata change, that will
+        # trigger additional rebalance
+        client = AIOKafkaClient(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        yield from client.bootstrap()
+        yield from self.wait_topic(client, 'topic1')
+        yield from self.wait_topic(client, 'topic2')
+        client.set_topics(['other_topic'])
+        yield from client.force_metadata_update()
+
+        subscription = SubscriptionState('earliest')
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            group_id='race-rebalance-subscribe-append',
+            heartbeat_interval_ms=2000000)
+        subscription.subscribe(topics=('topic1',))
+        yield from client.set_topics(subscription.group_subscription())
+        yield from coordinator.ensure_active_group()
+
+        _perform_assignment = coordinator._perform_assignment
+        with mock.patch.object(coordinator, '_perform_assignment') as mocked:
+            mocked.side_effect = _perform_assignment
+
+            subscription.subscribe(topics=('topic2',))
+            yield from client.set_topics(subscription.group_subscription())
+
+            # Should only trigger 1 rebalance, but will trigger 2 with bug:
+            #   Metadata snapshot will change:
+            #   {'topic1': {0, 1}} -> {'topic1': {0, 1}, 'topic2': {0, 1}}
+            #   And then again:
+            #   {'topic1': {0, 1}, 'topic2': {0, 1}} -> {'topic2': {0, 1}}
+            yield from coordinator.ensure_active_group()
+            yield from client.force_metadata_update()
+            yield from coordinator.ensure_active_group()
+            self.assertEqual(mocked.call_count, 1)
+
+        yield from coordinator.close()
+        yield from client.close()
