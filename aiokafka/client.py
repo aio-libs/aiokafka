@@ -90,7 +90,7 @@ class AIOKafkaClient:
         self._loop = loop
         self._sync_task = None
 
-        self._md_update_fut = asyncio.Future(loop=self._loop)
+        self._md_update_fut = None
         self._md_update_waiter = asyncio.Future(loop=self._loop)
         self._get_conn_lock = asyncio.Lock(loop=loop)
 
@@ -189,10 +189,21 @@ class AIOKafkaClient:
                 timeout=self._metadata_max_age_ms / 1000,
                 loop=self._loop)
 
+            topics = self._topics
+            if self._md_update_fut is None:
+                self._md_update_fut = asyncio.Future(loop=self._loop)
+            ret = yield from self._metadata_update(self.cluster, topics)
+            # If list of topics changed during metadata update we must update
+            # it again right away.
+            if topics != self._topics:
+                continue
+            # Earlier this waiter was set before sending metadata_request,
+            # but that was to avoid topic list changes being unnoticed, which
+            # is handled explicitly now.
             self._md_update_waiter = asyncio.Future(loop=self._loop)
-            ret = yield from self._metadata_update(self.cluster, self._topics)
+
             self._md_update_fut.set_result(ret)
-            self._md_update_fut = asyncio.Future(loop=self._loop)
+            self._md_update_fut = None
 
     def get_random_node(self):
         """choice random node from known cluster brokers
@@ -247,9 +258,11 @@ class AIOKafkaClient:
         Returns:
             True/False - metadata updated or not
         """
-        # Wake up the `_md_synchronizer` task
-        if not self._md_update_waiter.done():
-            self._md_update_waiter.set_result(None)
+        if self._md_update_fut is None:
+            # Wake up the `_md_synchronizer` task
+            if not self._md_update_waiter.done():
+                self._md_update_waiter.set_result(None)
+            self._md_update_fut = asyncio.Future(loop=self._loop)
         # Metadata will be updated in the background by syncronizer
         return self._md_update_fut
 
@@ -283,6 +296,7 @@ class AIOKafkaClient:
         Arguments:
             topics (list of str): topics to track
         """
+        assert not isinstance(topics, str)
         if not topics or set(topics).difference(self._topics):
             res = self.force_metadata_update()
         else:
@@ -453,3 +467,8 @@ class AIOKafkaClient:
             yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
 
         return self.cluster.partitions_for_topic(topic)
+
+    @asyncio.coroutine
+    def _maybe_wait_metadata(self):
+        if self._md_update_fut is not None:
+            yield from self._md_update_fut

@@ -21,6 +21,7 @@ env:
         - KAFKA_VERSION=0.10.1.0 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
 
 before_install:
+    - sudo apt-get update
     - sudo apt-get install -y libsnappy-dev
 
 install:

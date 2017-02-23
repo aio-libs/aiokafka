@@ -222,3 +222,80 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
             with self.assertRaises(KafkaError):
                 yield from client.fetch_all_metadata()
         yield from client.close()
+
+    @run_until_complete
+    def test_force_metadata_update_multiple_times(self):
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=self.hosts,
+            metadata_max_age_ms=10000)
+        yield from client.bootstrap()
+        self.add_cleanup(client.close)
+
+        orig = client._metadata_update
+        with mock.patch.object(client, '_metadata_update') as mocked:
+            @asyncio.coroutine
+            def new(*args, **kw):
+                yield from asyncio.sleep(0.01, loop=self.loop)
+                return (yield from orig(*args, **kw))
+            mocked.side_effect = new
+
+            client.force_metadata_update()
+            yield from asyncio.sleep(0.001, loop=self.loop)
+            self.assertEqual(
+                len(client._metadata_update.mock_calls), 1)
+            client.force_metadata_update()
+            yield from asyncio.sleep(0.001, loop=self.loop)
+            self.assertEqual(
+                len(client._metadata_update.mock_calls), 1)
+            client.force_metadata_update()
+            yield from asyncio.sleep(0.05, loop=self.loop)
+            self.assertEqual(
+                len(client._metadata_update.mock_calls), 1)
+
+    @run_until_complete
+    def test_set_topics_trigger_metadata_update(self):
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=self.hosts,
+            metadata_max_age_ms=10000)
+        yield from client.bootstrap()
+        self.add_cleanup(client.close)
+
+        orig = client._metadata_update
+        with mock.patch.object(client, '_metadata_update') as mocked:
+            @asyncio.coroutine
+            def new(*args, **kw):
+                yield from asyncio.sleep(0.01, loop=self.loop)
+                return (yield from orig(*args, **kw))
+            mocked.side_effect = new
+
+            yield from client.set_topics(["topic1"])
+            self.assertEqual(
+                len(client._metadata_update.mock_calls), 1)
+            # Same topics list should not trigger update
+            yield from client.set_topics(["topic1"])
+            self.assertEqual(
+                len(client._metadata_update.mock_calls), 1)
+
+            yield from client.set_topics(["topic1", "topic2"])
+            self.assertEqual(
+                len(client._metadata_update.mock_calls), 2)
+            # Less topics should not update too
+            yield from client.set_topics(["topic2"])
+            self.assertEqual(
+                len(client._metadata_update.mock_calls), 2)
+
+            # Setting [] should force update as it meens all topics
+            yield from client.set_topics([])
+            self.assertEqual(
+                len(client._metadata_update.mock_calls), 3)
+
+            # Changing topics during refresh should trigger 2 refreshes
+            client.set_topics(["topic3"])
+            yield from asyncio.sleep(0.001, loop=self.loop)
+            self.assertEqual(
+                len(client._metadata_update.mock_calls), 4)
+            yield from client.set_topics(["topic3", "topics4"])
+            self.assertEqual(
+                len(client._metadata_update.mock_calls), 5)
