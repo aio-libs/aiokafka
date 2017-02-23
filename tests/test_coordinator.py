@@ -459,3 +459,52 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         yield from coordinator.close()
         yield from client.close()
+
+    @run_until_complete
+    def test_coordinator_metadata_update_during_rebalance(self):
+        # Race condition where client.set_topics start MetadataUpdate, but it
+        # fails to arrive before leader performed assignment
+
+        # Just ensure topics are created
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        yield from client.bootstrap()
+        yield from self.wait_topic(client, 'topic1')
+        yield from self.wait_topic(client, 'topic2')
+        yield from client.close()
+
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        yield from client.bootstrap()
+        self.add_cleanup(client.close)
+        subscription = SubscriptionState('earliest')
+        client.set_topics(["topic1"])
+        subscription.subscribe(topics=('topic1',))
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            group_id='race-rebalance-metadata-update',
+            heartbeat_interval_ms=20000000)
+        self.add_cleanup(coordinator.close)
+        yield from coordinator.ensure_active_group()
+        # Check that topic's partitions are properly assigned
+        self.assertEqual(subscription.needs_partition_assignment, False)
+        self.assertEqual(
+            set(subscription.assignment.keys()),
+            {TopicPartition("topic1", 0), TopicPartition("topic1", 1)})
+
+        _metadata_update = client._metadata_update
+        with mock.patch.object(client, '_metadata_update') as mocked:
+            @asyncio.coroutine
+            def _new(*args, **kw):
+                # Just make metadata updates a bit more slow for test
+                # robustness
+                yield from asyncio.sleep(0.5, loop=self.loop)
+                res = yield from _metadata_update(*args, **kw)
+                return res
+            mocked.side_effect = _new
+
+            subscription.subscribe(topics=('topic2', ))
+            client.set_topics(('topic2', ))
+            yield from coordinator.ensure_active_group()
+            self.assertEqual(subscription.needs_partition_assignment, False)
+            self.assertEqual(
+                set(subscription.assignment.keys()),
+                {TopicPartition("topic2", 0), TopicPartition("topic2", 1)})
