@@ -11,4 +11,4 @@ xxhash==1.0.0
 sphinxcontrib-asyncio>=0.2.0
 sphinx-rtd-theme==0.2.2
 diff-cover==0.9.10
-setuptools==34.3.0
+setuptools==34.3.1
