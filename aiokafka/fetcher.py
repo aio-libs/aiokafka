@@ -615,6 +615,9 @@ class Fetcher:
         while True:
             for tp in list(self._records.keys()):
                 if partitions and tp not in partitions:
+                    # Cleanup results for unassigned partitons
+                    if not self._subscriptions.is_assigned(tp):
+                        del self._records[tp]
                     continue
                 res_or_error = self._records[tp]
                 if type(res_or_error) == FetchResult:
@@ -646,6 +649,9 @@ class Fetcher:
             drained = {}
             for tp in list(self._records.keys()):
                 if partitions and tp not in partitions:
+                    # Cleanup results for unassigned partitons
+                    if not self._subscriptions.is_assigned(tp):
+                        del self._records[tp]
                     continue
                 res_or_error = self._records[tp]
                 if type(res_or_error) == FetchResult:

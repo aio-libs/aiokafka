@@ -798,3 +798,72 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         with self.assertRaises(OffsetOutOfRangeError):
             yield from consumer.getone()
+
+    @run_until_complete
+    def test_consumer_cleanup_unassigned_data_getone(self):
+        # Send 3 messages
+        topic2 = self.topic + "_other"
+        topic3 = self.topic + "_another"
+        tp = TopicPartition(self.topic, 0)
+        tp2 = TopicPartition(topic2, 0)
+        tp3 = TopicPartition(topic3, 0)
+        yield from self.send_messages(0, [1, 2, 3])
+        yield from self.send_messages(0, [5, 6, 7], topic=topic2)
+        yield from self.send_messages(0, [8], topic=topic3)
+
+        # Read first. 3 are delivered at a time, so 2 will remain
+        consumer = yield from self.consumer_factory()
+        yield from consumer.getone()
+        # Verify that we have some precached records
+        self.assertIn(tp, consumer._fetcher._records)
+
+        consumer.subscribe([topic2])
+        res = yield from consumer.getone()
+        self.assertEqual(res.value, b"5")
+        # Verify that we have no more precached records
+        self.assertNotIn(tp, consumer._fetcher._records)
+
+        # Same with an explicit partition
+        consumer.subscribe([topic3])
+        res = yield from consumer.getone(tp3)
+        self.assertEqual(res.value, b"8")
+        # Verify that we have no more precached records
+        self.assertNotIn(tp, consumer._fetcher._records)
+        self.assertNotIn(tp2, consumer._fetcher._records)
+
+        yield from consumer.stop()
+
+    @run_until_complete
+    def test_consumer_cleanup_unassigned_data_getmany(self):
+        # Send 3 messages
+        topic2 = self.topic + "_other"
+        topic3 = self.topic + "_another"
+        tp = TopicPartition(self.topic, 0)
+        tp2 = TopicPartition(topic2, 0)
+        tp3 = TopicPartition(topic3, 0)
+        yield from self.send_messages(0, [1, 2, 3])
+        yield from self.send_messages(0, [5, 6, 7], topic=topic2)
+        yield from self.send_messages(0, [8], topic=topic3)
+
+        # Read first. 3 are delivered at a time, so 2 will remain
+        consumer = yield from self.consumer_factory(
+            heartbeat_interval_ms=200)
+        yield from consumer.getone()
+        # Verify that we have some precached records
+        self.assertIn(tp, consumer._fetcher._records)
+
+        consumer.subscribe([topic2])
+        res = yield from consumer.getmany(timeout_ms=500, max_records=1)
+        self.assertEqual(res[tp2][0].value, b"5")
+        # Verify that we have no more precached records
+        self.assertNotIn(tp, consumer._fetcher._records)
+
+        # Same with an explicit partition
+        consumer.subscribe([topic3])
+        res = yield from consumer.getmany(tp3, timeout_ms=500, max_records=1)
+        self.assertEqual(res[tp3][0].value, b"8")
+        # Verify that we have no more precached records
+        self.assertNotIn(tp, consumer._fetcher._records)
+        self.assertNotIn(tp2, consumer._fetcher._records)
+
+        yield from consumer.stop()
