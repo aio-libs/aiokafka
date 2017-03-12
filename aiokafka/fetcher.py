@@ -641,46 +641,52 @@ class Fetcher:
     def fetched_records(self, partitions, timeout=0, max_records=None):
         """ Returns previously fetched records and updates consumed offsets.
         """
-        drained = {}
-        for tp in list(self._records.keys()):
-            if partitions and tp not in partitions:
-                continue
-            res_or_error = self._records[tp]
-            if type(res_or_error) == FetchResult:
-                drained[tp] = res_or_error.getall(max_records)
-                if max_records is not None:
-                    max_records -= len(drained[tp])
-                    assert max_records >= 0  # Just in case
-                    if max_records == 0:
-                        break
-                if not res_or_error.has_more():
-                    # We processed all messages - request new ones
-                    del self._records[tp]
-                    self._notify(self._wait_consume_future)
-            else:
-                # We already got some messages from another partition -
-                # return them. We will raise this error on next call
-                if drained:
-                    return drained
+        while True:
+            start_time = self._loop.time()
+            drained = {}
+            for tp in list(self._records.keys()):
+                if partitions and tp not in partitions:
+                    continue
+                res_or_error = self._records[tp]
+                if type(res_or_error) == FetchResult:
+                    records = res_or_error.getall(max_records)
+                    if not res_or_error.has_more():
+                        # We processed all messages - request new ones
+                        del self._records[tp]
+                        self._notify(self._wait_consume_future)
+                    if not records:
+                        continue
+                    drained[tp] = records
+                    if max_records is not None:
+                        max_records -= len(drained[tp])
+                        assert max_records >= 0  # Just in case
+                        if max_records == 0:
+                            break
                 else:
-                    # Remove error, so we can fetch on partition again
-                    del self._records[tp]
-                    self._notify(self._wait_consume_future)
-                    res_or_error.check_raise()
+                    # We already got some messages from another partition -
+                    # return them. We will raise this error on next call
+                    if drained:
+                        return drained
+                    else:
+                        # Remove error, so we can fetch on partition again
+                        del self._records[tp]
+                        self._notify(self._wait_consume_future)
+                        res_or_error.check_raise()
 
-        if drained or not timeout:
-            return drained
+            if drained or not timeout:
+                return drained
 
-        if self._wait_empty_future is None or self._wait_empty_future.done():
-            self._wait_empty_future = asyncio.Future(loop=self._loop)
-        done, _ = yield from asyncio.wait(
-            [self._wait_empty_future], timeout=timeout, loop=self._loop)
+            if self._wait_empty_future is None \
+                    or self._wait_empty_future.done():
+                self._wait_empty_future = asyncio.Future(loop=self._loop)
+            done, _ = yield from asyncio.wait(
+                [self._wait_empty_future], timeout=timeout, loop=self._loop)
+            if not done or self._wait_empty_future.exception() is not None:
+                return {}
 
-        if done:
-            # By using timeout=0 we make sure there is no recursion here
-            return (yield from self.fetched_records(
-                partitions, timeout=0, max_records=max_records))
-        return {}
+            # Decrease timeout accordingly
+            timeout = timeout - (self._loop.time() - start_time)
+            timeout = max(0, timeout)
 
     def _unpack_message_set(self, tp, messages):
         for offset, size, msg in messages:
