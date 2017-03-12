@@ -140,7 +140,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             resp = yield from consumer.getmany(timeout_ms=1000)
             for partition, msg_list in resp.items():
                 messages += msg_list
-            if len(messages) == 200:
+            if len(messages) >= 200:
                 break
         self.assert_message_count(messages, 200)
 
@@ -149,21 +149,21 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from self.send_messages(0, list(range(0, 100)))
         yield from self.send_messages(1, list(range(100, 200)))
 
+        # Check consumption for a specific partition
         messages = []
         while True:
             resp = yield from consumer.getmany(p0, timeout_ms=1000)
             for partition, msg_list in resp.items():
                 messages += msg_list
-            if len(messages) == 100:
+            if len(messages) >= 100:
                 break
         self.assert_message_count(messages, 100)
 
         while True:
-            resp = yield from consumer.getmany(p1)
-            yield from asyncio.sleep(0.1, loop=self.loop)
+            resp = yield from consumer.getmany(p1, timeout_ms=1000)
             for partition, msg_list in resp.items():
                 messages += msg_list
-            if len(messages) == 200:
+            if len(messages) >= 200:
                 break
         self.assert_message_count(messages, 200)
 
@@ -423,7 +423,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         rmsg2 = yield from consumer.getone()
         self.assertEqual(rmsg2.value, b'3')
         res = yield from consumer.getmany(timeout_ms=0)
-        self.assertEqual(res, {tp: []})
+        self.assertEqual(res, {})
         yield from consumer.stop()
 
     @run_until_complete
