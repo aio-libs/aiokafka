@@ -113,7 +113,8 @@ class GroupCoordinator(object):
         self._auto_commit_interval_ms = auto_commit_interval_ms
         self._assignors = assignors
         self._subscription = subscription
-        self._partitions_per_topic = {}
+        self._metadata_snapshot = {}  # Is updated by metadata listener
+        self._assignment_snapshot = None  # Is only present on Leader consumer
         self._cluster = client.cluster
         self._auto_commit_task = None
         # _closing future used as a signal to heartbeat task for finish ASAP
@@ -193,27 +194,23 @@ class GroupCoordinator(object):
 
             self._subscription.change_subscription(topics)
 
-        # check if there are any changes to the metadata which should trigger
-        # a rebalance
-        if self._subscription_metadata_changed():
-            self._subscription.mark_for_reassignment()
+        if self._subscription.partitions_auto_assigned():
+            metadata_snapshot = self._get_metadata_snapshot()
+            if self._metadata_snapshot != metadata_snapshot:
+                self._metadata_snapshot = metadata_snapshot
 
-    def _subscription_metadata_changed(self):
-        if not self._subscription.partitions_auto_assigned():
-            return False
+                if self._metadata_changed():
+                    log.debug("Metadata for topic has changed from %s to %s. ",
+                              self._assignment_snapshot, metadata_snapshot)
 
-        old_partitions_per_topic = self._partitions_per_topic
-        self._partitions_per_topic = {}
+    def _get_metadata_snapshot(self):
+        partitions_per_topic = {}
         for topic in self._subscription.group_subscription():
             partitions = self._cluster.partitions_for_topic(topic) or []
-            self._partitions_per_topic[topic] = set(partitions)
-
-        if self._partitions_per_topic != old_partitions_per_topic:
-            log.debug("Metadata for topic has changed from %s to %s. "
-                      "Rejoining group.", old_partitions_per_topic,
-                      self._partitions_per_topic)
-            return True
-        return False
+            # Partitions are always from 0 to N, so no reason to check each
+            # partition separately, only length is enough
+            partitions_per_topic[topic] = len(partitions)
+        return partitions_per_topic
 
     def _lookup_assignor(self, name):
         for assignor in self._assignors:
@@ -224,6 +221,7 @@ class GroupCoordinator(object):
     @asyncio.coroutine
     def _on_join_prepare(self, generation, member_id):
         self._subscription.mark_for_reassignment()
+        self._assignment_snapshot = None
 
         # commit offsets prior to rebalance if auto-commit enabled
         yield from self._maybe_auto_commit_offsets_sync()
@@ -257,8 +255,7 @@ class GroupCoordinator(object):
         # will eventually be seen
         self._subscription.group_subscribe(all_subscribed_topics)
         if not self._subscription.subscribed_pattern:
-            self._client.set_topics(
-                self._subscription.group_subscription())
+            self._client.set_topics(self._subscription.group_subscription())
         # If somewhere we forced a metadata update (like in some `set_topics`
         # call) we should wait for it before performing assignment
         yield from self._client._maybe_wait_metadata()
@@ -270,6 +267,11 @@ class GroupCoordinator(object):
         assignments = assignor.assign(self._cluster, member_metadata)
         log.debug("Finished assignment for group %s: %s",
                   self.group_id, assignments)
+
+        # If we remove topics from subscription metadata is not refreshed, so
+        # the snapshot can be outdated too.
+        self._assignment_snapshot = self._metadata_snapshot = \
+            self._get_metadata_snapshot()
 
         group_assignment = {}
         for member_id, assignment in assignments.items():
@@ -606,7 +608,13 @@ class GroupCoordinator(object):
         """
         return (self._subscription.partitions_auto_assigned() and
                 (self.rejoin_needed or
-                 self._subscription.needs_partition_assignment))
+                 self._subscription.needs_partition_assignment or
+                 self._metadata_changed()))
+
+    def _metadata_changed(self):
+        return (
+            self._assignment_snapshot is not None and
+            self._assignment_snapshot != self._metadata_snapshot)
 
     @asyncio.coroutine
     def ensure_active_group(self):
