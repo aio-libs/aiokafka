@@ -191,22 +191,52 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from consumer.stop()
 
     @run_until_complete
-    def test_too_large_messages(self):
-        l_msgs = [random_string(10), random_string(50000)]
-        large_messages = yield from self.send_messages(0, l_msgs)
-        r_msgs = [random_string(50)]
-        small_messages = yield from self.send_messages(0, r_msgs)
+    def test_too_large_messages_getone(self):
+        msgs = [
+            random_string(10),  # small one
+            random_string(50000),  # large one
+            random_string(50)   # another small one
+        ]
+        messages = yield from self.send_messages(0, msgs)
 
         consumer = yield from self.consumer_factory(
             max_partition_fetch_bytes=4000)
         m = yield from consumer.getone()
-        self.assertEqual(m.value, large_messages[0])
+        self.assertEqual(m.value, messages[0])
 
+        # Large request will just be skipped
         with self.assertRaises(RecordTooLargeError):
             yield from consumer.getone()
 
         m = yield from consumer.getone()
-        self.assertEqual(m.value, small_messages[0])
+        self.assertEqual(m.value, messages[2])
+        yield from consumer.stop()
+
+    @run_until_complete
+    def test_too_large_messages_getmany(self):
+        msgs = [
+            random_string(10),  # small one
+            random_string(50000),  # large one
+            random_string(50),   # another small one
+        ]
+        messages = yield from self.send_messages(0, msgs)
+        tp = TopicPartition(self.topic, 0)
+
+        consumer = yield from self.consumer_factory(
+            max_partition_fetch_bytes=4000)
+
+        # First fetch will get 1 small message and discard the large one
+        m = yield from consumer.getmany(timeout_ms=1000)
+        self.assertTrue(m)
+        self.assertEqual(m[tp][0].value, messages[0])
+
+        # Second will only get a large one, so will raise an error
+        with self.assertRaises(RecordTooLargeError):
+            yield from consumer.getmany(timeout_ms=1000)
+
+        m = yield from consumer.getmany(timeout_ms=1000)
+        self.assertTrue(m)
+        self.assertEqual(m[tp][0].value, messages[2])
         yield from consumer.stop()
 
     @run_until_complete

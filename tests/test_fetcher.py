@@ -1,6 +1,7 @@
 import asyncio
 import pytest
 import unittest
+from collections import deque
 from unittest import mock
 
 from kafka.common import (TopicPartition, TopicAuthorizationFailedError,
@@ -15,7 +16,7 @@ from kafka.protocol.fetch import (
 from kafka.protocol.message import Message
 
 from aiokafka.client import AIOKafkaClient
-from aiokafka.fetcher import Fetcher
+from aiokafka.fetcher import Fetcher, FetchResult, FetchError, ConsumerRecord
 from ._testutil import run_until_complete
 
 
@@ -166,3 +167,62 @@ class TestFetcher(unittest.TestCase):
             yield from fetcher.next_record([])
 
         yield from fetcher.close()
+
+    def _setup_error_after_data(self):
+        subscriptions = SubscriptionState('latest')
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=[])
+        fetcher = Fetcher(client, subscriptions, loop=self.loop)
+        tp1 = TopicPartition('some_topic', 0)
+        tp2 = TopicPartition('some_topic', 1)
+
+        state = TopicPartitionState()
+        state.seek(0)
+        subscriptions.assignment[tp1] = state
+        state = TopicPartitionState()
+        state.seek(0)
+        subscriptions.assignment[tp2] = state
+        subscriptions.needs_partition_assignment = False
+
+        # Add some data
+        messages = [ConsumerRecord(
+            topic="some_topic", partition=1, offset=0, timestamp=0,
+            timestamp_type=0, key=None, value=b"some", checksum=None,
+            serialized_key_size=0, serialized_value_size=4)]
+        fetcher._records[tp2] = FetchResult(
+            tp2, subscriptions=subscriptions, loop=self.loop,
+            messages=deque(messages), backoff=0)
+        # Add some error
+        fetcher._records[tp1] = FetchError(
+            loop=self.loop, error=OffsetOutOfRangeError({}), backoff=0)
+        return fetcher, tp1, tp2, messages
+
+    @run_until_complete
+    def test_fetched_records_error_after_data(self):
+        # Test error after some data. fetched_records should not discard data.
+        fetcher, tp1, tp2, messages = self._setup_error_after_data()
+
+        msg = yield from fetcher.fetched_records([])
+        self.assertEqual(msg, {tp2: messages})
+
+        with self.assertRaises(OffsetOutOfRangeError):
+            msg = yield from fetcher.fetched_records([])
+
+        msg = yield from fetcher.fetched_records([])
+        self.assertEqual(msg, {})
+
+    @run_until_complete
+    def test_next_record_error_after_data(self):
+        # Test error after some data. next_record should not discard data.
+        fetcher, tp1, tp2, messages = self._setup_error_after_data()
+
+        msg = yield from fetcher.next_record([])
+        self.assertEqual(msg, messages[0])
+
+        with self.assertRaises(OffsetOutOfRangeError):
+            msg = yield from fetcher.next_record([])
+
+        with self.assertRaises(asyncio.TimeoutError):
+            yield from asyncio.wait_for(
+                fetcher.next_record([]), timeout=0.1, loop=self.loop)
