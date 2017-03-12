@@ -8,7 +8,7 @@ from aiokafka import ConsumerStoppedError
 
 from kafka.common import (
     TopicPartition, OffsetAndMetadata, IllegalStateError,
-    UnknownTopicOrPartitionError)
+    UnknownTopicOrPartitionError, OffsetOutOfRangeError)
 from ._testutil import (
     KafkaIntegrationTestCase, StubRebalanceListener,
     run_until_complete, random_string)
@@ -750,3 +750,21 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from consumer._client.force_metadata_update()
         self.assertIn("__consumer_offsets", consumer.subscription())
         yield from consumer.stop()
+
+    @run_until_complete
+    def test_offset_reset_manual(self):
+        yield from self.send_messages(0, list(range(0, 10)))
+
+        consumer = AIOKafkaConsumer(
+            self.topic,
+            loop=self.loop, bootstrap_servers=self.hosts,
+            metadata_max_age_ms=200, group_id="offset_reset_group",
+            auto_offset_reset="none")
+        yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        with self.assertRaises(OffsetOutOfRangeError):
+            yield from consumer.getmany(timeout_ms=1000)
+
+        with self.assertRaises(OffsetOutOfRangeError):
+            yield from consumer.getone()
