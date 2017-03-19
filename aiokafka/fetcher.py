@@ -510,7 +510,8 @@ class Fetcher:
             done, _ = yield from asyncio.wait(
                 futures, return_when=asyncio.ALL_COMPLETED, loop=self._loop)
             # retrieve task result, can raise exception
-            [x.result() for x in done]
+            for x in done:
+                x.result()
 
     @asyncio.coroutine
     def _reset_offset(self, partition):

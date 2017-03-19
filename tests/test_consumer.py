@@ -654,7 +654,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             loop=self.loop, bootstrap_servers=self.hosts,
             metadata_max_age_ms=200, group_id="some_group",
+            fetch_max_wait_ms=50,
             auto_offset_reset="earliest")
+        self.add_cleanup(consumer.stop)
         yield from consumer.start()
         consumer.subscribe(pattern=pattern)
         # Start getter for the topics. Should not create any topics
@@ -666,6 +668,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Now lets autocreate the topic by fetching metadata for it.
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
+        self.add_cleanup(producer.stop)
         yield from producer.start()
         my_topic = "some-autocreate-pattern-1"
         yield from producer.client._wait_on_metadata(my_topic)
@@ -690,8 +693,50 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         data = yield from consume_task
         self.assertEqual(data.value, b'test msg')
 
-        yield from producer.stop()
-        yield from consumer.stop()
+    @run_until_complete
+    def test_consumer_subscribe_pattern_autocreate_no_group_id(self):
+        pattern = "^no-group-pattern-.*$"
+        consumer = AIOKafkaConsumer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            metadata_max_age_ms=200, group_id=None,
+            fetch_max_wait_ms=50,
+            auto_offset_reset="earliest")
+        self.add_cleanup(consumer.stop)
+        yield from consumer.start()
+        consumer.subscribe(pattern=pattern)
+        # Start getter for the topics. Should not create any topics
+        consume_task = self.loop.create_task(consumer.getone())
+        yield from asyncio.sleep(0.3, loop=self.loop)
+        self.assertFalse(consume_task.done())
+        self.assertEqual(consumer.subscription(), set())
+
+        # Now lets autocreate the topic by fetching metadata for it.
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        self.add_cleanup(producer.stop)
+        yield from producer.start()
+        my_topic = "no-group-pattern-1"
+        yield from producer.client._wait_on_metadata(my_topic)
+        # Wait for consumer to refresh metadata with new topic
+        yield from asyncio.sleep(0.3, loop=self.loop)
+        self.assertFalse(consume_task.done())
+        self.assertTrue(consumer._client.cluster.topics() >= {my_topic})
+        self.assertEqual(consumer.subscription(), {my_topic})
+
+        # Add another topic
+        my_topic2 = "no-group-pattern-2"
+        yield from producer.client._wait_on_metadata(my_topic2)
+        # Wait for consumer to refresh metadata with new topic
+        yield from asyncio.sleep(0.3, loop=self.loop)
+        self.assertFalse(consume_task.done())
+        self.assertTrue(consumer._client.cluster.topics() >=
+                        {my_topic, my_topic2})
+        self.assertEqual(consumer.subscription(), {my_topic, my_topic2})
+
+        # Now lets actualy produce some data and verify that it is consumed
+        yield from producer.send(my_topic, b'test msg')
+        data = yield from consume_task
+        self.assertEqual(data.value, b'test msg')
 
     @run_until_complete
     def test_consumer_rebalance_on_new_topic(self):

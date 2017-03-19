@@ -235,20 +235,25 @@ class AIOKafkaConsumer(object):
                 self._on_change_subscription)
 
             yield from self._coordinator.ensure_active_group()
-        elif self._subscription.needs_partition_assignment:
-            # using manual partitions assignment by topic(s)
-            yield from self._client.force_metadata_update()
-            partitions = []
-            for topic in self._subscription.subscription:
-                p_ids = self.partitions_for_topic(topic)
-                if not p_ids:
-                    raise UnknownTopicOrPartitionError()
-                for p_id in p_ids:
-                    partitions.append(TopicPartition(topic, p_id))
-            self._subscription.unsubscribe()
-            self._subscription.assign_from_user(partitions)
-            yield from self._update_fetch_positions(
-                self._subscription.missing_fetch_positions())
+        else:
+            self._client.cluster.add_listener(
+                self._handle_metadata_update_for_no_group)
+
+            # If we provided some topics to Consumer's constructor - assign
+            # their partitions
+            if self._subscription.needs_partition_assignment:
+                # using manual partitions assignment by topic(s)
+                yield from self._client.force_metadata_update()
+                partitions = []
+                for topic in self._subscription.subscription:
+                    p_ids = self.partitions_for_topic(topic)
+                    if not p_ids:
+                        raise UnknownTopicOrPartitionError()
+                    for p_id in p_ids:
+                        partitions.append(TopicPartition(topic, p_id))
+                self._subscription.assign_from_subscribed(partitions)
+                yield from self._update_fetch_positions(
+                    self._subscription.missing_fetch_positions())
 
     @asyncio.coroutine
     def _wait_topics(self):
@@ -567,7 +572,7 @@ class AIOKafkaConsumer(object):
         Returns:
             set: {topic, ...}
         """
-        return self._subscription.subscription
+        return frozenset(self._subscription.subscription or [])
 
     def unsubscribe(self):
         """Unsubscribe from all topics and clear all assigned partitions."""
@@ -596,6 +601,23 @@ class AIOKafkaConsumer(object):
 
         # then do any offset lookups in case some positions are not known
         yield from self._fetcher.update_fetch_positions(partitions)
+
+    def _handle_metadata_update_for_no_group(self, cluster):
+        if self._subscription.subscribed_pattern:
+            topics = []
+            for topic in cluster.topics(self._exclude_internal_topics):
+                if self._subscription.subscribed_pattern.match(topic):
+                    topics.append(topic)
+
+            self._subscription.change_subscription(topics)
+            # We are not in a group - just assign all partitions to this
+            # consumer
+            partitions = []
+            for topic in self._subscription.subscription:
+                for p_id in self.partitions_for_topic(topic):
+                    partitions.append(TopicPartition(topic, p_id))
+            self._subscription.assign_from_subscribed(partitions)
+            self._on_change_subscription()
 
     def _on_change_subscription(self):
         """This is `group rebalanced` signal handler for update fetch positions
