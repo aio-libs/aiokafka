@@ -114,22 +114,23 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         raise AssertionError('No topic "{}" exists'.format(topic))
 
     @asyncio.coroutine
-    def send_messages(self, partition, messages):
+    def send_messages(self, partition, messages, *, topic=None):
+        topic = topic or self.topic
         ret = []
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
         try:
-            yield from self.wait_topic(producer.client, self.topic)
+            yield from self.wait_topic(producer.client, topic)
             for msg in messages:
                 if isinstance(msg, str):
                     msg = msg.encode()
                 elif isinstance(msg, int):
                     msg = str(msg).encode()
                 future = yield from producer.send(
-                    self.topic, msg, partition=partition)
+                    topic, msg, partition=partition)
                 resp = yield from future
-                self.assertEqual(resp.topic, self.topic)
+                self.assertEqual(resp.topic, topic)
                 self.assertEqual(resp.partition, partition)
                 ret.append(msg)
         finally:
