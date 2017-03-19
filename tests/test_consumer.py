@@ -1,5 +1,7 @@
 import asyncio
 import time
+from unittest import mock
+from contextlib import contextmanager
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.fetcher import RecordTooLargeError
 from aiokafka.producer import AIOKafkaProducer
@@ -30,6 +32,15 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         if group is not None:
             yield from consumer.seek_to_committed()
         return consumer
+
+    @contextmanager
+    def count_fetch_requests(self, consumer, count):
+        orig = consumer._fetcher._proc_fetch_request
+        with mock.patch.object(
+                consumer._fetcher, "_proc_fetch_request") as mocked:
+            mocked.side_effect = orig
+            yield
+            self.assertEqual(mocked.call_count, count)
 
     @run_until_complete
     def test_simple_consumer(self):
@@ -390,38 +401,74 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     def test_consumer_seek_backward(self):
-        # Send 2 messages
-        yield from self.send_messages(0, [1, 2])
-
-        # Read first. 2 are delivered at a time, so 1 will remain
-        consumer = yield from self.consumer_factory()
-        rmsg1 = yield from consumer.getone()
-        self.assertEqual(rmsg1.value, b'1')
-
-        # Seek should invalidate the remaining message
-        tp = TopicPartition(self.topic, rmsg1.partition)
-        consumer.seek(tp, rmsg1.offset)
-        rmsg2 = yield from consumer.getone()
-        self.assertEqual(rmsg2.value, b'1')
-        rmsg2 = yield from consumer.getone()
-        self.assertEqual(rmsg2.value, b'2')
-        yield from consumer.stop()
-
-    @run_until_complete
-    def test_consumer_seek_forward(self):
         # Send 3 messages
         yield from self.send_messages(0, [1, 2, 3])
 
         # Read first. 3 are delivered at a time, so 2 will remain
         consumer = yield from self.consumer_factory()
-        rmsg1 = yield from consumer.getone()
-        self.assertEqual(rmsg1.value, b'1')
+        with self.count_fetch_requests(consumer, 1):
+            rmsg1 = yield from consumer.getone()
+            self.assertEqual(rmsg1.value, b'1')
+
+        # Seek should invalidate the remaining messages
+        tp = TopicPartition(self.topic, rmsg1.partition)
+        consumer.seek(tp, rmsg1.offset)
+        with self.count_fetch_requests(consumer, 1):
+            rmsg2 = yield from consumer.getone()
+            self.assertEqual(rmsg2.value, b'1')
+            rmsg2 = yield from consumer.getone()
+            self.assertEqual(rmsg2.value, b'2')
+        # Same with getmany
+        consumer.seek(tp, rmsg2.offset)
+        with self.count_fetch_requests(consumer, 1):
+            res = yield from consumer.getmany(timeout_ms=500)
+            rmsg3 = res[tp][0]
+            self.assertEqual(rmsg3.value, b'2')
+            rmsg3 = res[tp][1]
+            self.assertEqual(rmsg3.value, b'3')
+        yield from consumer.stop()
+
+    @run_until_complete
+    def test_consumer_seek_forward_getone(self):
+        # Send 3 messages
+        yield from self.send_messages(0, [1, 2, 3])
+
+        # Read first. 3 are delivered at a time, so 2 will remain
+        consumer = yield from self.consumer_factory()
+        with self.count_fetch_requests(consumer, 1):
+            rmsg1 = yield from consumer.getone()
+            self.assertEqual(rmsg1.value, b'1')
 
         # Seek should invalidate the remaining message
         tp = TopicPartition(self.topic, rmsg1.partition)
         consumer.seek(tp, rmsg1.offset + 2)
-        rmsg2 = yield from consumer.getone()
-        self.assertEqual(rmsg2.value, b'3')
+        with self.count_fetch_requests(consumer, 0):
+            rmsg2 = yield from consumer.getone()
+            self.assertEqual(rmsg2.value, b'3')
+
+        res = yield from consumer.getmany(timeout_ms=0)
+        self.assertEqual(res, {})
+        yield from consumer.stop()
+
+    @run_until_complete
+    def test_consumer_seek_forward_getmany(self):
+        # Send 3 messages
+        yield from self.send_messages(0, [1, 2, 3])
+
+        # Read first. 3 are delivered at a time, so 2 will remain
+        consumer = yield from self.consumer_factory()
+        with self.count_fetch_requests(consumer, 1):
+            rmsg1 = yield from consumer.getone()
+            self.assertEqual(rmsg1.value, b'1')
+
+        # Seek should invalidate the remaining message
+        tp = TopicPartition(self.topic, rmsg1.partition)
+        consumer.seek(tp, rmsg1.offset + 2)
+        with self.count_fetch_requests(consumer, 0):
+            rmsg2 = yield from consumer.getmany(timeout_ms=500)
+            rmsg2 = rmsg2[tp][0]
+            self.assertEqual(rmsg2.value, b'3')
+
         res = yield from consumer.getmany(timeout_ms=0)
         self.assertEqual(res, {})
         yield from consumer.stop()

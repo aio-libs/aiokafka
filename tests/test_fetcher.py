@@ -226,3 +226,66 @@ class TestFetcher(unittest.TestCase):
         with self.assertRaises(asyncio.TimeoutError):
             yield from asyncio.wait_for(
                 fetcher.next_record([]), timeout=0.1, loop=self.loop)
+
+    @run_until_complete
+    def test_compacted_topic_consumption(self):
+        # Compacted topics can have offsets skipped
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=[])
+        client.ready = mock.MagicMock()
+        client.ready.side_effect = asyncio.coroutine(lambda a: True)
+        client.force_metadata_update = mock.MagicMock()
+        client.force_metadata_update.side_effect = asyncio.coroutine(
+            lambda: False)
+        client.send = mock.MagicMock()
+
+        subscriptions = SubscriptionState('latest')
+        fetcher = Fetcher(client, subscriptions, loop=self.loop)
+
+        tp = TopicPartition('test', 0)
+        req = FetchRequest(
+            -1,  # replica_id
+            100, 100, [(tp.topic, [(tp.partition, 155, 100000)])])
+        msg1 = Message(b"12345", key=b"1")
+        msg1._encode_self()
+        msg2 = Message(b"23456", key=b"2")
+        msg2._encode_self()
+        msg3 = Message(b"34567", key=b"3")
+        msg3._encode_self()
+        resp = FetchResponse(
+            [('test', [(
+                0, 0, 3000,  # partition, error_code, highwater_offset
+                [(160, 5, msg1),  # offset, len_bytes, bytes
+                 (162, 5, msg2),
+                 (167, 5, msg3),
+                 ]
+            )])])
+
+        client.send.side_effect = asyncio.coroutine(lambda n, r: resp)
+        state = TopicPartitionState()
+        state.seek(155)
+        state.drop_pending_message_set = False
+        subscriptions.assignment[tp] = state
+        subscriptions.needs_partition_assignment = False
+        fetcher._in_flight.add(0)
+
+        needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
+        self.assertEqual(needs_wake_up, True)
+        buf = fetcher._records[tp]
+        # Test successful getone
+        first = buf.getone()
+        self.assertEqual(state.position, 161)
+        self.assertEqual(
+            (first.value, first.key, first.offset),
+            (msg1.value, msg1.key, 160))
+
+        # Test successful getmany
+        second, third = buf.getall()
+        self.assertEqual(state.position, 168)
+        self.assertEqual(
+            (second.value, second.key, second.offset),
+            (msg2.value, msg2.key, 162))
+        self.assertEqual(
+            (third.value, third.key, third.offset),
+            (msg3.value, msg3.key, 167))
