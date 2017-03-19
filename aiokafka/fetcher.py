@@ -394,8 +394,9 @@ class Fetcher:
                     tp_assignment = self._subscriptions.assignment[tp]
                     tp_assignment.highwater = highwater
 
-                    # we are sure in this fetch only if the beginning
-                    # offset matches the current consumed position
+                    # `drop_pending_message_set` is set after a seek to another
+                    # position. If we request the *new* position we have to
+                    # drop this flag, so we catch future seek's.
                     fetch_offset = fetch_offsets[tp]
                     if fetch_offset == tp_assignment.position:
                         tp_assignment.drop_pending_message_set = False
