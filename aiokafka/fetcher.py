@@ -709,6 +709,9 @@ class Fetcher:
                 self._wait_empty_future = asyncio.Future(loop=self._loop)
             done, _ = yield from asyncio.wait(
                 [self._wait_empty_future], timeout=timeout, loop=self._loop)
+
+            # _wait_empty_future can be set an exception in `close()` call
+            # to stop all long running tasks
             if not done or self._wait_empty_future.exception() is not None:
                 return {}
 

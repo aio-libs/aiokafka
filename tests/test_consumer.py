@@ -900,14 +900,14 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertIn(tp, consumer._fetcher._records)
 
         consumer.subscribe([topic2])
-        res = yield from consumer.getmany(timeout_ms=500, max_records=1)
+        res = yield from consumer.getmany(timeout_ms=5000, max_records=1)
         self.assertEqual(res[tp2][0].value, b"5")
         # Verify that we have no more precached records
         self.assertNotIn(tp, consumer._fetcher._records)
 
         # Same with an explicit partition
         consumer.subscribe([topic3])
-        res = yield from consumer.getmany(tp3, timeout_ms=500, max_records=1)
+        res = yield from consumer.getmany(tp3, timeout_ms=5000, max_records=1)
         self.assertEqual(res[tp3][0].value, b"8")
         # Verify that we have no more precached records
         self.assertNotIn(tp, consumer._fetcher._records)
