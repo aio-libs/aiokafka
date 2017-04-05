@@ -376,6 +376,8 @@ class AIOKafkaClient:
         try:
             result = yield from future
         except asyncio.TimeoutError:
+            # delete connection so it is renewed in next request
+            del self._conns[node_id]
             raise KafkaTimeoutError()
         else:
             return result

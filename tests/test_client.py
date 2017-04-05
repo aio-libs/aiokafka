@@ -2,9 +2,10 @@ import asyncio
 import pytest
 import unittest
 import socket
+import types
 from unittest import mock
 
-from kafka.common import (KafkaError, ConnectionError,
+from kafka.common import (KafkaError, ConnectionError, KafkaTimeoutError,
                           NodeNotReadyError, UnrecognizedBrokerVersion)
 from kafka.protocol.metadata import (
     MetadataRequest_v0 as MetadataRequest,
@@ -118,6 +119,41 @@ class TestAIOKafkaClient(unittest.TestCase):
 
         with self.assertRaises(NodeNotReadyError):
             self.loop.run_until_complete(client.send(0, None))
+
+    def test_send_timeout_deletes_connection(self):
+        @asyncio.coroutine
+        def send_exception(request_id):
+            raise asyncio.TimeoutError()
+
+        @asyncio.coroutine
+        def send(request_id):
+            return 'result'
+
+        @asyncio.coroutine
+        def get_conn(self, node_id):
+            conn = mock.MagicMock()
+            conn.send.side_effect = send_exception
+            self._conns[node_id] = conn
+            return conn
+
+        node_id = 0
+        conn = mock.MagicMock()
+        conn.send.side_effect = send_exception
+        mocked_conns = {node_id: conn}
+        client = AIOKafkaClient(loop=self.loop,
+                                bootstrap_servers=['broker_1:4567'])
+        client._conns = mocked_conns
+        client.get_conn = types.MethodType(get_conn, client)
+
+        # first send timeouts
+        with self.assertRaises(KafkaTimeoutError):
+            yield from client.send(0, MetadataRequest([]))
+        assert 0 not in client._conns
+
+        # second get new connection and obtain result
+        response = yield from client.send(0, MetadataRequest([]))
+        self.assertEqual(response, 'result')
+        assert 0 in client._conns
 
 
 class TestKafkaClientIntegration(KafkaIntegrationTestCase):
