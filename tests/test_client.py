@@ -2,9 +2,10 @@ import asyncio
 import pytest
 import unittest
 import socket
+import types
 from unittest import mock
 
-from kafka.common import (KafkaError, ConnectionError,
+from kafka.common import (KafkaError, ConnectionError, KafkaTimeoutError,
                           NodeNotReadyError, UnrecognizedBrokerVersion)
 from kafka.protocol.metadata import (
     MetadataRequest_v0 as MetadataRequest,
@@ -118,6 +119,55 @@ class TestAIOKafkaClient(unittest.TestCase):
 
         with self.assertRaises(NodeNotReadyError):
             self.loop.run_until_complete(client.send(0, None))
+
+    @run_until_complete
+    def test_send_timeout_deletes_connection(self):
+        correct_response = MetadataResponse([], [])
+
+        @asyncio.coroutine
+        def send_exception(*args, **kwargs):
+            raise asyncio.TimeoutError()
+
+        @asyncio.coroutine
+        def send(*args, **kwargs):
+            return correct_response
+
+        @asyncio.coroutine
+        def get_conn(self, node_id):
+            if node_id in self._conns:
+                conn = self._conns[node_id]
+                if not conn.connected():
+                    del self._conns[node_id]
+                else:
+                    return conn
+
+            conn = mock.MagicMock()
+            conn.send.side_effect = send
+            self._conns[node_id] = conn
+            return conn
+
+        node_id = 0
+        conn = mock.MagicMock()
+        conn.send.side_effect = send_exception
+        conn.connected.return_value = True
+        mocked_conns = {node_id: conn}
+        client = AIOKafkaClient(loop=self.loop,
+                                bootstrap_servers=['broker_1:4567'])
+        client._conns = mocked_conns
+        client._get_conn = types.MethodType(get_conn, client)
+
+        # first send timeouts
+        with self.assertRaises(KafkaTimeoutError):
+            yield from client.send(0, MetadataRequest([]))
+
+        conn.close.assert_called_once_with()
+        # this happens because conn was closed
+        conn.connected.return_value = False
+
+        # second send gets new connection and obtains result
+        response = yield from client.send(0, MetadataRequest([]))
+        self.assertEqual(response, correct_response)
+        self.assertNotEqual(conn, client._conns[node_id])
 
 
 class TestKafkaClientIntegration(KafkaIntegrationTestCase):
