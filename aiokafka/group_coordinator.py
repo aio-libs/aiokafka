@@ -22,7 +22,109 @@ from aiokafka import ensure_future
 log = logging.getLogger(__name__)
 
 
-class GroupCoordinator(object):
+class BaseCoordinator(object):
+
+    def __init__(self, client, subscription, *, loop,
+                 exclude_internal_topics=True,
+                 assignment_changed_cb=None
+                 ):
+        self.loop = loop
+        self._client = client
+        self._exclude_internal_topics = exclude_internal_topics
+        self._subscription = subscription
+        self._assignment_changed_cb = assignment_changed_cb
+
+        self._metadata_snapshot = {}  # Is updated by metadata listener
+        self._assignment_snapshot = None  # Is only present on Leader consumer
+        self._cluster = client.cluster
+
+        # update initial subscription state using currently known metadata
+        self._handle_metadata_update(self._cluster)
+        self._cluster.add_listener(self._handle_metadata_update)
+
+    def _handle_metadata_update(self, cluster):
+        if self._subscription.subscribed_pattern:
+            topics = []
+            for topic in cluster.topics(self._exclude_internal_topics):
+                if self._subscription.subscribed_pattern.match(topic):
+                    topics.append(topic)
+
+            self._subscription.change_subscription(topics)
+
+        if self._subscription.partitions_auto_assigned():
+            metadata_snapshot = self._get_metadata_snapshot()
+            if self._metadata_snapshot != metadata_snapshot:
+                self._metadata_snapshot = metadata_snapshot
+
+                if self._metadata_changed():
+                    log.debug("Metadata for topic has changed from %s to %s. ",
+                              self._assignment_snapshot, metadata_snapshot)
+
+    def _metadata_changed(self):
+        return (
+            self._assignment_snapshot is not None and
+            self._assignment_snapshot != self._metadata_snapshot)
+
+    def _get_metadata_snapshot(self):
+        partitions_per_topic = {}
+        for topic in self._subscription.group_subscription():
+            partitions = self._cluster.partitions_for_topic(topic) or []
+            # Partitions are always from 0 to N, so no reason to check each
+            # partition separately, only length is enough
+            partitions_per_topic[topic] = len(partitions)
+        return partitions_per_topic
+
+    def _on_change_assignment(self):
+        if self._assignment_changed_cb is not None:
+            self._assignment_changed_cb()
+
+
+class NoGroupCoordinator(BaseCoordinator):
+    """
+    When `group_id` consumer option is not used we don't have the functionality
+    provided by Coordinator node in Kafka cluster, like committing offsets (
+    Kafka based offset storage) or automatic partition assignment between
+    consumers. But `GroupCoordinator` class has some other responsibilities,
+    that this class takes care of to avoid code duplication, like:
+
+        * Static topic partition assignment when we subscribed to topic.
+          Partition changes will be noticed by metadata update and assigned.
+        * Pattern topic subscription. New topics will be noticed by metadata
+          update and added to subscription.
+    """
+
+    def __init__(self, *args, **kw):
+        super().__init__(*args, **kw)
+        self._assignment_snapshot = {}
+
+    def _handle_metadata_update(self, cluster):
+        super()._handle_metadata_update(cluster)
+        if self._metadata_changed():
+            self.assign_all_partitions()
+
+    def assign_all_partitions(self, check_unknown=False):
+        """ Assign all partitions from subscribed topics to this consumer.
+            If `check_unknown` we will raise UnknownTopicOrPartitionError if
+            subscribed topic is not found in metadata response.
+        """
+        partitions = []
+        for topic in self._subscription.subscription:
+            p_ids = self._cluster.partitions_for_topic(topic)
+            if not p_ids and check_unknown:
+                raise Errors.UnknownTopicOrPartitionError()
+            for p_id in p_ids:
+                partitions.append(TopicPartition(topic, p_id))
+        self._subscription.assign_from_subscribed(partitions)
+
+        self._assignment_snapshot = self._metadata_snapshot
+        self._on_change_assignment()
+
+    @asyncio.coroutine
+    def close(self):
+        pass
+
+
+class GroupCoordinator(BaseCoordinator):
     """
     GroupCoordinator implements group management for single group member
     by interacting with a designated Kafka broker (the coordinator). Group
@@ -62,7 +164,8 @@ class GroupCoordinator(object):
                  retry_backoff_ms=100,
                  enable_auto_commit=True, auto_commit_interval_ms=5000,
                  assignors=(RoundRobinPartitionAssignor,),
-                 exclude_internal_topics=True
+                 exclude_internal_topics=True,
+                 assignment_changed_cb=None
                  ):
         """Initialize the coordination manager.
 
@@ -94,35 +197,31 @@ class GroupCoordinator(object):
             retry_backoff_ms (int): Milliseconds to backoff when retrying on
                 errors. Default: 100.
         """
-        self._client = client
+        super().__init__(
+            client, subscription, loop=loop,
+            exclude_internal_topics=exclude_internal_topics,
+            assignment_changed_cb=assignment_changed_cb)
+
         self._session_timeout_ms = session_timeout_ms
         self._heartbeat_interval_ms = heartbeat_interval_ms
         self._retry_backoff_ms = retry_backoff_ms
-        self._exclude_internal_topics = exclude_internal_topics
+        self._assignors = assignors
+        self._enable_auto_commit = enable_auto_commit
+        self._auto_commit_interval_ms = auto_commit_interval_ms
+
         self.generation = OffsetCommitRequest.DEFAULT_GENERATION_ID
         self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
         self.group_id = group_id
         self.coordinator_id = None
         self.rejoin_needed = True
         self.needs_join_prepare = True
-        self.loop = loop
-        # rejoin group can be called in parallel
+        # `ensure_active_group` can be called from several places
         # (from consumer and from heartbeat task), so we need lock
         self._rejoin_lock = asyncio.Lock(loop=loop)
-        self._enable_auto_commit = enable_auto_commit
-        self._auto_commit_interval_ms = auto_commit_interval_ms
-        self._assignors = assignors
-        self._subscription = subscription
-        self._metadata_snapshot = {}  # Is updated by metadata listener
-        self._assignment_snapshot = None  # Is only present on Leader consumer
-        self._cluster = client.cluster
         self._auto_commit_task = None
+
         # _closing future used as a signal to heartbeat task for finish ASAP
         self._closing = asyncio.Future(loop=loop)
-        # update subscribe state usint currently known metadata
-        self._handle_metadata_update(client.cluster)
-        self._cluster.add_listener(self._handle_metadata_update)
-        self._group_rebalanced_callback = None
 
         self.heartbeat_task = ensure_future(
             self._heartbeat_task_routine(), loop=loop)
@@ -160,9 +259,6 @@ class GroupCoordinator(object):
             else:
                 log.info("LeaveGroup request succeeded")
 
-    def on_group_rebalanced(self, callback):
-        self._group_rebalanced_callback = callback
-
     @asyncio.coroutine
     def _send_req(self, node_id, request):
         """send request to Kafka node and mark coordinator as `dead`
@@ -184,33 +280,6 @@ class GroupCoordinator(object):
                 return resp
             else:
                 raise error_type()
-
-    def _handle_metadata_update(self, cluster):
-        if self._subscription.subscribed_pattern:
-            topics = []
-            for topic in cluster.topics(self._exclude_internal_topics):
-                if self._subscription.subscribed_pattern.match(topic):
-                    topics.append(topic)
-
-            self._subscription.change_subscription(topics)
-
-        if self._subscription.partitions_auto_assigned():
-            metadata_snapshot = self._get_metadata_snapshot()
-            if self._metadata_snapshot != metadata_snapshot:
-                self._metadata_snapshot = metadata_snapshot
-
-                if self._metadata_changed():
-                    log.debug("Metadata for topic has changed from %s to %s. ",
-                              self._assignment_snapshot, metadata_snapshot)
-
-    def _get_metadata_snapshot(self):
-        partitions_per_topic = {}
-        for topic in self._subscription.group_subscription():
-            partitions = self._cluster.partitions_for_topic(topic) or []
-            # Partitions are always from 0 to N, so no reason to check each
-            # partition separately, only length is enough
-            partitions_per_topic[topic] = len(partitions)
-        return partitions_per_topic
 
     def _lookup_assignor(self, name):
         for assignor in self._assignors:
@@ -268,8 +337,10 @@ class GroupCoordinator(object):
         log.debug("Finished assignment for group %s: %s",
                   self.group_id, assignments)
 
-        # If we remove topics from subscription metadata is not refreshed, so
-        # the snapshot can be outdated too.
+        # `group_subscribe()` will not trigger a metadata update if we only
+        # removed some topics (client has all needed metadata already).
+        # But in that case the snapshot could be outdated, so we update
+        # `_metadata_snapshot` too.
         self._assignment_snapshot = self._metadata_snapshot = \
             self._get_metadata_snapshot()
 
@@ -310,8 +381,7 @@ class GroupCoordinator(object):
                               self._subscription.listener, self.group_id,
                               assigned)
 
-        if self._group_rebalanced_callback:
-            self._group_rebalanced_callback()
+        self._on_change_assignment()
 
     @asyncio.coroutine
     def refresh_committed_offsets(self):
@@ -610,11 +680,6 @@ class GroupCoordinator(object):
                 (self.rejoin_needed or
                  self._subscription.needs_partition_assignment or
                  self._metadata_changed()))
-
-    def _metadata_changed(self):
-        return (
-            self._assignment_snapshot is not None and
-            self._assignment_snapshot != self._metadata_snapshot)
 
     @asyncio.coroutine
     def ensure_active_group(self):
