@@ -207,9 +207,8 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
     @run_until_complete
     def test_close_disconnects_connection(self):
-        asyncio.set_event_loop(self.loop)
         host, port = self.kafka_host, self.kafka_port
-        conn = yield from create_conn(host, port)
+        conn = yield from create_conn(host, port, loop=self.loop)
         self.assertTrue(conn.connected())
         conn.close()
         self.assertFalse(conn.connected())
