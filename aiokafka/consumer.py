@@ -19,7 +19,8 @@ log = logging.getLogger(__name__)
 
 
 class AIOKafkaConsumer(object):
-    """Consume records from a Kafka cluster.
+    """
+    A client that consumes records from a Kafka cluster.
 
     The consumer will transparently handle the failure of servers in the Kafka
     cluster, and adapt as topic-partitions are created or migrate between
