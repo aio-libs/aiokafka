@@ -9,8 +9,8 @@ Welcome to aiokafka's documentation!
     :target: http://aiokafka.readthedocs.io/en/stable/index.html
 .. image:: https://img.shields.io/pypi/pyversions/aiokafka.svg
     :target: http://aiokafka.readthedocs.io/en/stable/index.html
-.. image:: https://coveralls.io/repos/github/aio-libs/aiokafka/badge.svg?branch=master
-    :target: https://coveralls.io/github/aio-libs/aiokafka?branch=master
+.. image:: https://codecov.io/github/aio-libs/aiokafka/coverage.svg?branch=master
+    :target: https://codecov.io/gh/aio-libs/aiokafka/branch/master
     :alt: |Coverage|
 .. image:: https://travis-ci.org/aio-libs/aiokafka.svg?branch=master
     :target: https://travis-ci.org/aio-libs/aiokafka
