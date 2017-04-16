@@ -10,7 +10,7 @@ from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.consumer.subscription_state import SubscriptionState
 
 from aiokafka.client import AIOKafkaClient
-from aiokafka.group_coordinator import GroupCoordinator
+from aiokafka.group_coordinator import GroupCoordinator, NoGroupCoordinator
 from aiokafka.errors import ConsumerStoppedError
 from aiokafka.fetcher import Fetcher
 from aiokafka import __version__, ensure_future, PY_35
@@ -230,25 +230,22 @@ class AIOKafkaConsumer(object):
                 enable_auto_commit=self._enable_auto_commit,
                 auto_commit_interval_ms=self._auto_commit_interval_ms,
                 assignors=self._partition_assignment_strategy,
-                exclude_internal_topics=self._exclude_internal_topics)
-            self._coordinator.on_group_rebalanced(
-                self._on_change_subscription)
+                exclude_internal_topics=self._exclude_internal_topics,
+                assignment_changed_cb=self._on_change_subscription)
 
             yield from self._coordinator.ensure_active_group()
-        elif self._subscription.needs_partition_assignment:
-            # using manual partitions assignment by topic(s)
-            yield from self._client.force_metadata_update()
-            partitions = []
-            for topic in self._subscription.subscription:
-                p_ids = self.partitions_for_topic(topic)
-                if not p_ids:
-                    raise UnknownTopicOrPartitionError()
-                for p_id in p_ids:
-                    partitions.append(TopicPartition(topic, p_id))
-            self._subscription.unsubscribe()
-            self._subscription.assign_from_user(partitions)
-            yield from self._update_fetch_positions(
-                self._subscription.missing_fetch_positions())
+        else:
+            # Using a simple assignment coordinator for reassignment on
+            # metadata changes
+            self._coordinator = NoGroupCoordinator(
+                self._client, self._subscription, loop=self._loop,
+                exclude_internal_topics=self._exclude_internal_topics,
+                assignment_changed_cb=self._on_change_subscription)
+
+            # If we passed `topics` to constructor.
+            if self._subscription.needs_partition_assignment:
+                yield from self._client.force_metadata_update()
+                self._coordinator.assign_all_partitions(check_unknown=True)
 
     @asyncio.coroutine
     def _wait_topics(self):
@@ -567,7 +564,7 @@ class AIOKafkaConsumer(object):
         Returns:
             set: {topic, ...}
         """
-        return self._subscription.subscription
+        return frozenset(self._subscription.subscription or [])
 
     def unsubscribe(self):
         """Unsubscribe from all topics and clear all assigned partitions."""

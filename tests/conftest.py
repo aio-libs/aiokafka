@@ -17,6 +17,9 @@ def pytest_addoption(parser):
                      action='store',
                      default='pygo/kafka:2.11_0.9.0.1',
                      help='Kafka docker image to use')
+    parser.addoption('--no-pull',
+                     action='store_true',
+                     help='Do not pull new docker image before test run')
 
 
 @pytest.fixture(scope='session')
@@ -91,7 +94,8 @@ def session_id():
 def kafka_server(request, docker, docker_ip_address,
                  unused_port, session_id, ssl_folder):
     image = request.config.getoption('--docker-image')
-    docker.pull(image)
+    if not request.config.getoption('--no-pull'):
+        docker.pull(image)
     kafka_host = docker_ip_address
     kafka_port = unused_port()
     kafka_ssl_port = unused_port()
