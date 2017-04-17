@@ -180,7 +180,7 @@ Feel free to improve this package and send a pull request to GitHub_.
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
 
    consumer
    kafka-python_difference
