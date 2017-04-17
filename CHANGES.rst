@@ -1,10 +1,21 @@
 CHANGES
 --------
 
-0.2.2 (2017-XX-XX)
+0.2.2 (2017-04-17)
 ^^^^^^^^^^^^^^^^^^
 
-* 
+* Reconnect after KafkaTimeoutException. (PR #149 by @Artimi)
+* Fixed compacted topic handling. It could skip messages if those were
+compacted (issue #71)
+* Fixed old issue with new topics not adding to subscription on pattern
+(issue #46)
+* Another fix for Consumer race condition on JoinGroup. This forces Leader to
+wait for new metadata before assigning partitions. (issue #118)
+* Changed metadata listener in Coordinator to avoid 2 rejoins in a rare
+condition (issue #108)
+* `getmany` will not return 0 results until we hit timeout. (issue #117)
+
+Big thanks to @Artimi for pointing out several of those issues.
 
 
 0.2.1 (2017-02-19)
