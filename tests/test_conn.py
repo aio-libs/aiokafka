@@ -130,7 +130,8 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         # setup reader
         reader = mock.MagicMock()
         int32 = struct.Struct('>i')
-        resp = MetadataResponse(brokers=[], topics=[]).encode()
+        resp = MetadataResponse(brokers=[], topics=[])
+        resp = resp.encode()
         resp = int32.pack(999) + resp  # set invalid correlation id
         reader.readexactly.side_effect = [
             asyncio.coroutine(lambda *a, **kw: int32.pack(len(resp)))(),
@@ -159,7 +160,8 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         int32 = struct.Struct('>i')
         resp = GroupCoordinatorResponse(
             error_code=0, coordinator_id=22,
-            host='127.0.0.1', port=3333).encode()
+            host='127.0.0.1', port=3333)
+        resp = resp.encode()
         resp = int32.pack(0) + resp  # set correlation id to 0
         reader.readexactly.side_effect = [
             asyncio.coroutine(lambda *a, **kw: int32.pack(len(resp)))(),
