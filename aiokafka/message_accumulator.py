@@ -83,7 +83,10 @@ class MessageBatch:
         if self._is_full(key, value):
             return None
 
-        encoded = Message(value, key=key, magic=self._version_id).encode()
+        # `.encode()` is a weak method for some reason, so we need to save
+        # reference before calling it.
+        msg_inst = Message(value, key=key, magic=self._version_id)
+        encoded = msg_inst.encode()
         msg = Int64.encode(self._relative_offset) + Int32.encode(len(encoded))
         msg += encoded
         self._buffer.write(msg)
