@@ -34,7 +34,8 @@ class AIOKafkaConsumer(object):
 
     Arguments:
         *topics (str): optional list of topics to subscribe to. If not set,
-            call subscribe() or assign() before consuming records.
+            call subscribe() or assign() before consuming records. Passing
+            topics directly is same as calling ``subscribe()`` API.
         bootstrap_servers: 'host[:port]' string (or list of 'host[:port]'
             strings) that the consumer should contact to bootstrap initial
             cluster metadata. This does not have to be the full node list.
@@ -204,6 +205,12 @@ class AIOKafkaConsumer(object):
 
     @asyncio.coroutine
     def start(self):
+        """ Connect to Kafka cluster. This will:
+
+            * Load metadata for all cluster nodes and partition allocation
+            * Wait for possible topic autocreation
+            * Join group if ``group_id`` provided
+        """
         yield from self._client.bootstrap()
         yield from self._wait_topics()
 
@@ -256,7 +263,10 @@ class AIOKafkaConsumer(object):
             yield from self._client._wait_on_metadata(topic)
 
     def assign(self, partitions):
-        """Manually assign a list of TopicPartitions to this consumer.
+        """ Manually assign a list of TopicPartitions to this consumer.
+
+        This interface does not support incremental assignment and will
+        replace the previous assignment (if there was one).
 
         Arguments:
             partitions (list of TopicPartition): assignment for this instance.
@@ -269,14 +279,10 @@ class AIOKafkaConsumer(object):
             assign() and group assignment with subscribe().
 
         Note:
-            This interface does not support incremental assignment and will
-            replace the previous assignment (if there was one).
-
-        Note:
             Manual topic assignment through this method does not use the
             consumer's group management functionality. As such, there will be
-            no rebalance operation triggered when group membership or cluster
-            and topic metadata change.
+            **no rebalance operation triggered** when group membership or
+            cluster and topic metadata change.
         """
         for tp in partitions:
             p_ids = self.partitions_for_topic(tp.topic)
@@ -287,14 +293,15 @@ class AIOKafkaConsumer(object):
         self._client.set_topics([tp.topic for tp in partitions])
 
     def assignment(self):
-        """Get the TopicPartitions currently assigned to this consumer.
+        """ Get the set of partitions currently assigned to this consumer.
 
-        If partitions were directly assigned using assign(), then this will
+        If partitions were directly assigned using ``assign()``, then this will
         simply return the same partitions that were previously assigned.
-        If topics were subscribed using subscribe(), then this will give the
-        set of topic partitions currently assigned to the consumer (which may
-        be none if the assignment hasn't happened yet or if the partitions are
-        in the process of being reassigned).
+
+        If topics were subscribed using ``subscribe()``, then this will give
+        the set of topic partitions currently assigned to the consumer (which
+        may be empty if the assignment hasn't happened yet or if the partitions
+        are in the process of being reassigned).
 
         Returns:
             set: {TopicPartition, ...}
@@ -303,7 +310,11 @@ class AIOKafkaConsumer(object):
 
     @asyncio.coroutine
     def stop(self):
-        """Close the consumer, waiting indefinitely for any needed cleanup."""
+        """ Close the consumer, while waiting for finilizers:
+
+            * Commit last consumed message if autocommit enabled
+            * Leave group if used Consumer Groups
+        """
         if self._closed:
             return
         log.debug("Closing the KafkaConsumer.")
@@ -317,18 +328,24 @@ class AIOKafkaConsumer(object):
 
     @asyncio.coroutine
     def commit(self, offsets=None):
-        """Commit offsets to kafka, blocking until success or error
+        """ Commit offsets to Kafka.
 
-        This commits offsets only to Kafka.
-        The offsets committed using this API will be used on the first fetch
-        after every rebalance and also on startup. As such, if you need to
-        store offsets in anything other than Kafka, this API should not be
-        used.
-
-        Blocks until either the commit succeeds or an unrecoverable error is
-        encountered (in which case it is thrown to the caller).
+        This commits offsets only to Kafka. The offsets committed using this
+        API will be used on the first fetch after every rebalance and also on
+        startup. As such, if you need to store offsets in anything other than
+        Kafka, this API should not be used.
 
         Currently only supports kafka-topic offset storage (not zookeeper)
+
+        .. note:: If you pass offsets explicitly you need to pass offset of
+            next record. Something like:
+            ``{TopicPartiton(topic, partition): last_msg.offset + 1}``
+
+        .. note:: If you want `fire and forget` commit, like ``commit_async()``
+            in *kafka-python*, just run it in a task. Something like::
+
+                fut = loop.create_task(consumer.commit())
+                fut.add_done_callback(on_commit_done)
 
         Arguments:
             offsets (dict, optional): {TopicPartition: OffsetAndMetadata} dict
@@ -348,7 +365,8 @@ class AIOKafkaConsumer(object):
 
     @asyncio.coroutine
     def committed(self, partition):
-        """Get the last committed offset for the given partition
+        """ Get the last committed offset for the given partition. (whether the
+        commit happened by this process or another).
 
         This offset will be used as the position for the consumer
         in the event of a failure.
@@ -380,7 +398,7 @@ class AIOKafkaConsumer(object):
 
     @asyncio.coroutine
     def topics(self):
-        """Get all topics the user is authorized to view.
+        """ Get all topics the user is authorized to view.
 
         Returns:
             set: topics
@@ -389,7 +407,10 @@ class AIOKafkaConsumer(object):
         return cluster.topics()
 
     def partitions_for_topic(self, topic):
-        """Get metadata about the partitions for a given topic.
+        """ Get metadata about the partitions for a given topic.
+
+        This method will return `None` if Consumer does not already have
+        metadata for this topic.
 
         Arguments:
             topic (str): topic to check
@@ -401,7 +422,8 @@ class AIOKafkaConsumer(object):
 
     @asyncio.coroutine
     def position(self, partition):
-        """Get the offset of the next record that will be fetched
+        """ Get the offset of the *next record* that will be fetched (if a
+        record with that offset exists on broker).
 
         Arguments:
             partition (TopicPartition): partition to check
@@ -418,17 +440,16 @@ class AIOKafkaConsumer(object):
         return offset
 
     def highwater(self, partition):
-        """Last known highwater offset for a partition
+        """ Last known highwater offset for a partition.
 
         A highwater offset is the offset that will be assigned to the next
         message that is produced. It may be useful for calculating lag, by
         comparing with the reported position. Note that both position and
-        highwater refer to the *next* offset -- i.e., highwater offset is
-        one greater than the newest availabel message.
+        highwater refer to the *next* offset – i.e., highwater offset is one
+        greater than the newest available message.
 
-        Highwater offsets are returned in FetchResponse messages, so will
-        not be available if not FetchRequests have been sent for this partition
-        yet.
+        Highwater offsets are returned as part of ``FetchResponse``, so will
+        not be available if messages for this partition were not requested yet.
 
         Arguments:
             partition (TopicPartition): partition to check
@@ -441,13 +462,13 @@ class AIOKafkaConsumer(object):
         return self._subscription.assignment[partition].highwater
 
     def seek(self, partition, offset):
-        """Manually specify the fetch offset for a TopicPartition.
+        """ Manually specify the fetch offset for a TopicPartition.
 
         Overrides the fetch offsets that the consumer will use on the next
-        poll(). If this API is invoked for the same partition more than once,
-        the latest offset will be used on the next poll(). Note that you may
-        lose data if this API is arbitrarily used in the middle of consumption,
-        to reset the fetch offsets.
+        ``getmany()``/``getone()`` call. If this API is invoked for the same
+        partition more than once, the latest offset will be used on the next
+        fetch. Note that you may lose data if this API is arbitrarily used in
+        the middle of consumption, to reset the fetch offsets.
 
         Arguments:
             partition (TopicPartition): partition for seek operation
@@ -465,7 +486,7 @@ class AIOKafkaConsumer(object):
 
     @asyncio.coroutine
     def seek_to_committed(self, *partitions):
-        """Seek to the committed offset for partitions
+        """ Seek to the committed offset for partitions.
 
         Arguments:
             partitions: optionally provide specific TopicPartitions,
@@ -490,13 +511,13 @@ class AIOKafkaConsumer(object):
                 self.seek(tp, offset)
 
     def subscribe(self, topics=(), pattern=None, listener=None):
-        """Subscribe to a list of topics, or a topic regex pattern
+        """ Subscribe to a list of topics, or a topic regex pattern.
 
         Partitions will be dynamically assigned via a group coordinator.
         Topic subscriptions are not incremental: this list will replace the
         current assignment (if there is one).
 
-        This method is incompatible with assign()
+        This method is incompatible with ``assign()``.
 
         Arguments:
            topics (list): List of topics for subscription.
@@ -560,7 +581,7 @@ class AIOKafkaConsumer(object):
             log.debug("Subscribed to topic(s): %s", topics)
 
     def subscription(self):
-        """Get the current topic subscription.
+        """ Get the current topic subscription.
 
         Returns:
             set: {topic, ...}
@@ -568,7 +589,7 @@ class AIOKafkaConsumer(object):
         return frozenset(self._subscription.subscription or [])
 
     def unsubscribe(self):
-        """Unsubscribe from all topics and clear all assigned partitions."""
+        """ Unsubscribe from all topics and clear all assigned partitions. """
         self._subscription.unsubscribe()
         self._client.set_topics([])
         log.debug(
@@ -608,8 +629,8 @@ class AIOKafkaConsumer(object):
     @asyncio.coroutine
     def getone(self, *partitions):
         """
-        Get one message from Kafka
-        If no new messages prefetched, this method will wait for it
+        Get one message from Kafka.
+        If no new messages prefetched, this method will wait for it.
 
         Arguments:
             partitions (List[TopicPartition]): Optional list of partitions to

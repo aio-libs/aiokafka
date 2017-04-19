@@ -36,7 +36,7 @@ class AIOKafkaProducer(object):
     The key_serializer and value_serializer instruct how to turn the key and
     value objects the user provides into bytes.
 
-    Keyword Arguments:
+    Arguments:
         bootstrap_servers: 'host[:port]' string (or list of 'host[:port]'
             strings) that the producer should contact to bootstrap initial
             cluster metadata. This does not have to be the full node list.
