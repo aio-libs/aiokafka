@@ -1,3 +1,5 @@
+.. _kafka_python_difference:
+
 Difference between aiokafka and kafka-python
 --------------------------------------------
 

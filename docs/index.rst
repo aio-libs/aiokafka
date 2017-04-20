@@ -6,15 +6,9 @@ Welcome to aiokafka's documentation!
 .. _asyncio: http://docs.python.org/3.4/library/asyncio.html
 
 .. image:: https://img.shields.io/badge/kafka-0.10%2C%200.9-brightgreen.svg
-    :target: http://aiokafka.readthedocs.io/en/stable/index.html
+    :target: https://kafka.apache.org
 .. image:: https://img.shields.io/pypi/pyversions/aiokafka.svg
-    :target: http://aiokafka.readthedocs.io/en/stable/index.html
-.. image:: https://codecov.io/github/aio-libs/aiokafka/coverage.svg?branch=master
-    :target: https://codecov.io/gh/aio-libs/aiokafka/branch/master
-    :alt: |Coverage|
-.. image:: https://travis-ci.org/aio-libs/aiokafka.svg?branch=master
-    :target: https://travis-ci.org/aio-libs/aiokafka
-    :alt: |Build status|
+    :target: https://pypi.python.org/pypi/aiokafka
 .. image:: https://img.shields.io/badge/license-Apache%202-blue.svg
     :target: https://github.com/aio-libs/aiokafka/blob/master/LICENSE
 
@@ -186,8 +180,9 @@ Feel free to improve this package and send a pull request to GitHub_.
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
 
+   consumer
    kafka-python_difference
    api
    examples

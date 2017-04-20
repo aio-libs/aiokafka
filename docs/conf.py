@@ -58,8 +58,16 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.viewcode',
     'sphinxcontrib.asyncio',
-    'sphinx.ext.napoleon'
+    'sphinx.ext.napoleon',
+    'alabaster',
 ]
+
+try:
+    import sphinxcontrib.spelling  # noqa
+    extensions.append('sphinxcontrib.spelling')
+except ImportError:
+    pass
+
 
 intersphinx_mapping = {'python': ('http://docs.python.org/3', None)}
 
@@ -77,7 +85,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'aiokafka'
-copyright = '2015,2016 aio-libs'
+copyright = '2015-2017, Aio-libs contributors'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -127,16 +135,26 @@ highlight_language = 'python3'
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
+html_theme = "alabaster"
 
-if on_rtd:
-    html_theme = 'default'
-else:
-    import sphinx_rtd_theme
+html_theme_options = {
+    'description': 'Apache Kafka client for asyncio',
+    'github_user': 'aio-libs',
+    'github_repo': 'aiokafka',
+    'github_button': False,
+    'github_banner': True,
+    'travis_button': True,
+    'codecov_button': True,
+    'note_bg': '#E5ECD1',
+    'note_border': '#BFCF8C',
+    'body_text': '#482C0A',
+    'sidebar_text': '#49443E',
+    'sidebar_header': '#4B4032',
+    'sidebar_width': '200px',
+    'code_font_size': '0.8em',
+}
 
-    html_theme = "sphinx_rtd_theme"
-
-    html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+# html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 # -- Options for HTML output ----------------------------------------------
 
@@ -187,7 +205,11 @@ html_static_path = ['_static']
 #html_use_smartypants = True
 
 # Custom sidebar templates, maps document names to template names.
-#html_sidebars = {}
+html_sidebars = {
+    '**': [
+        'about.html', 'navigation.html', 'searchbox.html',
+    ]
+}
 
 # Additional templates that should be rendered to pages, maps page names to
 # template names.
