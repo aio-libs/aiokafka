@@ -11,7 +11,7 @@ from kafka.consumer.subscription_state import SubscriptionState
 
 from aiokafka.client import AIOKafkaClient
 from aiokafka.group_coordinator import GroupCoordinator, NoGroupCoordinator
-from aiokafka.errors import ConsumerStoppedError
+from aiokafka.errors import ConsumerStoppedError, IllegalOperation
 from aiokafka.fetcher import Fetcher
 from aiokafka import __version__, ensure_future, PY_35
 
@@ -337,9 +337,15 @@ class AIOKafkaConsumer(object):
 
         Currently only supports kafka-topic offset storage (not zookeeper)
 
-        .. note:: If you pass offsets explicitly you need to pass offset of
-            next record. Something like:
-            ``{TopicPartiton(topic, partition): last_msg.offset + 1}``
+        When explicitly passing ``offsets`` use either offset of next record,
+        or last processed message in a partition::
+
+            tp = TopicPartition(msg.topic, msg.partition)
+            metadata = "Some utf-8 metadata"
+            # Either
+            await consumer.commit({tp: (msg, metadata)})
+            # Or position directly
+            await consumer.commit({tp: (msg.offset + 1, metadata)})
 
         .. note:: If you want `fire and forget` commit, like ``commit_async()``
             in *kafka-python*, just run it in a task. Something like::
@@ -348,19 +354,46 @@ class AIOKafkaConsumer(object):
                 fut.add_done_callback(on_commit_done)
 
         Arguments:
-            offsets (dict, optional): {TopicPartition: OffsetAndMetadata} dict
-                to commit with the configured group_id. Defaults to current
+            offsets (dict, optional): {TopicPartition: (offset, metadata)} dict
+                to commit with the configured ``group_id``. Defaults to current
                 consumed offsets for all subscribed partitions.
+        Raises:
+            IllegalOperation: If used with ``group_id == None``
+            ValueError: If offsets is of wrong format
+            KafkaError: If commit failed on broker side. This could be due to
+                invalid offset, too long metadata, authorization failure, etc.
         """
-        assert self._group_id is not None, 'Requires group_id'
+        if self._group_id is None:
+            raise IllegalOperation("Requires group_id")
 
         if offsets is None:
             offsets = self._subscription.all_consumed_offsets()
         else:
             # validate `offsets` structure
-            assert all(map(lambda k: isinstance(k, TopicPartition), offsets))
-            assert all(map(lambda v: isinstance(v, OffsetAndMetadata),
-                           offsets.values()))
+            if not offsets or not isinstance(offsets, dict):
+                raise ValueError(offsets)
+
+            formatted_offsets = {}
+            for tp, offset_and_metadata in offsets.items():
+                if not isinstance(tp, TopicPartition):
+                    raise ValueError(offsets)
+                try:
+                    offset_or_msg, metadata = offset_and_metadata
+                except Exception:
+                    raise ValueError(offsets)
+
+                if hasattr(offset_or_msg, "offset"):
+                    if offset_or_msg.topic != tp.topic or \
+                            offset_or_msg.partition != tp.partition:
+                        raise ValueError(offsets)
+                    offset = offset_or_msg.offset + 1
+                else:
+                    offset = offset_or_msg
+
+                formatted_offsets[tp] = OffsetAndMetadata(offset, metadata)
+
+            offsets = formatted_offsets
+
         yield from self._coordinator.commit_offsets(offsets)
 
     @asyncio.coroutine
@@ -380,8 +413,13 @@ class AIOKafkaConsumer(object):
 
         Returns:
             The last committed offset, or None if there was no prior commit.
+
+        Raises:
+            IllegalOperation: If used with ``group_id == None``
         """
-        assert self._group_id is not None, 'Requires group_id'
+        if self._group_id is None:
+            raise IllegalOperation("Requires group_id")
+
         if self._subscription.is_assigned(partition):
             committed = self._subscription.assignment[partition].committed
             if committed is None:
@@ -495,6 +533,7 @@ class AIOKafkaConsumer(object):
         Raises:
             AssertionError: if any partition is not currently assigned, or if
                 no partitions are assigned
+            IllegalOperation: If used with ``group_id == None``
         """
         if not partitions:
             partitions = self._subscription.assigned_partitions()
