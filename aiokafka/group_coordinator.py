@@ -293,7 +293,8 @@ class GroupCoordinator(BaseCoordinator):
         self._assignment_snapshot = None
 
         # commit offsets prior to rebalance if auto-commit enabled
-        yield from self._maybe_auto_commit_offsets_sync()
+        if not (yield from self.coordinator_unknown()):
+            yield from self._maybe_auto_commit_offsets_sync()
 
         # execute the user's callback before rebalance
         log.info("Revoking previously assigned partitions %s for group %s",
