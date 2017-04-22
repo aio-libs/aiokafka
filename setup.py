@@ -45,6 +45,7 @@ classifiers = [
     'Operating System :: OS Independent',
     'Topic :: System :: Networking',
     'Topic :: System :: Distributed Computing',
+    'Framework :: AsyncIO',
     'Development Status :: 4 - Beta',
 ]
 
