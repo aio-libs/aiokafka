@@ -7,5 +7,6 @@ class ConsumerStoppedError(Exception):
 
 class IllegalOperation(Exception):
     """ Raised if you try to execute an operation, that is not available with
-        current configuration
+        current configuration. For example trying to commit if no group_id was
+        given.
     """

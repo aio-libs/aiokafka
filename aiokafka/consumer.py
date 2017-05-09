@@ -338,12 +338,12 @@ class AIOKafkaConsumer(object):
         Currently only supports kafka-topic offset storage (not zookeeper)
 
         When explicitly passing ``offsets`` use either offset of next record,
-        or last processed message in a partition::
+        or tuple of offset and metadata::
 
             tp = TopicPartition(msg.topic, msg.partition)
             metadata = "Some utf-8 metadata"
             # Either
-            await consumer.commit({tp: (msg, metadata)})
+            await consumer.commit({tp: msg.offset + 1})
             # Or position directly
             await consumer.commit({tp: (msg.offset + 1, metadata)})
 
@@ -377,18 +377,14 @@ class AIOKafkaConsumer(object):
             for tp, offset_and_metadata in offsets.items():
                 if not isinstance(tp, TopicPartition):
                     raise ValueError(offsets)
-                try:
-                    offset_or_msg, metadata = offset_and_metadata
-                except Exception:
-                    raise ValueError(offsets)
 
-                if hasattr(offset_or_msg, "offset"):
-                    if offset_or_msg.topic != tp.topic or \
-                            offset_or_msg.partition != tp.partition:
-                        raise ValueError(offsets)
-                    offset = offset_or_msg.offset + 1
+                if isinstance(offset_and_metadata, int):
+                    offset, metadata = offset_and_metadata, ""
                 else:
-                    offset = offset_or_msg
+                    try:
+                        offset, metadata = offset_and_metadata
+                    except Exception:
+                        raise ValueError(offsets)
 
                 formatted_offsets[tp] = OffsetAndMetadata(offset, metadata)
 

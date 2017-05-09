@@ -633,10 +633,14 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(ValueError):
             yield from consumer.commit({tp: (offset, 1000)})
 
+    @run_until_complete
+    def test_consumer_commit_no_group(self):
         consumer_no_group = yield from self.consumer_factory(group=None)
+        tp = TopicPartition(self.topic, 0)
+        offset = yield from consumer_no_group.position(tp)
 
         with self.assertRaises(IllegalOperation):
-            yield from consumer_no_group.commit({tp: offset_and_metadata})
+            yield from consumer_no_group.commit({tp: offset})
         with self.assertRaises(IllegalOperation):
             yield from consumer_no_group.committed(tp)
 
@@ -648,15 +652,13 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         tp = TopicPartition(self.topic, 0)
 
         msg = yield from consumer.getone()
-        # Commit by message instance
-        yield from consumer.commit({
-            tp: (msg, "My metadata")
-        })
+        # Commit by offset
+        yield from consumer.commit({tp: msg.offset + 1})
         committed = yield from consumer.committed(tp)
         self.assertEqual(committed, msg.offset + 1)
 
         msg = yield from consumer.getone()
-        # Commit by offset
+        # Commit by offset and metadata
         yield from consumer.commit({
             tp: (msg.offset + 2, "My metadata 2")
         })

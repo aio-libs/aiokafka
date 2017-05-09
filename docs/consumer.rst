@@ -132,7 +132,7 @@ bulk. The algorithm can be enhanced by taking advantage of:
     unconsumed messages or this one is the last one in partition.
 
 If you want to have more controll over which partition and message is
-committed, you can specify them manualy::
+committed, you can specify offset manualy::
 
     while True:
         result = await consumer.getmany(timeout_ms=10 * 1000)
@@ -140,11 +140,11 @@ committed, you can specify them manualy::
             if messages:
                 await process_msg_batch(messages)
                 # Commit progress only for this partition
-                await consumer.commit({tp: (messages[-1], "")})
+                await consumer.commit({tp: messages[-1].offset + 1})
 
 .. note:: The committed offset should always be the offset of the next message
-  that your application will read. So in this example Consumer will actually
-  commit ``message.offset + 1``.
+  that your application will read. Thus, when calling ``commit(offsets)`` you
+  should add one to the offset of the last message processed.
 
 Here we process a batch of messages per partition and commit not all consumed
 *offsets*, but only for the partition we processed.
@@ -223,7 +223,7 @@ counts in Redis::
     await consumer.start()
     consumer.assign([tp])
 
-    # Load initial state of aggregation and offset
+    # Load initial state of aggregation and last processed offset
     offset = -1
     counts = Counter()
     initial_counts = await redis.hgetall(REDIS_HASH_KEY, encoding="utf-8")
