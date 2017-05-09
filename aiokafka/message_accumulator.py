@@ -2,23 +2,18 @@ import io
 import asyncio
 import collections
 
-from kafka.common import (KafkaError,
-                          KafkaTimeoutError,
-                          NotLeaderForPartitionError,
-                          LeaderNotAvailableError)
 from kafka.protocol.message import Message, MessageSet
 from kafka.protocol.types import Int32, Int64
 from kafka.codec import (has_gzip, has_snappy, has_lz4,
                          gzip_encode, snappy_encode,
                          lz4_encode, lz4_encode_old_kafka)
 
+from aiokafka.errors import (KafkaTimeoutError,
+                             NotLeaderForPartitionError,
+                             LeaderNotAvailableError,
+                             ProducerClosed)
 
-RecordMetadata = collections.namedtuple(
-    'RecordMetadata', ['topic', 'partition', 'topic_partition', 'offset'])
-
-
-class ProducerClosed(KafkaError):
-    pass
+from aiokafka.structs import RecordMetadata
 
 
 class MessageBatch:

@@ -309,7 +309,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         offsets = {TopicPartition('topic1', 0): OffsetAndMetadata(1, '')}
         yield from coordinator.commit_offsets(offsets)
-        with mock.patch('kafka.common.for_code') as mocked:
+        with mock.patch('aiokafka.errors.for_code') as mocked:
             mocked.return_value = Errors.GroupAuthorizationFailedError
             with self.assertRaises(Errors.GroupAuthorizationFailedError):
                 yield from coordinator.commit_offsets(offsets)
@@ -361,7 +361,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         yield from coordinator.ensure_active_group()
 
         offsets = {TopicPartition('topic1', 0): OffsetAndMetadata(1, '')}
-        with mock.patch('kafka.common.for_code') as mocked:
+        with mock.patch('aiokafka.errors.for_code') as mocked:
             mocked.side_effect = MockedKafkaErrCode(
                 Errors.GroupLoadInProgressError, Errors.NoError)
             yield from coordinator.fetch_committed_offsets(offsets)

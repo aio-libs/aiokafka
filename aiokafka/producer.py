@@ -2,17 +2,16 @@ import asyncio
 import logging
 import collections
 
-from kafka.common import (TopicPartition,
-                          MessageSizeTooLargeError,
-                          KafkaError)
 from kafka.partitioner.default import DefaultPartitioner
 from kafka.protocol.message import Message, MessageSet
 from kafka.protocol.produce import ProduceRequest
-import kafka.common as Errors
 
+import aiokafka.errors as Errors
 from aiokafka import ensure_future
 from aiokafka.client import AIOKafkaClient
+from aiokafka.errors import MessageSizeTooLargeError, KafkaError
 from aiokafka.message_accumulator import MessageAccumulator
+from aiokafka.structs import TopicPartition
 
 log = logging.getLogger(__name__)
 

@@ -12,23 +12,11 @@ from kafka.protocol.offset import (
     OffsetRequest_v0 as OffsetRequest, OffsetResetStrategy)
 
 from aiokafka import ensure_future
-from aiokafka.errors import ConsumerStoppedError
+from aiokafka.errors import (
+    ConsumerStoppedError, RecordTooLargeError)
+from aiokafka.structs import ConsumerRecord
 
 log = logging.getLogger(__name__)
-
-
-ConsumerRecord = collections.namedtuple(
-    "ConsumerRecord", ["topic", "partition", "offset", "timestamp",
-                       "timestamp_type", "key", "value", "checksum",
-                       "serialized_key_size", "serialized_value_size"])
-
-
-class NoOffsetForPartitionError(Errors.KafkaError):
-    pass
-
-
-class RecordTooLargeError(Errors.KafkaError):
-    pass
 
 
 class FetchResult:

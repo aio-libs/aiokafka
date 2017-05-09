@@ -2,11 +2,11 @@ import asyncio
 import struct
 import logging
 
-import kafka.common as Errors
 from kafka.protocol.api import RequestHeader
 from kafka.protocol.commit import (
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
+import aiokafka.errors as Errors
 from aiokafka import ensure_future
 
 __all__ = ['AIOKafkaConnection', 'create_conn']
