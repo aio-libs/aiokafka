@@ -6,7 +6,7 @@ from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.fetcher import RecordTooLargeError
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
-from aiokafka import ConsumerStoppedError
+from aiokafka import ConsumerStoppedError, IllegalOperation
 
 from kafka.common import (
     TopicPartition, OffsetAndMetadata, IllegalStateError,
@@ -127,7 +127,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             message = yield from consumer1.getone()
             messages.append(message)
         self.assert_message_count(messages, 200)
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(IllegalOperation):
             # commit does not supported for None group
             yield from consumer1.commit()
 
@@ -613,6 +613,57 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.topic, loop=self.loop,
                 bootstrap_servers=self.hosts,
                 security_protocol="SSL", ssl_context=None)
+
+    @run_until_complete
+    def test_consumer_commit_validation(self):
+        consumer = yield from self.consumer_factory()
+
+        tp = TopicPartition(self.topic, 0)
+        offset = yield from consumer.position(tp)
+        offset_and_metadata = OffsetAndMetadata(offset, "")
+
+        with self.assertRaises(ValueError):
+            yield from consumer.commit({})
+        with self.assertRaises(ValueError):
+            yield from consumer.commit("something")
+        with self.assertRaises(ValueError):
+            yield from consumer.commit({"my_topic": offset_and_metadata})
+        with self.assertRaises(ValueError):
+            yield from consumer.commit({tp: offset})
+        with self.assertRaises(ValueError):
+            yield from consumer.commit({tp: (offset, 1000)})
+
+    @run_until_complete
+    def test_consumer_commit_no_group(self):
+        consumer_no_group = yield from self.consumer_factory(group=None)
+        tp = TopicPartition(self.topic, 0)
+        offset = yield from consumer_no_group.position(tp)
+
+        with self.assertRaises(IllegalOperation):
+            yield from consumer_no_group.commit({tp: offset})
+        with self.assertRaises(IllegalOperation):
+            yield from consumer_no_group.committed(tp)
+
+    @run_until_complete
+    def test_consumer_commit(self):
+        yield from self.send_messages(0, [1, 2, 3])
+
+        consumer = yield from self.consumer_factory()
+        tp = TopicPartition(self.topic, 0)
+
+        msg = yield from consumer.getone()
+        # Commit by offset
+        yield from consumer.commit({tp: msg.offset + 1})
+        committed = yield from consumer.committed(tp)
+        self.assertEqual(committed, msg.offset + 1)
+
+        msg = yield from consumer.getone()
+        # Commit by offset and metadata
+        yield from consumer.commit({
+            tp: (msg.offset + 2, "My metadata 2")
+        })
+        committed = yield from consumer.committed(tp)
+        self.assertEqual(committed, msg.offset + 2)
 
     @run_until_complete
     def test_consumer_group_without_subscription(self):

@@ -1,6 +1,6 @@
 import sys
 
-from .errors import ConsumerStoppedError
+from .errors import ConsumerStoppedError, IllegalOperation
 
 try:
     from asyncio import ensure_future
@@ -13,11 +13,16 @@ PY_35 = sys.version_info >= (3, 5)
 from .client import AIOKafkaClient  # noqa
 from .producer import AIOKafkaProducer  # noqa
 from .consumer import AIOKafkaConsumer  # noqa
+from aiokafka.fetcher import ConsumerRecord  # noqa
 
 __all__ = [
+    # Clients API
     "AIOKafkaProducer",
     "AIOKafkaConsumer",
-    "ConsumerStoppedError",
+    # Errors
+    "ConsumerStoppedError", "IllegalOperation",
+    # Structs
+    "ConsumerRecord"
 ]
 
 (AIOKafkaClient, ensure_future)
