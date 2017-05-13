@@ -4,11 +4,12 @@ import re
 
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.consumer.subscription_state import SubscriptionState
+from kafka.protocol.offset import OffsetResetStrategy
 
 from aiokafka.structs import TopicPartition, OffsetAndMetadata
 from aiokafka.errors import (
-    KafkaError, UnknownTopicOrPartitionError,
-    TopicAuthorizationFailedError, OffsetOutOfRangeError)
+    KafkaError, TopicAuthorizationFailedError, OffsetOutOfRangeError,
+    IllegalStateError)
 from aiokafka.client import AIOKafkaClient
 from aiokafka.group_coordinator import GroupCoordinator, NoGroupCoordinator
 from aiokafka.errors import ConsumerStoppedError, IllegalOperation
@@ -284,13 +285,9 @@ class AIOKafkaConsumer(object):
             **no rebalance operation triggered** when group membership or
             cluster and topic metadata change.
         """
-        for tp in partitions:
-            p_ids = self.partitions_for_topic(tp.topic)
-            if not p_ids or tp.partition not in p_ids:
-                raise UnknownTopicOrPartitionError(tp)
         self._subscription.assign_from_user(partitions)
-        self._on_change_subscription()
         self._client.set_topics([tp.topic for tp in partitions])
+        self._on_change_subscription()
 
     def assignment(self):
         """ Get the set of partitions currently assigned to this consumer.
@@ -504,8 +501,11 @@ class AIOKafkaConsumer(object):
         Overrides the fetch offsets that the consumer will use on the next
         ``getmany()``/``getone()`` call. If this API is invoked for the same
         partition more than once, the latest offset will be used on the next
-        fetch. Note that you may lose data if this API is arbitrarily used in
-        the middle of consumption, to reset the fetch offsets.
+        fetch.
+
+        Note: You may lose data if this API is arbitrarily used in
+        the middle of consumption to reset the fetch offsets. Ie. `seek()`
+        does not respect autocommit routine.
 
         Arguments:
             partition (TopicPartition): partition for seek operation
@@ -522,25 +522,111 @@ class AIOKafkaConsumer(object):
         self._subscription.assignment[partition].seek(offset)
 
     @asyncio.coroutine
-    def seek_to_committed(self, *partitions):
-        """ Seek to the committed offset for partitions.
+    def seek_to_beginning(self, *partitions):
+        """ Seek to the oldest available offset for partitions.
 
         Arguments:
-            partitions: optionally provide specific TopicPartitions,
-                otherwise default to all assigned partitions
+            *partitions: Optionally provide specific TopicPartitions, otherwise
+                default to all assigned partitions.
 
         Raises:
-            AssertionError: if any partition is not currently assigned, or if
-                no partitions are assigned
-            IllegalOperation: If used with ``group_id == None``
+            IllegalStateError: If any partition is not currently assigned
+            TypeError: If partitions are not instances of TopicPartition
+
+        .. versionadded:: 0.3.0
+
         """
+        if not all([isinstance(p, TopicPartition) for p in partitions]):
+            raise TypeError('partitions must be TopicPartition instances')
+
+        yield from self._coordinator.ensure_partitions_assigned()
+
         if not partitions:
             partitions = self._subscription.assigned_partitions()
             assert partitions, 'No partitions are currently assigned'
         else:
-            for p in partitions:
-                assert p in self._subscription.assigned_partitions(), \
-                    'Unassigned partition'
+            not_assigned = (
+                set(partitions) - self._subscription.assigned_partitions()
+            )
+            if not_assigned:
+                raise IllegalStateError(
+                    "Partitions {} are not assigned".format(not_assigned))
+
+        for tp in partitions:
+            log.debug("Seeking to beginning of partition %s", tp)
+            self._subscription.need_offset_reset(
+                tp, OffsetResetStrategy.EARLIEST)
+        yield from self._fetcher.update_fetch_positions(partitions)
+
+    @asyncio.coroutine
+    def seek_to_end(self, *partitions):
+        """Seek to the most recent available offset for partitions.
+
+        Arguments:
+            *partitions: Optionally provide specific TopicPartitions, otherwise
+                default to all assigned partitions.
+
+        Raises:
+            IllegalStateError: If any partition is not currently assigned
+            TypeError: If partitions are not instances of TopicPartition
+
+        .. versionadded:: 0.3.0
+
+        """
+        if not all([isinstance(p, TopicPartition) for p in partitions]):
+            raise TypeError('partitions must be TopicPartition instances')
+
+        yield from self._coordinator.ensure_partitions_assigned()
+
+        if not partitions:
+            partitions = self._subscription.assigned_partitions()
+            assert partitions, 'No partitions are currently assigned'
+        else:
+            not_assigned = (
+                set(partitions) - self._subscription.assigned_partitions()
+            )
+            if not_assigned:
+                raise IllegalStateError(
+                    "Partitions {} are not assigned".format(not_assigned))
+
+        for tp in partitions:
+            log.debug("Seeking to end of partition %s", tp)
+            self._subscription.need_offset_reset(
+                tp, OffsetResetStrategy.LATEST)
+        yield from self._fetcher.update_fetch_positions(partitions)
+
+    @asyncio.coroutine
+    def seek_to_committed(self, *partitions):
+        """ Seek to the committed offset for partitions.
+
+        Arguments:
+            *partitions: Optionally provide specific TopicPartitions, otherwise
+                default to all assigned partitions.
+
+        Raises:
+            IllegalStateError: If any partition is not currently assigned
+            IllegalOperation: If used with ``group_id == None``
+
+        .. versionchanged:: 0.3.0
+
+            Changed AssertionError to IllegalStateError in case of unassigned
+            partition
+        """
+        if not all([isinstance(p, TopicPartition) for p in partitions]):
+            raise TypeError('partitions must be TopicPartition instances')
+
+        yield from self._coordinator.ensure_partitions_assigned()
+
+        if not partitions:
+            partitions = self._subscription.assigned_partitions()
+            assert partitions, 'No partitions are currently assigned'
+        else:
+            not_assigned = (
+                set(partitions) - self._subscription.assigned_partitions()
+            )
+            if not_assigned:
+                raise IllegalStateError(
+                    "Partitions {} are not assigned".format(not_assigned))
 
         for tp in partitions:
             log.debug("Seeking to committed of partition %s", tp)

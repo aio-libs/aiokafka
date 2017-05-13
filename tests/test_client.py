@@ -287,20 +287,20 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         with mock.patch.object(client, '_metadata_update') as mocked:
             @asyncio.coroutine
             def new(*args, **kw):
-                yield from asyncio.sleep(0.01, loop=self.loop)
+                yield from asyncio.sleep(0.2, loop=self.loop)
                 return (yield from orig(*args, **kw))
             mocked.side_effect = new
 
             client.force_metadata_update()
-            yield from asyncio.sleep(0.001, loop=self.loop)
+            yield from asyncio.sleep(0.01, loop=self.loop)
             self.assertEqual(
                 len(client._metadata_update.mock_calls), 1)
             client.force_metadata_update()
-            yield from asyncio.sleep(0.001, loop=self.loop)
+            yield from asyncio.sleep(0.01, loop=self.loop)
             self.assertEqual(
                 len(client._metadata_update.mock_calls), 1)
             client.force_metadata_update()
-            yield from asyncio.sleep(0.05, loop=self.loop)
+            yield from asyncio.sleep(0.5, loop=self.loop)
             self.assertEqual(
                 len(client._metadata_update.mock_calls), 1)
 
