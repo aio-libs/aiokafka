@@ -2,13 +2,13 @@ import asyncio
 import logging
 import re
 
-from kafka.common import (OffsetAndMetadata, TopicPartition,
-                          KafkaError, UnknownTopicOrPartitionError,
-                          TopicAuthorizationFailedError, OffsetOutOfRangeError)
-
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.consumer.subscription_state import SubscriptionState
 
+from aiokafka.structs import TopicPartition, OffsetAndMetadata
+from aiokafka.errors import (
+    KafkaError, UnknownTopicOrPartitionError,
+    TopicAuthorizationFailedError, OffsetOutOfRangeError)
 from aiokafka.client import AIOKafkaClient
 from aiokafka.group_coordinator import GroupCoordinator, NoGroupCoordinator
 from aiokafka.errors import ConsumerStoppedError, IllegalOperation

@@ -3,17 +3,18 @@ import logging
 import random
 
 from kafka.conn import collect_hosts
-from kafka.common import (KafkaError,
-                          ConnectionError,
-                          NodeNotReadyError,
-                          KafkaTimeoutError,
-                          UnknownTopicOrPartitionError,
-                          UnrecognizedBrokerVersion)
 from kafka.cluster import ClusterMetadata
 from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.produce import ProduceRequest
 
 from aiokafka.conn import create_conn
+from aiokafka.errors import (
+    KafkaError,
+    ConnectionError,
+    NodeNotReadyError,
+    KafkaTimeoutError,
+    UnknownTopicOrPartitionError,
+    UnrecognizedBrokerVersion)
 from aiokafka import ensure_future, __version__
 
 
@@ -354,7 +355,7 @@ class AIOKafkaClient:
         Raises:
             kafka.common.KafkaTimeoutError
             kafka.common.NodeNotReadyError
-            kafka.commom.ConnectionError
+            kafka.common.ConnectionError
             kafka.common.CorrelationIdError
 
         Returns:

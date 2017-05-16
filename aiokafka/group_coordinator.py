@@ -3,10 +3,8 @@ import collections
 import logging
 from copy import copy
 
-import kafka.common as Errors
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.coordinator.protocol import ConsumerProtocol
-from kafka.common import OffsetAndMetadata, TopicPartition
 from kafka.protocol.commit import (
     GroupCoordinatorRequest_v0 as GroupCoordinatorRequest,
     OffsetCommitRequest_v2 as OffsetCommitRequest,
@@ -17,7 +15,9 @@ from kafka.protocol.group import (
     LeaveGroupRequest_v0 as LeaveGroupRequest,
     SyncGroupRequest_v0 as SyncGroupRequest)
 
+import aiokafka.errors as Errors
 from aiokafka import ensure_future
+from aiokafka.structs import OffsetAndMetadata, TopicPartition
 
 log = logging.getLogger(__name__)
 
