@@ -2,6 +2,7 @@ import asyncio
 import collections
 import logging
 from copy import copy
+from typing import Awaitable
 
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.coordinator.protocol import ConsumerProtocol
@@ -302,7 +303,10 @@ class GroupCoordinator(BaseCoordinator):
         if self._subscription.listener:
             try:
                 revoked = set(self._subscription.assigned_partitions())
-                self._subscription.listener.on_partitions_revoked(revoked)
+                res = self._subscription.listener.on_partitions_revoked(
+                    revoked)
+                if isinstance(res, Awaitable):
+                    yield from res
             except Exception:
                 log.exception("User provided subscription listener %s"
                               " for group %s failed on_partitions_revoked",
@@ -350,6 +354,7 @@ class GroupCoordinator(BaseCoordinator):
             group_assignment[member_id] = assignment
         return group_assignment
 
+    @asyncio.coroutine
     def _on_join_complete(self, generation, member_id, protocol,
                           member_assignment_bytes):
         assignor = self._lookup_assignor(protocol)
@@ -375,7 +380,10 @@ class GroupCoordinator(BaseCoordinator):
         # execute the user's callback after rebalance
         if self._subscription.listener:
             try:
-                self._subscription.listener.on_partitions_assigned(assigned)
+                res = self._subscription.listener.on_partitions_assigned(
+                    assigned)
+                if isinstance(res, Awaitable):
+                    yield from res
             except Exception:
                 log.exception("User provided listener %s for group %s"
                               " failed on partition assignment: %s",
@@ -713,7 +721,7 @@ class GroupCoordinator(BaseCoordinator):
                     continue
                 if assignment is not None:
                     protocol, member_assignment_bytes = assignment
-                    self._on_join_complete(
+                    yield from self._on_join_complete(
                         self.generation, self.member_id,
                         protocol, member_assignment_bytes)
                     self.needs_join_prepare = True
