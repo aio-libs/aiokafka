@@ -175,7 +175,7 @@ class MessageAccumulator:
     @asyncio.coroutine
     def add_message(self, tp, key, value, timeout):
         """ Add message to batch by topic-partition
-        If batch is already full this method waits (`ttl` seconds maximum)
+        If batch is already full this method waits (`timeout` seconds maximum)
         until batch is drained by send task
         """
         if self._closed:
