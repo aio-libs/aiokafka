@@ -114,7 +114,7 @@ class AIOKafkaProducer(object):
         request_timeout_ms (int): Produce request timeout in milliseconds.
             As it's sent as part of ProduceRequest (it's a blocking call),
             maximum waiting time can be up to 2 * request_timeout_ms.
-            Default: 30000.
+            Default: 40000.
         retry_backoff_ms (int): Milliseconds to backoff when retrying on
             errors. Default: 100.
         api_version (str): specify which kafka API version to use.
@@ -201,7 +201,7 @@ class AIOKafkaProducer(object):
 
     @asyncio.coroutine
     def stop(self):
-        """Flush all pending data and close all connections to kafka cluser"""
+        """Flush all pending data and close all connections to kafka cluster"""
         if self._closed:
             return
 

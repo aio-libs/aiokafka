@@ -49,7 +49,8 @@ class BaseCoordinator(object):
                 if self._subscription.subscribed_pattern.match(topic):
                     topics.append(topic)
 
-            self._subscription.change_subscription(topics)
+            if set(topics) != self._subscription.subscription:
+                self._subscription.change_subscription(topics)
 
         if self._subscription.partitions_auto_assigned():
             metadata_snapshot = self._get_metadata_snapshot()
