@@ -144,15 +144,18 @@ class MessageBatch:
         memview[:4] = Int32.encode(self._buffer.tell() - 4)
         self._buffer.seek(0)
 
-    def data(self):
+    def get_data_buffer(self):
+        # ProduceRequest will read the buffer on encoding, leaving it in
+        # incorrect state, so to avoid that we reset it here.
+        self._buffer.seek(0)
         return self._buffer
 
 
 class MessageAccumulator:
-    """Accumulator of messages batches by topic-partition
+    """Accumulator of messages batched by topic-partition
 
-    Producer add messages to this accumulator and background send task
-    gets batches per nodes for process it.
+    Producer adds messages to this accumulator and a background send task
+    gets batches per nodes to process it.
     """
     def __init__(self, cluster, batch_size, compression_type, batch_ttl, loop):
         self._batches = {}

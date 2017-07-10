@@ -344,7 +344,9 @@ class AIOKafkaProducer(object):
         while True:
             topics = collections.defaultdict(list)
             for tp, batch in batches.items():
-                topics[tp.topic].append((tp.partition, batch.data()))
+                topics[tp.topic].append(
+                    (tp.partition, batch.get_data_buffer())
+                )
 
             if self.client.api_version >= (0, 10):
                 version = 2
