@@ -6,6 +6,9 @@ aiokafka
 .. image:: https://codecov.io/github/aio-libs/aiokafka/coverage.svg?branch=master
     :target: https://codecov.io/gh/aio-libs/aiokafka/branch/master
     :alt: |Coverage|
+.. image:: https://badges.gitter.im/Join%20Chat.svg
+    :target: https://gitter.im/aio-libs/Lobby
+    :alt: |Chat on Gitter|
 
 asyncio client for Kafka
 
