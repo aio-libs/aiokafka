@@ -149,7 +149,7 @@ class TestMessageAccumulator(unittest.TestCase):
         batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(batches[0][tp0].expired(), False)
         self.assertEqual(batches[1][tp1].expired(), False)
-        batch_data = batches[0][tp0].data()
+        batch_data = batches[0][tp0].get_data_buffer()
         self.assertEqual(type(batch_data), io.BytesIO)
         batches[0][tp0].done(base_offset=10)
 
