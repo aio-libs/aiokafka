@@ -13,7 +13,7 @@ from kafka.cluster import ClusterMetadata
 from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.produce import ProduceRequest
 
-from aiokafka.conn import create_conn
+from aiokafka.conn import create_conn, CloseReason
 from aiokafka import ensure_future, __version__
 
 
@@ -121,7 +121,7 @@ class AIOKafkaClient:
         # process all pending buffers.
         futs = []
         for conn in self._conns.values():
-            futs.append(conn.close())
+            futs.append(conn.close(reason=CloseReason.SHUTDOWN))
         if futs:
             yield from asyncio.gather(*futs, loop=self._loop)
 
@@ -305,6 +305,15 @@ class AIOKafkaClient:
         self._topics = set(topics)
         return res
 
+    def _on_connection_closed(self, conn, reason):
+        """ Callback called when connection is closed
+        """
+        # Connection failures imply that our metadata is stale, so let's
+        # refresh
+        if reason == CloseReason.CONNECTION_BROKEN or \
+                reason == CloseReason.CONNECTION_TIMEOUT:
+            self.force_metadata_update()
+
     @asyncio.coroutine
     def _get_conn(self, node_id):
         "Get or create a connection to a broker using host and port"
@@ -324,14 +333,19 @@ class AIOKafkaClient:
             with (yield from self._get_conn_lock):
                 if node_id in self._conns:
                     return self._conns[node_id]
+
                 self._conns[node_id] = yield from create_conn(
                     broker.host, broker.port, loop=self._loop,
                     client_id=self._client_id,
                     request_timeout_ms=self._request_timeout_ms,
                     ssl_context=self._ssl_context,
-                    security_protocol=self._security_protocol)
+                    security_protocol=self._security_protocol,
+                    on_close=self._on_connection_closed)
         except (OSError, asyncio.TimeoutError) as err:
             log.error('Unable connect to node with id %s: %s', node_id, err)
+            # Connection failures imply that our metadata is stale, so let's
+            # refresh
+            self.force_metadata_update()
             return None
         else:
             return self._conns[node_id]
@@ -377,7 +391,7 @@ class AIOKafkaClient:
             result = yield from future
         except asyncio.TimeoutError:
             # close connection so it is renewed in next request
-            self._conns[node_id].close()
+            self._conns[node_id].close(reason=CloseReason.CONNECTION_TIMEOUT)
             raise KafkaTimeoutError()
         else:
             return result

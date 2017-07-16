@@ -12,7 +12,7 @@ from kafka.protocol.metadata import (
     MetadataResponse_v0 as MetadataResponse)
 
 from aiokafka.client import AIOKafkaClient
-from aiokafka.conn import AIOKafkaConnection
+from aiokafka.conn import AIOKafkaConnection, CloseReason
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
@@ -160,7 +160,8 @@ class TestAIOKafkaClient(unittest.TestCase):
         with self.assertRaises(KafkaTimeoutError):
             yield from client.send(0, MetadataRequest([]))
 
-        conn.close.assert_called_once_with()
+        conn.close.assert_called_once_with(
+            reason=CloseReason.CONNECTION_TIMEOUT)
         # this happens because conn was closed
         conn.connected.return_value = False
 
