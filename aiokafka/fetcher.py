@@ -493,13 +493,14 @@ class Fetcher:
                     " update", tp)
                 continue
 
+            assignment = self._subscriptions.assignment[tp]
             if self._subscriptions.is_offset_reset_needed(tp):
-                futures.append(self._reset_offset(tp))
+                futures.append(self._reset_offset(tp, assignment))
             elif self._subscriptions.assignment[tp].committed is None:
                 # there's no committed position, so we need to reset with the
                 # default strategy
                 self._subscriptions.need_offset_reset(tp)
-                futures.append(self._reset_offset(tp))
+                futures.append(self._reset_offset(tp, assignment))
             else:
                 committed = self._subscriptions.assignment[tp].committed
                 log.debug("Resetting offset for partition %s to the committed"
@@ -514,7 +515,7 @@ class Fetcher:
                 x.result()
 
     @asyncio.coroutine
-    def _reset_offset(self, partition):
+    def _reset_offset(self, partition, assignment):
         """Reset offsets for the given partition using
         the offset reset strategy.
 
@@ -524,7 +525,7 @@ class Fetcher:
         Raises:
             NoOffsetForPartitionError: if no offset reset strategy is defined
         """
-        timestamp = self._subscriptions.assignment[partition].reset_strategy
+        timestamp = assignment.reset_strategy
         if timestamp is OffsetResetStrategy.EARLIEST:
             strategy = 'earliest'
         else:
@@ -536,7 +537,8 @@ class Fetcher:
 
         # we might lose the assignment while fetching the offset,
         # so check it is still active
-        if self._subscriptions.is_assigned(partition):
+        if self._subscriptions.is_assigned(partition) and \
+                self._subscriptions.assignment[partition] is assignment:
             self._subscriptions.seek(partition, offset)
 
     @asyncio.coroutine
