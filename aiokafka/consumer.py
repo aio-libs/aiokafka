@@ -376,7 +376,7 @@ class AIOKafkaConsumer(object):
             formatted_offsets = {}
             for tp, offset_and_metadata in offsets.items():
                 if not isinstance(tp, TopicPartition):
-                    raise ValueError(offsets)
+                    raise ValueError("Key should be TopicPartition instance")
 
                 if isinstance(offset_and_metadata, int):
                     offset, metadata = offset_and_metadata, ""
@@ -385,6 +385,9 @@ class AIOKafkaConsumer(object):
                         offset, metadata = offset_and_metadata
                     except Exception:
                         raise ValueError(offsets)
+
+                    if not isinstance(metadata, str):
+                        raise ValueError("Metadata should be a string")
 
                 formatted_offsets[tp] = OffsetAndMetadata(offset, metadata)
 
