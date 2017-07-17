@@ -183,7 +183,7 @@ class AIOKafkaConnection:
             self._requests = []
             if self._on_close_cb is not None:
                 self._on_close_cb(self, reason)
-                del self._on_close_cb
+                self._on_close_cb = None
         if self._idle_handle is not None:
             self._idle_handle.cancel()
 
