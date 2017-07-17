@@ -626,12 +626,15 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             yield from consumer.commit({})
         with self.assertRaises(ValueError):
             yield from consumer.commit("something")
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegexp(
+                ValueError, "Key should be TopicPartition instance"):
             yield from consumer.commit({"my_topic": offset_and_metadata})
-        with self.assertRaises(ValueError):
-            yield from consumer.commit({tp: offset})
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegexp(
+                ValueError, "Metadata should be a string"):
             yield from consumer.commit({tp: (offset, 1000)})
+        with self.assertRaisesRegexp(
+                ValueError, "Metadata should be a string"):
+            yield from consumer.commit({tp: (offset, b"\x00\x02")})
 
     @run_until_complete
     def test_consumer_commit_no_group(self):
