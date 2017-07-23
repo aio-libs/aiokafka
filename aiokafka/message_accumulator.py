@@ -52,6 +52,7 @@ class MessageBatch:
         self._msg_futures = []
         # Set when sender takes this batch
         self._drain_waiter = asyncio.Future(loop=loop)
+        self._drained = False
 
     def _is_full(self, key, value):
         """return True if batch does not have free capacity for append message
@@ -118,6 +119,11 @@ class MessageBatch:
 
     def drain_ready(self):
         """Compress batch to be ready for send"""
+        # Check is we are retrying, if so no need to do anything
+        if self._drained:
+            return
+
+        self._drained = True
         memview = self._buffer.getbuffer()
         self._drain_waiter.set_result(None)
         if self._compression_type:
@@ -156,7 +162,7 @@ class MessageAccumulator:
     gets batches per nodes to process it.
     """
     def __init__(self, cluster, batch_size, compression_type, batch_ttl, loop):
-        self._batches = {}
+        self._batches = collections.defaultdict(collections.deque)
         self._cluster = cluster
         self._batch_size = batch_size
         self._compression_type = compression_type
@@ -172,8 +178,10 @@ class MessageAccumulator:
     @asyncio.coroutine
     def close(self):
         self._closed = True
-        for batch in list(self._batches.values()):
-            yield from batch.wait_deliver()
+        # NOTE: we copy to avoid mutation during `yield from` below
+        for batches in list(self._batches.values()):
+            for batch in list(batches):
+                yield from batch.wait_deliver()
 
     @asyncio.coroutine
     def add_message(self, tp, key, value, timeout):
@@ -186,16 +194,18 @@ class MessageAccumulator:
             # messages in async task
             raise ProducerClosed()
 
-        batch = self._batches.get(tp)
-        if not batch:
+        pending_batches = self._batches.get(tp)
+        if not pending_batches:
             batch = MessageBatch(
                 tp, self._batch_size, self._compression_type,
                 self._batch_ttl, self._api_version, self._loop)
-            self._batches[tp] = batch
+            self._batches[tp].append(batch)
 
             if not self._wait_data_future.done():
                 # Wakeup sender task if it waits for data
                 self._wait_data_future.set_result(None)
+        else:
+            batch = pending_batches[-1]
 
         future = batch.append(key, value)
         if future is None:
@@ -217,18 +227,24 @@ class MessageAccumulator:
         return self._wait_data_future
 
     def _pop_batch(self, tp):
-        batch = self._batches.pop(tp)
+        batch = self._batches[tp].popleft()
         batch.drain_ready()
+        if len(self._batches[tp]) == 0:
+            del self._batches[tp]
         return batch
 
+    def reenqueue(self, batch):
+        tp = batch._tp
+        self._batches[tp].appendleft(batch)
+
     def drain_by_nodes(self, ignore_nodes):
-        """return batches by nodes"""
+        """ Group batches by leader to partiton nodes. """
         nodes = collections.defaultdict(dict)
         unknown_leaders_exist = False
         for tp in list(self._batches.keys()):
             leader = self._cluster.leader_for_partition(tp)
             if leader is None or leader == -1:
-                if self._batches[tp].expired():
+                if self._batches[tp][0].expired():
                     # batch is for partition is expired and still no leader,
                     # so set exception for batch and pop it
                     batch = self._pop_batch(tp)
