@@ -4,7 +4,7 @@ import collections
 
 from kafka.common import (TopicPartition,
                           MessageSizeTooLargeError,
-                          KafkaError)
+                          KafkaError, UnknownTopicOrPartitionError)
 from kafka.partitioner.default import DefaultPartitioner
 from kafka.protocol.message import Message, MessageSet
 from kafka.protocol.produce import ProduceRequest
@@ -390,7 +390,7 @@ class AIOKafkaProducer(object):
                 self.client.force_metadata_update()
 
             for batch in batches.values():
-                if not err.retriable or batch.expired():
+                if not self._can_retry(err, batch):
                     batch.done(exception=err)
                 else:
                     reenqueue.append(batch)
@@ -414,8 +414,7 @@ class AIOKafkaProducer(object):
 
                     if error is Errors.NoError:
                         batch.done(offset)
-                    elif not getattr(error, 'retriable', False) or \
-                            batch.expired():
+                    elif not self._can_retry(error(), batch):
                         batch.done(exception=error())
                     else:
                         log.warning(
@@ -443,6 +442,16 @@ class AIOKafkaProducer(object):
             yield from asyncio.sleep(sleep_time, loop=self._loop)
 
         self._in_flight.remove(node_id)
+
+    def _can_retry(self, error, batch):
+        if batch.expired():
+            return False
+        # XXX: remove unknown topic check as we fix
+        #      https://github.com/dpkp/kafka-python/issues/1155
+        if error.retriable or isinstance(error, UnknownTopicOrPartitionError)\
+                or error is UnknownTopicOrPartitionError:
+            return True
+        return False
 
     def _serialize(self, topic, key, value):
         if self._key_serializer:
