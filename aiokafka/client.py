@@ -6,7 +6,7 @@ from kafka.conn import collect_hosts
 from kafka.common import (KafkaError,
                           ConnectionError,
                           NodeNotReadyError,
-                          KafkaTimeoutError,
+                          RequestTimedOutError,
                           UnknownTopicOrPartitionError,
                           UnrecognizedBrokerVersion)
 from kafka.cluster import ClusterMetadata
@@ -366,7 +366,7 @@ class AIOKafkaClient:
             request (Struct): request object (not-encoded)
 
         Raises:
-            kafka.common.KafkaTimeoutError
+            kafka.common.RequestTimedOutError
             kafka.common.NodeNotReadyError
             kafka.commom.ConnectionError
             kafka.common.CorrelationIdError
@@ -392,7 +392,7 @@ class AIOKafkaClient:
         except asyncio.TimeoutError:
             # close connection so it is renewed in next request
             self._conns[node_id].close(reason=CloseReason.CONNECTION_TIMEOUT)
-            raise KafkaTimeoutError()
+            raise RequestTimedOutError()
         else:
             return result
 
