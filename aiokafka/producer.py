@@ -385,7 +385,7 @@ class AIOKafkaProducer(object):
             response = yield from self.client.send(node_id, request)
         except KafkaError as err:
             log.warning(
-                "Got error produce response: %s", err, exc_info=True)
+                "Got error produce response: %s", err)
             if getattr(err, "invalid_metadata", False):
                 self.client.force_metadata_update()
 
