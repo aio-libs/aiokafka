@@ -2,7 +2,6 @@ import asyncio
 import collections
 import logging
 from copy import copy
-from typing import Awaitable
 
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.coordinator.protocol import ConsumerProtocol
@@ -305,7 +304,7 @@ class GroupCoordinator(BaseCoordinator):
                 revoked = set(self._subscription.assigned_partitions())
                 res = self._subscription.listener.on_partitions_revoked(
                     revoked)
-                if isinstance(res, Awaitable):
+                if asyncio.iscoroutine(res):
                     yield from res
             except Exception:
                 log.exception("User provided subscription listener %s"
@@ -382,7 +381,7 @@ class GroupCoordinator(BaseCoordinator):
             try:
                 res = self._subscription.listener.on_partitions_assigned(
                     assigned)
-                if isinstance(res, Awaitable):
+                if asyncio.iscoroutine(res):
                     yield from res
             except Exception:
                 log.exception("User provided listener %s for group %s"
