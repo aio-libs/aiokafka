@@ -350,3 +350,28 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
             yield from client.set_topics(["topic3", "topics4"])
             self.assertEqual(
                 len(client._metadata_update.mock_calls), 5)
+
+    @run_until_complete
+    def test_metadata_updated_on_socket_disconnect(self):
+        # Related to issue 176. A disconnect means that either we lost
+        # connection to the node, or we have a node failure. In both cases
+        # there's a high probability that Leader distribution will also change.
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=self.hosts,
+            metadata_max_age_ms=10000)
+        yield from client.bootstrap()
+        self.add_cleanup(client.close)
+
+        # Init a clonnection
+        node_id = client.get_random_node()
+        req = MetadataRequest([])
+        yield from client.send(node_id, req)
+
+        # No metadata update pending atm
+        self.assertFalse(client._md_update_waiter.done())
+
+        # Connection disconnect should trigger an update
+        conn = yield from client._get_conn(node_id)
+        conn.close(reason=CloseReason.CONNECTION_BROKEN)
+        self.assertTrue(client._md_update_waiter.done())
