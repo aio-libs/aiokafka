@@ -5,14 +5,14 @@ import socket
 import types
 from unittest import mock
 
-from kafka.common import (KafkaError, ConnectionError, KafkaTimeoutError,
+from kafka.common import (KafkaError, ConnectionError, RequestTimedOutError,
                           NodeNotReadyError, UnrecognizedBrokerVersion)
 from kafka.protocol.metadata import (
     MetadataRequest_v0 as MetadataRequest,
     MetadataResponse_v0 as MetadataResponse)
 
 from aiokafka.client import AIOKafkaClient
-from aiokafka.conn import AIOKafkaConnection
+from aiokafka.conn import AIOKafkaConnection, CloseReason
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
@@ -157,10 +157,11 @@ class TestAIOKafkaClient(unittest.TestCase):
         client._get_conn = types.MethodType(get_conn, client)
 
         # first send timeouts
-        with self.assertRaises(KafkaTimeoutError):
+        with self.assertRaises(RequestTimedOutError):
             yield from client.send(0, MetadataRequest([]))
 
-        conn.close.assert_called_once_with()
+        conn.close.assert_called_once_with(
+            reason=CloseReason.CONNECTION_TIMEOUT)
         # this happens because conn was closed
         conn.connected.return_value = False
 
