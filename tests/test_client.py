@@ -365,6 +365,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
         # Init a clonnection
         node_id = client.get_random_node()
+        assert node_id is not None
         req = MetadataRequest([])
         yield from client.send(node_id, req)
 

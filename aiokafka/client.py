@@ -155,8 +155,9 @@ class AIOKafkaClient:
 
             self.cluster.update_metadata(metadata)
 
-            # A cluster with no topics can return no broker metadata
-            # in that case, we should keep the bootstrap connection
+            # A cluster with no topics can return no broker metadata...
+            # In that case, we should keep the bootstrap connection till
+            # we get a normal cluster layout.
             if not len(self.cluster.brokers()):
                 self._conns['bootstrap'] = bootstrap_conn
             else:
@@ -246,6 +247,14 @@ class AIOKafkaClient:
                 continue
 
             cluster_metadata.update_metadata(metadata)
+
+            # We only keep bootstrap connection to update metadata until
+            # proper cluster layout is available.
+            if 'bootstrap' in self._conns and len(self.cluster.brokers()):
+                conn = self._conns['bootstrap']
+                conn.close()
+                del self._conns['bootstrap']
+
             break
         else:
             log.error('Unable to update metadata from %s', nodeids)
@@ -448,6 +457,9 @@ class AIOKafkaClient:
             except KafkaError:
                 continue
             else:
+                # To avoid having a connection in undefined state
+                if node_id != "bootstrap" and conn.connected():
+                    conn.close()
                 return version
 
         raise UnrecognizedBrokerVersion()
