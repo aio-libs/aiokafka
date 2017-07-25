@@ -1,6 +1,17 @@
 CHANGES
 --------
 
+0.2.3 (2017-07-23)
+^^^^^^^^^^^^^^^^^^
+
+* Fixed retry problem in Producer, when buffer is not reset to 0 offset. 
+  Thanks to @ngavrysh for the fix in Tubular/aiokafka fork. (issue #184)
+* Fixed how Producer handles retries on Leader node failure. It just did not
+  work before... Thanks to @blugowski for the help in locating the problem.
+  (issue #176, issue #173)
+* Fixed degrade in v0.2.2 on Consumer with no group_id. (issue #166)
+
+
 0.2.2 (2017-04-17)
 ^^^^^^^^^^^^^^^^^^
 

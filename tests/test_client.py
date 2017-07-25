@@ -5,14 +5,14 @@ import socket
 import types
 from unittest import mock
 
-from kafka.common import (KafkaError, ConnectionError, KafkaTimeoutError,
+from kafka.common import (KafkaError, ConnectionError, RequestTimedOutError,
                           NodeNotReadyError, UnrecognizedBrokerVersion)
 from kafka.protocol.metadata import (
     MetadataRequest_v0 as MetadataRequest,
     MetadataResponse_v0 as MetadataResponse)
 
 from aiokafka.client import AIOKafkaClient
-from aiokafka.conn import AIOKafkaConnection
+from aiokafka.conn import AIOKafkaConnection, CloseReason
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
@@ -157,10 +157,11 @@ class TestAIOKafkaClient(unittest.TestCase):
         client._get_conn = types.MethodType(get_conn, client)
 
         # first send timeouts
-        with self.assertRaises(KafkaTimeoutError):
+        with self.assertRaises(RequestTimedOutError):
             yield from client.send(0, MetadataRequest([]))
 
-        conn.close.assert_called_once_with()
+        conn.close.assert_called_once_with(
+            reason=CloseReason.CONNECTION_TIMEOUT)
         # this happens because conn was closed
         conn.connected.return_value = False
 
@@ -349,3 +350,29 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
             yield from client.set_topics(["topic3", "topics4"])
             self.assertEqual(
                 len(client._metadata_update.mock_calls), 5)
+
+    @run_until_complete
+    def test_metadata_updated_on_socket_disconnect(self):
+        # Related to issue 176. A disconnect means that either we lost
+        # connection to the node, or we have a node failure. In both cases
+        # there's a high probability that Leader distribution will also change.
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=self.hosts,
+            metadata_max_age_ms=10000)
+        yield from client.bootstrap()
+        self.add_cleanup(client.close)
+
+        # Init a clonnection
+        node_id = client.get_random_node()
+        assert node_id is not None
+        req = MetadataRequest([])
+        yield from client.send(node_id, req)
+
+        # No metadata update pending atm
+        self.assertFalse(client._md_update_waiter.done())
+
+        # Connection disconnect should trigger an update
+        conn = yield from client._get_conn(node_id)
+        conn.close(reason=CloseReason.CONNECTION_BROKEN)
+        self.assertTrue(client._md_update_waiter.done())

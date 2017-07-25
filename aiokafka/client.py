@@ -7,12 +7,12 @@ from kafka.cluster import ClusterMetadata
 from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.produce import ProduceRequest
 
-from aiokafka.conn import create_conn
+from aiokafka.conn import create_conn, CloseReason
 from aiokafka.errors import (
     KafkaError,
     ConnectionError,
     NodeNotReadyError,
-    KafkaTimeoutError,
+    RequestTimedOutError,
     UnknownTopicOrPartitionError,
     UnrecognizedBrokerVersion)
 from aiokafka import ensure_future, __version__
@@ -122,7 +122,7 @@ class AIOKafkaClient:
         # process all pending buffers.
         futs = []
         for conn in self._conns.values():
-            futs.append(conn.close())
+            futs.append(conn.close(reason=CloseReason.SHUTDOWN))
         if futs:
             yield from asyncio.gather(*futs, loop=self._loop)
 
@@ -155,8 +155,9 @@ class AIOKafkaClient:
 
             self.cluster.update_metadata(metadata)
 
-            # A cluster with no topics can return no broker metadata
-            # in that case, we should keep the bootstrap connection
+            # A cluster with no topics can return no broker metadata...
+            # In that case, we should keep the bootstrap connection till
+            # we get a normal cluster layout.
             if not len(self.cluster.brokers()):
                 self._conns['bootstrap'] = bootstrap_conn
             else:
@@ -246,6 +247,14 @@ class AIOKafkaClient:
                 continue
 
             cluster_metadata.update_metadata(metadata)
+
+            # We only keep bootstrap connection to update metadata until
+            # proper cluster layout is available.
+            if 'bootstrap' in self._conns and len(self.cluster.brokers()):
+                conn = self._conns['bootstrap']
+                conn.close()
+                del self._conns['bootstrap']
+
             break
         else:
             log.error('Unable to update metadata from %s', nodeids)
@@ -306,6 +315,15 @@ class AIOKafkaClient:
         self._topics = set(topics)
         return res
 
+    def _on_connection_closed(self, conn, reason):
+        """ Callback called when connection is closed
+        """
+        # Connection failures imply that our metadata is stale, so let's
+        # refresh
+        if reason == CloseReason.CONNECTION_BROKEN or \
+                reason == CloseReason.CONNECTION_TIMEOUT:
+            self.force_metadata_update()
+
     @asyncio.coroutine
     def _get_conn(self, node_id):
         "Get or create a connection to a broker using host and port"
@@ -325,14 +343,19 @@ class AIOKafkaClient:
             with (yield from self._get_conn_lock):
                 if node_id in self._conns:
                     return self._conns[node_id]
+
                 self._conns[node_id] = yield from create_conn(
                     broker.host, broker.port, loop=self._loop,
                     client_id=self._client_id,
                     request_timeout_ms=self._request_timeout_ms,
                     ssl_context=self._ssl_context,
-                    security_protocol=self._security_protocol)
+                    security_protocol=self._security_protocol,
+                    on_close=self._on_connection_closed)
         except (OSError, asyncio.TimeoutError) as err:
             log.error('Unable connect to node with id %s: %s', node_id, err)
+            # Connection failures imply that our metadata is stale, so let's
+            # refresh
+            self.force_metadata_update()
             return None
         else:
             return self._conns[node_id]
@@ -353,7 +376,7 @@ class AIOKafkaClient:
             request (Struct): request object (not-encoded)
 
         Raises:
-            kafka.common.KafkaTimeoutError
+            kafka.common.RequestTimedOutError
             kafka.common.NodeNotReadyError
             kafka.common.ConnectionError
             kafka.common.CorrelationIdError
@@ -378,8 +401,8 @@ class AIOKafkaClient:
             result = yield from future
         except asyncio.TimeoutError:
             # close connection so it is renewed in next request
-            self._conns[node_id].close()
-            raise KafkaTimeoutError()
+            self._conns[node_id].close(reason=CloseReason.CONNECTION_TIMEOUT)
+            raise RequestTimedOutError()
         else:
             return result
 
@@ -434,6 +457,9 @@ class AIOKafkaClient:
             except KafkaError:
                 continue
             else:
+                # To avoid having a connection in undefined state
+                if node_id != "bootstrap" and conn.connected():
+                    conn.close()
                 return version
 
         raise UnrecognizedBrokerVersion()
