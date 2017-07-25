@@ -710,8 +710,7 @@ class GroupCoordinator(BaseCoordinator):
                     self, self.group_id, self.coordinator_id,
                     subscription, self._assignors, self._session_timeout_ms,
                     self._retry_backoff_ms, loop=self.loop)
-                assignment = (
-                    yield from rebalance.perform_group_join())
+                assignment = yield from rebalance.perform_group_join()
 
                 if (subscription != self._subscription.subscription):
                     log.debug("Subscription changed during rebalance "

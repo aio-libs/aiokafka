@@ -6,7 +6,9 @@ from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.fetcher import RecordTooLargeError
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
-from aiokafka import ConsumerStoppedError, IllegalOperation
+from aiokafka import (
+    ConsumerStoppedError, IllegalOperation, ConsumerRebalanceListener
+)
 
 from kafka.common import (
     TopicPartition, OffsetAndMetadata, IllegalStateError,
@@ -1013,3 +1015,89 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertNotIn(tp2, consumer._fetcher._records)
 
         yield from consumer.stop()
+
+    @run_until_complete
+    def test_rebalance_listener_with_coroutines(self):
+        yield from self.send_messages(0, list(range(0, 10)))
+        yield from self.send_messages(1, list(range(10, 20)))
+
+        main_self = self
+
+        class SimpleRebalanceListener(ConsumerRebalanceListener):
+            def __init__(self, consumer):
+                self.consumer = consumer
+                self.revoke_mock = mock.Mock()
+                self.assign_mock = mock.Mock()
+
+            @asyncio.coroutine
+            def on_partitions_revoked(self, revoked):
+                self.revoke_mock(revoked)
+                # If this commit would fail we will end up with wrong msgs
+                # eturned in test below
+                yield from self.consumer.commit()
+                # Confirm that coordinator is actually waiting for callback to
+                # complete
+                yield from asyncio.sleep(0.2, loop=main_self.loop)
+                main_self.assertTrue(
+                    self.consumer._coordinator.needs_join_prepare)
+
+            @asyncio.coroutine
+            def on_partitions_assigned(self, assigned):
+                self.assign_mock(assigned)
+                # Confirm that coordinator is actually waiting for callback to
+                # complete
+                yield from asyncio.sleep(0.2, loop=main_self.loop)
+                main_self.assertFalse(
+                    self.consumer._coordinator.needs_join_prepare)
+
+        tp0 = TopicPartition(self.topic, 0)
+        tp1 = TopicPartition(self.topic, 1)
+        consumer1 = AIOKafkaConsumer(
+            loop=self.loop, group_id="test_rebalance_listener_with_coroutines",
+            bootstrap_servers=self.hosts, enable_auto_commit=False,
+            auto_offset_reset="earliest")
+        listener1 = SimpleRebalanceListener(consumer1)
+        consumer1.subscribe([self.topic], listener=listener1)
+        yield from consumer1.start()
+        self.add_cleanup(consumer1.stop)
+
+        msg = yield from consumer1.getone(tp0)
+        self.assertEqual(msg.value, b"0")
+        msg = yield from consumer1.getone(tp1)
+        self.assertEqual(msg.value, b"10")
+        listener1.revoke_mock.assert_called_with(set([]))
+        listener1.assign_mock.assert_called_with(set([tp0, tp1]))
+
+        # By adding a 2nd consumer we trigger rebalance
+        consumer2 = AIOKafkaConsumer(
+            loop=self.loop, group_id="test_rebalance_listener_with_coroutines",
+            bootstrap_servers=self.hosts, enable_auto_commit=False,
+            auto_offset_reset="earliest")
+        listener2 = SimpleRebalanceListener(consumer2)
+        consumer2.subscribe([self.topic], listener=listener2)
+        yield from consumer2.start()
+        self.add_cleanup(consumer2.stop)
+
+        msg1 = yield from consumer1.getone()
+        msg2 = yield from consumer2.getone()
+        # We can't predict the assignment in test
+        if consumer1.assignment() == set([tp1]):
+            msg1, msg2 = msg2, msg1
+            c1_assignment = set([tp1])
+            c2_assignment = set([tp0])
+        else:
+            c1_assignment = set([tp0])
+            c2_assignment = set([tp1])
+
+        self.assertEqual(msg1.value, b"1")
+        self.assertEqual(msg2.value, b"11")
+
+        listener1.revoke_mock.assert_called_with(set([tp0, tp1]))
+        self.assertEqual(listener1.revoke_mock.call_count, 2)
+        listener1.assign_mock.assert_called_with(c1_assignment)
+        self.assertEqual(listener1.assign_mock.call_count, 2)
+
+        listener2.revoke_mock.assert_called_with(set([]))
+        self.assertEqual(listener2.revoke_mock.call_count, 1)
+        listener2.assign_mock.assert_called_with(c2_assignment)
+        self.assertEqual(listener2.assign_mock.call_count, 1)

@@ -30,6 +30,18 @@ Helpers
 
 .. _ssl_auth:
 
+Abstracts
+---------
+
+.. _consumer-rebalance-listener:
+
+.. autoclass:: aiokafka.ConsumerRebalanceListener
+    :members:
+    :exclude-members: on_partitions_revoked, on_partitions_assigned
+
+    .. autocomethod:: aiokafka.ConsumerRebalanceListener.on_partitions_revoked()
+
+    .. autocomethod:: aiokafka.ConsumerRebalanceListener.on_partitions_assigned()
 
 SSL Authentication
 ------------------

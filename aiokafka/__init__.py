@@ -1,6 +1,7 @@
 import sys
 
 from .errors import ConsumerStoppedError, IllegalOperation
+from .abc import ConsumerRebalanceListener
 
 try:
     from asyncio import ensure_future
@@ -19,6 +20,8 @@ __all__ = [
     # Clients API
     "AIOKafkaProducer",
     "AIOKafkaConsumer",
+    # ABC's
+    "ConsumerRebalanceListener",
     # Errors
     "ConsumerStoppedError", "IllegalOperation",
     # Structs
