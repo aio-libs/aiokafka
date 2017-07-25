@@ -1,6 +1,14 @@
 CHANGES
 --------
 
+0.3.0 (XXXX-XX-XX)
+^^^^^^^^^^^^^^^^^^
+
+* Changed ConsumerRebalanceListener to support either function or coroutine
+  for `on_partitions_assigned` and `on_partitions_revoked` callbacks (PR #190
+  by @ask)
+* 
+
 0.2.3 (2017-07-23)
 ^^^^^^^^^^^^^^^^^^
 
