@@ -1016,7 +1016,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         yield from consumer.stop()
 
-    @run_until_complete
     def test_rebalance_listener_with_coroutines(self):
         yield from self.send_messages(0, list(range(0, 10)))
         yield from self.send_messages(1, list(range(10, 20)))
@@ -1101,3 +1100,17 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(listener2.revoke_mock.call_count, 1)
         listener2.assign_mock.assert_called_with(c2_assignment)
         self.assertEqual(listener2.assign_mock.call_count, 1)
+
+    @run_until_complete
+    def test_consumer_stop_cancels_pending_position_fetches(self):
+        consumer = AIOKafkaConsumer(
+            self.topic,
+            loop=self.loop, bootstrap_servers=self.hosts,
+            group_id='group-%s' % self.id())
+        yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        self.assertTrue(consumer._pending_position_fetches)
+        pending_task = list(consumer._pending_position_fetches)[0]
+        yield from consumer.stop()
+        self.assertTrue(pending_task.cancelled())
