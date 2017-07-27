@@ -199,6 +199,10 @@ class AIOKafkaConsumer(object):
         self._closed = False
         self._loop = loop
 
+        # Set for background updates, so we'll finalize them properly. Only
+        # active tasks are in this set, as done ones are discarded by callback.
+        self._pending_position_fetches = set([])
+
         if topics:
             self._client.set_topics(topics)
             self._subscription.subscribe(topics=topics)
@@ -319,6 +323,12 @@ class AIOKafkaConsumer(object):
             return
         log.debug("Closing the KafkaConsumer.")
         self._closed = True
+        for task in list(self._pending_position_fetches):
+            task.cancel()
+            try:
+                yield from task
+            except asyncio.CancelledError:
+                pass
         if self._coordinator:
             yield from self._coordinator.close()
         if self._fetcher:
@@ -655,14 +665,28 @@ class AIOKafkaConsumer(object):
         yield from self._fetcher.update_fetch_positions(partitions)
 
     def _on_change_subscription(self):
-        """This is `group rebalanced` signal handler for update fetch positions
-        of assigned partitions"""
+        """ This is `group rebalanced` signal handler used to update fetch
+            positions of assigned partitions
+        """
+        if self._closed:  # pragma: no cover
+            return
         # fetch positions if we have partitions we're subscribed
         # to that we don't know the offset for
         if not self._subscription.has_all_fetch_positions():
-            ensure_future(self._update_fetch_positions(
-                self._subscription.missing_fetch_positions()),
-                loop=self._loop)
+            task = ensure_future(
+                self._update_fetch_positions(
+                    self._subscription.missing_fetch_positions()),
+                loop=self._loop
+            )
+            self._pending_position_fetches.add(task)
+
+            def on_done(fut, tasks=self._pending_position_fetches):
+                tasks.discard(fut)
+                try:
+                    fut.result()
+                except Exception as err:  # pragma: no cover
+                    log.error("Failed to update fetch positions: %r", err)
+            task.add_done_callback(on_done)
 
     @asyncio.coroutine
     def getone(self, *partitions):
