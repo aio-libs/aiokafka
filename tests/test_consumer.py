@@ -553,6 +553,18 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             yield from consumer.seek_to_end(tp1)
 
     @run_until_complete
+    def test_consumer_seek_type_errors(self):
+        consumer = yield from self.consumer_factory()
+        self.add_cleanup(consumer.stop)
+
+        with self.assertRaises(TypeError):
+            yield from consumer.seek_to_beginning(1)
+        with self.assertRaises(TypeError):
+            yield from consumer.seek_to_committed(1)
+        with self.assertRaises(TypeError):
+            yield from consumer.seek_to_end(1)
+
+    @run_until_complete
     def test_manual_subscribe_nogroup(self):
         msgs1 = yield from self.send_messages(0, range(0, 10))
         msgs2 = yield from self.send_messages(1, range(10, 20))
