@@ -36,10 +36,10 @@ balance consumption using **Consumer Groups**.
 
 This page covers:
 
- * `Offsets and Consumer Position`_ how to tracks consumption progress, save it
-   to Kafka or another place.
- * `Consumer Groups and Topic Subscriptions`_ how to subscribe to different
-   topics/patters; consume the same topic from multiple processes.
+ * `Offsets and Consumer Position`_ explais how to track consumption progress,
+   save it to Kafka or another place.
+ * `Consumer Groups and Topic Subscriptions`_ explains how to subscribe to
+   different topics/patters; consume the same topic from multiple processes.
  * `Detecting Consumer Failures`_ how to 
 
 
@@ -131,7 +131,7 @@ bulk. The algorithm can be enhanced by taking advantage of:
   * ``await consumer.highwater(partition)`` to understand if we have more
     unconsumed messages or this one is the last one in partition.
 
-If you want to have more controll over which partition and message is
+If you want to have more control over which partition and message is
 committed, you can specify offset manualy::
 
     while True:
@@ -272,22 +272,20 @@ same **Consumer Group**::
 
     # Process 1
     consumer = AIOKafkaConsumer(
-        loop=loop, bootstrap_servers='localhost:9092',
+        "my_topic", loop=loop, bootstrap_servers='localhost:9092',
         group_id="MyGreatConsumerGroup"  # This will enable Consumer Groups
     )
     await consumer.start()
-    consumer.subscribe(["my_topic"])
     async for msg in consumer:
         print("Process %s consumed msg from partition %s" % (
               os.getpid(), msg.partition))
 
     # Process 2
     consumer2 = AIOKafkaConsumer(
-        loop=loop, bootstrap_servers='localhost:9092',
+        "my_topic", loop=loop, bootstrap_servers='localhost:9092',
         group_id="MyGreatConsumerGroup"  # This will enable Consumer Groups
     )
     await consumer2.start()
-    consumer2.subscribe(["my_topic"])
     async for msg in consumer2:
         print("Process %s consumed msg from partition %s" % (
               os.getpid(), msg.partition))
@@ -310,6 +308,11 @@ the group**.
 
 .. note:: Conceptually you can think of a **Consumer Group** as being a `single 
    logical subscriber` that happens to be made up of multiple processes.
+
+In addition, when group reassignment happens automatically, consumers can be
+notified through a ``ConsumerRebalanceListener``, which allows them to finish
+necessary application-level logic such as state cleanup, manual offset commits,
+etc. See :meth:`aiokafka.AIOKafkaConsumer.subscribe` docs for more details.
 
 For more information on how **Consumer Groups** are organized see 
 `Official Kafka Docs <https://kafka.apache.org/documentation/#intro_consumers>`_.
@@ -400,9 +403,10 @@ it's partitions, that are now lagging behind.
 
 Some things to note about it:
 
-* There is a slight **pause in consumption** if you change the partitions
-  you are fetching. This can be caused by a pending request for partitions,
-  that have no data, that will long-poll for ``fetch_max_wait_ms``.
+* There may be a slight **pause in consumption** if you change the partitions
+  you are fetching. This can happen when Consumer requests a fetch for
+  partitions that have no data available. Consider setting a relatively low
+  ``fetch_max_wait_ms`` to avoid this.
 * The ``async for`` interface can not be used with explicit partition
   filtering, just use ``consumer.getone()`` instead.
 
@@ -412,7 +416,7 @@ Detecting Consumer Failures
 
 People who worked with ``kafka-python`` or Java Client probably know that
 the ``poll()`` API is designed to ensure liveness of a **Consumer Group**. In
-other words consumer will only be considered live if it consumes messages.
+other words Consumer will only be considered alive if it consumes messages.
 It's not the same for ``aiokafka``, for more details read 
 :ref:`Difference between aiokafka and kafka-python <kafka_python_difference>`.
 
