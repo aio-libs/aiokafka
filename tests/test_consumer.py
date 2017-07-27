@@ -2,6 +2,9 @@ import asyncio
 import time
 from unittest import mock
 from contextlib import contextmanager
+
+import pytest
+
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.fetcher import RecordTooLargeError
 from aiokafka.producer import AIOKafkaProducer
@@ -476,6 +479,92 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from consumer.stop()
 
     @run_until_complete
+    def test_consumer_seek_to_beginning(self):
+        # Send 3 messages
+        yield from self.send_messages(0, [1, 2, 3])
+
+        consumer = yield from self.consumer_factory()
+        self.add_cleanup(consumer.stop)
+
+        tp = TopicPartition(self.topic, 0)
+        start_position = yield from consumer.position(tp)
+
+        rmsg1 = yield from consumer.getone()
+        yield from consumer.seek_to_beginning()
+        rmsg2 = yield from consumer.getone()
+        self.assertEqual(rmsg2.value, rmsg1.value)
+
+        yield from consumer.seek_to_beginning(tp)
+        rmsg3 = yield from consumer.getone()
+        self.assertEqual(rmsg2.value, rmsg3.value)
+
+        pos = yield from consumer.position(tp)
+        self.assertEqual(pos, start_position + 1)
+
+    @run_until_complete
+    def test_consumer_seek_to_end(self):
+        # Send 3 messages
+        yield from self.send_messages(0, [1, 2, 3])
+
+        consumer = yield from self.consumer_factory()
+        self.add_cleanup(consumer.stop)
+
+        tp = TopicPartition(self.topic, 0)
+        start_position = yield from consumer.position(tp)
+
+        yield from consumer.seek_to_end()
+        pos = yield from consumer.position(tp)
+        self.assertEqual(pos, start_position + 3)
+        task = self.loop.create_task(consumer.getone())
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        self.assertEqual(task.done(), False)
+
+        yield from self.send_messages(0, [4, 5, 6])
+        rmsg = yield from task
+        self.assertEqual(rmsg.value, b"4")
+
+        yield from consumer.seek_to_end(tp)
+        task = self.loop.create_task(consumer.getone())
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        self.assertEqual(task.done(), False)
+
+        yield from self.send_messages(0, [7, 8, 9])
+        rmsg = yield from task
+        self.assertEqual(rmsg.value, b"7")
+
+        pos = yield from consumer.position(tp)
+        self.assertEqual(pos, start_position + 7)
+
+    @run_until_complete
+    def test_consumer_seek_on_unassigned(self):
+        tp0 = TopicPartition(self.topic, 0)
+        tp1 = TopicPartition(self.topic, 1)
+        consumer = AIOKafkaConsumer(
+            loop=self.loop, group_id=None, bootstrap_servers=self.hosts)
+        yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+        consumer.assign([tp0])
+
+        with self.assertRaises(IllegalStateError):
+            yield from consumer.seek_to_beginning(tp1)
+        with self.assertRaises(IllegalStateError):
+            yield from consumer.seek_to_committed(tp1)
+        with self.assertRaises(IllegalStateError):
+            yield from consumer.seek_to_end(tp1)
+
+    @run_until_complete
+    def test_consumer_seek_type_errors(self):
+        consumer = yield from self.consumer_factory()
+        self.add_cleanup(consumer.stop)
+
+        with self.assertRaises(TypeError):
+            yield from consumer.seek_to_beginning(1)
+        with self.assertRaises(TypeError):
+            yield from consumer.seek_to_committed(1)
+        with self.assertRaises(TypeError):
+            yield from consumer.seek_to_end(1)
+
+    @run_until_complete
     def test_manual_subscribe_nogroup(self):
         msgs1 = yield from self.send_messages(0, range(0, 10))
         msgs2 = yield from self.send_messages(1, range(10, 20))
@@ -494,6 +583,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(set(available_msgs), set(result))
         yield from consumer.stop()
 
+    @pytest.mark.xfail
     @run_until_complete
     def test_unknown_topic_or_partition(self):
         consumer = AIOKafkaConsumer(

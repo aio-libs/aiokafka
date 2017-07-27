@@ -12,7 +12,7 @@ __all__ = [
     "RebalanceInProgressError", "IllegalGenerationError",
     "UnknownMemberIdError", "GroupLoadInProgressError",
     "GroupCoordinatorNotAvailableError", "NotCoordinatorForGroupError",
-    "GroupAuthorizationFailedError",
+    "GroupAuthorizationFailedError", "IllegalStateError"
     # aiokafka custom errors
     "ConsumerStoppedError", "NoOffsetForPartitionError", "RecordTooLargeError",
     "ProducerClosed"

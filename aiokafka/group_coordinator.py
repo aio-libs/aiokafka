@@ -79,6 +79,13 @@ class BaseCoordinator(object):
         if self._assignment_changed_cb is not None:
             self._assignment_changed_cb()
 
+    @asyncio.coroutine
+    def ensure_partitions_assigned(self):
+        """ Will be called by consumer before any operation regarding
+            assignment
+        """
+        return
+
 
 class NoGroupCoordinator(BaseCoordinator):
     """
@@ -725,6 +732,8 @@ class GroupCoordinator(BaseCoordinator):
                     self.needs_join_prepare = True
                     return
 
+    ensure_partitions_assigned = ensure_active_group
+
     def coordinator_dead(self, error=None):
         """Mark the current coordinator as dead."""
         if self.coordinator_id is not None:
@@ -748,6 +757,7 @@ class GroupCoordinator(BaseCoordinator):
             yield from asyncio.sleep(sleep_time, loop=self.loop)
             if not self._subscription.partitions_auto_assigned():
                 # no partitions assigned yet, just wait
+                sleep_time = retry_backoff_time
                 continue
 
             try:
