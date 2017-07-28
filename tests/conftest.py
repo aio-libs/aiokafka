@@ -58,22 +58,26 @@ def ssl_folder(docker_ip_address):
 @pytest.fixture(scope='session')
 def docker_ip_address(docker):
     """Returns IP address of the docker daemon service."""
-    # Fallback docker daemon bridge name
-    ifname = 'docker0'
-    try:
-        for network in docker.networks():
-            _ifname = network['Options'].get(
-                'com.docker.network.bridge.name')
-            if _ifname is not None:
-                ifname = _ifname
-                break
-    except libdocker.errors.InvalidVersion:
-        pass
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    return socket.inet_ntoa(fcntl.ioctl(
-        s.fileno(),
-        0x8915,  # SIOCGIFADDR
-        struct.pack('256s', ifname[:15].encode('utf-8')))[20:24])
+    if sys.platform == 'darwin':
+        # docker for mac publishes ports on localhost
+        return '127.0.0.1'
+    else:
+        # Fallback docker daemon bridge name
+        ifname = 'docker0'
+        try:
+            for network in docker.networks():
+                _ifname = network['Options'].get(
+                    'com.docker.network.bridge.name')
+                if _ifname is not None:
+                    ifname = _ifname
+                    break
+        except libdocker.errors.InvalidVersion:
+            pass
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        return socket.inet_ntoa(fcntl.ioctl(
+            s.fileno(),
+            0x8915,  # SIOCGIFADDR
+            struct.pack('256s', ifname[:15].encode('utf-8')))[20:24])
 
 
 @pytest.fixture(scope='session')
