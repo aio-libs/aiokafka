@@ -1204,3 +1204,26 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         pending_task = list(consumer._pending_position_fetches)[0]
         yield from consumer.stop()
         self.assertTrue(pending_task.cancelled())
+
+    @run_until_complete
+    def test_commit_not_blocked_by_long_poll_fetch(self):
+        yield from self.send_messages(0, list(range(0, 10)))
+
+        consumer = yield from self.consumer_factory(
+            fetch_max_wait_ms=10000)
+
+        # This should prefetch next batch right away and long-poll
+        yield from consumer.getmany(timeout_ms=1000)
+        long_poll_task = self.loop.create_task(
+            consumer.getmany(timeout_ms=1000))
+        yield from asyncio.sleep(0.2, loop=self.loop)
+        self.assertFalse(long_poll_task.done())
+
+        start_time = self.loop.time()
+        yield from consumer.commit()
+        end_time = self.loop.time()
+
+        print(end_time - start_time)
+
+        self.assertFalse(long_poll_task.done())
+        self.assertLess(end_time - start_time, 500)

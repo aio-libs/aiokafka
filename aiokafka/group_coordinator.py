@@ -18,6 +18,7 @@ from kafka.protocol.group import (
 import aiokafka.errors as Errors
 from aiokafka import ensure_future
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
+from aiokafka.client import ConnectionGroup
 
 log = logging.getLogger(__name__)
 
@@ -261,19 +262,21 @@ class GroupCoordinator(BaseCoordinator):
             # attempt any resending if the request fails or times out.
             request = LeaveGroupRequest(self.group_id, self.member_id)
             try:
-                yield from self._send_req(self.coordinator_id, request)
+                yield from self._send_req(
+                    self.coordinator_id, request,
+                    group=ConnectionGroup.COORDINATION)
             except Errors.KafkaError as err:
                 log.error("LeaveGroup request failed: %s", err)
             else:
                 log.info("LeaveGroup request succeeded")
 
     @asyncio.coroutine
-    def _send_req(self, node_id, request):
+    def _send_req(self, node_id, request, *, group):
         """send request to Kafka node and mark coordinator as `dead`
         in error case
         """
         try:
-            resp = yield from self._client.send(node_id, request)
+            resp = yield from self._client.send(node_id, request, group=group)
         except Errors.KafkaError as err:
             log.error(
                 'Error sending %s to node %s [%s] -- marking coordinator dead',
@@ -457,7 +460,8 @@ class GroupCoordinator(BaseCoordinator):
 
     @asyncio.coroutine
     def _proc_offsets_fetch_request(self, node_id, request):
-        response = yield from self._send_req(node_id, request)
+        response = yield from self._send_req(
+            node_id, request, group=ConnectionGroup.COORDINATION)
         offsets = {}
         for topic, partitions in response.topics:
             for partition, offset, metadata, error_code in partitions:
@@ -533,7 +537,8 @@ class GroupCoordinator(BaseCoordinator):
         log.debug("Sending offset-commit request with %s for group %s to %s",
                   offsets, self.group_id, node_id)
 
-        response = yield from self._send_req(node_id, request)
+        response = yield from self._send_req(
+            node_id, request, group=ConnectionGroup.COORDINATION)
 
         unauthorized_topics = set()
         for topic, partitions in response.topics:
@@ -668,7 +673,8 @@ class GroupCoordinator(BaseCoordinator):
                 self.group_id, node_id)
             request = GroupCoordinatorRequest(self.group_id)
             try:
-                resp = yield from self._send_req(node_id, request)
+                resp = yield from self._send_req(
+                    node_id, request, group=ConnectionGroup.DEFAULT)
             except Errors.KafkaError as err:
                 log.error("Group Coordinator Request failed: %s", err)
                 yield from asyncio.sleep(
@@ -774,7 +780,9 @@ class GroupCoordinator(BaseCoordinator):
             log.debug("Heartbeat: %s[%s] %s",
                       self.group_id, self.generation, self.member_id)
             try:
-                yield from self._send_req(self.coordinator_id, request)
+                yield from self._send_req(
+                    self.coordinator_id, request,
+                    group=ConnectionGroup.COORDINATION)
             except (Errors.GroupCoordinatorNotAvailableError,
                     Errors.NotCoordinatorForGroupError):
                 log.warning(
@@ -888,7 +896,8 @@ class CoordinatorGroupRebalance:
                   request, self.coordinator_id)
         try:
             response = yield from self._coordinator._send_req(
-                self.coordinator_id, request)
+                self.coordinator_id, request,
+                group=ConnectionGroup.COORDINATION)
         except Errors.GroupLoadInProgressError:
             log.debug("Attempt to join group %s rejected since coordinator %s"
                       " is loading the group.", self.group_id,
@@ -1005,7 +1014,8 @@ class CoordinatorGroupRebalance:
         response = None
         try:
             response = yield from self._coordinator._send_req(
-                self.coordinator_id, request)
+                self.coordinator_id, request,
+                group=ConnectionGroup.COORDINATION)
             log.info("Successfully synced group %s with generation %s",
                      self.group_id, self._coordinator.generation)
             return response.member_assignment
