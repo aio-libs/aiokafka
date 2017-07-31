@@ -10,8 +10,9 @@ from kafka.common import (KafkaError, ConnectionError, RequestTimedOutError,
 from kafka.protocol.metadata import (
     MetadataRequest_v0 as MetadataRequest,
     MetadataResponse_v0 as MetadataResponse)
+from kafka.protocol.fetch import FetchRequest_v0
 
-from aiokafka.client import AIOKafkaClient
+from aiokafka.client import AIOKafkaClient, ConnectionGroup
 from aiokafka.conn import AIOKafkaConnection, CloseReason
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -82,8 +83,8 @@ class TestAIOKafkaClient(unittest.TestCase):
         def send(request_id):
             return MetadataResponse(brokers, topics)
 
-        mocked_conns = {0: mock.MagicMock()}
-        mocked_conns[0].send.side_effect = send
+        mocked_conns = {(0, 0): mock.MagicMock()}
+        mocked_conns[(0, 0)].send.side_effect = send
         client = AIOKafkaClient(loop=self.loop,
                                 bootstrap_servers=['broker_1:4567'])
         task = asyncio.async(client._md_synchronizer(), loop=self.loop)
@@ -110,7 +111,7 @@ class TestAIOKafkaClient(unittest.TestCase):
         self.assertEqual(
             md.available_partitions_for_topic('topic_2'), set([1]))
 
-        mocked_conns[0].connected.return_value = False
+        mocked_conns[(0, 0)].connected.return_value = False
         is_ready = self.loop.run_until_complete(client.ready(0))
         self.assertEqual(is_ready, False)
         is_ready = self.loop.run_until_complete(client.ready(1))
@@ -133,24 +134,25 @@ class TestAIOKafkaClient(unittest.TestCase):
             return correct_response
 
         @asyncio.coroutine
-        def get_conn(self, node_id):
-            if node_id in self._conns:
-                conn = self._conns[node_id]
+        def get_conn(self, node_id, *, group=0):
+            conn_id = (node_id, group)
+            if conn_id in self._conns:
+                conn = self._conns[conn_id]
                 if not conn.connected():
-                    del self._conns[node_id]
+                    del self._conns[conn_id]
                 else:
                     return conn
 
             conn = mock.MagicMock()
             conn.send.side_effect = send
-            self._conns[node_id] = conn
+            self._conns[conn_id] = conn
             return conn
 
         node_id = 0
         conn = mock.MagicMock()
         conn.send.side_effect = send_exception
         conn.connected.return_value = True
-        mocked_conns = {node_id: conn}
+        mocked_conns = {(node_id, 0): conn}
         client = AIOKafkaClient(loop=self.loop,
                                 bootstrap_servers=['broker_1:4567'])
         client._conns = mocked_conns
@@ -168,7 +170,7 @@ class TestAIOKafkaClient(unittest.TestCase):
         # second send gets new connection and obtains result
         response = yield from client.send(0, MetadataRequest([]))
         self.assertEqual(response, correct_response)
-        self.assertNotEqual(conn, client._conns[node_id])
+        self.assertNotEqual(conn, client._conns[(node_id, 0)])
 
 
 class TestKafkaClientIntegration(KafkaIntegrationTestCase):
@@ -376,3 +378,95 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         conn = yield from client._get_conn(node_id)
         conn.close(reason=CloseReason.CONNECTION_BROKEN)
         self.assertTrue(client._md_update_waiter.done())
+
+    @run_until_complete
+    def test_no_concurrent_send_on_connection(self):
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=self.hosts,
+            metadata_max_age_ms=10000)
+        yield from client.bootstrap()
+        self.add_cleanup(client.close)
+
+        yield from self.wait_topic(client, self.topic)
+
+        node_id = client.get_random_node()
+        wait_request = FetchRequest_v0(
+            -1,  # replica_id
+            500,  # max_wait_ms
+            1024 * 1024,  # min_bytes
+            [(self.topic, [(0, 0, 1024)]
+              )])
+        vanila_request = MetadataRequest([])
+
+        send_time = self.loop.time()
+        long_task = self.loop.create_task(
+            client.send(node_id, wait_request)
+        )
+        yield from asyncio.sleep(0.0001, loop=self.loop)
+        self.assertFalse(long_task.done())
+
+        yield from client.send(node_id, vanila_request)
+        resp_time = self.loop.time()
+        fetch_resp = yield from long_task
+        # Check error code like resp->topics[0]->partitions[0]->error_code
+        self.assertEqual(fetch_resp.topics[0][1][0][1], 0)
+
+        # Check that vanila request actually executed after wait request
+        self.assertGreaterEqual(resp_time - send_time, 0.5)
+
+    @run_until_complete
+    def test_different_connections_in_conn_groups(self):
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=self.hosts,
+            metadata_max_age_ms=10000)
+        yield from client.bootstrap()
+        self.add_cleanup(client.close)
+
+        node_id = client.get_random_node()
+        conn1 = yield from client._get_conn(node_id)
+        conn2 = yield from client._get_conn(
+            node_id, group=ConnectionGroup.COORDINATION)
+
+        self.assertTrue(conn1 is not conn2)
+        self.assertEqual((conn1.host, conn1.port), (conn2.host, conn2.port))
+
+    @run_until_complete
+    def test_concurrent_send_on_different_connection_groups(self):
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=self.hosts,
+            metadata_max_age_ms=10000)
+        yield from client.bootstrap()
+        self.add_cleanup(client.close)
+
+        yield from self.wait_topic(client, self.topic)
+
+        node_id = client.get_random_node()
+        wait_request = FetchRequest_v0(
+            -1,  # replica_id
+            500,  # max_wait_ms
+            1024 * 1024,  # min_bytes
+            [(self.topic, [(0, 0, 1024)]
+              )])
+        vanila_request = MetadataRequest([])
+
+        send_time = self.loop.time()
+        long_task = self.loop.create_task(
+            client.send(node_id, wait_request)
+        )
+        yield from asyncio.sleep(0.0001, loop=self.loop)
+        self.assertFalse(long_task.done())
+
+        yield from client.send(
+            node_id, vanila_request, group=ConnectionGroup.COORDINATION)
+        resp_time = self.loop.time()
+        self.assertFalse(long_task.done())
+
+        fetch_resp = yield from long_task
+        # Check error code like resp->topics[0]->partitions[0]->error_code
+        self.assertEqual(fetch_resp.topics[0][1][0][1], 0)
+
+        # Check that vanila request actually executed after wait request
+        self.assertLess(resp_time - send_time, 0.5)

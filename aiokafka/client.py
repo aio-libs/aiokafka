@@ -24,6 +24,12 @@ __all__ = ['AIOKafkaClient']
 log = logging.getLogger('aiokafka')
 
 
+class ConnectionGroup:
+
+    DEFAULT = 0
+    COORDINATION = 1
+
+
 class AIOKafkaClient:
     """Initialize an asynchronous kafka client
 
@@ -159,7 +165,8 @@ class AIOKafkaClient:
             # In that case, we should keep the bootstrap connection till
             # we get a normal cluster layout.
             if not len(self.cluster.brokers()):
-                self._conns['bootstrap'] = bootstrap_conn
+                bootstrap_id = ('bootstrap', ConnectionGroup.DEFAULT)
+                self._conns[bootstrap_id] = bootstrap_conn
             else:
                 bootstrap_conn.close()
 
@@ -227,7 +234,8 @@ class AIOKafkaClient:
             topics = None
         metadata_request = MetadataRequest[version_id](topics)
         nodeids = [b.nodeId for b in self.cluster.brokers()]
-        if 'bootstrap' in self._conns:
+        bootstrap_id = ('bootstrap', ConnectionGroup.DEFAULT)
+        if bootstrap_id in self._conns:
             nodeids.append('bootstrap')
         random.shuffle(nodeids)
         for node_id in nodeids:
@@ -250,10 +258,9 @@ class AIOKafkaClient:
 
             # We only keep bootstrap connection to update metadata until
             # proper cluster layout is available.
-            if 'bootstrap' in self._conns and len(self.cluster.brokers()):
-                conn = self._conns['bootstrap']
+            if bootstrap_id in self._conns and len(self.cluster.brokers()):
+                conn = self._conns.pop(bootstrap_id)
                 conn.close()
-                del self._conns['bootstrap']
 
             break
         else:
@@ -325,12 +332,13 @@ class AIOKafkaClient:
             self.force_metadata_update()
 
     @asyncio.coroutine
-    def _get_conn(self, node_id):
+    def _get_conn(self, node_id, *, group=ConnectionGroup.DEFAULT):
         "Get or create a connection to a broker using host and port"
-        if node_id in self._conns:
-            conn = self._conns[node_id]
+        conn_id = (node_id, group)
+        if conn_id in self._conns:
+            conn = self._conns[conn_id]
             if not conn.connected():
-                del self._conns[node_id]
+                del self._conns[conn_id]
             else:
                 return conn
 
@@ -341,10 +349,10 @@ class AIOKafkaClient:
                       node_id, broker.host, broker.port)
 
             with (yield from self._get_conn_lock):
-                if node_id in self._conns:
-                    return self._conns[node_id]
+                if conn_id in self._conns:
+                    return self._conns[conn_id]
 
-                self._conns[node_id] = yield from create_conn(
+                self._conns[conn_id] = yield from create_conn(
                     broker.host, broker.port, loop=self._loop,
                     client_id=self._client_id,
                     request_timeout_ms=self._request_timeout_ms,
@@ -358,17 +366,17 @@ class AIOKafkaClient:
             self.force_metadata_update()
             return None
         else:
-            return self._conns[node_id]
+            return self._conns[conn_id]
 
     @asyncio.coroutine
-    def ready(self, node_id):
-        conn = yield from self._get_conn(node_id)
+    def ready(self, node_id, *, group=ConnectionGroup.DEFAULT):
+        conn = yield from self._get_conn(node_id, group=group)
         if conn is None:
             return False
         return True
 
     @asyncio.coroutine
-    def send(self, node_id, request):
+    def send(self, node_id, request, *, group=ConnectionGroup.DEFAULT):
         """Send a request to a specific node.
 
         Arguments:
@@ -384,7 +392,7 @@ class AIOKafkaClient:
         Returns:
             Future: resolves to Response struct
         """
-        if not (yield from self.ready(node_id)):
+        if not (yield from self.ready(node_id, group=group)):
             raise NodeNotReadyError(
                 "Attempt to send a request to node"
                 " which is not ready (node id {}).".format(node_id))
@@ -395,13 +403,14 @@ class AIOKafkaClient:
                 request.required_acks == 0:
             expect_response = False
 
-        future = self._conns[node_id].send(
+        future = self._conns[(node_id, group)].send(
             request, expect_response=expect_response)
         try:
             result = yield from future
         except asyncio.TimeoutError:
             # close connection so it is renewed in next request
-            self._conns[node_id].close(reason=CloseReason.CONNECTION_TIMEOUT)
+            self._conns[(node_id, group)].close(
+                reason=CloseReason.CONNECTION_TIMEOUT)
             raise RequestTimedOutError()
         else:
             return result
@@ -410,8 +419,12 @@ class AIOKafkaClient:
     def check_version(self, node_id=None):
         """Attempt to guess the broker version"""
         if node_id is None:
-            if self._conns:
-                node_id = list(self._conns.keys())[0]
+            default_group_conns = [
+                node_id for (node_id, group) in self._conns.keys()
+                if group == ConnectionGroup.DEFAULT
+            ]
+            if default_group_conns:
+                node_id = default_group_conns[0]
             else:
                 assert self.cluster.brokers(), 'no brokers in metadata'
                 node_id = list(self.cluster.brokers())[0].nodeId
