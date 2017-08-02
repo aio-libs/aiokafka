@@ -159,6 +159,10 @@ def setup_test_class(request, loop, kafka_server, ssl_folder):
     request.cls.kafka_ssl_port = ksslport
     request.cls.ssl_folder = ssl_folder
 
+    docker_image = request.config.getoption('--docker-image')
+    kafka_version = docker_image.split(":")[-1].split("_")[-1]
+    request.cls.kafka_version = kafka_version
+
     if hasattr(request.cls, 'wait_kafka'):
         request.cls.wait_kafka()
 

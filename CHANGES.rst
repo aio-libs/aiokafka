@@ -7,7 +7,6 @@ CHANGES
 * Changed ConsumerRebalanceListener to support either function or coroutine
   for `on_partitions_assigned` and `on_partitions_revoked` callbacks (PR #190
   by @ask)
-* 
 
 0.2.3 (2017-07-23)
 ^^^^^^^^^^^^^^^^^^
@@ -25,13 +24,13 @@ CHANGES
 
 * Reconnect after KafkaTimeoutException. (PR #149 by @Artimi)
 * Fixed compacted topic handling. It could skip messages if those were
-compacted (issue #71)
+  compacted (issue #71)
 * Fixed old issue with new topics not adding to subscription on pattern
-(issue #46)
+  (issue #46)
 * Another fix for Consumer race condition on JoinGroup. This forces Leader to
-wait for new metadata before assigning partitions. (issue #118)
+  wait for new metadata before assigning partitions. (issue #118)
 * Changed metadata listener in Coordinator to avoid 2 rejoins in a rare
-condition (issue #108)
+  condition (issue #108)
 * `getmany` will not return 0 results until we hit timeout. (issue #117)
 
 Big thanks to @Artimi for pointing out several of those issues.
@@ -40,8 +39,10 @@ Big thanks to @Artimi for pointing out several of those issues.
 0.2.1 (2017-02-19)
 ^^^^^^^^^^^^^^^^^^
 
-* Add a check to wait topic autocreation in Consumer, instead of raising UnknownTopicOrPartitionError (PR #92 by fabregas)
-* Consumer now stops consumption after `consumer.stop()` call. Any new `get*` calls will result in ConsumerStoppedError (PR #81)
+* Add a check to wait topic autocreation in Consumer, instead of raising 
+  UnknownTopicOrPartitionError (PR #92 by fabregas)
+* Consumer now stops consumption after `consumer.stop()` call. Any new `get*` calls 
+  will result in ConsumerStoppedError (PR #81)
 * Added `exclude_internal_topics` option for Consumer (PR #111)
 * Better support for pattern subscription when used with `group_id` (part of PR #111)
 * Fix for Consumer `subscribe` and JoinGroup race condition (issue #88). Coordinator will now notice subscription changes during rebalance and will join group again. (PR #106)
