@@ -6,7 +6,9 @@ from kafka.conn import collect_hosts
 from kafka.cluster import ClusterMetadata
 from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.produce import ProduceRequest
+from kafka.protocol.commit import OffsetFetchRequest
 
+import aiokafka.errors as Errors
 from aiokafka.conn import create_conn, CloseReason
 from aiokafka.errors import (
     KafkaError,
@@ -179,9 +181,6 @@ class AIOKafkaClient:
         # detect api version if need
         if self._api_version == 'auto':
             self._api_version = yield from self.check_version()
-        if type(self._api_version) is not tuple:
-            self._api_version = tuple(
-                map(int, self._api_version.split('.')))
 
         if self._sync_task is None:
             # starting metadata synchronizer task
@@ -435,11 +434,11 @@ class AIOKafkaClient:
             OffsetFetchRequest_v0, GroupCoordinatorRequest_v0)
         from kafka.protocol.metadata import MetadataRequest_v0
         test_cases = [
-            ('0.10', ApiVersionRequest_v0()),
-            ('0.9', ListGroupsRequest_v0()),
-            ('0.8.2', GroupCoordinatorRequest_v0('aiokafka-default-group')),
-            ('0.8.1', OffsetFetchRequest_v0('aiokafka-default-group', [])),
-            ('0.8.0', MetadataRequest_v0([])),
+            ((0, 10), ApiVersionRequest_v0()),
+            ((0, 9), ListGroupsRequest_v0()),
+            ((0, 8, 2), GroupCoordinatorRequest_v0('aiokafka-default-group')),
+            ((0, 8, 1), OffsetFetchRequest_v0('aiokafka-default-group', [])),
+            ((0, 8, 0), MetadataRequest_v0([])),
         ]
 
         # kafka kills the connection when it doesnt recognize an API request
@@ -466,16 +465,44 @@ class AIOKafkaClient:
                     # metadata request can be cancelled in case
                     # of invalid correlationIds order
                     pass
-                yield from task
+                response = yield from task
             except KafkaError:
                 continue
             else:
                 # To avoid having a connection in undefined state
                 if node_id != "bootstrap" and conn.connected():
                     conn.close()
+                if isinstance(request, ApiVersionRequest_v0):
+                    # Starting from 0.10 kafka broker we determine version
+                    # by looking at ApiVersionResponse
+                    version = self._check_api_version_response(response)
                 return version
 
         raise UnrecognizedBrokerVersion()
+
+    def _check_api_version_response(self, response):
+        # The logic here is to check the list of supported request versions
+        # in descending order. As soon as we find one that works, return it
+        test_cases = [
+            # format (<broker verion>, <needed struct>)
+            ((0, 10, 1), MetadataRequest[2]),
+            ((0, 10, 2), OffsetFetchRequest[2]),
+        ]
+
+        error_type = Errors.for_code(response.error_code)
+        assert error_type is Errors.NoError, "API version check failed"
+        max_versions = dict([
+            (api_key, max_version)
+            for api_key, _, max_version in response.api_versions
+        ])
+        # Get the best match of test cases
+        for broker_version, struct in sorted(test_cases, reverse=True):
+            if max_versions.get(struct.API_KEY, -1) >= struct.API_VERSION:
+                return broker_version
+
+        # We know that ApiVersionResponse is only supported in 0.10+
+        # so if all else fails, choose that
+        return (0, 10, 0)
 
     @asyncio.coroutine
     def _wait_on_metadata(self, topic):
