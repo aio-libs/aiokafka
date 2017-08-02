@@ -4,6 +4,7 @@ import random
 import time
 import unittest
 import pytest
+import operator
 
 from functools import wraps
 
@@ -28,6 +29,57 @@ def run_until_complete(fun):
             asyncio.wait_for(fun(test, *args, **kw), 30, loop=loop))
         return ret
     return wrapper
+
+
+def kafka_versions(*versions):
+    # Took from kafka-python
+
+    def version_str_to_list(s):
+        return list(map(int, s.split('.')))  # e.g., [0, 8, 1, 1]
+
+    def construct_lambda(s):
+        if s[0].isdigit():
+            op_str = '='
+            v_str = s
+        elif s[1].isdigit():
+            op_str = s[0]  # ! < > =
+            v_str = s[1:]
+        elif s[2].isdigit():
+            op_str = s[0:2]  # >= <=
+            v_str = s[2:]
+        else:
+            raise ValueError('Unrecognized kafka version / operator: %s' % s)
+
+        op_map = {
+            '=': operator.eq,
+            '!': operator.ne,
+            '>': operator.gt,
+            '<': operator.lt,
+            '>=': operator.ge,
+            '<=': operator.le
+        }
+        op = op_map[op_str]
+        version = version_str_to_list(v_str)
+        return lambda a: op(version_str_to_list(a), version)
+
+    validators = map(construct_lambda, versions)
+
+    def kafka_versions(func):
+        @wraps(func)
+        def wrapper(self, *args, **kw):
+            kafka_version = self.kafka_version
+
+            if not kafka_version:
+                self.skipTest(
+                    "no kafka version found. Is this an integration test?")
+
+            for f in validators:
+                if not f(kafka_version):
+                    self.skipTest("unsupported kafka version")
+
+            return func(self, *args, **kw)
+        return wrapper
+    return kafka_versions
 
 
 class StubRebalanceListener(ConsumerRebalanceListener):
@@ -114,7 +166,8 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         raise AssertionError('No topic "{}" exists'.format(topic))
 
     @asyncio.coroutine
-    def send_messages(self, partition, messages, *, topic=None):
+    def send_messages(self, partition, messages, *, topic=None,
+                      timestamp_ms=None, return_inst=False):
         topic = topic or self.topic
         ret = []
         producer = AIOKafkaProducer(
@@ -128,11 +181,14 @@ class KafkaIntegrationTestCase(unittest.TestCase):
                 elif isinstance(msg, int):
                     msg = str(msg).encode()
                 future = yield from producer.send(
-                    topic, msg, partition=partition)
+                    topic, msg, partition=partition, timestamp_ms=timestamp_ms)
                 resp = yield from future
                 self.assertEqual(resp.topic, topic)
                 self.assertEqual(resp.partition, partition)
-                ret.append(msg)
+                if return_inst:
+                    ret.append(resp)
+                else:
+                    ret.append(msg)
         finally:
             yield from producer.stop()
         return ret

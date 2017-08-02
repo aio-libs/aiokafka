@@ -12,13 +12,17 @@ from aiokafka.client import AIOKafkaClient
 from aiokafka import (
     ConsumerStoppedError, IllegalOperation, ConsumerRebalanceListener
 )
+from aiokafka.structs import (
+    OffsetAndTimestamp, TopicPartition, OffsetAndMetadata
+)
+from aiokafka.errors import (
+    IllegalStateError, UnknownTopicOrPartitionError, OffsetOutOfRangeError,
+    UnsupportedVersionError, KafkaTimeoutError
+)
 
-from kafka.common import (
-    TopicPartition, OffsetAndMetadata, IllegalStateError,
-    UnknownTopicOrPartitionError, OffsetOutOfRangeError)
 from ._testutil import (
     KafkaIntegrationTestCase, StubRebalanceListener,
-    run_until_complete, random_string)
+    run_until_complete, random_string, kafka_versions)
 
 
 class TestConsumerIntegration(KafkaIntegrationTestCase):
@@ -1021,7 +1025,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     def test_offset_reset_manual(self):
-        yield from self.send_messages(0, list(range(0, 10)))
+        yield from self.send_messages(0, [1])
 
         consumer = AIOKafkaConsumer(
             self.topic,
@@ -1032,10 +1036,12 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(consumer.stop)
 
         with self.assertRaises(OffsetOutOfRangeError):
-            yield from consumer.getmany(timeout_ms=1000)
+            for x in range(2):
+                yield from consumer.getmany(timeout_ms=1000)
 
         with self.assertRaises(OffsetOutOfRangeError):
-            yield from consumer.getone()
+            for x in range(2):
+                yield from consumer.getone()
 
     @run_until_complete
     def test_consumer_cleanup_unassigned_data_getone(self):
@@ -1223,7 +1229,89 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from consumer.commit()
         end_time = self.loop.time()
 
-        print(end_time - start_time)
-
         self.assertFalse(long_poll_task.done())
         self.assertLess(end_time - start_time, 500)
+
+    @kafka_versions('>=0.10.1')
+    @run_until_complete
+    def test_offsets_for_times_single(self):
+        high_time = int(self.loop.time() * 1000)
+        middle_time = high_time - 1000
+        low_time = high_time - 2000
+        tp = TopicPartition(self.topic, 0)
+
+        [msg1] = yield from self.send_messages(
+            0, [1], timestamp_ms=low_time, return_inst=True)
+        [msg2] = yield from self.send_messages(
+            0, [1], timestamp_ms=high_time, return_inst=True)
+
+        consumer = yield from self.consumer_factory()
+
+        offsets = yield from consumer.offsets_for_times({tp: low_time})
+        self.assertEqual(len(offsets), 1)
+        self.assertEqual(offsets[tp].offset, msg1.offset)
+        self.assertEqual(offsets[tp].timestamp, low_time)
+
+        offsets = yield from consumer.offsets_for_times({tp: middle_time})
+        self.assertEqual(offsets[tp].offset, msg2.offset)
+        self.assertEqual(offsets[tp].timestamp, high_time)
+
+        offsets = yield from consumer.offsets_for_times({tp: high_time})
+        self.assertEqual(offsets[tp].offset, msg2.offset)
+        self.assertEqual(offsets[tp].timestamp, high_time)
+
+        # Out of bound timestamps check
+
+        offsets = yield from consumer.offsets_for_times({tp: 0})
+        self.assertEqual(offsets[tp].offset, msg1.offset)
+        self.assertEqual(offsets[tp].timestamp, low_time)
+
+        offsets = yield from consumer.offsets_for_times({tp: 9999999999999})
+        self.assertEqual(offsets[tp], None)
+
+        offsets = yield from consumer.offsets_for_times({})
+        self.assertEqual(offsets, {})
+
+    @kafka_versions('>=0.10.1')
+    @run_until_complete
+    def test_kafka_consumer_offsets_search_many_partitions(self):
+        tp0 = TopicPartition(self.topic, 0)
+        tp1 = TopicPartition(self.topic, 1)
+
+        send_time = int(time.time() * 1000)
+        [msg1] = yield from self.send_messages(
+            0, [1], timestamp_ms=send_time, return_inst=True)
+        [msg2] = yield from self.send_messages(
+            1, [1], timestamp_ms=send_time, return_inst=True)
+
+        consumer = yield from self.consumer_factory()
+        offsets = yield from consumer.offsets_for_times({
+            tp0: send_time,
+            tp1: send_time
+        })
+
+        self.assertEqual(offsets, {
+            tp0: OffsetAndTimestamp(msg1.offset, send_time),
+            tp1: OffsetAndTimestamp(msg2.offset, send_time)
+        })
+
+    @kafka_versions('>=0.10.1')
+    @run_until_complete
+    def test_kafka_consumer_offsets_errors(self):
+        consumer = yield from self.consumer_factory()
+        tp = TopicPartition(self.topic, 0)
+        bad_tp = TopicPartition(self.topic, 100)
+
+        with self.assertRaises(ValueError):
+            yield from consumer.offsets_for_times({tp: -1})
+        with self.assertRaises(KafkaTimeoutError):
+            yield from consumer.offsets_for_times({bad_tp: 0})
+
+    @kafka_versions('<0.10.1')
+    @run_until_complete
+    def test_kafka_consumer_offsets_old_brokers(self):
+        consumer = yield from self.consumer_factory()
+        tp = TopicPartition(self.topic, 0)
+
+        with self.assertRaises(UnsupportedVersionError):
+            yield from consumer.offsets_for_times({tp: int(time.time())})

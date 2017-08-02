@@ -4,9 +4,6 @@ import unittest
 from collections import deque
 from unittest import mock
 
-from kafka.common import (TopicPartition, TopicAuthorizationFailedError,
-                          UnknownError, UnknownTopicOrPartitionError,
-                          OffsetOutOfRangeError)
 from kafka.consumer.subscription_state import (
     SubscriptionState, TopicPartitionState)
 from kafka.protocol.offset import (
@@ -15,6 +12,11 @@ from kafka.protocol.fetch import (
     FetchRequest_v0 as FetchRequest, FetchResponse_v0 as FetchResponse)
 from kafka.protocol.message import Message
 
+from aiokafka.errors import (
+    TopicAuthorizationFailedError, UnknownError, UnknownTopicOrPartitionError,
+    OffsetOutOfRangeError, KafkaTimeoutError
+)
+from aiokafka.structs import TopicPartition
 from aiokafka.client import AIOKafkaClient
 from aiokafka.fetcher import Fetcher, FetchResult, FetchError, ConsumerRecord
 from ._testutil import run_until_complete
@@ -289,3 +291,27 @@ class TestFetcher(unittest.TestCase):
         self.assertEqual(
             (third.value, third.key, third.offset),
             (msg3.value, msg3.key, 167))
+
+    @asyncio.coroutine
+    def test_fetcher_offsets_for_times(self):
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=[])
+        client.ready = mock.MagicMock()
+        client.ready.side_effect = asyncio.coroutine(lambda a: True)
+        client._maybe_wait_metadata = mock.MagicMock()
+        client._maybe_wait_metadata.side_effect = asyncio.coroutine(
+            lambda: False)
+        subscriptions = SubscriptionState('latest')
+        fetcher = Fetcher(client, subscriptions, loop=self.loop)
+        tp = TopicPartition(self.topic, 0)
+
+        subscriptions = SubscriptionState('latest')
+        fetcher = Fetcher(client, subscriptions, loop=self.loop)
+
+        # Timeouting will result in KafkaTimeoutError
+        with mock.patch.object(fetcher, "_proc_offset_requests") as mocked:
+            mocked.side_effect = asyncio.TimeoutError
+
+            with self.assertRaises(KafkaTimeoutError):
+                fetcher.get_offsets_by_times({tp: 0}, 1000)

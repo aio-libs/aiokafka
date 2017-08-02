@@ -12,7 +12,9 @@ from aiokafka.errors import (
     IllegalStateError)
 from aiokafka.client import AIOKafkaClient
 from aiokafka.group_coordinator import GroupCoordinator, NoGroupCoordinator
-from aiokafka.errors import ConsumerStoppedError, IllegalOperation
+from aiokafka.errors import (
+    ConsumerStoppedError, IllegalOperation, UnsupportedVersionError
+)
 from aiokafka.fetcher import Fetcher
 from aiokafka import __version__, ensure_future, PY_35
 
@@ -179,6 +181,7 @@ class AIOKafkaConsumer(object):
         self._group_id = group_id
         self._heartbeat_interval_ms = heartbeat_interval_ms
         self._retry_backoff_ms = retry_backoff_ms
+        self._request_timeout_ms = request_timeout_ms
         self._enable_auto_commit = enable_auto_commit
         self._auto_commit_interval_ms = auto_commit_interval_ms
         self._partition_assignment_strategy = partition_assignment_strategy
@@ -231,7 +234,8 @@ class AIOKafkaConsumer(object):
             fetch_max_wait_ms=self._fetch_max_wait_ms,
             max_partition_fetch_bytes=self._max_partition_fetch_bytes,
             check_crcs=self._check_crcs,
-            fetcher_timeout=self._consumer_timeout)
+            fetcher_timeout=self._consumer_timeout,
+            retry_backoff_ms=self._retry_backoff_ms)
 
         if self._group_id is not None:
             # using group coordinator for automatic partitions assignment
@@ -643,6 +647,47 @@ class AIOKafkaConsumer(object):
             offset = yield from self.committed(tp)
             if offset and offset > 0:
                 self.seek(tp, offset)
+
+    @asyncio.coroutine
+    def offsets_for_times(self, timestamps):
+        """
+        Look up the offsets for the given partitions by timestamp. The returned
+        offset for each partition is the earliest offset whose timestamp is
+        greater than or equal to the given timestamp in the corresponding
+        partition.
+
+        The consumer does not have to be assigned the partitions.
+
+        If the message format version in a partition is before 0.10.0, i.e.
+        the messages do not have timestamps, ``None`` will be returned for that
+        partition.
+
+        Arguments:
+            timestamps (dict): ``{TopicPartition: int}`` mapping from partition
+                to the timestamp to look up. Unit should be milliseconds since
+                beginning of the epoch (midnight Jan 1, 1970 (UTC))
+
+        Raises:
+            ValueError: if the target timestamp is negative
+            UnsupportedVersionError: if the broker does not support looking
+                up the offsets by timestamp.
+            KafkaTimeoutError: if fetch failed in request_timeout_ms
+
+        .. versionadded:: 0.3.0
+        """
+        if self._client.api_version <= (0, 10, 0):
+            raise UnsupportedVersionError(
+                "offsets_for_times API not supported for cluster version {}"
+                .format(self._client.api_version))
+        for tp, ts in timestamps.items():
+            timestamps[tp] = int(ts)
+            if ts < 0:
+                raise ValueError(
+                    "The target time for partition {} is {}. The target time "
+                    "cannot be negative.".format(tp, ts))
+        offsets = yield from self._fetcher.get_offsets_by_times(
+            timestamps, self._request_timeout_ms)
+        return offsets
 
     def subscribe(self, topics=(), pattern=None, listener=None):
         """ Subscribe to a list of topics, or a topic regex pattern.

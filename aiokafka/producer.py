@@ -223,7 +223,8 @@ class AIOKafkaProducer(object):
         return (yield from self.client._wait_on_metadata(topic))
 
     @asyncio.coroutine
-    def send(self, topic, value=None, key=None, partition=None):
+    def send(self, topic, value=None, key=None, partition=None,
+             timestamp_ms=None):
         """Publish a message to a topic.
 
         Arguments:
@@ -244,6 +245,8 @@ class AIOKafkaProducer(object):
                 partition (but if key is None, partition is chosen randomly).
                 Must be type bytes, or be serializable to bytes via configured
                 key_serializer.
+            timestamp_ms (int, optional): epoch milliseconds (from Jan 1 1970
+                UTC) to use as the message timestamp. Defaults to current time.
 
         Returns:
             asyncio.Future: object that will be set when message is
@@ -276,7 +279,8 @@ class AIOKafkaProducer(object):
         log.debug("Sending (key=%s value=%s) to %s", key, value, tp)
 
         fut = yield from self._message_accumulator.add_message(
-            tp, key_bytes, value_bytes, self._request_timeout_ms / 1000)
+            tp, key_bytes, value_bytes, self._request_timeout_ms / 1000,
+            timestamp_ms=timestamp_ms)
         return fut
 
     @asyncio.coroutine
