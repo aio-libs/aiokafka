@@ -1,7 +1,9 @@
 import asyncio
 import pytest
 import unittest
+import sys
 from collections import deque
+from contextlib import contextmanager
 from unittest import mock
 
 from kafka.consumer.subscription_state import (
@@ -23,6 +25,18 @@ from ._testutil import run_until_complete
 
 @pytest.mark.usefixtures('setup_test_class_serverless')
 class TestFetcher(unittest.TestCase):
+
+    def assertLogs(self, *args, **kw):  # noqa
+        if sys.version_info >= (3, 4, 0):
+            return super().assertLogs(*args, **kw)
+        else:
+            # On Python3.3 just do no-op for now
+            return self._assert_logs_noop()
+
+    @contextmanager
+    def _assert_logs_noop(self):
+        yield
+
     @run_until_complete
     def test_update_fetch_positions(self):
         client = AIOKafkaClient(
@@ -359,5 +373,6 @@ class TestFetcher(unittest.TestCase):
                 with self.assertRaises(UnknownTopicOrPartitionError):
                     yield from fetcher._proc_offset_request(
                         0, {"topic": (0, 1000)})
-            self.assertIn(
-                "Received unknown topic or partition error", cm.output[0])
+            if cm is not None:
+                self.assertIn(
+                    "Received unknown topic or partition error", cm.output[0])
