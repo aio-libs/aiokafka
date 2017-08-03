@@ -1,20 +1,23 @@
 import asyncio
 import pytest
 import unittest
+import sys
 from collections import deque
+from contextlib import contextmanager
 from unittest import mock
 
-from kafka.common import (TopicPartition, TopicAuthorizationFailedError,
-                          UnknownError, UnknownTopicOrPartitionError,
-                          OffsetOutOfRangeError)
 from kafka.consumer.subscription_state import (
     SubscriptionState, TopicPartitionState)
-from kafka.protocol.offset import (
-    OffsetResetStrategy, OffsetResponse_v0 as OffsetResponse)
+from kafka.protocol.offset import OffsetResetStrategy, OffsetResponse
 from kafka.protocol.fetch import (
     FetchRequest_v0 as FetchRequest, FetchResponse_v0 as FetchResponse)
 from kafka.protocol.message import Message
 
+from aiokafka.errors import (
+    TopicAuthorizationFailedError, UnknownError, UnknownTopicOrPartitionError,
+    OffsetOutOfRangeError, KafkaTimeoutError, NotLeaderForPartitionError
+)
+from aiokafka.structs import TopicPartition, OffsetAndTimestamp
 from aiokafka.client import AIOKafkaClient
 from aiokafka.fetcher import Fetcher, FetchResult, FetchError, ConsumerRecord
 from ._testutil import run_until_complete
@@ -22,6 +25,18 @@ from ._testutil import run_until_complete
 
 @pytest.mark.usefixtures('setup_test_class_serverless')
 class TestFetcher(unittest.TestCase):
+
+    def assertLogs(self, *args, **kw):  # noqa
+        if sys.version_info >= (3, 4, 0):
+            return super().assertLogs(*args, **kw)
+        else:
+            # On Python3.3 just do no-op for now
+            return self._assert_logs_noop()
+
+    @contextmanager
+    def _assert_logs_noop(self):
+        yield
+
     @run_until_complete
     def test_update_fetch_positions(self):
         client = AIOKafkaClient(
@@ -46,7 +61,7 @@ class TestFetcher(unittest.TestCase):
             lambda: False)
         client.send = mock.MagicMock()
         client.send.side_effect = asyncio.coroutine(
-            lambda n, r: OffsetResponse([('test', [(0, 0, [4])])]))
+            lambda n, r: OffsetResponse[0]([('test', [(0, 0, [4])])]))
         state.await_reset(OffsetResetStrategy.LATEST)
         client.cluster.leader_for_partition = mock.MagicMock()
         client.cluster.leader_for_partition.side_effect = [None, -1, 0]
@@ -57,13 +72,13 @@ class TestFetcher(unittest.TestCase):
         client.cluster.leader_for_partition.return_value = 1
         client.send = mock.MagicMock()
         client.send.side_effect = asyncio.coroutine(
-            lambda n, r: OffsetResponse([('test', [(0, 3, [])])]))
+            lambda n, r: OffsetResponse[0]([('test', [(0, 3, [])])]))
         state.await_reset(OffsetResetStrategy.LATEST)
         with self.assertRaises(UnknownTopicOrPartitionError):
             yield from fetcher.update_fetch_positions([partition])
 
         client.send.side_effect = asyncio.coroutine(
-            lambda n, r: OffsetResponse([('test', [(0, -1, [])])]))
+            lambda n, r: OffsetResponse[0]([('test', [(0, -1, [])])]))
         with self.assertRaises(UnknownError):
             yield from fetcher.update_fetch_positions([partition])
         yield from fetcher.close()
@@ -289,3 +304,75 @@ class TestFetcher(unittest.TestCase):
         self.assertEqual(
             (third.value, third.key, third.offset),
             (msg3.value, msg3.key, 167))
+
+    @run_until_complete
+    def test_fetcher_offsets_for_times(self):
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=[])
+        client.ready = mock.MagicMock()
+        client.ready.side_effect = asyncio.coroutine(lambda a: True)
+        client._maybe_wait_metadata = mock.MagicMock()
+        client._maybe_wait_metadata.side_effect = asyncio.coroutine(
+            lambda: False)
+        client.cluster.leader_for_partition = mock.MagicMock()
+        client.cluster.leader_for_partition.return_value = 0
+        client._api_version = (0, 10, 1)
+
+        subscriptions = SubscriptionState('latest')
+        fetcher = Fetcher(client, subscriptions, loop=self.loop)
+        tp0 = TopicPartition("topic", 0)
+        tp1 = TopicPartition("topic", 1)
+
+        subscriptions = SubscriptionState('latest')
+        fetcher = Fetcher(client, subscriptions, loop=self.loop)
+
+        # Timeouting will result in KafkaTimeoutError
+        with mock.patch.object(fetcher, "_proc_offset_requests") as mocked:
+            mocked.side_effect = asyncio.TimeoutError
+
+            with self.assertRaises(KafkaTimeoutError):
+                yield from fetcher.get_offsets_by_times({tp0: 0}, 1000)
+
+        # Broker returns UnsupportedForMessageFormatError
+        with mock.patch.object(client, "send") as mocked:
+            @asyncio.coroutine
+            def mock_send(node_id, request):
+                return OffsetResponse[1]([
+                    ("topic", [(0, 43, -1, -1)]),
+                    ("topic", [(1, 0, 1000, 9999)])
+                ])
+            mocked.side_effect = mock_send
+            offsets = yield from fetcher.get_offsets_by_times(
+                {tp0: 0, tp1: 0}, 1000)
+            self.assertEqual(offsets, {
+                tp0: None,
+                tp1: OffsetAndTimestamp(9999, 1000),
+            })
+        # Brokers returns NotLeaderForPartitionError
+        with mock.patch.object(client, "send") as mocked:
+            @asyncio.coroutine
+            def mock_send(node_id, request):
+                return OffsetResponse[1]([
+                    ("topic", [(0, 6, -1, -1)]),
+                ])
+            mocked.side_effect = mock_send
+            with self.assertRaises(NotLeaderForPartitionError):
+                yield from fetcher._proc_offset_request(
+                    0, {"topic": (0, 1000)})
+
+        # Broker returns UnknownTopicOrPartitionError
+        with mock.patch.object(client, "send") as mocked:
+            @asyncio.coroutine
+            def mock_send(node_id, request):
+                return OffsetResponse[1]([
+                    ("topic", [(0, 3, -1, -1)]),
+                ])
+            mocked.side_effect = mock_send
+            with self.assertLogs("aiokafka.fetcher", "WARN") as cm:
+                with self.assertRaises(UnknownTopicOrPartitionError):
+                    yield from fetcher._proc_offset_request(
+                        0, {"topic": (0, 1000)})
+            if cm is not None:
+                self.assertIn(
+                    "Received unknown topic or partition error", cm.output[0])

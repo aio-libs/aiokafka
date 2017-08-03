@@ -67,7 +67,7 @@ class MessageBatch:
             needed_bytes += len(value)
         return self._buffer.tell() + needed_bytes > self._batch_size
 
-    def append(self, key, value):
+    def append(self, key, value, timestamp_ms):
         """Append message (key and value) to batch
 
         Returns:
@@ -80,7 +80,12 @@ class MessageBatch:
 
         # `.encode()` is a weak method for some reason, so we need to save
         # reference before calling it.
-        msg_inst = Message(value, key=key, magic=self._version_id)
+        if self._version_id == 0:
+            msg_inst = Message(value, key=key, magic=self._version_id)
+        else:
+            msg_inst = Message(value, key=key, magic=self._version_id,
+                               timestamp=timestamp_ms)
+
         encoded = msg_inst.encode()
         msg = Int64.encode(self._relative_offset) + Int32.encode(len(encoded))
         msg += encoded
@@ -184,7 +189,7 @@ class MessageAccumulator:
                 yield from batch.wait_deliver()
 
     @asyncio.coroutine
-    def add_message(self, tp, key, value, timeout):
+    def add_message(self, tp, key, value, timeout, timestamp_ms=None):
         """ Add message to batch by topic-partition
         If batch is already full this method waits (`timeout` seconds maximum)
         until batch is drained by send task
@@ -207,7 +212,7 @@ class MessageAccumulator:
         else:
             batch = pending_batches[-1]
 
-        future = batch.append(key, value)
+        future = batch.append(key, value, timestamp_ms)
         if future is None:
             # Batch is full, can't append data atm,
             # waiting until batch per topic-partition is drained
@@ -217,7 +222,8 @@ class MessageAccumulator:
             timeout -= self._loop.time() - start
             if timeout <= 0:
                 raise KafkaTimeoutError()
-            return (yield from self.add_message(tp, key, value, timeout))
+            return (yield from self.add_message(
+                tp, key, value, timeout, timestamp_ms))
         return future
 
     def data_waiter(self):

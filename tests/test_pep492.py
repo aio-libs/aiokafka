@@ -74,7 +74,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
 
         with self.assertRaises(OffsetOutOfRangeError):
             async for m in consumer:
-                print(m)  # pragma: no cover
+                m  # pragma: no cover
 
     @run_until_complete
     async def test_consumer_stops_iter(self):
