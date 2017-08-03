@@ -670,6 +670,8 @@ class Fetcher:
                                 "Handling v0 ListOffsetResponse response for "
                                 "%s. Fetched offset %s", partition, offset)
                             res_offsets[partition] = (offset, None)
+                        else:
+                            res_offsets[partition] = (UNKNOWN_OFFSET, None)
                     else:
                         timestamp, offset = partition_info
                         log.debug(
