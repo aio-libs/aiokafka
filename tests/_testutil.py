@@ -5,7 +5,9 @@ import time
 import unittest
 import pytest
 import operator
+import sys
 
+from contextlib import contextmanager
 from functools import wraps
 
 from kafka.common import ConnectionError
@@ -206,6 +208,17 @@ class KafkaIntegrationTestCase(unittest.TestCase):
             certfile=str(self.ssl_folder / "cl_client.pem"),
             keyfile=str(self.ssl_folder / "cl_client.key"),
             password="abcdefgh")
+
+    def assertLogs(self, *args, **kw):  # noqa
+        if sys.version_info >= (3, 4, 0):
+            return super().assertLogs(*args, **kw)
+        else:
+            # On Python3.3 just do no-op for now
+            return self._assert_logs_noop()
+
+    @contextmanager
+    def _assert_logs_noop(self):
+        yield
 
 
 def random_string(length):

@@ -13,7 +13,7 @@ __all__ = [
     "UnknownMemberIdError", "GroupLoadInProgressError",
     "GroupCoordinatorNotAvailableError", "NotCoordinatorForGroupError",
     "GroupAuthorizationFailedError", "IllegalStateError",
-    "UnsupportedVersionError"
+    "UnsupportedVersionError",
     # aiokafka custom errors
     "ConsumerStoppedError", "NoOffsetForPartitionError", "RecordTooLargeError",
     "ProducerClosed"
