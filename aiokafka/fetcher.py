@@ -515,6 +515,22 @@ class Fetcher:
         return offsets
 
     @asyncio.coroutine
+    def beginning_offsets(self, partitions, timeout_ms):
+        timestamps = {tp: OffsetResetStrategy.EARLIEST for tp in partitions}
+        offsets = yield from self._retrieve_offsets(timestamps, timeout_ms)
+        return {
+            tp: offset for (tp, (offset, ts)) in offsets.items()
+        }
+
+    @asyncio.coroutine
+    def end_offsets(self, partitions, timeout_ms):
+        timestamps = {tp: OffsetResetStrategy.LATEST for tp in partitions}
+        offsets = yield from self._retrieve_offsets(timestamps, timeout_ms)
+        return {
+            tp: offset for (tp, (offset, ts)) in offsets.items()
+        }
+
+    @asyncio.coroutine
     def _reset_offset(self, partition, assignment):
         """Reset offsets for the given partition using
         the offset reset strategy.

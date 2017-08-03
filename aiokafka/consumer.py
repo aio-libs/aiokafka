@@ -689,6 +689,46 @@ class AIOKafkaConsumer(object):
             timestamps, self._request_timeout_ms)
         return offsets
 
+    @asyncio.coroutine
+    def beginning_offsets(self, *partitions):
+        """ Get the first offset for the given partitions.
+
+        Note:
+            this method may block indefinitely if the partition does not
+            exist.
+        Note:
+            This method does not change the current consumer position of
+            the partitions.
+        """
+        if self._client.api_version <= (0, 10, 0):
+            raise UnsupportedVersionError(
+                "offsets_for_times API not supported for cluster version {}"
+                .format(self._client.api_version))
+        offsets = yield from self._fetcher.beginning_offsets(
+            partitions, self._request_timeout_ms)
+        return offsets
+
+    @asyncio.coroutine
+    def end_offsets(self, *partitions):
+        """ Get the last offset for the given partitions. The last offset of a
+        partition is the offset of the upcoming message, i.e. the offset of the
+        last available message + 1.
+
+        Note:
+            this method may block indefinitely if the partition does not
+            exist.
+        Note:
+            This method does not change the current consumer position of
+            the partitions.
+        """
+        if self._client.api_version <= (0, 10, 0):
+            raise UnsupportedVersionError(
+                "offsets_for_times API not supported for cluster version {}"
+                .format(self._client.api_version))
+        offsets = yield from self._fetcher.end_offsets(
+            partitions, self._request_timeout_ms)
+        return offsets
+
     def subscribe(self, topics=(), pattern=None, listener=None):
         """ Subscribe to a list of topics, or a topic regex pattern.
 
