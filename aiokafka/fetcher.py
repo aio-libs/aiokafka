@@ -542,6 +542,7 @@ class Fetcher:
             NoOffsetForPartitionError: if no offset reset strategy is defined
         """
         timestamp = assignment.reset_strategy
+        assert timestamp is not None
         if timestamp is OffsetResetStrategy.EARLIEST:
             strategy = 'earliest'
         else:
