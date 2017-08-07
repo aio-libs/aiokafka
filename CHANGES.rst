@@ -5,8 +5,15 @@ CHANGES
 ^^^^^^^^^^^^^^^^^^
 
 * Changed ConsumerRebalanceListener to support either function or coroutine
-  for `on_partitions_assigned` and `on_partitions_revoked` callbacks (PR #190
+  for `on_partitions_assigned` and `on_partitions_revoked` callbacks. (PR #190
   by @ask)
+* Added support for `offsets_for_times`, `beginning_offsets`, `end_offsets`
+  API's. (issue #164)
+* Coordinator requests are now sent using a separate socket. Fixes slow commit
+  issue. (issuer #137, issue #128)
+* Added `seek_to_end`, `seek_to_beginning` API's. (issue #154)
+* Updated documentation to provide more useful usage guide on both Consumer and
+  Producer interface.
 
 0.2.3 (2017-07-23)
 ^^^^^^^^^^^^^^^^^^
