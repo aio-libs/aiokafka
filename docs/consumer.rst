@@ -196,7 +196,8 @@ can be useful.
 
 *One case* is for **time-sensitive record processing** it may make sense for a
 consumer that falls far enough behind to not attempt to catch up processing all
-records, but rather just skip to the most recent records.
+records, but rather just skip to the most recent records. Or you can use
+``offsets_for_times`` API to get the offsets after certain timestamp.
 
 *Another use case* is for a **system that maintains local state**. In such a
 system the consumer will want to initialize its position on startup to
