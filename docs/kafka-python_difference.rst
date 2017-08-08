@@ -9,6 +9,9 @@ Difference between aiokafka and kafka-python
 .. _kip-62:
     https://cwiki.apache.org/confluence/display/KAFKA/KIP-62%3A+Allow+consumer+to+send+heartbeats+from+a+background+thread
 
+.. _a lot of code:
+  https://gist.github.com/tvoinarovskyi/05a5d083a0f96cae3e9b4c2af580be74
+
 Why do we need another library?
 ===============================
 
@@ -33,8 +36,8 @@ etc. Examples would be:
   * sending produce requests block it buffer is full
 
 All those can't be changed to use `Future` API seamlessly. So to get a normal,
-non-blocking interface based on Future's and coroutines a new library needs to
-be done
+non-blocking interface based on Future's and coroutines a new library needed to
+be done.
 
 
 API differences and rationale
@@ -70,6 +73,11 @@ proposals) and workarounds using `pause()` and `poll(0)` for heartbeats.
 ``aiokafka`` delegates heartbeating to a background *Task* and will send
 heartbeats to Coordinator as long as the *event loop* is running.
 
+``aiokafka`` also performs rebalance in the same background Task, so it is
+quite critical to provide 
+:ref:`ConsumerRebalanceListener <consumer-rebalance-listener>` if you need
+to control rebalance start and end moments.
+
 
 Prefetching is more sophisticated
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -103,7 +111,7 @@ Which is why ``aiokafka`` tries to do prefetches **per partition**. For
 example, if we processed all data pending for a partition in *iterator*
 interface, ``aiokafka`` will *try* to prefetch new data right away. The same
 interface can be somehow build on top of ``kafka-python``'s *pause* API, but
-you will require a lot of code.
+you will require `a lot of code`_. 
 
 .. note::
     

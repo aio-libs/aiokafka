@@ -22,71 +22,59 @@ Example of AIOKafkaProducer usage:
 
 .. code-block:: python
 
-    import asyncio
     from aiokafka import AIOKafkaProducer
-
-    @asyncio.coroutine
-    def produce(loop):
-        # Just adds message to sending queue
-        future = yield from producer.send('foobar', b'some_message_bytes')
-        # waiting for message to be delivered
-        resp = yield from future
-        print("Message produced: partition {}; offset {}".format(
-              resp.partition, resp.offset))
-        # Also can use a helper to send and wait in 1 call
-        resp = yield from producer.send_and_wait(
-            'foobar', key=b'foo', value=b'bar')
-        resp = yield from producer.send_and_wait(
-            'foobar', b'message for partition 1', partition=1)
+    import asyncio
 
     loop = asyncio.get_event_loop()
-    producer = AIOKafkaProducer(loop=loop, bootstrap_servers='localhost:9092')
-    # Bootstrap client, will get initial cluster metadata
-    loop.run_until_complete(producer.start())
-    loop.run_until_complete(produce(loop))
-    # Wait for all pending messages to be delivered or expire
-    loop.run_until_complete(producer.stop())
-    loop.close()
+
+    async def send_one():
+        producer = AIOKafkaProducer(
+            loop=loop, bootstrap_servers='localhost:9092')
+        # Get cluster layout and initial topic/partition leadership information
+        await producer.start()
+        try:
+            # Produce message
+            await producer.send_and_wait("my_topic", b"Super message")
+        finally:
+            # Wait for all pending messages to be delivered or expire.
+            await producer.stop()
+
+    loop.run_until_complete(send_one())
 
 
 AIOKafkaConsumer
 ****************
 
 AIOKafkaConsumer is a high-level, asynchronous message consumer.
-It interacts with the assigned Kafka Group Coordinator node to allow multiple consumers to load balance consumption of topics (requires kafka >= 0.9.0.0).
+It interacts with the assigned Kafka Group Coordinator node to allow multiple 
+consumers to load balance consumption of topics (requires kafka >= 0.9.0.0).
 
 Example of AIOKafkaConsumer usage:
 
 .. code-block:: python
 
-    import asyncio
-    from kafka.common import KafkaError
     from aiokafka import AIOKafkaConsumer
-
-    @asyncio.coroutine
-    def consume_task(consumer):
-        while True:
-            try:
-                msg = yield from consumer.getone()
-                print("consumed: ", msg.topic, msg.partition, msg.offset,
-                      msg.key, msg.value, msg.timestamp)
-            except KafkaError as err:
-                print("error while consuming message: ", err)
+    import asyncio
 
     loop = asyncio.get_event_loop()
-    consumer = AIOKafkaConsumer(
-        'topic1', 'topic2', loop=loop, bootstrap_servers='localhost:1234')
-    # Bootstrap client, will get initial cluster metadata
-    loop.run_until_complete(consumer.start())
-    c_task = loop.create_task(consume_task(consumer))
-    try:
-        loop.run_forever()
-    finally:
-        # Will gracefully leave consumer group; perform autocommit if enabled
-        loop.run_until_complete(consumer.stop())
-        c_task.cancel()
-        loop.close()
 
+    async def consume():
+        consumer = AIOKafkaConsumer(
+            'my_topic', 'my_other_topic',
+            loop=loop, bootstrap_servers='localhost:9092',
+            group_id="my-group")
+        # Get cluster layout and join group `my-group`
+        await consumer.start()
+        try:
+            # Consume messages
+            async for msg in consumer:
+                print("consumed: ", msg.topic, msg.partition, msg.offset,
+                      msg.key, msg.value, msg.timestamp)
+        finally:
+            # Will leave consumer group; perform autocommit if enabled.
+            await consumer.stop()
+
+    loop.run_until_complete(consume())
 
 Running tests
 -------------

@@ -43,6 +43,8 @@ This page covers:
  * `Detecting Consumer Failures`_ how to 
 
 
+.. _offset_and_position:
+
 Offsets and Consumer Position
 -----------------------------
 
@@ -122,6 +124,11 @@ batch operations you should use *manual commit*::
             await process_msg_batch(batch)
             await consumer.commit()
             batch = []
+
+.. warning:: When using **manual commit** it is recommended to provide a
+  :ref:`ConsumerRebalanceListener <consumer-rebalance-listener>` witch will
+  wait for the messages to be finished and committed before allowing rejoin.
+  Is you end up with different assignment after rejoin commit will fail.
 
 This examples will hold on to messages until we have enough to process in
 bulk. The algorithm can be enhanced by taking advantage of:
