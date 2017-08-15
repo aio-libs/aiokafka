@@ -1274,12 +1274,12 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # Beginning and end offsets
 
-        offsets = yield from consumer.beginning_offsets(tp)
+        offsets = yield from consumer.beginning_offsets([tp])
         self.assertEqual(offsets, {
             tp: msg1.offset,
         })
 
-        offsets = yield from consumer.end_offsets(tp)
+        offsets = yield from consumer.end_offsets([tp])
         self.assertEqual(offsets, {
             tp: msg2.offset + 1,
         })
@@ -1307,13 +1307,13 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             tp1: OffsetAndTimestamp(msg2.offset, send_time)
         })
 
-        offsets = yield from consumer.beginning_offsets(tp0, tp1)
+        offsets = yield from consumer.beginning_offsets([tp0, tp1])
         self.assertEqual(offsets, {
             tp0: msg1.offset,
             tp1: msg2.offset
         })
 
-        offsets = yield from consumer.end_offsets(tp0, tp1)
+        offsets = yield from consumer.end_offsets([tp0, tp1])
         self.assertEqual(offsets, {
             tp0: msg1.offset + 1,
             tp1: msg2.offset + 1

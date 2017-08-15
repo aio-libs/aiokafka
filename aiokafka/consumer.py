@@ -623,8 +623,8 @@ class AIOKafkaConsumer(object):
 
         .. versionchanged:: 0.3.0
 
-            Changed AssertionError to IllegalStateError in case of unassigned
-            partition
+            Changed ``AssertionError`` to ``IllegalStateError`` in case of
+            unassigned partition
         """
         if not all([isinstance(p, TopicPartition) for p in partitions]):
             raise TypeError('partitions must be TopicPartition instances')
@@ -662,18 +662,27 @@ class AIOKafkaConsumer(object):
         the messages do not have timestamps, ``None`` will be returned for that
         partition.
 
+        Note:
+            This method may block indefinitely if the partition does not exist.
+
         Arguments:
             timestamps (dict): ``{TopicPartition: int}`` mapping from partition
                 to the timestamp to look up. Unit should be milliseconds since
                 beginning of the epoch (midnight Jan 1, 1970 (UTC))
 
+        Returns:
+            dict: ``{TopicPartition: OffsetAndTimestamp}`` mapping from
+            partition to the timestamp and offset of the first message with
+            timestamp greater than or equal to the target timestamp.
+
         Raises:
-            ValueError: if the target timestamp is negative
-            UnsupportedVersionError: if the broker does not support looking
+            ValueError: If the target timestamp is negative
+            UnsupportedVersionError: If the broker does not support looking
                 up the offsets by timestamp.
-            KafkaTimeoutError: if fetch failed in request_timeout_ms
+            KafkaTimeoutError: If fetch failed in request_timeout_ms
 
         .. versionadded:: 0.3.0
+
         """
         if self._client.api_version <= (0, 10, 0):
             raise UnsupportedVersionError(
@@ -690,15 +699,30 @@ class AIOKafkaConsumer(object):
         return offsets
 
     @asyncio.coroutine
-    def beginning_offsets(self, *partitions):
+    def beginning_offsets(self, partitions):
         """ Get the first offset for the given partitions.
 
+        This method does not change the current consumer position of the
+        partitions.
+
         Note:
-            this method may block indefinitely if the partition does not
-            exist.
-        Note:
-            This method does not change the current consumer position of
-            the partitions.
+            This method may block indefinitely if the partition does not exist.
+
+        Arguments:
+            partitions (list): List of TopicPartition instances to fetch
+                offsets for.
+
+        Returns:
+            dict: ``{TopicPartition: int}`` mapping of partition to  earliest
+            available offset.
+
+        Raises:
+            UnsupportedVersionError: If the broker does not support looking
+                up the offsets by timestamp.
+            KafkaTimeoutError: If fetch failed in request_timeout_ms.
+
+        .. versionadded:: 0.3.0
+
         """
         if self._client.api_version <= (0, 10, 0):
             raise UnsupportedVersionError(
@@ -709,17 +733,32 @@ class AIOKafkaConsumer(object):
         return offsets
 
     @asyncio.coroutine
-    def end_offsets(self, *partitions):
+    def end_offsets(self, partitions):
         """ Get the last offset for the given partitions. The last offset of a
         partition is the offset of the upcoming message, i.e. the offset of the
         last available message + 1.
 
+        This method does not change the current consumer position of the
+        partitions.
+
         Note:
-            this method may block indefinitely if the partition does not
-            exist.
-        Note:
-            This method does not change the current consumer position of
-            the partitions.
+            This method may block indefinitely if the partition does not exist.
+
+        Arguments:
+            partitions (list): List of TopicPartition instances to fetch
+                offsets for.
+
+        Returns:
+            dict: ``{TopicPartition: int}`` mapping of partition to last
+            available offset + 1.
+
+        Raises:
+            UnsupportedVersionError: If the broker does not support looking
+                up the offsets by timestamp.
+            KafkaTimeoutError: If fetch failed in request_timeout_ms
+
+        .. versionadded:: 0.3.0
+
         """
         if self._client.api_version <= (0, 10, 0):
             raise UnsupportedVersionError(
