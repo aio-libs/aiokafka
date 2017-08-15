@@ -211,6 +211,7 @@ class GroupCoordinator(BaseCoordinator):
             exclude_internal_topics=exclude_internal_topics,
             assignment_changed_cb=assignment_changed_cb)
 
+        self._loop = loop
         self._session_timeout_ms = session_timeout_ms
         self._heartbeat_interval_ms = heartbeat_interval_ms
         self._retry_backoff_ms = retry_backoff_ms
@@ -223,7 +224,7 @@ class GroupCoordinator(BaseCoordinator):
         self.group_id = group_id
         self.coordinator_id = None
         self.rejoin_needed = True
-        self.needs_join_prepare = True
+        self.pending_rejoin_fut = None
         # `ensure_active_group` can be called from several places
         # (from consumer and from heartbeat task), so we need lock
         self._rejoin_lock = asyncio.Lock(loop=loop)
@@ -382,6 +383,8 @@ class GroupCoordinator(BaseCoordinator):
         # based on the received assignment
         assignor.on_assignment(assignment)
 
+        self.pending_rejoin_fut.set_result(None)
+        self.pending_rejoin_fut = None
         assigned = set(self._subscription.assigned_partitions())
         log.info("Setting newly assigned partitions %s for group %s",
                  assigned, self.group_id)
@@ -709,10 +712,10 @@ class GroupCoordinator(BaseCoordinator):
             if not self.need_rejoin():
                 return
 
-            if self.needs_join_prepare:
+            if self.pending_rejoin_fut is None:
                 yield from self._on_join_prepare(
                     self.generation, self.member_id)
-                self.needs_join_prepare = False
+                self.pending_rejoin_fut = asyncio.Future(loop=self._loop)
 
             while self.need_rejoin():
                 yield from self.ensure_coordinator_known()
@@ -735,10 +738,12 @@ class GroupCoordinator(BaseCoordinator):
                     yield from self._on_join_complete(
                         self.generation, self.member_id,
                         protocol, member_assignment_bytes)
-                    self.needs_join_prepare = True
                     return
 
-    ensure_partitions_assigned = ensure_active_group
+    @asyncio.coroutine
+    def ensure_partitions_assigned(self):
+        if self.pending_rejoin_fut is not None:
+            yield from asyncio.shield(self.pending_rejoin_fut, loop=self._loop)
 
     def coordinator_dead(self, error=None):
         """Mark the current coordinator as dead."""

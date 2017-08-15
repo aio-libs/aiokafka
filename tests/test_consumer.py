@@ -1112,6 +1112,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         yield from consumer.stop()
 
+    @run_until_complete
     def test_rebalance_listener_with_coroutines(self):
         yield from self.send_messages(0, list(range(0, 10)))
         yield from self.send_messages(1, list(range(10, 20)))
@@ -1196,6 +1197,36 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(listener2.revoke_mock.call_count, 1)
         listener2.assign_mock.assert_called_with(c2_assignment)
         self.assertEqual(listener2.assign_mock.call_count, 1)
+
+    @run_until_complete
+    def test_rebalance_listener_no_deadlock_callbacks(self):
+        # Seek_to_end requires partitions to be assigned, so it waits for
+        # rebalance to end before attempting seek
+        tp0 = TopicPartition(self.topic, 0)
+
+        class SimpleRebalanceListener(ConsumerRebalanceListener):
+            def __init__(self, consumer):
+                self.consumer = consumer
+                self.seek_task = None
+
+            @asyncio.coroutine
+            def on_partitions_revoked(self, revoked):
+                pass
+
+            @asyncio.coroutine
+            def on_partitions_assigned(self, assigned):
+                self.seek_task = self.consumer._loop.create_task(
+                    self.consumer.seek_to_end(tp0))
+                yield from self.seek_task
+
+        consumer = AIOKafkaConsumer(
+            loop=self.loop, group_id="test_rebalance_listener_with_coroutines",
+            bootstrap_servers=self.hosts, enable_auto_commit=False,
+            auto_offset_reset="earliest")
+        listener = SimpleRebalanceListener(consumer)
+        consumer.subscribe([self.topic], listener=listener)
+        yield from consumer.start()
+        self.assertTrue(listener.seek_task.done())
 
     @run_until_complete
     def test_consumer_stop_cancels_pending_position_fetches(self):
