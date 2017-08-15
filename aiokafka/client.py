@@ -485,8 +485,9 @@ class AIOKafkaClient:
         # in descending order. As soon as we find one that works, return it
         test_cases = [
             # format (<broker verion>, <needed struct>)
-            ((0, 10, 1), MetadataRequest[2]),
-            ((0, 10, 2), OffsetFetchRequest[2]),
+            ((0, 11, 0), MetadataRequest[0].API_KEY, 4),
+            ((0, 10, 2), OffsetFetchRequest[0].API_KEY, 2),
+            ((0, 10, 1), MetadataRequest[0].API_KEY, 2),
         ]
 
         error_type = Errors.for_code(response.error_code)
@@ -496,8 +497,8 @@ class AIOKafkaClient:
             for api_key, _, max_version in response.api_versions
         ])
         # Get the best match of test cases
-        for broker_version, struct in sorted(test_cases, reverse=True):
-            if max_versions.get(struct.API_KEY, -1) >= struct.API_VERSION:
+        for broker_version, api_key, version in test_cases:
+            if max_versions.get(api_key, -1) >= version:
                 return broker_version
 
         # We know that ApiVersionResponse is only supported in 0.10+
