@@ -8,7 +8,7 @@ Producer client
 :ref:`AIOKafkaProducer <aiokafka-producer>` is a client that publishes records
 to the Kafka cluster. Most simple usage would be::
 
-    producer = AIOKafkaProducer(
+    producer = aiokafka.AIOKafkaProducer(
         loop=loop, bootstrap_servers='localhost:9092')
     await producer.start()
     try:
@@ -21,8 +21,8 @@ batching, retries, etc. All of it can be configured, so let's go through some
 components for a better understanding of the configuration options.
 
 
-Buffer space
-------------
+Message buffering
+-----------------
 
 While the user would expect the example above to send ``"Super message"``
 directly to the broker, it's actually not sent right away, but rather added to
@@ -32,7 +32,8 @@ send them to appropriate nodes in the cluster. This batching scheme allows
 avoid ``send_and_wait`` shortcut::
 
     # Will add the message to 1st partition's batch. If this method times out,
-    # we can say for sure that message was not ever sent.
+    # we can say for sure that message will never be sent.
+
     fut = await producer.send("my_topic", b"Super message", partition=1)
 
     # Message will either be delivered or an unrecoverable error will occur.
@@ -42,7 +43,7 @@ avoid ``send_and_wait`` shortcut::
 
 Batches themselves are created **per partition** with a maximum size of
 ``max_batch_size``. Messages in a batch are strictly in append order and only
-1 batch per partition can be sent at a time (*aiokafka* does not support
+1 batch per partition is sent at a time (*aiokafka* does not support
 ``max.inflight.requests.per.connection`` option present in Java client). This
 makes a strict guarantee on message order in a partition.
 

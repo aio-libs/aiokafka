@@ -8,7 +8,7 @@ Consumer client
 :ref:`AIOKafkaConsumer <aiokafka-consumer>` is a client that consumes records
 from a Kafka cluster. Most simple usage would be::
 
-    consumer = AIOKafkaConsumer(
+    consumer = aiokafka.AIOKafkaConsumer(
         "my_topic",
         loop=loop, bootstrap_servers='localhost:9092'
     )
