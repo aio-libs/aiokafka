@@ -1,9 +1,11 @@
 CHANGES
 --------
 
-0.3.0 (XXXX-XX-XX)
+0.3.0 (2017-08-17)
 ^^^^^^^^^^^^^^^^^^
 
+* Moved all public structures and errors to `aiokafka` namespace. You will no
+  longer need to import from `kafka` namespace.
 * Changed ConsumerRebalanceListener to support either function or coroutine
   for `on_partitions_assigned` and `on_partitions_revoked` callbacks. (PR #190
   by @ask)

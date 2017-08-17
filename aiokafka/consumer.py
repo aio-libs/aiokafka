@@ -927,7 +927,7 @@ class AIOKafkaConsumer(object):
         .. code:: python
 
             while True:
-                message = yield from consumer.getone()
+                message = await consumer.getone()
                 topic = message.topic
                 partition = message.partition
                 # Process message
@@ -966,7 +966,7 @@ class AIOKafkaConsumer(object):
 
         .. code:: python
 
-            data = yield from consumer.getmany()
+            data = await consumer.getmany()
             for tp, messages in data.items():
                 topic = tp.topic
                 partition = tp.partition
