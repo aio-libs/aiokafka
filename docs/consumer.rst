@@ -16,8 +16,9 @@ from a Kafka cluster. Most simple usage would be::
     try:
         async for msg in consumer:
             print(
-                "{}:{:d}:{:d}: key={} value={}".format(
-                    msg.topic, msg.partition, msg.offset, msg.key, msg.value)
+                "{}:{:d}:{:d}: key={} value={} timestamp_ms={}".format(
+                    msg.topic, msg.partition, msg.offset, msg.key, msg.value,
+                    msg.timestamp)
             )
     finally:
         await consumer.stop()
@@ -34,14 +35,6 @@ transparently adapts as topic partitions it fetches migrate within the
 cluster. It also interacts with the broker to allow groups of consumers to load
 balance consumption using **Consumer Groups**.
 
-This page covers:
-
- * `Offsets and Consumer Position`_ explains how to track consumption progress,
-   save it to Kafka or another place.
- * `Consumer Groups and Topic Subscriptions`_ explains how to subscribe to
-   different topics/patterns; consume the same topic from multiple processes.
- * `Detecting Consumer Failures`_ how to 
-
 
 .. _offset_and_position:
 
@@ -53,15 +46,21 @@ Kafka maintains a numerical *offset* for each record in a partition. This
 also denotes the *position* of the consumer in the partition. For example::
 
     msg = await consumer.getone()
-    msg.offset  # Unique msg autoincrement ID in this topic-partition.
+    print(msg.offset)  # Unique msg autoincrement ID in this topic-partition.
 
-    tp = TopicPartition(msg.topic, msg.partition)
+    tp = aiokafka.TopicPartition(msg.topic, msg.partition)
 
     position = await consumer.position(tp)
     # Position is the next fetched offset
     assert position == msg.offset + 1
 
-    committed = await consumet.committed(tp)
+    committed = await consumer.committed(tp)
+    print(committed)
+
+.. note::
+    To use ``consumer.commit()`` and ``consumer.committed()`` API you need
+    to set ``group_id`` to something other than ``None``. See
+    `Consumer Groups and Topic Subscriptions`_ below.
 
 Here if the consumer is at *position* **5** it has consumed records with 
 *offsets* **0** through **4** and will next receive the record with 
@@ -127,7 +126,7 @@ batch operations you should use *manual commit*::
 
 .. warning:: When using **manual commit** it is recommended to provide a
   :ref:`ConsumerRebalanceListener <consumer-rebalance-listener>` which will
-  wait for the messages to be finished and committed before allowing rejoin.
+  process pending messages in the batch and commit before allowing rejoin.
   If you end up with different assignment after rejoin - commit will fail.
 
 This examples will hold on to messages until we have enough to process in
@@ -191,6 +190,9 @@ For example, you can re-consume records::
 
     assert msg2 == msg
 
+Also you can combine it with `offset_for_times` API to query to specific
+offsets based on timestamp.
+
 There are several use cases where manually controlling the consumer's position
 can be useful.
 
@@ -205,6 +207,20 @@ whatever is contained in the local store. Likewise, if the local state is
 destroyed (say because the disk is lost) the state may be recreated on a new
 machine by re-consuming all the data and recreating the state (assuming that 
 Kafka is retaining sufficient history).
+
+See also related configuration params and API docs:
+
+    * `auto_offset_reset` config option to set behaviour in case the position
+      is either undefined or incorrect.
+    * :meth:`seek <aiokafka.AIOKafkaConsumer.seek>`,
+      :meth:`seek_to_beginning <aiokafka.AIOKafkaConsumer.seek_to_beginning>`,
+      :meth:`seek_to_end <aiokafka.AIOKafkaConsumer.seek_to_end>`
+      API's to force position change on partition('s).
+    * :meth:`offsets_for_times <aiokafka.AIOKafkaConsumer.offsets_for_times>`,
+      :meth:`beginning_offsets <aiokafka.AIOKafkaConsumer.beginning_offsets>`,
+      :meth:`end_offsets <aiokafka.AIOKafkaConsumer.end_offsets>`
+      API's to query offsets for partitions even if they are not assigned to
+      this consumer.
 
 
 Storing Offsets Outside Kafka
@@ -256,7 +272,8 @@ So to save results outside of Kafka you need to:
 
 * Configure enable.auto.commit=false
 * Use the offset provided with each ConsumerRecord to save your position
-* On restart restore the position of the consumer using ``consumer.seek()``
+* On restart or rebalance restore the position of the consumer using
+  ``consumer.seek()``
 
 This is not always possible, but when it is it will make the consumption fully
 atomic and give "exactly once" semantics that are stronger than the default
@@ -265,7 +282,8 @@ atomic and give "exactly once" semantics that are stronger than the default
 This type of usage is simplest when the partition assignment is also done
 manually (like we did above). If the partition assignment is done automatically
 special care is needed to handle the case where partition assignments change.
-
+See :ref:`Local state and storing offsets outside of Kafka <local_state_consumer_example>`
+example for more details.
 
 Consumer Groups and Topic Subscriptions
 ---------------------------------------

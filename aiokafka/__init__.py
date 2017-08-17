@@ -11,6 +11,7 @@ except ImportError:
 __version__ = '0.3.0.dev'
 PY_35 = sys.version_info >= (3, 5)
 
+from .structs import TopicPartition  # noqa
 from .client import AIOKafkaClient  # noqa
 from .producer import AIOKafkaProducer  # noqa
 from .consumer import AIOKafkaConsumer  # noqa
@@ -25,7 +26,7 @@ __all__ = [
     # Errors
     "ConsumerStoppedError", "IllegalOperation",
     # Structs
-    "ConsumerRecord"
+    "ConsumerRecord", "TopicPartition"
 ]
 
 (AIOKafkaClient, ensure_future)
