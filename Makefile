@@ -31,6 +31,9 @@ diff-cov: coverage.xml
 	git fetch
 	diff-cover coverage.xml --html-report diff-cover.html --compare-branch=$(DIFF_BRANCH)
 
+check-readme:
+	python setup.py check -rms
+
 clean:
 	rm -rf `find . -name __pycache__`
 	rm -f `find . -type f -name '*.py[co]' `

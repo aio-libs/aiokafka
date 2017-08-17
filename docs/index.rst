@@ -63,7 +63,6 @@ AIOKafkaProducer
 ++++++++++++++++
 
 :class:`~aiokafka.AIOKafkaProducer` is a high-level, asynchronous message producer.
-The class is intended to operate as similarly as possible to the official Java client.
 
 Here's a producer example:
 

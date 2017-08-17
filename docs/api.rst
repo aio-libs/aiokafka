@@ -83,8 +83,8 @@ Exception handling example:
         from aiokafka.errors import KafkaError, KafkaTimeoutError
         # ...
         try:
-            send_future = yield from producer.send('foobar', b'test data')
-            response = yield from send_future  #  wait until message is produced
+            send_future = await producer.send('foobar', b'test data')
+            response = await send_future  #  wait until message is produced
         except KafkaTimeourError:
             print("produce timeout... maybe we want to resend data again?")
         except KafkaError as err:

@@ -517,9 +517,10 @@ class AIOKafkaConsumer(object):
         partition more than once, the latest offset will be used on the next
         fetch.
 
-        Note: You may lose data if this API is arbitrarily used in
-        the middle of consumption to reset the fetch offsets. Ie. `seek()`
-        does not respect autocommit routine.
+        Note:
+            You may lose data if this API is arbitrarily used in the middle
+            of consumption to reset the fetch offsets. Use it either on
+            rebalance listeners or after all pending messages are processed.
 
         Arguments:
             partition (TopicPartition): partition for seek operation
@@ -926,7 +927,7 @@ class AIOKafkaConsumer(object):
         .. code:: python
 
             while True:
-                message = yield from consumer.getone()
+                message = await consumer.getone()
                 topic = message.topic
                 partition = message.partition
                 # Process message
@@ -965,7 +966,7 @@ class AIOKafkaConsumer(object):
 
         .. code:: python
 
-            data = yield from consumer.getmany()
+            data = await consumer.getmany()
             for tp, messages in data.items():
                 topic = tp.topic
                 partition = tp.partition

@@ -11,3 +11,5 @@ Examples
    Custom partitioner <examples/custom_partitioner>
    Python 3.5 async syntax <examples/python35_examples>
    SSL usage <examples/ssl_consume_produce>
+   Local state consumer <examples/local_state_consumer>
+
