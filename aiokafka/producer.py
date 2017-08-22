@@ -203,7 +203,7 @@ class AIOKafkaProducer(object):
     @asyncio.coroutine
     def flush(self):
         """Wait untill all batches are Delivered and futures resolved"""
-        yield from self._message_accumulator.close()
+        yield from self._message_accumulator.flush()
 
     @asyncio.coroutine
     def stop(self):
@@ -211,7 +211,7 @@ class AIOKafkaProducer(object):
         if self._closed:
             return
 
-        yield from self.flush()
+        yield from self._message_accumulator.close()
 
         if self._sender_task:
             self._sender_task.cancel()
