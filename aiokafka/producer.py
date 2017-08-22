@@ -201,13 +201,17 @@ class AIOKafkaProducer(object):
         log.debug("Kafka producer started")
 
     @asyncio.coroutine
+    def flush(self):
+        """Wait untill all batches are Delivered and futures resolved"""
+        yield from self._message_accumulator.close()
+
+    @asyncio.coroutine
     def stop(self):
         """Flush all pending data and close all connections to kafka cluster"""
         if self._closed:
             return
 
-        # Wait untill all batches are Delivered and futures resolved
-        yield from self._message_accumulator.close()
+        yield from self.flush()
 
         if self._sender_task:
             self._sender_task.cancel()
