@@ -6,13 +6,15 @@ from kafka.conn import collect_hosts
 from kafka.cluster import ClusterMetadata
 from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.produce import ProduceRequest
+from kafka.protocol.commit import OffsetFetchRequest
 
-from aiokafka.conn import create_conn
+import aiokafka.errors as Errors
+from aiokafka.conn import create_conn, CloseReason
 from aiokafka.errors import (
     KafkaError,
     ConnectionError,
     NodeNotReadyError,
-    KafkaTimeoutError,
+    RequestTimedOutError,
     UnknownTopicOrPartitionError,
     UnrecognizedBrokerVersion)
 from aiokafka import ensure_future, __version__
@@ -22,6 +24,12 @@ __all__ = ['AIOKafkaClient']
 
 
 log = logging.getLogger('aiokafka')
+
+
+class ConnectionGroup:
+
+    DEFAULT = 0
+    COORDINATION = 1
 
 
 class AIOKafkaClient:
@@ -122,7 +130,7 @@ class AIOKafkaClient:
         # process all pending buffers.
         futs = []
         for conn in self._conns.values():
-            futs.append(conn.close())
+            futs.append(conn.close(reason=CloseReason.SHUTDOWN))
         if futs:
             yield from asyncio.gather(*futs, loop=self._loop)
 
@@ -155,10 +163,12 @@ class AIOKafkaClient:
 
             self.cluster.update_metadata(metadata)
 
-            # A cluster with no topics can return no broker metadata
-            # in that case, we should keep the bootstrap connection
+            # A cluster with no topics can return no broker metadata...
+            # In that case, we should keep the bootstrap connection till
+            # we get a normal cluster layout.
             if not len(self.cluster.brokers()):
-                self._conns['bootstrap'] = bootstrap_conn
+                bootstrap_id = ('bootstrap', ConnectionGroup.DEFAULT)
+                self._conns[bootstrap_id] = bootstrap_conn
             else:
                 bootstrap_conn.close()
 
@@ -171,9 +181,6 @@ class AIOKafkaClient:
         # detect api version if need
         if self._api_version == 'auto':
             self._api_version = yield from self.check_version()
-        if type(self._api_version) is not tuple:
-            self._api_version = tuple(
-                map(int, self._api_version.split('.')))
 
         if self._sync_task is None:
             # starting metadata synchronizer task
@@ -226,7 +233,8 @@ class AIOKafkaClient:
             topics = None
         metadata_request = MetadataRequest[version_id](topics)
         nodeids = [b.nodeId for b in self.cluster.brokers()]
-        if 'bootstrap' in self._conns:
+        bootstrap_id = ('bootstrap', ConnectionGroup.DEFAULT)
+        if bootstrap_id in self._conns:
             nodeids.append('bootstrap')
         random.shuffle(nodeids)
         for node_id in nodeids:
@@ -246,6 +254,13 @@ class AIOKafkaClient:
                 continue
 
             cluster_metadata.update_metadata(metadata)
+
+            # We only keep bootstrap connection to update metadata until
+            # proper cluster layout is available.
+            if bootstrap_id in self._conns and len(self.cluster.brokers()):
+                conn = self._conns.pop(bootstrap_id)
+                conn.close()
+
             break
         else:
             log.error('Unable to update metadata from %s', nodeids)
@@ -306,13 +321,23 @@ class AIOKafkaClient:
         self._topics = set(topics)
         return res
 
+    def _on_connection_closed(self, conn, reason):
+        """ Callback called when connection is closed
+        """
+        # Connection failures imply that our metadata is stale, so let's
+        # refresh
+        if reason == CloseReason.CONNECTION_BROKEN or \
+                reason == CloseReason.CONNECTION_TIMEOUT:
+            self.force_metadata_update()
+
     @asyncio.coroutine
-    def _get_conn(self, node_id):
+    def _get_conn(self, node_id, *, group=ConnectionGroup.DEFAULT):
         "Get or create a connection to a broker using host and port"
-        if node_id in self._conns:
-            conn = self._conns[node_id]
+        conn_id = (node_id, group)
+        if conn_id in self._conns:
+            conn = self._conns[conn_id]
             if not conn.connected():
-                del self._conns[node_id]
+                del self._conns[conn_id]
             else:
                 return conn
 
@@ -323,29 +348,34 @@ class AIOKafkaClient:
                       node_id, broker.host, broker.port)
 
             with (yield from self._get_conn_lock):
-                if node_id in self._conns:
-                    return self._conns[node_id]
-                self._conns[node_id] = yield from create_conn(
+                if conn_id in self._conns:
+                    return self._conns[conn_id]
+
+                self._conns[conn_id] = yield from create_conn(
                     broker.host, broker.port, loop=self._loop,
                     client_id=self._client_id,
                     request_timeout_ms=self._request_timeout_ms,
                     ssl_context=self._ssl_context,
-                    security_protocol=self._security_protocol)
+                    security_protocol=self._security_protocol,
+                    on_close=self._on_connection_closed)
         except (OSError, asyncio.TimeoutError) as err:
             log.error('Unable connect to node with id %s: %s', node_id, err)
+            # Connection failures imply that our metadata is stale, so let's
+            # refresh
+            self.force_metadata_update()
             return None
         else:
-            return self._conns[node_id]
+            return self._conns[conn_id]
 
     @asyncio.coroutine
-    def ready(self, node_id):
-        conn = yield from self._get_conn(node_id)
+    def ready(self, node_id, *, group=ConnectionGroup.DEFAULT):
+        conn = yield from self._get_conn(node_id, group=group)
         if conn is None:
             return False
         return True
 
     @asyncio.coroutine
-    def send(self, node_id, request):
+    def send(self, node_id, request, *, group=ConnectionGroup.DEFAULT):
         """Send a request to a specific node.
 
         Arguments:
@@ -353,7 +383,7 @@ class AIOKafkaClient:
             request (Struct): request object (not-encoded)
 
         Raises:
-            kafka.common.KafkaTimeoutError
+            kafka.common.RequestTimedOutError
             kafka.common.NodeNotReadyError
             kafka.common.ConnectionError
             kafka.common.CorrelationIdError
@@ -361,7 +391,7 @@ class AIOKafkaClient:
         Returns:
             Future: resolves to Response struct
         """
-        if not (yield from self.ready(node_id)):
+        if not (yield from self.ready(node_id, group=group)):
             raise NodeNotReadyError(
                 "Attempt to send a request to node"
                 " which is not ready (node id {}).".format(node_id))
@@ -372,14 +402,15 @@ class AIOKafkaClient:
                 request.required_acks == 0:
             expect_response = False
 
-        future = self._conns[node_id].send(
+        future = self._conns[(node_id, group)].send(
             request, expect_response=expect_response)
         try:
             result = yield from future
         except asyncio.TimeoutError:
             # close connection so it is renewed in next request
-            self._conns[node_id].close()
-            raise KafkaTimeoutError()
+            self._conns[(node_id, group)].close(
+                reason=CloseReason.CONNECTION_TIMEOUT)
+            raise RequestTimedOutError()
         else:
             return result
 
@@ -387,8 +418,12 @@ class AIOKafkaClient:
     def check_version(self, node_id=None):
         """Attempt to guess the broker version"""
         if node_id is None:
-            if self._conns:
-                node_id = list(self._conns.keys())[0]
+            default_group_conns = [
+                node_id for (node_id, group) in self._conns.keys()
+                if group == ConnectionGroup.DEFAULT
+            ]
+            if default_group_conns:
+                node_id = default_group_conns[0]
             else:
                 assert self.cluster.brokers(), 'no brokers in metadata'
                 node_id = list(self.cluster.brokers())[0].nodeId
@@ -399,11 +434,11 @@ class AIOKafkaClient:
             OffsetFetchRequest_v0, GroupCoordinatorRequest_v0)
         from kafka.protocol.metadata import MetadataRequest_v0
         test_cases = [
-            ('0.10', ApiVersionRequest_v0()),
-            ('0.9', ListGroupsRequest_v0()),
-            ('0.8.2', GroupCoordinatorRequest_v0('aiokafka-default-group')),
-            ('0.8.1', OffsetFetchRequest_v0('aiokafka-default-group', [])),
-            ('0.8.0', MetadataRequest_v0([])),
+            ((0, 10), ApiVersionRequest_v0()),
+            ((0, 9), ListGroupsRequest_v0()),
+            ((0, 8, 2), GroupCoordinatorRequest_v0('aiokafka-default-group')),
+            ((0, 8, 1), OffsetFetchRequest_v0('aiokafka-default-group', [])),
+            ((0, 8, 0), MetadataRequest_v0([])),
         ]
 
         # kafka kills the connection when it doesnt recognize an API request
@@ -430,13 +465,45 @@ class AIOKafkaClient:
                     # metadata request can be cancelled in case
                     # of invalid correlationIds order
                     pass
-                yield from task
+                response = yield from task
             except KafkaError:
                 continue
             else:
+                # To avoid having a connection in undefined state
+                if node_id != "bootstrap" and conn.connected():
+                    conn.close()
+                if isinstance(request, ApiVersionRequest_v0):
+                    # Starting from 0.10 kafka broker we determine version
+                    # by looking at ApiVersionResponse
+                    version = self._check_api_version_response(response)
                 return version
 
         raise UnrecognizedBrokerVersion()
+
+    def _check_api_version_response(self, response):
+        # The logic here is to check the list of supported request versions
+        # in descending order. As soon as we find one that works, return it
+        test_cases = [
+            # format (<broker verion>, <needed struct>)
+            ((0, 11, 0), MetadataRequest[0].API_KEY, 4),
+            ((0, 10, 2), OffsetFetchRequest[0].API_KEY, 2),
+            ((0, 10, 1), MetadataRequest[0].API_KEY, 2),
+        ]
+
+        error_type = Errors.for_code(response.error_code)
+        assert error_type is Errors.NoError, "API version check failed"
+        max_versions = dict([
+            (api_key, max_version)
+            for api_key, _, max_version in response.api_versions
+        ])
+        # Get the best match of test cases
+        for broker_version, api_key, version in test_cases:
+            if max_versions.get(api_key, -1) >= version:
+                return broker_version
+
+        # We know that ApiVersionResponse is only supported in 0.10+
+        # so if all else fails, choose that
+        return (0, 10, 0)
 
     @asyncio.coroutine
     def _wait_on_metadata(self, topic):

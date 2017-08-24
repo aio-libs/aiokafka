@@ -4,14 +4,17 @@ import re
 
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.consumer.subscription_state import SubscriptionState
+from kafka.protocol.offset import OffsetResetStrategy
 
 from aiokafka.structs import TopicPartition, OffsetAndMetadata
 from aiokafka.errors import (
-    KafkaError, UnknownTopicOrPartitionError,
-    TopicAuthorizationFailedError, OffsetOutOfRangeError)
+    KafkaError, TopicAuthorizationFailedError, OffsetOutOfRangeError,
+    IllegalStateError)
 from aiokafka.client import AIOKafkaClient
 from aiokafka.group_coordinator import GroupCoordinator, NoGroupCoordinator
-from aiokafka.errors import ConsumerStoppedError, IllegalOperation
+from aiokafka.errors import (
+    ConsumerStoppedError, IllegalOperation, UnsupportedVersionError
+)
 from aiokafka.fetcher import Fetcher
 from aiokafka import __version__, ensure_future, PY_35
 
@@ -178,6 +181,7 @@ class AIOKafkaConsumer(object):
         self._group_id = group_id
         self._heartbeat_interval_ms = heartbeat_interval_ms
         self._retry_backoff_ms = retry_backoff_ms
+        self._request_timeout_ms = request_timeout_ms
         self._enable_auto_commit = enable_auto_commit
         self._auto_commit_interval_ms = auto_commit_interval_ms
         self._partition_assignment_strategy = partition_assignment_strategy
@@ -198,6 +202,10 @@ class AIOKafkaConsumer(object):
         self._coordinator = None
         self._closed = False
         self._loop = loop
+
+        # Set for background updates, so we'll finalize them properly. Only
+        # active tasks are in this set, as done ones are discarded by callback.
+        self._pending_position_fetches = set([])
 
         if topics:
             self._client.set_topics(topics)
@@ -226,7 +234,8 @@ class AIOKafkaConsumer(object):
             fetch_max_wait_ms=self._fetch_max_wait_ms,
             max_partition_fetch_bytes=self._max_partition_fetch_bytes,
             check_crcs=self._check_crcs,
-            fetcher_timeout=self._consumer_timeout)
+            fetcher_timeout=self._consumer_timeout,
+            retry_backoff_ms=self._retry_backoff_ms)
 
         if self._group_id is not None:
             # using group coordinator for automatic partitions assignment
@@ -284,13 +293,9 @@ class AIOKafkaConsumer(object):
             **no rebalance operation triggered** when group membership or
             cluster and topic metadata change.
         """
-        for tp in partitions:
-            p_ids = self.partitions_for_topic(tp.topic)
-            if not p_ids or tp.partition not in p_ids:
-                raise UnknownTopicOrPartitionError(tp)
         self._subscription.assign_from_user(partitions)
-        self._on_change_subscription()
         self._client.set_topics([tp.topic for tp in partitions])
+        self._on_change_subscription()
 
     def assignment(self):
         """ Get the set of partitions currently assigned to this consumer.
@@ -319,6 +324,12 @@ class AIOKafkaConsumer(object):
             return
         log.debug("Closing the KafkaConsumer.")
         self._closed = True
+        for task in list(self._pending_position_fetches):
+            task.cancel()
+            try:
+                yield from task
+            except asyncio.CancelledError:
+                pass
         if self._coordinator:
             yield from self._coordinator.close()
         if self._fetcher:
@@ -504,8 +515,12 @@ class AIOKafkaConsumer(object):
         Overrides the fetch offsets that the consumer will use on the next
         ``getmany()``/``getone()`` call. If this API is invoked for the same
         partition more than once, the latest offset will be used on the next
-        fetch. Note that you may lose data if this API is arbitrarily used in
-        the middle of consumption, to reset the fetch offsets.
+        fetch.
+
+        Note:
+            You may lose data if this API is arbitrarily used in the middle
+            of consumption to reset the fetch offsets. Use it either on
+            rebalance listeners or after all pending messages are processed.
 
         Arguments:
             partition (TopicPartition): partition for seek operation
@@ -522,31 +537,237 @@ class AIOKafkaConsumer(object):
         self._subscription.assignment[partition].seek(offset)
 
     @asyncio.coroutine
-    def seek_to_committed(self, *partitions):
-        """ Seek to the committed offset for partitions.
+    def seek_to_beginning(self, *partitions):
+        """ Seek to the oldest available offset for partitions.
 
         Arguments:
-            partitions: optionally provide specific TopicPartitions,
-                otherwise default to all assigned partitions
+            *partitions: Optionally provide specific TopicPartitions, otherwise
+                default to all assigned partitions.
 
         Raises:
-            AssertionError: if any partition is not currently assigned, or if
-                no partitions are assigned
-            IllegalOperation: If used with ``group_id == None``
+            IllegalStateError: If any partition is not currently assigned
+            TypeError: If partitions are not instances of TopicPartition
+
+        .. versionadded:: 0.3.0
+
         """
+        if not all([isinstance(p, TopicPartition) for p in partitions]):
+            raise TypeError('partitions must be TopicPartition instances')
+
+        yield from self._coordinator.ensure_partitions_assigned()
+
         if not partitions:
             partitions = self._subscription.assigned_partitions()
             assert partitions, 'No partitions are currently assigned'
         else:
-            for p in partitions:
-                assert p in self._subscription.assigned_partitions(), \
-                    'Unassigned partition'
+            not_assigned = (
+                set(partitions) - self._subscription.assigned_partitions()
+            )
+            if not_assigned:
+                raise IllegalStateError(
+                    "Partitions {} are not assigned".format(not_assigned))
+
+        for tp in partitions:
+            log.debug("Seeking to beginning of partition %s", tp)
+            self._subscription.need_offset_reset(
+                tp, OffsetResetStrategy.EARLIEST)
+        yield from self._fetcher.update_fetch_positions(partitions)
+
+    @asyncio.coroutine
+    def seek_to_end(self, *partitions):
+        """Seek to the most recent available offset for partitions.
+
+        Arguments:
+            *partitions: Optionally provide specific TopicPartitions, otherwise
+                default to all assigned partitions.
+
+        Raises:
+            IllegalStateError: If any partition is not currently assigned
+            TypeError: If partitions are not instances of TopicPartition
+
+        .. versionadded:: 0.3.0
+
+        """
+        if not all([isinstance(p, TopicPartition) for p in partitions]):
+            raise TypeError('partitions must be TopicPartition instances')
+
+        yield from self._coordinator.ensure_partitions_assigned()
+
+        if not partitions:
+            partitions = self._subscription.assigned_partitions()
+            assert partitions, 'No partitions are currently assigned'
+        else:
+            not_assigned = (
+                set(partitions) - self._subscription.assigned_partitions()
+            )
+            if not_assigned:
+                raise IllegalStateError(
+                    "Partitions {} are not assigned".format(not_assigned))
+
+        for tp in partitions:
+            log.debug("Seeking to end of partition %s", tp)
+            self._subscription.need_offset_reset(
+                tp, OffsetResetStrategy.LATEST)
+        yield from self._fetcher.update_fetch_positions(partitions)
+
+    @asyncio.coroutine
+    def seek_to_committed(self, *partitions):
+        """ Seek to the committed offset for partitions.
+
+        Arguments:
+            *partitions: Optionally provide specific TopicPartitions, otherwise
+                default to all assigned partitions.
+
+        Raises:
+            IllegalStateError: If any partition is not currently assigned
+            IllegalOperation: If used with ``group_id == None``
+
+        .. versionchanged:: 0.3.0
+
+            Changed ``AssertionError`` to ``IllegalStateError`` in case of
+            unassigned partition
+        """
+        if not all([isinstance(p, TopicPartition) for p in partitions]):
+            raise TypeError('partitions must be TopicPartition instances')
+
+        yield from self._coordinator.ensure_partitions_assigned()
+
+        if not partitions:
+            partitions = self._subscription.assigned_partitions()
+            assert partitions, 'No partitions are currently assigned'
+        else:
+            not_assigned = (
+                set(partitions) - self._subscription.assigned_partitions()
+            )
+            if not_assigned:
+                raise IllegalStateError(
+                    "Partitions {} are not assigned".format(not_assigned))
 
         for tp in partitions:
             log.debug("Seeking to committed of partition %s", tp)
             offset = yield from self.committed(tp)
             if offset and offset > 0:
                 self.seek(tp, offset)
+
+    @asyncio.coroutine
+    def offsets_for_times(self, timestamps):
+        """
+        Look up the offsets for the given partitions by timestamp. The returned
+        offset for each partition is the earliest offset whose timestamp is
+        greater than or equal to the given timestamp in the corresponding
+        partition.
+
+        The consumer does not have to be assigned the partitions.
+
+        If the message format version in a partition is before 0.10.0, i.e.
+        the messages do not have timestamps, ``None`` will be returned for that
+        partition.
+
+        Note:
+            This method may block indefinitely if the partition does not exist.
+
+        Arguments:
+            timestamps (dict): ``{TopicPartition: int}`` mapping from partition
+                to the timestamp to look up. Unit should be milliseconds since
+                beginning of the epoch (midnight Jan 1, 1970 (UTC))
+
+        Returns:
+            dict: ``{TopicPartition: OffsetAndTimestamp}`` mapping from
+            partition to the timestamp and offset of the first message with
+            timestamp greater than or equal to the target timestamp.
+
+        Raises:
+            ValueError: If the target timestamp is negative
+            UnsupportedVersionError: If the broker does not support looking
+                up the offsets by timestamp.
+            KafkaTimeoutError: If fetch failed in request_timeout_ms
+
+        .. versionadded:: 0.3.0
+
+        """
+        if self._client.api_version <= (0, 10, 0):
+            raise UnsupportedVersionError(
+                "offsets_for_times API not supported for cluster version {}"
+                .format(self._client.api_version))
+        for tp, ts in timestamps.items():
+            timestamps[tp] = int(ts)
+            if ts < 0:
+                raise ValueError(
+                    "The target time for partition {} is {}. The target time "
+                    "cannot be negative.".format(tp, ts))
+        offsets = yield from self._fetcher.get_offsets_by_times(
+            timestamps, self._request_timeout_ms)
+        return offsets
+
+    @asyncio.coroutine
+    def beginning_offsets(self, partitions):
+        """ Get the first offset for the given partitions.
+
+        This method does not change the current consumer position of the
+        partitions.
+
+        Note:
+            This method may block indefinitely if the partition does not exist.
+
+        Arguments:
+            partitions (list): List of TopicPartition instances to fetch
+                offsets for.
+
+        Returns:
+            dict: ``{TopicPartition: int}`` mapping of partition to  earliest
+            available offset.
+
+        Raises:
+            UnsupportedVersionError: If the broker does not support looking
+                up the offsets by timestamp.
+            KafkaTimeoutError: If fetch failed in request_timeout_ms.
+
+        .. versionadded:: 0.3.0
+
+        """
+        if self._client.api_version <= (0, 10, 0):
+            raise UnsupportedVersionError(
+                "offsets_for_times API not supported for cluster version {}"
+                .format(self._client.api_version))
+        offsets = yield from self._fetcher.beginning_offsets(
+            partitions, self._request_timeout_ms)
+        return offsets
+
+    @asyncio.coroutine
+    def end_offsets(self, partitions):
+        """ Get the last offset for the given partitions. The last offset of a
+        partition is the offset of the upcoming message, i.e. the offset of the
+        last available message + 1.
+
+        This method does not change the current consumer position of the
+        partitions.
+
+        Note:
+            This method may block indefinitely if the partition does not exist.
+
+        Arguments:
+            partitions (list): List of TopicPartition instances to fetch
+                offsets for.
+
+        Returns:
+            dict: ``{TopicPartition: int}`` mapping of partition to last
+            available offset + 1.
+
+        Raises:
+            UnsupportedVersionError: If the broker does not support looking
+                up the offsets by timestamp.
+            KafkaTimeoutError: If fetch failed in request_timeout_ms
+
+        .. versionadded:: 0.3.0
+
+        """
+        if self._client.api_version <= (0, 10, 0):
+            raise UnsupportedVersionError(
+                "offsets_for_times API not supported for cluster version {}"
+                .format(self._client.api_version))
+        offsets = yield from self._fetcher.end_offsets(
+            partitions, self._request_timeout_ms)
+        return offsets
 
     def subscribe(self, topics=(), pattern=None, listener=None):
         """ Subscribe to a list of topics, or a topic regex pattern.
@@ -655,14 +876,28 @@ class AIOKafkaConsumer(object):
         yield from self._fetcher.update_fetch_positions(partitions)
 
     def _on_change_subscription(self):
-        """This is `group rebalanced` signal handler for update fetch positions
-        of assigned partitions"""
+        """ This is `group rebalanced` signal handler used to update fetch
+            positions of assigned partitions
+        """
+        if self._closed:  # pragma: no cover
+            return
         # fetch positions if we have partitions we're subscribed
         # to that we don't know the offset for
         if not self._subscription.has_all_fetch_positions():
-            ensure_future(self._update_fetch_positions(
-                self._subscription.missing_fetch_positions()),
-                loop=self._loop)
+            task = ensure_future(
+                self._update_fetch_positions(
+                    self._subscription.missing_fetch_positions()),
+                loop=self._loop
+            )
+            self._pending_position_fetches.add(task)
+
+            def on_done(fut, tasks=self._pending_position_fetches):
+                tasks.discard(fut)
+                try:
+                    fut.result()
+                except Exception as err:  # pragma: no cover
+                    log.error("Failed to update fetch positions: %r", err)
+            task.add_done_callback(on_done)
 
     @asyncio.coroutine
     def getone(self, *partitions):
@@ -692,7 +927,7 @@ class AIOKafkaConsumer(object):
         .. code:: python
 
             while True:
-                message = yield from consumer.getone()
+                message = await consumer.getone()
                 topic = message.topic
                 partition = message.partition
                 # Process message
@@ -731,7 +966,7 @@ class AIOKafkaConsumer(object):
 
         .. code:: python
 
-            data = yield from consumer.getmany()
+            data = await consumer.getmany()
             for tp, messages in data.items():
                 topic = tp.topic
                 partition = tp.partition

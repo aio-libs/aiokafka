@@ -18,6 +18,7 @@ from kafka.protocol.group import (
 import aiokafka.errors as Errors
 from aiokafka import ensure_future
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
+from aiokafka.client import ConnectionGroup
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +79,13 @@ class BaseCoordinator(object):
     def _on_change_assignment(self):
         if self._assignment_changed_cb is not None:
             self._assignment_changed_cb()
+
+    @asyncio.coroutine
+    def ensure_partitions_assigned(self):
+        """ Will be called by consumer before any operation regarding
+            assignment
+        """
+        return
 
 
 class NoGroupCoordinator(BaseCoordinator):
@@ -203,6 +211,7 @@ class GroupCoordinator(BaseCoordinator):
             exclude_internal_topics=exclude_internal_topics,
             assignment_changed_cb=assignment_changed_cb)
 
+        self._loop = loop
         self._session_timeout_ms = session_timeout_ms
         self._heartbeat_interval_ms = heartbeat_interval_ms
         self._retry_backoff_ms = retry_backoff_ms
@@ -215,7 +224,7 @@ class GroupCoordinator(BaseCoordinator):
         self.group_id = group_id
         self.coordinator_id = None
         self.rejoin_needed = True
-        self.needs_join_prepare = True
+        self.pending_rejoin_fut = None
         # `ensure_active_group` can be called from several places
         # (from consumer and from heartbeat task), so we need lock
         self._rejoin_lock = asyncio.Lock(loop=loop)
@@ -254,19 +263,21 @@ class GroupCoordinator(BaseCoordinator):
             # attempt any resending if the request fails or times out.
             request = LeaveGroupRequest(self.group_id, self.member_id)
             try:
-                yield from self._send_req(self.coordinator_id, request)
+                yield from self._send_req(
+                    self.coordinator_id, request,
+                    group=ConnectionGroup.COORDINATION)
             except Errors.KafkaError as err:
                 log.error("LeaveGroup request failed: %s", err)
             else:
                 log.info("LeaveGroup request succeeded")
 
     @asyncio.coroutine
-    def _send_req(self, node_id, request):
+    def _send_req(self, node_id, request, *, group):
         """send request to Kafka node and mark coordinator as `dead`
         in error case
         """
         try:
-            resp = yield from self._client.send(node_id, request)
+            resp = yield from self._client.send(node_id, request, group=group)
         except Errors.KafkaError as err:
             log.error(
                 'Error sending %s to node %s [%s] -- marking coordinator dead',
@@ -372,6 +383,8 @@ class GroupCoordinator(BaseCoordinator):
         # based on the received assignment
         assignor.on_assignment(assignment)
 
+        self.pending_rejoin_fut.set_result(None)
+        self.pending_rejoin_fut = None
         assigned = set(self._subscription.assigned_partitions())
         log.info("Setting newly assigned partitions %s for group %s",
                  assigned, self.group_id)
@@ -450,7 +463,8 @@ class GroupCoordinator(BaseCoordinator):
 
     @asyncio.coroutine
     def _proc_offsets_fetch_request(self, node_id, request):
-        response = yield from self._send_req(node_id, request)
+        response = yield from self._send_req(
+            node_id, request, group=ConnectionGroup.COORDINATION)
         offsets = {}
         for topic, partitions in response.topics:
             for partition, offset, metadata, error_code in partitions:
@@ -526,7 +540,8 @@ class GroupCoordinator(BaseCoordinator):
         log.debug("Sending offset-commit request with %s for group %s to %s",
                   offsets, self.group_id, node_id)
 
-        response = yield from self._send_req(node_id, request)
+        response = yield from self._send_req(
+            node_id, request, group=ConnectionGroup.COORDINATION)
 
         unauthorized_topics = set()
         for topic, partitions in response.topics:
@@ -661,7 +676,8 @@ class GroupCoordinator(BaseCoordinator):
                 self.group_id, node_id)
             request = GroupCoordinatorRequest(self.group_id)
             try:
-                resp = yield from self._send_req(node_id, request)
+                resp = yield from self._send_req(
+                    node_id, request, group=ConnectionGroup.DEFAULT)
             except Errors.KafkaError as err:
                 log.error("Group Coordinator Request failed: %s", err)
                 yield from asyncio.sleep(
@@ -696,10 +712,10 @@ class GroupCoordinator(BaseCoordinator):
             if not self.need_rejoin():
                 return
 
-            if self.needs_join_prepare:
+            if self.pending_rejoin_fut is None:
                 yield from self._on_join_prepare(
                     self.generation, self.member_id)
-                self.needs_join_prepare = False
+                self.pending_rejoin_fut = asyncio.Future(loop=self._loop)
 
             while self.need_rejoin():
                 yield from self.ensure_coordinator_known()
@@ -710,8 +726,7 @@ class GroupCoordinator(BaseCoordinator):
                     self, self.group_id, self.coordinator_id,
                     subscription, self._assignors, self._session_timeout_ms,
                     self._retry_backoff_ms, loop=self.loop)
-                assignment = (
-                    yield from rebalance.perform_group_join())
+                assignment = yield from rebalance.perform_group_join()
 
                 if (subscription != self._subscription.subscription):
                     log.debug("Subscription changed during rebalance "
@@ -723,8 +738,12 @@ class GroupCoordinator(BaseCoordinator):
                     yield from self._on_join_complete(
                         self.generation, self.member_id,
                         protocol, member_assignment_bytes)
-                    self.needs_join_prepare = True
                     return
+
+    @asyncio.coroutine
+    def ensure_partitions_assigned(self):
+        if self.pending_rejoin_fut is not None:
+            yield from asyncio.shield(self.pending_rejoin_fut, loop=self._loop)
 
     def coordinator_dead(self, error=None):
         """Mark the current coordinator as dead."""
@@ -749,6 +768,7 @@ class GroupCoordinator(BaseCoordinator):
             yield from asyncio.sleep(sleep_time, loop=self.loop)
             if not self._subscription.partitions_auto_assigned():
                 # no partitions assigned yet, just wait
+                sleep_time = retry_backoff_time
                 continue
 
             try:
@@ -765,7 +785,9 @@ class GroupCoordinator(BaseCoordinator):
             log.debug("Heartbeat: %s[%s] %s",
                       self.group_id, self.generation, self.member_id)
             try:
-                yield from self._send_req(self.coordinator_id, request)
+                yield from self._send_req(
+                    self.coordinator_id, request,
+                    group=ConnectionGroup.COORDINATION)
             except (Errors.GroupCoordinatorNotAvailableError,
                     Errors.NotCoordinatorForGroupError):
                 log.warning(
@@ -879,7 +901,8 @@ class CoordinatorGroupRebalance:
                   request, self.coordinator_id)
         try:
             response = yield from self._coordinator._send_req(
-                self.coordinator_id, request)
+                self.coordinator_id, request,
+                group=ConnectionGroup.COORDINATION)
         except Errors.GroupLoadInProgressError:
             log.debug("Attempt to join group %s rejected since coordinator %s"
                       " is loading the group.", self.group_id,
@@ -996,7 +1019,8 @@ class CoordinatorGroupRebalance:
         response = None
         try:
             response = yield from self._coordinator._send_req(
-                self.coordinator_id, request)
+                self.coordinator_id, request,
+                group=ConnectionGroup.COORDINATION)
             log.info("Successfully synced group %s with generation %s",
                      self.group_id, self._coordinator.generation)
             return response.member_assignment

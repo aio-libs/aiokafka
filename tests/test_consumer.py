@@ -2,18 +2,27 @@ import asyncio
 import time
 from unittest import mock
 from contextlib import contextmanager
+
+import pytest
+
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.fetcher import RecordTooLargeError
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
-from aiokafka import ConsumerStoppedError, IllegalOperation
+from aiokafka import (
+    ConsumerStoppedError, IllegalOperation, ConsumerRebalanceListener
+)
+from aiokafka.structs import (
+    OffsetAndTimestamp, TopicPartition, OffsetAndMetadata
+)
+from aiokafka.errors import (
+    IllegalStateError, UnknownTopicOrPartitionError, OffsetOutOfRangeError,
+    UnsupportedVersionError, KafkaTimeoutError
+)
 
-from kafka.common import (
-    TopicPartition, OffsetAndMetadata, IllegalStateError,
-    UnknownTopicOrPartitionError, OffsetOutOfRangeError)
 from ._testutil import (
     KafkaIntegrationTestCase, StubRebalanceListener,
-    run_until_complete, random_string)
+    run_until_complete, random_string, kafka_versions)
 
 
 class TestConsumerIntegration(KafkaIntegrationTestCase):
@@ -474,6 +483,92 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from consumer.stop()
 
     @run_until_complete
+    def test_consumer_seek_to_beginning(self):
+        # Send 3 messages
+        yield from self.send_messages(0, [1, 2, 3])
+
+        consumer = yield from self.consumer_factory()
+        self.add_cleanup(consumer.stop)
+
+        tp = TopicPartition(self.topic, 0)
+        start_position = yield from consumer.position(tp)
+
+        rmsg1 = yield from consumer.getone()
+        yield from consumer.seek_to_beginning()
+        rmsg2 = yield from consumer.getone()
+        self.assertEqual(rmsg2.value, rmsg1.value)
+
+        yield from consumer.seek_to_beginning(tp)
+        rmsg3 = yield from consumer.getone()
+        self.assertEqual(rmsg2.value, rmsg3.value)
+
+        pos = yield from consumer.position(tp)
+        self.assertEqual(pos, start_position + 1)
+
+    @run_until_complete
+    def test_consumer_seek_to_end(self):
+        # Send 3 messages
+        yield from self.send_messages(0, [1, 2, 3])
+
+        consumer = yield from self.consumer_factory()
+        self.add_cleanup(consumer.stop)
+
+        tp = TopicPartition(self.topic, 0)
+        start_position = yield from consumer.position(tp)
+
+        yield from consumer.seek_to_end()
+        pos = yield from consumer.position(tp)
+        self.assertEqual(pos, start_position + 3)
+        task = self.loop.create_task(consumer.getone())
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        self.assertEqual(task.done(), False)
+
+        yield from self.send_messages(0, [4, 5, 6])
+        rmsg = yield from task
+        self.assertEqual(rmsg.value, b"4")
+
+        yield from consumer.seek_to_end(tp)
+        task = self.loop.create_task(consumer.getone())
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        self.assertEqual(task.done(), False)
+
+        yield from self.send_messages(0, [7, 8, 9])
+        rmsg = yield from task
+        self.assertEqual(rmsg.value, b"7")
+
+        pos = yield from consumer.position(tp)
+        self.assertEqual(pos, start_position + 7)
+
+    @run_until_complete
+    def test_consumer_seek_on_unassigned(self):
+        tp0 = TopicPartition(self.topic, 0)
+        tp1 = TopicPartition(self.topic, 1)
+        consumer = AIOKafkaConsumer(
+            loop=self.loop, group_id=None, bootstrap_servers=self.hosts)
+        yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+        consumer.assign([tp0])
+
+        with self.assertRaises(IllegalStateError):
+            yield from consumer.seek_to_beginning(tp1)
+        with self.assertRaises(IllegalStateError):
+            yield from consumer.seek_to_committed(tp1)
+        with self.assertRaises(IllegalStateError):
+            yield from consumer.seek_to_end(tp1)
+
+    @run_until_complete
+    def test_consumer_seek_type_errors(self):
+        consumer = yield from self.consumer_factory()
+        self.add_cleanup(consumer.stop)
+
+        with self.assertRaises(TypeError):
+            yield from consumer.seek_to_beginning(1)
+        with self.assertRaises(TypeError):
+            yield from consumer.seek_to_committed(1)
+        with self.assertRaises(TypeError):
+            yield from consumer.seek_to_end(1)
+
+    @run_until_complete
     def test_manual_subscribe_nogroup(self):
         msgs1 = yield from self.send_messages(0, range(0, 10))
         msgs2 = yield from self.send_messages(1, range(10, 20))
@@ -492,6 +587,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(set(available_msgs), set(result))
         yield from consumer.stop()
 
+    @pytest.mark.xfail
     @run_until_complete
     def test_unknown_topic_or_partition(self):
         consumer = AIOKafkaConsumer(
@@ -929,7 +1025,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     def test_offset_reset_manual(self):
-        yield from self.send_messages(0, list(range(0, 10)))
+        yield from self.send_messages(0, [1])
 
         consumer = AIOKafkaConsumer(
             self.topic,
@@ -940,10 +1036,12 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(consumer.stop)
 
         with self.assertRaises(OffsetOutOfRangeError):
-            yield from consumer.getmany(timeout_ms=1000)
+            for x in range(2):
+                yield from consumer.getmany(timeout_ms=1000)
 
         with self.assertRaises(OffsetOutOfRangeError):
-            yield from consumer.getone()
+            for x in range(2):
+                yield from consumer.getone()
 
     @run_until_complete
     def test_consumer_cleanup_unassigned_data_getone(self):
@@ -1013,3 +1111,266 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertNotIn(tp2, consumer._fetcher._records)
 
         yield from consumer.stop()
+
+    @run_until_complete
+    def test_rebalance_listener_with_coroutines(self):
+        yield from self.send_messages(0, list(range(0, 10)))
+        yield from self.send_messages(1, list(range(10, 20)))
+
+        main_self = self
+
+        class SimpleRebalanceListener(ConsumerRebalanceListener):
+            def __init__(self, consumer):
+                self.consumer = consumer
+                self.revoke_mock = mock.Mock()
+                self.assign_mock = mock.Mock()
+
+            @asyncio.coroutine
+            def on_partitions_revoked(self, revoked):
+                self.revoke_mock(revoked)
+                # If this commit would fail we will end up with wrong msgs
+                # eturned in test below
+                yield from self.consumer.commit()
+                # Confirm that coordinator is actually waiting for callback to
+                # complete
+                yield from asyncio.sleep(0.2, loop=main_self.loop)
+                main_self.assertTrue(
+                    self.consumer._coordinator.needs_join_prepare)
+
+            @asyncio.coroutine
+            def on_partitions_assigned(self, assigned):
+                self.assign_mock(assigned)
+                # Confirm that coordinator is actually waiting for callback to
+                # complete
+                yield from asyncio.sleep(0.2, loop=main_self.loop)
+                main_self.assertFalse(
+                    self.consumer._coordinator.needs_join_prepare)
+
+        tp0 = TopicPartition(self.topic, 0)
+        tp1 = TopicPartition(self.topic, 1)
+        consumer1 = AIOKafkaConsumer(
+            loop=self.loop, group_id="test_rebalance_listener_with_coroutines",
+            bootstrap_servers=self.hosts, enable_auto_commit=False,
+            auto_offset_reset="earliest")
+        listener1 = SimpleRebalanceListener(consumer1)
+        consumer1.subscribe([self.topic], listener=listener1)
+        yield from consumer1.start()
+        self.add_cleanup(consumer1.stop)
+
+        msg = yield from consumer1.getone(tp0)
+        self.assertEqual(msg.value, b"0")
+        msg = yield from consumer1.getone(tp1)
+        self.assertEqual(msg.value, b"10")
+        listener1.revoke_mock.assert_called_with(set([]))
+        listener1.assign_mock.assert_called_with(set([tp0, tp1]))
+
+        # By adding a 2nd consumer we trigger rebalance
+        consumer2 = AIOKafkaConsumer(
+            loop=self.loop, group_id="test_rebalance_listener_with_coroutines",
+            bootstrap_servers=self.hosts, enable_auto_commit=False,
+            auto_offset_reset="earliest")
+        listener2 = SimpleRebalanceListener(consumer2)
+        consumer2.subscribe([self.topic], listener=listener2)
+        yield from consumer2.start()
+        self.add_cleanup(consumer2.stop)
+
+        msg1 = yield from consumer1.getone()
+        msg2 = yield from consumer2.getone()
+        # We can't predict the assignment in test
+        if consumer1.assignment() == set([tp1]):
+            msg1, msg2 = msg2, msg1
+            c1_assignment = set([tp1])
+            c2_assignment = set([tp0])
+        else:
+            c1_assignment = set([tp0])
+            c2_assignment = set([tp1])
+
+        self.assertEqual(msg1.value, b"1")
+        self.assertEqual(msg2.value, b"11")
+
+        listener1.revoke_mock.assert_called_with(set([tp0, tp1]))
+        self.assertEqual(listener1.revoke_mock.call_count, 2)
+        listener1.assign_mock.assert_called_with(c1_assignment)
+        self.assertEqual(listener1.assign_mock.call_count, 2)
+
+        listener2.revoke_mock.assert_called_with(set([]))
+        self.assertEqual(listener2.revoke_mock.call_count, 1)
+        listener2.assign_mock.assert_called_with(c2_assignment)
+        self.assertEqual(listener2.assign_mock.call_count, 1)
+
+    @run_until_complete
+    def test_rebalance_listener_no_deadlock_callbacks(self):
+        # Seek_to_end requires partitions to be assigned, so it waits for
+        # rebalance to end before attempting seek
+        tp0 = TopicPartition(self.topic, 0)
+
+        class SimpleRebalanceListener(ConsumerRebalanceListener):
+            def __init__(self, consumer):
+                self.consumer = consumer
+                self.seek_task = None
+
+            @asyncio.coroutine
+            def on_partitions_revoked(self, revoked):
+                pass
+
+            @asyncio.coroutine
+            def on_partitions_assigned(self, assigned):
+                self.seek_task = self.consumer._loop.create_task(
+                    self.consumer.seek_to_end(tp0))
+                yield from self.seek_task
+
+        consumer = AIOKafkaConsumer(
+            loop=self.loop, group_id="test_rebalance_listener_with_coroutines",
+            bootstrap_servers=self.hosts, enable_auto_commit=False,
+            auto_offset_reset="earliest")
+        listener = SimpleRebalanceListener(consumer)
+        consumer.subscribe([self.topic], listener=listener)
+        yield from consumer.start()
+        self.assertTrue(listener.seek_task.done())
+
+    @run_until_complete
+    def test_consumer_stop_cancels_pending_position_fetches(self):
+        consumer = AIOKafkaConsumer(
+            self.topic,
+            loop=self.loop, bootstrap_servers=self.hosts,
+            group_id='group-%s' % self.id())
+        yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        self.assertTrue(consumer._pending_position_fetches)
+        pending_task = list(consumer._pending_position_fetches)[0]
+        yield from consumer.stop()
+        self.assertTrue(pending_task.cancelled())
+
+    @run_until_complete
+    def test_commit_not_blocked_by_long_poll_fetch(self):
+        yield from self.send_messages(0, list(range(0, 10)))
+
+        consumer = yield from self.consumer_factory(
+            fetch_max_wait_ms=10000)
+
+        # This should prefetch next batch right away and long-poll
+        yield from consumer.getmany(timeout_ms=1000)
+        long_poll_task = self.loop.create_task(
+            consumer.getmany(timeout_ms=1000))
+        yield from asyncio.sleep(0.2, loop=self.loop)
+        self.assertFalse(long_poll_task.done())
+
+        start_time = self.loop.time()
+        yield from consumer.commit()
+        end_time = self.loop.time()
+
+        self.assertFalse(long_poll_task.done())
+        self.assertLess(end_time - start_time, 500)
+
+    @kafka_versions('>=0.10.1')
+    @run_until_complete
+    def test_offsets_for_times_single(self):
+        high_time = int(self.loop.time() * 1000)
+        middle_time = high_time - 1000
+        low_time = high_time - 2000
+        tp = TopicPartition(self.topic, 0)
+
+        [msg1] = yield from self.send_messages(
+            0, [1], timestamp_ms=low_time, return_inst=True)
+        [msg2] = yield from self.send_messages(
+            0, [1], timestamp_ms=high_time, return_inst=True)
+
+        consumer = yield from self.consumer_factory()
+
+        offsets = yield from consumer.offsets_for_times({tp: low_time})
+        self.assertEqual(len(offsets), 1)
+        self.assertEqual(offsets[tp].offset, msg1.offset)
+        self.assertEqual(offsets[tp].timestamp, low_time)
+
+        offsets = yield from consumer.offsets_for_times({tp: middle_time})
+        self.assertEqual(offsets[tp].offset, msg2.offset)
+        self.assertEqual(offsets[tp].timestamp, high_time)
+
+        offsets = yield from consumer.offsets_for_times({tp: high_time})
+        self.assertEqual(offsets[tp].offset, msg2.offset)
+        self.assertEqual(offsets[tp].timestamp, high_time)
+
+        # Out of bound timestamps check
+
+        offsets = yield from consumer.offsets_for_times({tp: 0})
+        self.assertEqual(offsets[tp].offset, msg1.offset)
+        self.assertEqual(offsets[tp].timestamp, low_time)
+
+        offsets = yield from consumer.offsets_for_times({tp: 9999999999999})
+        self.assertEqual(offsets[tp], None)
+
+        offsets = yield from consumer.offsets_for_times({})
+        self.assertEqual(offsets, {})
+
+        # Beginning and end offsets
+
+        offsets = yield from consumer.beginning_offsets([tp])
+        self.assertEqual(offsets, {
+            tp: msg1.offset,
+        })
+
+        offsets = yield from consumer.end_offsets([tp])
+        self.assertEqual(offsets, {
+            tp: msg2.offset + 1,
+        })
+
+    @kafka_versions('>=0.10.1')
+    @run_until_complete
+    def test_kafka_consumer_offsets_search_many_partitions(self):
+        tp0 = TopicPartition(self.topic, 0)
+        tp1 = TopicPartition(self.topic, 1)
+
+        send_time = int(time.time() * 1000)
+        [msg1] = yield from self.send_messages(
+            0, [1], timestamp_ms=send_time, return_inst=True)
+        [msg2] = yield from self.send_messages(
+            1, [1], timestamp_ms=send_time, return_inst=True)
+
+        consumer = yield from self.consumer_factory()
+        offsets = yield from consumer.offsets_for_times({
+            tp0: send_time,
+            tp1: send_time
+        })
+
+        self.assertEqual(offsets, {
+            tp0: OffsetAndTimestamp(msg1.offset, send_time),
+            tp1: OffsetAndTimestamp(msg2.offset, send_time)
+        })
+
+        offsets = yield from consumer.beginning_offsets([tp0, tp1])
+        self.assertEqual(offsets, {
+            tp0: msg1.offset,
+            tp1: msg2.offset
+        })
+
+        offsets = yield from consumer.end_offsets([tp0, tp1])
+        self.assertEqual(offsets, {
+            tp0: msg1.offset + 1,
+            tp1: msg2.offset + 1
+        })
+
+    @kafka_versions('>=0.10.1')
+    @run_until_complete
+    def test_kafka_consumer_offsets_errors(self):
+        consumer = yield from self.consumer_factory()
+        tp = TopicPartition(self.topic, 0)
+        bad_tp = TopicPartition(self.topic, 100)
+
+        with self.assertRaises(ValueError):
+            yield from consumer.offsets_for_times({tp: -1})
+        with self.assertRaises(KafkaTimeoutError):
+            yield from consumer.offsets_for_times({bad_tp: 0})
+
+    @kafka_versions('<0.10.1')
+    @run_until_complete
+    def test_kafka_consumer_offsets_old_brokers(self):
+        consumer = yield from self.consumer_factory()
+        tp = TopicPartition(self.topic, 0)
+
+        with self.assertRaises(UnsupportedVersionError):
+            yield from consumer.offsets_for_times({tp: int(time.time())})
+        with self.assertRaises(UnsupportedVersionError):
+            yield from consumer.beginning_offsets(tp)
+        with self.assertRaises(UnsupportedVersionError):
+            yield from consumer.end_offsets(tp)

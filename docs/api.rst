@@ -30,6 +30,18 @@ Helpers
 
 .. _ssl_auth:
 
+Abstracts
+---------
+
+.. _consumer-rebalance-listener:
+
+.. autoclass:: aiokafka.ConsumerRebalanceListener
+    :members:
+    :exclude-members: on_partitions_revoked, on_partitions_assigned
+
+    .. autocomethod:: aiokafka.ConsumerRebalanceListener.on_partitions_revoked()
+
+    .. autocomethod:: aiokafka.ConsumerRebalanceListener.on_partitions_assigned()
 
 SSL Authentication
 ------------------
@@ -60,18 +72,19 @@ See also the :ref:`ssl_example` example.
 Error handling
 --------------
 
-Both consumer and producer can raise exceptions that inherit from the `kafka.errors.KafkaError` class declared in the `kafka.errors` module.
+Both consumer and producer can raise exceptions that inherit from the
+`aiokafka.errors.KafkaError` class.
 
 Exception handling example:
 
 
 .. code:: python
 
-        from kafka.common import KafkaError, KafkaTimeoutError
+        from aiokafka.errors import KafkaError, KafkaTimeoutError
         # ...
         try:
-            send_future = yield from producer.send('foobar', b'test data')
-            response = yield from send_future  #  wait until message is produced
+            send_future = await producer.send('foobar', b'test data')
+            response = await send_future  #  wait until message is produced
         except KafkaTimeourError:
             print("produce timeout... maybe we want to resend data again?")
         except KafkaError as err:

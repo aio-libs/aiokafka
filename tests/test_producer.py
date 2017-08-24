@@ -43,7 +43,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     def test_producer_notopic(self):
         producer = AIOKafkaProducer(
-            loop=self.loop, request_timeout_ms=100,
+            loop=self.loop, request_timeout_ms=200,
             bootstrap_servers=self.hosts)
         yield from producer.start()
         with mock.patch.object(

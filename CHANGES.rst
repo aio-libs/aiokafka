@@ -1,18 +1,45 @@
 CHANGES
 --------
 
+0.3.0 (2017-08-17)
+^^^^^^^^^^^^^^^^^^
+
+* Moved all public structures and errors to `aiokafka` namespace. You will no
+  longer need to import from `kafka` namespace.
+* Changed ConsumerRebalanceListener to support either function or coroutine
+  for `on_partitions_assigned` and `on_partitions_revoked` callbacks. (PR #190
+  by @ask)
+* Added support for `offsets_for_times`, `beginning_offsets`, `end_offsets`
+  API's. (issue #164)
+* Coordinator requests are now sent using a separate socket. Fixes slow commit
+  issue. (issuer #137, issue #128)
+* Added `seek_to_end`, `seek_to_beginning` API's. (issue #154)
+* Updated documentation to provide more useful usage guide on both Consumer and
+  Producer interface.
+
+0.2.3 (2017-07-23)
+^^^^^^^^^^^^^^^^^^
+
+* Fixed retry problem in Producer, when buffer is not reset to 0 offset. 
+  Thanks to @ngavrysh for the fix in Tubular/aiokafka fork. (issue #184)
+* Fixed how Producer handles retries on Leader node failure. It just did not
+  work before... Thanks to @blugowski for the help in locating the problem.
+  (issue #176, issue #173)
+* Fixed degrade in v0.2.2 on Consumer with no group_id. (issue #166)
+
+
 0.2.2 (2017-04-17)
 ^^^^^^^^^^^^^^^^^^
 
 * Reconnect after KafkaTimeoutException. (PR #149 by @Artimi)
 * Fixed compacted topic handling. It could skip messages if those were
-compacted (issue #71)
+  compacted (issue #71)
 * Fixed old issue with new topics not adding to subscription on pattern
-(issue #46)
+  (issue #46)
 * Another fix for Consumer race condition on JoinGroup. This forces Leader to
-wait for new metadata before assigning partitions. (issue #118)
+  wait for new metadata before assigning partitions. (issue #118)
 * Changed metadata listener in Coordinator to avoid 2 rejoins in a rare
-condition (issue #108)
+  condition (issue #108)
 * `getmany` will not return 0 results until we hit timeout. (issue #117)
 
 Big thanks to @Artimi for pointing out several of those issues.
@@ -21,8 +48,10 @@ Big thanks to @Artimi for pointing out several of those issues.
 0.2.1 (2017-02-19)
 ^^^^^^^^^^^^^^^^^^
 
-* Add a check to wait topic autocreation in Consumer, instead of raising UnknownTopicOrPartitionError (PR #92 by fabregas)
-* Consumer now stops consumption after `consumer.stop()` call. Any new `get*` calls will result in ConsumerStoppedError (PR #81)
+* Add a check to wait topic autocreation in Consumer, instead of raising 
+  UnknownTopicOrPartitionError (PR #92 by fabregas)
+* Consumer now stops consumption after `consumer.stop()` call. Any new `get*` calls 
+  will result in ConsumerStoppedError (PR #81)
 * Added `exclude_internal_topics` option for Consumer (PR #111)
 * Better support for pattern subscription when used with `group_id` (part of PR #111)
 * Fix for Consumer `subscribe` and JoinGroup race condition (issue #88). Coordinator will now notice subscription changes during rebalance and will join group again. (PR #106)

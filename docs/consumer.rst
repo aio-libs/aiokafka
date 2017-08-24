@@ -8,7 +8,7 @@ Consumer client
 :ref:`AIOKafkaConsumer <aiokafka-consumer>` is a client that consumes records
 from a Kafka cluster. Most simple usage would be::
 
-    consumer = AIOKafkaConsumer(
+    consumer = aiokafka.AIOKafkaConsumer(
         "my_topic",
         loop=loop, bootstrap_servers='localhost:9092'
     )
@@ -16,8 +16,9 @@ from a Kafka cluster. Most simple usage would be::
     try:
         async for msg in consumer:
             print(
-                "{}:{:d}:{:d}: key={} value={}".format(
-                    msg.topic, msg.partition, msg.offset, msg.key, msg.value)
+                "{}:{:d}:{:d}: key={} value={} timestamp_ms={}".format(
+                    msg.topic, msg.partition, msg.offset, msg.key, msg.value,
+                    msg.timestamp)
             )
     finally:
         await consumer.stop()
@@ -29,37 +30,37 @@ from a Kafka cluster. Most simple usage would be::
   fetch data. Failure to call ``Consumer.stop()`` after consumer use `will 
   leak these connections`.
 
-**Consumer** transparently handles the failure of Kafka brokers, and
+**Consumer** transparently handles the failure of Kafka brokers and
 transparently adapts as topic partitions it fetches migrate within the
 cluster. It also interacts with the broker to allow groups of consumers to load
 balance consumption using **Consumer Groups**.
 
-This page covers:
 
- * `Offsets and Consumer Position`_ how to tracks consumption progress, save it
-   to Kafka or another place.
- * `Consumer Groups and Topic Subscriptions`_ how to subscribe to different
-   topics/patters; consume the same topic from multiple processes.
- * `Detecting Consumer Failures`_ how to 
-
+.. _offset_and_position:
 
 Offsets and Consumer Position
 -----------------------------
 
 Kafka maintains a numerical *offset* for each record in a partition. This 
-*offset* acts as a `unique identifier` of a record within that partition, and
+*offset* acts as a `unique identifier` of a record within that partition and
 also denotes the *position* of the consumer in the partition. For example::
 
     msg = await consumer.getone()
-    msg.offset  # Unique msg autoincrement ID in this topic-partition.
+    print(msg.offset)  # Unique msg autoincrement ID in this topic-partition.
 
-    tp = TopicPartition(msg.topic, msg.partition)
+    tp = aiokafka.TopicPartition(msg.topic, msg.partition)
 
     position = await consumer.position(tp)
     # Position is the next fetched offset
     assert position == msg.offset + 1
 
-    committed = await consumet.committed(tp)
+    committed = await consumer.committed(tp)
+    print(committed)
+
+.. note::
+    To use ``consumer.commit()`` and ``consumer.committed()`` API you need
+    to set ``group_id`` to something other than ``None``. See
+    `Consumer Groups and Topic Subscriptions`_ below.
 
 Here if the consumer is at *position* **5** it has consumed records with 
 *offsets* **0** through **4** and will next receive the record with 
@@ -73,7 +74,7 @@ There are actually two *notions of position*:
    consumer yields messages in either `getmany()` or `getone()` calls.
  * The *committed position* is the last *offset* that has been stored securely.
    Should the process restart, this is the offset that the consumer will start
-   from. The consumer can either `automatically commit offsets periodically`;
+   from. The consumer can either `automatically commit offsets periodically`,
    or it can choose to control this committed position `manually` by calling
    ``await consumer.commit()``.
 
@@ -84,7 +85,7 @@ consumed. It is discussed in further detail below.
 Manual vs automatic committing
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-For most simple use cases autocommiting is probably the best choice::
+For most simple use cases auto commiting is probably the best choice::
 
     consumer = AIOKafkaConsumer(
         "my_topic",
@@ -123,16 +124,21 @@ batch operations you should use *manual commit*::
             await consumer.commit()
             batch = []
 
+.. warning:: When using **manual commit** it is recommended to provide a
+  :ref:`ConsumerRebalanceListener <consumer-rebalance-listener>` which will
+  process pending messages in the batch and commit before allowing rejoin.
+  If you end up with different assignment after rejoin - commit will fail.
+
 This examples will hold on to messages until we have enough to process in
 bulk. The algorithm can be enhanced by taking advantage of:
 
   * ``await consumer.getmany()`` to avoid multiple calls to get a batch of 
     messages.
   * ``await consumer.highwater(partition)`` to understand if we have more
-    unconsumed messages or this one is the last one in partition.
+    unconsumed messages or this one is the last one in the partition.
 
-If you want to have more controll over which partition and message is
-committed, you can specify offset manualy::
+If you want to have more control over which partition and message is
+committed, you can specify offset manually::
 
     while True:
         result = await consumer.getmany(timeout_ms=10 * 1000)
@@ -147,7 +153,7 @@ committed, you can specify offset manualy::
   should add one to the offset of the last message processed.
 
 Here we process a batch of messages per partition and commit not all consumed
-*offsets*, but only for the partition we processed.
+*offsets*, but only for the partition, we processed.
 
 
 Controlling The Consumer's Position
@@ -174,7 +180,7 @@ start from `latest` offset::
 
 Kafka also allows the consumer to manually control its position, moving
 forward or backwards in a partition at will using ``consumer.seek()``.
-For example you can reconsume records::
+For example, you can re-consume records::
 
     msg = await consumer.getone()
     tp = TopicPartition(msg.topic, msg.partition)
@@ -184,29 +190,47 @@ For example you can reconsume records::
 
     assert msg2 == msg
 
+Also you can combine it with `offset_for_times` API to query to specific
+offsets based on timestamp.
+
 There are several use cases where manually controlling the consumer's position
 can be useful.
 
 *One case* is for **time-sensitive record processing** it may make sense for a
 consumer that falls far enough behind to not attempt to catch up processing all
-records, but rather just skip to the most recent records.
+records, but rather just skip to the most recent records. Or you can use
+``offsets_for_times`` API to get the offsets after certain timestamp.
 
 *Another use case* is for a **system that maintains local state**. In such a
-system the consumer will want to initialize its position on start-up to
-whatever is contained in the local store. Likewise if the local state is 
+system the consumer will want to initialize its position on startup to
+whatever is contained in the local store. Likewise, if the local state is 
 destroyed (say because the disk is lost) the state may be recreated on a new
 machine by re-consuming all the data and recreating the state (assuming that 
 Kafka is retaining sufficient history).
+
+See also related configuration params and API docs:
+
+    * `auto_offset_reset` config option to set behaviour in case the position
+      is either undefined or incorrect.
+    * :meth:`seek <aiokafka.AIOKafkaConsumer.seek>`,
+      :meth:`seek_to_beginning <aiokafka.AIOKafkaConsumer.seek_to_beginning>`,
+      :meth:`seek_to_end <aiokafka.AIOKafkaConsumer.seek_to_end>`
+      API's to force position change on partition('s).
+    * :meth:`offsets_for_times <aiokafka.AIOKafkaConsumer.offsets_for_times>`,
+      :meth:`beginning_offsets <aiokafka.AIOKafkaConsumer.beginning_offsets>`,
+      :meth:`end_offsets <aiokafka.AIOKafkaConsumer.end_offsets>`
+      API's to query offsets for partitions even if they are not assigned to
+      this consumer.
 
 
 Storing Offsets Outside Kafka
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Storing *offsets* in Kafka is optional, you can store offsets in another place
-and use ``consumer.seek()`` API to start from saved possition. The primary use
+and use ``consumer.seek()`` API to start from saved position. The primary use
 case for this is allowing the application to store both the offset and the
 results of the consumption in the same system in a way that both the results
-and offsets are stored atomically. For example if we save aggregated by `key`
+and offsets are stored atomically. For example, if we save aggregated by `key`
 counts in Redis::
 
     import json
@@ -248,7 +272,8 @@ So to save results outside of Kafka you need to:
 
 * Configure enable.auto.commit=false
 * Use the offset provided with each ConsumerRecord to save your position
-* On restart restore the position of the consumer using ``consumer.seek()``
+* On restart or rebalance restore the position of the consumer using
+  ``consumer.seek()``
 
 This is not always possible, but when it is it will make the consumption fully
 atomic and give "exactly once" semantics that are stronger than the default
@@ -257,7 +282,8 @@ atomic and give "exactly once" semantics that are stronger than the default
 This type of usage is simplest when the partition assignment is also done
 manually (like we did above). If the partition assignment is done automatically
 special care is needed to handle the case where partition assignments change.
-
+See :ref:`Local state and storing offsets outside of Kafka <local_state_consumer_example>`
+example for more details.
 
 Consumer Groups and Topic Subscriptions
 ---------------------------------------
@@ -272,22 +298,20 @@ same **Consumer Group**::
 
     # Process 1
     consumer = AIOKafkaConsumer(
-        loop=loop, bootstrap_servers='localhost:9092',
+        "my_topic", loop=loop, bootstrap_servers='localhost:9092',
         group_id="MyGreatConsumerGroup"  # This will enable Consumer Groups
     )
     await consumer.start()
-    consumer.subscribe(["my_topic"])
     async for msg in consumer:
         print("Process %s consumed msg from partition %s" % (
               os.getpid(), msg.partition))
 
     # Process 2
     consumer2 = AIOKafkaConsumer(
-        loop=loop, bootstrap_servers='localhost:9092',
+        "my_topic", loop=loop, bootstrap_servers='localhost:9092',
         group_id="MyGreatConsumerGroup"  # This will enable Consumer Groups
     )
     await consumer2.start()
-    consumer2.subscribe(["my_topic"])
     async for msg in consumer2:
         print("Process %s consumed msg from partition %s" % (
               os.getpid(), msg.partition))
@@ -298,7 +322,7 @@ subscribe to through ``consumer.subscribe(...)`` call. Kafka will deliver each
 message in the subscribed topics to only one of the processes in each consumer
 group. This is achieved by balancing the *partitions* between all members in
 the consumer group so that **each partition is assigned to exactly one
-consumer** in the group. So if there is a topic with *four* partitions, and a
+consumer** in the group. So if there is a topic with *four* partitions and a
 consumer group with *two* processes, each process would consume from *two*
 partitions.
 
@@ -311,12 +335,17 @@ the group**.
 .. note:: Conceptually you can think of a **Consumer Group** as being a `single 
    logical subscriber` that happens to be made up of multiple processes.
 
+In addition, when group reassignment happens automatically, consumers can be
+notified through a ``ConsumerRebalanceListener``, which allows them to finish
+necessary application-level logic such as state cleanup, manual offset commits,
+etc. See :meth:`aiokafka.AIOKafkaConsumer.subscribe` docs for more details.
+
 For more information on how **Consumer Groups** are organized see 
 `Official Kafka Docs <https://kafka.apache.org/documentation/#intro_consumers>`_.
 
 
-Topic subsciption by pattern
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Topic subscription by pattern
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 **Consumer** performs periodic metadata refreshes in the background and will
 notice when new partitions are added to one of the subscribed topics or when a
@@ -357,7 +386,7 @@ consumer group coordination will be disabled. For example::
     async for msg in consumer:
         print("Consumed msg %s %s %s", msg.topic, msg.partition, msg.value)
 
-``group_id`` can still be used for committing position, but be carefull to 
+``group_id`` can still be used for committing position, but be careful to 
 avoid **collisions** with multiple instances sharing the same group.
 
 It is not possible to mix manual partition assignment ``consumer.assign()`` 
@@ -369,7 +398,7 @@ Consumption Flow Control
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
 By default Consumer will fetch from all partitions, effectively giving these
-partitions the same priority. However in some cases you would want for some
+partitions the same priority. However in some cases, you would want for some
 partitions to have higher priority (say they have more lag and you want to
 catch up). For example::
 
@@ -395,14 +424,15 @@ catch up). For example::
 
 Here we will consume all partitions if they do not lag behind, but if some
 go above a certain *threshold*, we will consume them to catch up. This can
-very well be used in case where some consumer died and this consumer took over
-it's partitions, that are now lagging behind.
+very well be used in a case where some consumer died and this consumer took
+over its partitions, that are now lagging behind.
 
 Some things to note about it:
 
-* There is a slight **pause in consumption** if you change the partitions
-  you are fetching. This can be caused by a pending request for partitions,
-  that have no data, that will long-poll for ``fetch_max_wait_ms``.
+* There may be a slight **pause in consumption** if you change the partitions
+  you are fetching. This can happen when Consumer requests a fetch for
+  partitions that have no data available. Consider setting a relatively low
+  ``fetch_max_wait_ms`` to avoid this.
 * The ``async for`` interface can not be used with explicit partition
   filtering, just use ``consumer.getone()`` instead.
 
@@ -412,10 +442,10 @@ Detecting Consumer Failures
 
 People who worked with ``kafka-python`` or Java Client probably know that
 the ``poll()`` API is designed to ensure liveness of a **Consumer Group**. In
-other words consumer will only be considered live if it consumes messages.
+other words, Consumer will only be considered alive if it consumes messages.
 It's not the same for ``aiokafka``, for more details read 
 :ref:`Difference between aiokafka and kafka-python <kafka_python_difference>`.
 
 ``aiokafka`` will join the group on ``consumer.start()`` and will send
-heartbeats in background even if the consumer makes no progress. It will also
-commit offsets in background in autocommit mode strictly by time.
+heartbeats in the background even if the consumer makes no progress. It will
+also commit offsets in autocommit mode strictly by time in the background.

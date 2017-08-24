@@ -4,19 +4,19 @@ import logging
 import random
 from itertools import chain
 
-import kafka.common as Errors
-from kafka.common import TopicPartition
 from kafka.protocol.fetch import FetchRequest
 from kafka.protocol.message import PartialMessage
-from kafka.protocol.offset import (
-    OffsetRequest_v0 as OffsetRequest, OffsetResetStrategy)
+from kafka.protocol.offset import OffsetRequest, OffsetResetStrategy
 
+import aiokafka.errors as Errors
 from aiokafka import ensure_future
 from aiokafka.errors import (
-    ConsumerStoppedError, RecordTooLargeError)
-from aiokafka.structs import ConsumerRecord
+    ConsumerStoppedError, RecordTooLargeError, KafkaTimeoutError)
+from aiokafka.structs import OffsetAndTimestamp, TopicPartition, ConsumerRecord
 
 log = logging.getLogger(__name__)
+
+UNKNOWN_OFFSET = -1
 
 
 class FetchResult:
@@ -128,7 +128,8 @@ class Fetcher:
                  max_partition_fetch_bytes=1048576,
                  check_crcs=True,
                  fetcher_timeout=0.2,
-                 prefetch_backoff=0.1):
+                 prefetch_backoff=0.1,
+                 retry_backoff_ms=100):
         """Initialize a Kafka Message Fetcher.
 
         Parameters:
@@ -175,6 +176,7 @@ class Fetcher:
         self._check_crcs = check_crcs
         self._fetcher_timeout = fetcher_timeout
         self._prefetch_backoff = prefetch_backoff
+        self._retry_backoff = retry_backoff_ms / 1000
         self._subscriptions = subscriptions
 
         self._records = collections.OrderedDict()
@@ -481,13 +483,14 @@ class Fetcher:
                     " update", tp)
                 continue
 
+            assignment = self._subscriptions.assignment[tp]
             if self._subscriptions.is_offset_reset_needed(tp):
-                futures.append(self._reset_offset(tp))
+                futures.append(self._reset_offset(tp, assignment))
             elif self._subscriptions.assignment[tp].committed is None:
                 # there's no committed position, so we need to reset with the
                 # default strategy
                 self._subscriptions.need_offset_reset(tp)
-                futures.append(self._reset_offset(tp))
+                futures.append(self._reset_offset(tp, assignment))
             else:
                 committed = self._subscriptions.assignment[tp].committed
                 log.debug("Resetting offset for partition %s to the committed"
@@ -495,14 +498,40 @@ class Fetcher:
                 self._subscriptions.seek(tp, committed)
 
         if futures:
-            done, _ = yield from asyncio.wait(
-                futures, return_when=asyncio.ALL_COMPLETED, loop=self._loop)
-            # retrieve task result, can raise exception
-            for x in done:
-                x.result()
+            yield from asyncio.gather(*futures, loop=self._loop)
 
     @asyncio.coroutine
-    def _reset_offset(self, partition):
+    def get_offsets_by_times(self, timestamps, timeout_ms):
+        offsets = yield from self._retrieve_offsets(timestamps, timeout_ms)
+        for tp in timestamps:
+            if tp not in offsets:
+                offsets[tp] = None
+            else:
+                offset, timestamp = offsets[tp]
+                if offset == UNKNOWN_OFFSET:
+                    offsets[tp] = None
+                else:
+                    offsets[tp] = OffsetAndTimestamp(offset, timestamp)
+        return offsets
+
+    @asyncio.coroutine
+    def beginning_offsets(self, partitions, timeout_ms):
+        timestamps = {tp: OffsetResetStrategy.EARLIEST for tp in partitions}
+        offsets = yield from self._retrieve_offsets(timestamps, timeout_ms)
+        return {
+            tp: offset for (tp, (offset, ts)) in offsets.items()
+        }
+
+    @asyncio.coroutine
+    def end_offsets(self, partitions, timeout_ms):
+        timestamps = {tp: OffsetResetStrategy.LATEST for tp in partitions}
+        offsets = yield from self._retrieve_offsets(timestamps, timeout_ms)
+        return {
+            tp: offset for (tp, (offset, ts)) in offsets.items()
+        }
+
+    @asyncio.coroutine
+    def _reset_offset(self, partition, assignment):
         """Reset offsets for the given partition using
         the offset reset strategy.
 
@@ -512,7 +541,8 @@ class Fetcher:
         Raises:
             NoOffsetForPartitionError: if no offset reset strategy is defined
         """
-        timestamp = self._subscriptions.assignment[partition].reset_strategy
+        timestamp = assignment.reset_strategy
+        assert timestamp is not None
         if timestamp is OffsetResetStrategy.EARLIEST:
             strategy = 'earliest'
         else:
@@ -520,98 +550,177 @@ class Fetcher:
 
         log.debug("Resetting offset for partition %s to %s offset.",
                   partition, strategy)
-        offset = yield from self._offset(partition, timestamp)
+        offsets = yield from self._retrieve_offsets({partition: timestamp})
+        assert partition in offsets
+        offset = offsets[partition][0]
 
         # we might lose the assignment while fetching the offset,
         # so check it is still active
-        if self._subscriptions.is_assigned(partition):
+        if self._subscriptions.is_assigned(partition) and \
+                self._subscriptions.assignment[partition] is assignment:
             self._subscriptions.seek(partition, offset)
 
     @asyncio.coroutine
-    def _offset(self, partition, timestamp):
-        """Fetch a single offset before the given timestamp for the partition.
+    def _retrieve_offsets(self, timestamps, timeout_ms=float("inf")):
+        """ Fetch offset for each partition passed in ``timestamps`` map.
 
-        Blocks until offset is obtained or a non-retriable exception is raised
+        Blocks until offsets are obtained, a non-retriable exception is raised
+        or ``timeout_ms`` passed.
 
         Arguments:
-            partition The partition that needs fetching offset.
-            timestamp (int): timestamp for fetching offset. -1 for the latest
-                available, -2 for the earliest available. Otherwise timestamp
-                is treated as epoch seconds.
+            timestamps: {TopicPartition: int} dict with timestamps to fetch
+                offsets by. -1 for the latest available, -2 for the earliest
+                available. Otherwise timestamp is treated as epoch miliseconds.
 
         Returns:
-            int: message offset
+            {TopicPartition: (int, int)}: Mapping of partition to
+                retrieved offset and timestamp. If offset does not exist for
+                the provided timestamp, that partition will be missing from
+                this mapping.
         """
+        if not timestamps:
+            return {}
+
+        timeout = timeout_ms / 1000
+        start_time = self._loop.time()
+        remaining = timeout
         while True:
             try:
-                offset = yield from self._proc_offset_request(
-                    partition, timestamp)
+                offsets = yield from asyncio.wait_for(
+                    self._proc_offset_requests(timestamps),
+                    timeout=remaining, loop=self._loop
+                )
+            except asyncio.TimeoutError:
+                break
             except Errors.KafkaError as error:
                 if not error.retriable:
                     raise error
                 if error.invalid_metadata:
-                    yield from self._client.force_metadata_update()
+                    self._client.force_metadata_update()
+                elapsed = self._loop.time() - start_time
+                remaining = max(0, remaining - elapsed)
+                if remaining < self._retry_backoff:
+                    break
+                yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
             else:
-                return offset
+                return offsets
+        raise KafkaTimeoutError(
+            "Failed to get offsets by times in %s ms" % timeout_ms)
 
     @asyncio.coroutine
-    def _proc_offset_request(self, partition, timestamp):
-        """Fetch a single offset before the given timestamp for the partition.
+    def _proc_offset_requests(self, timestamps):
+        """ Fetch offsets for each partition in timestamps dict. This may send
+        request to multiple nodes, based on who is Leader for partition.
 
         Arguments:
-            partition (TopicPartition): partition that needs fetching offset
-            timestamp (int): timestamp for fetching offset
+            timestamps (dict): {TopicPartition: int} mapping of fetching
+                timestamps.
 
         Returns:
-            Future: resolves to the corresponding offset
+            Future: resolves to a mapping of retrieved offsets
         """
-        node_id = self._client.cluster.leader_for_partition(partition)
-        if node_id is None:
-            log.debug("Partition %s is unknown for fetching offset,"
-                      " wait for metadata refresh", partition)
-            raise Errors.StaleMetadata(partition)
-        elif node_id == -1:
-            log.debug(
-                "Leader for partition %s unavailable for fetching offset,"
-                " wait for metadata refresh", partition)
-            raise Errors.LeaderNotAvailableError(partition)
+        # The could be several places where we triggered an update, so only
+        # wait for it once here
+        yield from self._client._maybe_wait_metadata()
 
-        request = OffsetRequest(
-            -1, [(partition.topic, [(partition.partition, timestamp, 1)])]
-        )
+        # Group it in hierarhy `node` -> `topic` -> `[(partition, offset)]`
+        timestamps_by_node = collections.defaultdict(
+            lambda: collections.defaultdict(list))
+
+        for partition, timestamp in timestamps.items():
+            node_id = self._client.cluster.leader_for_partition(partition)
+            if node_id is None:
+                # triggers a metadata update
+                self._client.add_topic(partition.topic)
+                log.debug("Partition %s is unknown for fetching offset,"
+                          " wait for metadata refresh", partition)
+                raise Errors.StaleMetadata(partition)
+            elif node_id == -1:
+                log.debug("Leader for partition %s unavailable for fetching "
+                          "offset, wait for metadata refresh", partition)
+                raise Errors.LeaderNotAvailableError(partition)
+            else:
+                timestamps_by_node[node_id][partition.topic].append(
+                    (partition.partition, timestamp)
+                )
+
+        futs = []
+        for node_id, topic_data in timestamps_by_node.items():
+            futs.append(
+                self._proc_offset_request(node_id, topic_data)
+            )
+        offsets = {}
+        res = yield from asyncio.gather(*futs, loop=self._loop)
+        for partial_offsets in res:
+            offsets.update(partial_offsets)
+        return offsets
+
+    @asyncio.coroutine
+    def _proc_offset_request(self, node_id, topic_data):
+        if self._client.api_version < (0, 10, 1):
+            version = 0
+            # Version 0 had another field `max_offsets`, set it to `1`
+            for topic, part_data in topic_data.items():
+                topic_data[topic] = [(part, ts, 1) for part, ts in part_data]
+        else:
+            version = 1
+        request = OffsetRequest[version](-1, list(topic_data.items()))
 
         if not (yield from self._client.ready(node_id)):
             raise Errors.NodeNotReadyError(node_id)
 
         response = yield from self._client.send(node_id, request)
 
-        topic, partition_info = response.topics[0]
-        assert len(response.topics) == 1 and len(partition_info) == 1, (
-            'OffsetResponse should only be for a single topic-partition')
-
-        part, error_code, offsets = partition_info[0]
-        assert topic == partition.topic and part == partition.partition, (
-            'OffsetResponse partition does not match OffsetRequest partition')
-
-        error_type = Errors.for_code(error_code)
-        if error_type is Errors.NoError:
-            if not offsets:
-                return -1
-            assert len(offsets) == 1, 'Expected OffsetResponse with one offset'
-            offset = offsets[0]
-            log.debug("Fetched offset %d for partition %s", offset, partition)
-            return offset
-        elif error_type in (Errors.NotLeaderForPartitionError,
-                            Errors.UnknownTopicOrPartitionError):
-            log.debug("Attempt to fetch offsets for partition %s failed due"
-                      " to obsolete leadership information, retrying.",
-                      partition)
-            raise error_type(partition)
-        else:
-            log.warning(
-                "Attempt to fetch offsets for partition %s failed due to:"
-                " %s", partition, error_type)
-            raise error_type(partition)
+        res_offsets = {}
+        for topic, part_data in response.topics:
+            for part, error_code, *partition_info in part_data:
+                partition = TopicPartition(topic, part)
+                error_type = Errors.for_code(error_code)
+                if error_type is Errors.NoError:
+                    if response.API_VERSION == 0:
+                        offsets = partition_info[0]
+                        assert len(offsets) <= 1, \
+                            'Expected OffsetResponse with one offset'
+                        if offsets:
+                            offset = offsets[0]
+                            log.debug(
+                                "Handling v0 ListOffsetResponse response for "
+                                "%s. Fetched offset %s", partition, offset)
+                            res_offsets[partition] = (offset, None)
+                        else:
+                            res_offsets[partition] = (UNKNOWN_OFFSET, None)
+                    else:
+                        timestamp, offset = partition_info
+                        log.debug(
+                            "Handling ListOffsetResponse response for "
+                            "%s. Fetched offset %s, timestamp %s",
+                            partition, offset, timestamp)
+                        res_offsets[partition] = (offset, timestamp)
+                elif error_type is Errors.UnsupportedForMessageFormatError:
+                    # The message format on the broker side is before 0.10.0,
+                    # we will simply put None in the response.
+                    log.debug("Cannot search by timestamp for partition %s "
+                              "because the message format version is before "
+                              "0.10.0", partition)
+                elif error_type is Errors.NotLeaderForPartitionError:
+                    log.debug(
+                        "Attempt to fetch offsets for partition %s ""failed "
+                        "due to obsolete leadership information, retrying.",
+                        partition)
+                    raise error_type(partition)
+                elif error_type is Errors.UnknownTopicOrPartitionError:
+                    log.warn(
+                        "Received unknown topic or partition error in "
+                        "ListOffset request for partition %s. The "
+                        "topic/partition may not exist or the user may not "
+                        "have Describe access to it.", partition)
+                    raise error_type(partition)
+                else:
+                    log.warning(
+                        "Attempt to fetch offsets for partition %s failed due "
+                        "to: %s", partition, error_type)
+                    raise error_type(partition)
+        return res_offsets
 
     @asyncio.coroutine
     def next_record(self, partitions):
