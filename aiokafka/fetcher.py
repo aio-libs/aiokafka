@@ -561,7 +561,7 @@ class Fetcher:
             self._subscriptions.seek(partition, offset)
 
     @asyncio.coroutine
-    def _retrieve_offsets(self, timestamps, timeout_ms=float("inf")):
+    def _retrieve_offsets(self, timestamps, timeout_ms=None):
         """ Fetch offset for each partition passed in ``timestamps`` map.
 
         Blocks until offsets are obtained, a non-retriable exception is raised
