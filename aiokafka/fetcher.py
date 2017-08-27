@@ -588,7 +588,8 @@ class Fetcher:
             try:
                 offsets = yield from asyncio.wait_for(
                     self._proc_offset_requests(timestamps),
-                    timeout=remaining, loop=self._loop
+                    timeout=None if remaining == float("inf") else remaining,
+                    loop=self._loop
                 )
             except asyncio.TimeoutError:
                 break
