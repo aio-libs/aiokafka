@@ -561,7 +561,7 @@ class Fetcher:
             self._subscriptions.seek(partition, offset)
 
     @asyncio.coroutine
-    def _retrieve_offsets(self, timestamps, timeout_ms=None):
+    def _retrieve_offsets(self, timestamps, timeout_ms=float("inf")):
         """ Fetch offset for each partition passed in ``timestamps`` map.
 
         Blocks until offsets are obtained, a non-retriable exception is raised
@@ -588,7 +588,8 @@ class Fetcher:
             try:
                 offsets = yield from asyncio.wait_for(
                     self._proc_offset_requests(timestamps),
-                    timeout=remaining, loop=self._loop
+                    timeout=None if remaining == float("inf") else remaining,
+                    loop=self._loop
                 )
             except asyncio.TimeoutError:
                 break
