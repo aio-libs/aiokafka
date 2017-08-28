@@ -181,12 +181,16 @@ class MessageAccumulator:
         self._api_version = api_version
 
     @asyncio.coroutine
-    def close(self):
-        self._closed = True
+    def flush(self):
         # NOTE: we copy to avoid mutation during `yield from` below
         for batches in list(self._batches.values()):
             for batch in list(batches):
                 yield from batch.wait_deliver()
+
+    @asyncio.coroutine
+    def close(self):
+        self._closed = True
+        yield from self.flush()
 
     @asyncio.coroutine
     def add_message(self, tp, key, value, timeout, timestamp_ms=None):
