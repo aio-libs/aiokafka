@@ -183,11 +183,9 @@ class MessageAccumulator:
     @asyncio.coroutine
     def flush(self):
         # NOTE: we copy to avoid mutation during `yield from` below
-        self._closed = True
         for batches in list(self._batches.values()):
             for batch in list(batches):
                 yield from batch.wait_deliver()
-        self._closed = False
 
     @asyncio.coroutine
     def close(self):
