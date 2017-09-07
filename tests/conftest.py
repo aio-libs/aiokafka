@@ -107,7 +107,7 @@ def kafka_server(request, docker, docker_ip_address,
         image=image,
         name='aiokafka-tests',
         # name='aiokafka-tests-{}'.format(session_id),
-        ports=[2181, 9092, 9093],
+        ports=[2181, kafka_port, kafka_ssl_port],
         volumes=['/ssl_cert'],
         environment={
             'ADVERTISED_HOST': kafka_host,
@@ -118,8 +118,8 @@ def kafka_server(request, docker, docker_ip_address,
         host_config=docker.create_host_config(
             port_bindings={
                 2181: (kafka_host, unused_port()),
-                9092: (kafka_host, kafka_port),
-                9093: (kafka_host, kafka_ssl_port)
+                kafka_port: (kafka_host, kafka_port),
+                kafka_ssl_port: (kafka_host, kafka_ssl_port)
             },
             binds={
                 str(ssl_folder.resolve()): {
