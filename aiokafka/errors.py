@@ -37,9 +37,13 @@ class NoOffsetForPartitionError(KafkaError):
     pass
 
 
+class ProducerClosed(KafkaError):
+    pass
+
+
 class RecordTooLargeError(KafkaError):
     pass
 
 
-class ProducerClosed(KafkaError):
+class UnknownPartition(KafkaError):
     pass

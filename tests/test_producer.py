@@ -1,22 +1,29 @@
-import json
 import asyncio
+import collections
+import io
+import json
+import pytest
+import unittest
 from unittest import mock
 
 from kafka.cluster import ClusterMetadata
-from kafka.common import (KafkaTimeoutError,
-                          UnknownTopicOrPartitionError,
-                          MessageSizeTooLargeError,
-                          NotLeaderForPartitionError,
-                          LeaderNotAvailableError,
-                          RequestTimedOutError)
+from kafka.common import (
+    KafkaTimeoutError,
+    LeaderNotAvailableError,
+    MessageSizeTooLargeError,
+    NotLeaderForPartitionError,
+    RequestTimedOutError,
+    TopicPartition,
+    UnknownTopicOrPartitionError,
+)
 from kafka.protocol.produce import ProduceResponse_v0 as ProduceResponse
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
-from aiokafka.producer import AIOKafkaProducer
+from aiokafka.producer import AIOKafkaProducer, MessageBatch
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer
-from aiokafka.message_accumulator import ProducerClosed
+from aiokafka.errors import ProducerClosed
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
@@ -279,3 +286,187 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 loop=self.loop,
                 bootstrap_servers=self.hosts,
                 security_protocol="SSL", ssl_context=None)
+
+
+@pytest.mark.usefixtures('setup_test_class_serverless')
+class TestSimpleProducer(unittest.TestCase):
+    @run_until_complete
+    def test_add_message_and_drain(self):
+        cluster = ClusterMetadata(metadata_max_age_ms=10000)
+        producer = AIOKafkaProducer(loop=self.loop)
+        producer._metadata = cluster
+        data_waiter = asyncio.async(producer._data_waiter, loop=self.loop)
+        done, _ = yield from asyncio.wait(
+            [data_waiter], timeout=0.2, loop=self.loop)
+        self.assertFalse(bool(done))  # no data is queued yet
+
+        tp0 = TopicPartition("test-topic", 0)
+        tp1 = TopicPartition("test-topic", 1)
+        yield from producer._add_message(tp0, b'key', b'value', timeout=2)
+        yield from producer._add_message(
+            tp1, None, b'value without key', timeout=2)
+
+        done, _ = yield from asyncio.wait(
+            [data_waiter], timeout=0.2, loop=self.loop)
+        self.assertTrue(bool(done))
+
+        batches, unknown_leaders_exist = producer._drain_by_nodes(
+            ignore_nodes=[])
+        self.assertEqual(batches, {})
+        self.assertEqual(unknown_leaders_exist, True)
+
+        leaders = collections.defaultdict(lambda: -1)
+        leaders[tp0] = 0
+        leaders[tp1] = 1
+
+        cluster.leader_for_partition = mock.MagicMock()
+        cluster.leader_for_partition.side_effect = leaders.get
+        batches, unknown_leaders_exist = producer._drain_by_nodes(
+            ignore_nodes=[])
+        self.assertEqual(len(batches), 2)
+        self.assertEqual(unknown_leaders_exist, False)
+        m_set0 = batches[0].get(tp0)
+        self.assertEqual(type(m_set0), MessageBatch)
+        m_set1 = batches[1].get(tp1)
+        self.assertEqual(type(m_set1), MessageBatch)
+        self.assertEqual(m_set0.expired(), False)
+
+        data_waiter = asyncio.async(producer._data_waiter, loop=self.loop)
+        done, _ = yield from asyncio.wait(
+            [data_waiter], timeout=0.2, loop=self.loop)
+        self.assertFalse(bool(done))  # no data in queue again
+
+    @run_until_complete
+    def test_batch_overflow(self):
+        cluster = ClusterMetadata(metadata_max_age_ms=10000)
+        producer = AIOKafkaProducer(max_batch_size=1000, loop=self.loop)
+        producer._metadata = cluster
+
+        tp0 = TopicPartition("test-topic", 0)
+        tp1 = TopicPartition("test-topic", 1)
+        tp2 = TopicPartition("test-topic", 2)
+        leaders = collections.defaultdict(lambda: -1)
+        leaders[tp0] = 0
+        leaders[tp1] = 1
+
+        cluster.leader_for_partition = mock.MagicMock()
+        cluster.leader_for_partition.side_effect = leaders.get
+
+        yield from producer._add_message(
+            tp0, None, b'some short message', timeout=2)
+        yield from producer._add_message(
+            tp0, None, b'some other short message', timeout=2)
+        yield from producer._add_message(
+            tp1, None, b'0123456789'*70, timeout=2)
+        yield from producer._add_message(
+            tp2, None, b'message to unknown leader', timeout=2)
+        # next we try to add message with len=500,
+        # as we have buffer_size=1000 coroutine will block until data will be
+        # drained
+        add_task = asyncio.async(
+            producer._add_message(tp1, None, b'0123456789'*50, timeout=2),
+            loop=self.loop)
+        done, _ = yield from asyncio.wait(
+            [add_task], timeout=0.2, loop=self.loop)
+        self.assertFalse(bool(done))
+
+        batches, unknown_leaders_exist = producer._drain_by_nodes(
+           ignore_nodes=[1, 2])
+        self.assertEqual(unknown_leaders_exist, True)
+        m_set0 = batches[0].get(tp0)
+        self.assertEqual(m_set0._relative_offset, 2)
+        m_set1 = batches[1].get(tp1)
+        self.assertEqual(m_set1, None)
+
+        done, _ = yield from asyncio.wait(
+            [add_task], timeout=0.1, loop=self.loop)
+        self.assertFalse(bool(done))  # we stil not drained data for tp1
+
+        batches, unknown_leaders_exist = producer._drain_by_nodes(
+            ignore_nodes=[])
+        self.assertEqual(unknown_leaders_exist, True)
+        m_set0 = batches[0].get(tp0)
+        self.assertEqual(m_set0, None)
+        m_set1 = batches[1].get(tp1)
+        self.assertEqual(m_set1._relative_offset, 1)
+
+        done, _ = yield from asyncio.wait(
+            [add_task], timeout=0.2, loop=self.loop)
+        self.assertTrue(bool(done))
+        batches, unknown_leaders_exist = producer._drain_by_nodes(
+            ignore_nodes=[])
+        self.assertEqual(unknown_leaders_exist, True)
+        m_set1 = batches[1].get(tp1)
+        self.assertEqual(m_set1._relative_offset, 1)
+
+    @run_until_complete
+    def test_batch_done(self):
+        tp0 = TopicPartition("test-topic", 0)
+        tp1 = TopicPartition("test-topic", 1)
+        tp2 = TopicPartition("test-topic", 2)
+        tp3 = TopicPartition("test-topic", 3)
+        leaders = {tp0: 0, tp1: 1, tp2: -1}
+
+        cluster = ClusterMetadata(metadata_max_age_ms=10000)
+        cluster.leader_for_partition = mock.MagicMock()
+        cluster.leader_for_partition.side_effect = leaders.get
+
+        producer = AIOKafkaProducer(max_batch_size=1000, loop=self.loop)
+        producer._metadata = cluster
+        producer._batch_ttl = 1
+
+        fut1 = yield from producer._add_message(tp2, None, b'tp@2', timeout=2)
+        fut2 = yield from producer._add_message(tp3, None, b'tp@3', timeout=2)
+        yield from producer._add_message(tp1, None, b'tp@1'*175, timeout=2)
+        with self.assertRaises(KafkaTimeoutError):
+            yield from producer._add_message(tp1, None, b'tp@1'*175, timeout=2)
+        batches, _ = producer._drain_by_nodes(ignore_nodes=[])
+        self.assertEqual(batches[1][tp1].expired(), True)
+
+        with self.assertRaises(LeaderNotAvailableError):
+            yield from fut1
+        with self.assertRaises(NotLeaderForPartitionError):
+            yield from fut2
+
+        fut01 = yield from producer._add_message(
+            tp0, b'key0', b'value#0', timeout=2)
+        fut02 = yield from producer._add_message(
+            tp0, b'key1', b'value#1', timeout=2)
+        fut10 = yield from producer._add_message(
+            tp1, None, b'tp@1'*175, timeout=2)
+        batches, _ = producer._drain_by_nodes(ignore_nodes=[])
+        self.assertEqual(batches[0][tp0].expired(), False)
+        self.assertEqual(batches[1][tp1].expired(), False)
+        batch_data = batches[0][tp0].get_data_buffer()
+        self.assertEqual(type(batch_data), io.BytesIO)
+        batches[0][tp0].done(base_offset=10)
+
+        class TestException(Exception):
+            pass
+
+        batches[1][tp1].done(exception=TestException())
+
+        res = yield from fut01
+        self.assertEqual(res.topic, "test-topic")
+        self.assertEqual(res.partition, 0)
+        self.assertEqual(res.offset, 10)
+        res = yield from fut02
+        self.assertEqual(res.topic, "test-topic")
+        self.assertEqual(res.partition, 0)
+        self.assertEqual(res.offset, 11)
+        with self.assertRaises(TestException):
+            yield from fut10
+
+        fut01 = yield from producer._add_message(
+            tp0, b'key0', b'value#0', timeout=2)
+        batches, _ = producer._drain_by_nodes(ignore_nodes=[])
+        batches[0][tp0].done(base_offset=None)
+        res = yield from fut01
+        self.assertEqual(res, None)
+
+        # cancelling future
+        fut01 = yield from producer._add_message(
+            tp0, b'key0', b'value#2', timeout=2)
+        batches, _ = producer._drain_by_nodes(ignore_nodes=[])
+        fut01.cancel()
+        batches[0][tp0].done(base_offset=21)  # no error in this case
