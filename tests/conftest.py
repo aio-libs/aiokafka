@@ -58,22 +58,26 @@ def ssl_folder(docker_ip_address):
 @pytest.fixture(scope='session')
 def docker_ip_address(docker):
     """Returns IP address of the docker daemon service."""
-    # Fallback docker daemon bridge name
-    ifname = 'docker0'
-    try:
-        for network in docker.networks():
-            _ifname = network['Options'].get(
-                'com.docker.network.bridge.name')
-            if _ifname is not None:
-                ifname = _ifname
-                break
-    except libdocker.errors.InvalidVersion:
-        pass
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    return socket.inet_ntoa(fcntl.ioctl(
-        s.fileno(),
-        0x8915,  # SIOCGIFADDR
-        struct.pack('256s', ifname[:15].encode('utf-8')))[20:24])
+    if sys.platform == 'darwin':
+        # docker for mac publishes ports on localhost
+        return '127.0.0.1'
+    else:
+        # Fallback docker daemon bridge name
+        ifname = 'docker0'
+        try:
+            for network in docker.networks():
+                _ifname = network['Options'].get(
+                    'com.docker.network.bridge.name')
+                if _ifname is not None:
+                    ifname = _ifname
+                    break
+        except libdocker.errors.InvalidVersion:
+            pass
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        return socket.inet_ntoa(fcntl.ioctl(
+            s.fileno(),
+            0x8915,  # SIOCGIFADDR
+            struct.pack('256s', ifname[:15].encode('utf-8')))[20:24])
 
 
 @pytest.fixture(scope='session')
@@ -103,7 +107,7 @@ def kafka_server(request, docker, docker_ip_address,
         image=image,
         name='aiokafka-tests',
         # name='aiokafka-tests-{}'.format(session_id),
-        ports=[2181, 9092, 9093],
+        ports=[2181, kafka_port, kafka_ssl_port],
         volumes=['/ssl_cert'],
         environment={
             'ADVERTISED_HOST': kafka_host,
@@ -114,8 +118,8 @@ def kafka_server(request, docker, docker_ip_address,
         host_config=docker.create_host_config(
             port_bindings={
                 2181: (kafka_host, unused_port()),
-                9092: (kafka_host, kafka_port),
-                9093: (kafka_host, kafka_ssl_port)
+                kafka_port: (kafka_host, kafka_port),
+                kafka_ssl_port: (kafka_host, kafka_ssl_port)
             },
             binds={
                 str(ssl_folder.resolve()): {
