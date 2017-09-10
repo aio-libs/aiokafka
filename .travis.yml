@@ -13,13 +13,12 @@ branches:
 python:
     - 3.3
     - 3.4
-    - 3.5
     - 3.6
 env:
     matrix:
         - KAFKA_VERSION=0.9.0.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
-        - KAFKA_VERSION=0.10.0.0 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
-        - KAFKA_VERSION=0.10.1.0 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
+        - KAFKA_VERSION=0.10.2.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
+        - KAFKA_VERSION=0.11.0.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
 
 before_install:
     - sudo apt-get update
@@ -49,4 +48,4 @@ deploy:
   on:
     tags: true
     all_branches: true
-    python: 3.5
+    python: 3.6
