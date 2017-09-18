@@ -279,3 +279,18 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 loop=self.loop,
                 bootstrap_servers=self.hosts,
                 security_protocol="SSL", ssl_context=None)
+
+    @run_until_complete
+    def test_producer_flush_test(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        yield from producer.start()
+
+        fut1 = yield from producer.send("producer_flush_test", b'text1')
+        fut2 = yield from producer.send("producer_flush_test", b'text2')
+        self.assertFalse(fut1.done())
+        self.assertFalse(fut2.done())
+
+        yield from producer.flush()
+        self.assertTrue(fut1.done())
+        self.assertTrue(fut2.done())
