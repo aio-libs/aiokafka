@@ -4,6 +4,7 @@ import pytest
 import unittest
 from unittest import mock
 
+from aiokafka import ensure_future
 from kafka.cluster import ClusterMetadata
 from kafka.common import (TopicPartition, KafkaTimeoutError,
                           NotLeaderForPartitionError,
@@ -18,7 +19,7 @@ class TestMessageAccumulator(unittest.TestCase):
     def test_basic(self):
         cluster = ClusterMetadata(metadata_max_age_ms=10000)
         ma = MessageAccumulator(cluster, 1000, None, 30, self.loop)
-        data_waiter = asyncio.async(ma.data_waiter(), loop=self.loop)
+        data_waiter = ma.data_waiter()
         done, _ = yield from asyncio.wait(
             [data_waiter], timeout=0.2, loop=self.loop)
         self.assertFalse(bool(done))  # no data in accumulator yet...
@@ -54,7 +55,7 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertEqual(type(m_set1), MessageBatch)
         self.assertEqual(m_set0.expired(), False)
 
-        data_waiter = asyncio.async(ma.data_waiter(), loop=self.loop)
+        data_waiter = ensure_future(ma.data_waiter(), loop=self.loop)
         done, _ = yield from asyncio.wait(
             [data_waiter], timeout=0.2, loop=self.loop)
         self.assertFalse(bool(done))  # no data in accumulator again...
@@ -66,14 +67,14 @@ class TestMessageAccumulator(unittest.TestCase):
         yield from ma.add_message(
             tp0, None, b'some other short message', timeout=2)
         yield from ma.add_message(
-            tp1, None, b'0123456789'*70, timeout=2)
+            tp1, None, b'0123456789' * 70, timeout=2)
         yield from ma.add_message(
             tp2, None, b'message to unknown leader', timeout=2)
         # next we try to add message with len=500,
         # as we have buffer_size=1000 coroutine will block until data will be
         # drained
-        add_task = asyncio.async(
-            ma.add_message(tp1, None, b'0123456789'*50, timeout=2),
+        add_task = ensure_future(
+            ma.add_message(tp1, None, b'0123456789' * 50, timeout=2),
             loop=self.loop)
         done, _ = yield from asyncio.wait(
             [add_task], timeout=0.2, loop=self.loop)
@@ -82,7 +83,7 @@ class TestMessageAccumulator(unittest.TestCase):
         batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[1, 2])
         self.assertEqual(unknown_leaders_exist, True)
         m_set0 = batches[0].get(tp0)
-        self.assertEqual(m_set0._relative_offset, 2)
+        self.assertEqual(m_set0._builder._relative_offset, 2)
         m_set1 = batches[1].get(tp1)
         self.assertEqual(m_set1, None)
 
@@ -95,7 +96,7 @@ class TestMessageAccumulator(unittest.TestCase):
         m_set0 = batches[0].get(tp0)
         self.assertEqual(m_set0, None)
         m_set1 = batches[1].get(tp1)
-        self.assertEqual(m_set1._relative_offset, 1)
+        self.assertEqual(m_set1._builder._relative_offset, 1)
 
         done, _ = yield from asyncio.wait(
             [add_task], timeout=0.2, loop=self.loop)
@@ -103,7 +104,7 @@ class TestMessageAccumulator(unittest.TestCase):
         batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(unknown_leaders_exist, True)
         m_set1 = batches[1].get(tp1)
-        self.assertEqual(m_set1._relative_offset, 1)
+        self.assertEqual(m_set1._builder._relative_offset, 1)
 
     @run_until_complete
     def test_batch_done(self):
