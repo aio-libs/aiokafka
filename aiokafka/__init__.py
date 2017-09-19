@@ -8,7 +8,7 @@ try:
 except ImportError:
     from asyncio import async as ensure_future
 
-__version__ = '0.3.0'
+__version__ = '0.3.1'
 PY_35 = sys.version_info >= (3, 5)
 
 from .structs import TopicPartition  # noqa
