@@ -7,12 +7,13 @@ from kafka.protocol.message import Message, MessageSet
 from kafka.protocol.produce import ProduceRequest
 
 import aiokafka.errors as Errors
-from aiokafka import ensure_future
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
     MessageSizeTooLargeError, KafkaError, UnknownTopicOrPartitionError)
-from aiokafka.message_accumulator import MessageAccumulator
 from aiokafka.structs import TopicPartition
+from aiokafka.util import ensure_future
+
+from .message_accumulator import MessageAccumulator
 
 log = logging.getLogger(__name__)
 

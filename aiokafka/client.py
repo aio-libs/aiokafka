@@ -9,6 +9,7 @@ from kafka.protocol.produce import ProduceRequest
 from kafka.protocol.commit import OffsetFetchRequest
 
 import aiokafka.errors as Errors
+from aiokafka import __version__
 from aiokafka.conn import create_conn, CloseReason
 from aiokafka.errors import (
     KafkaError,
@@ -17,7 +18,7 @@ from aiokafka.errors import (
     RequestTimedOutError,
     UnknownTopicOrPartitionError,
     UnrecognizedBrokerVersion)
-from aiokafka import ensure_future, __version__
+from aiokafka.util import ensure_future
 
 
 __all__ = ['AIOKafkaClient']
@@ -83,6 +84,7 @@ class AIOKafkaClient:
         if security_protocol == "SSL" and ssl_context is None:
             raise ValueError(
                 "`ssl_context` is mandatory if security_protocol=='SSL'")
+
         self._bootstrap_servers = bootstrap_servers
         self._client_id = client_id
         self._metadata_max_age_ms = metadata_max_age_ms

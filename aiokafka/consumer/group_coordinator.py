@@ -16,9 +16,9 @@ from kafka.protocol.group import (
     SyncGroupRequest_v0 as SyncGroupRequest)
 
 import aiokafka.errors as Errors
-from aiokafka import ensure_future
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.client import ConnectionGroup
+from aiokafka.util import ensure_future
 
 log = logging.getLogger(__name__)
 

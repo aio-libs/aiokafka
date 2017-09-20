@@ -7,7 +7,7 @@ from kafka.protocol.commit import (
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
 import aiokafka.errors as Errors
-from aiokafka import ensure_future
+from aiokafka.util import ensure_future
 
 __all__ = ['AIOKafkaConnection', 'create_conn']
 

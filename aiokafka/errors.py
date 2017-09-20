@@ -1,5 +1,4 @@
 from kafka.errors import *  # noqa
-from kafka.errors import KafkaError
 
 __all__ = [
     # kafka-python errors

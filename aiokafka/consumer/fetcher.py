@@ -9,10 +9,10 @@ from kafka.protocol.message import PartialMessage
 from kafka.protocol.offset import OffsetRequest, OffsetResetStrategy
 
 import aiokafka.errors as Errors
-from aiokafka import ensure_future
 from aiokafka.errors import (
     ConsumerStoppedError, RecordTooLargeError, KafkaTimeoutError)
 from aiokafka.structs import OffsetAndTimestamp, TopicPartition, ConsumerRecord
+from aiokafka.util import ensure_future
 
 log = logging.getLogger(__name__)
 
