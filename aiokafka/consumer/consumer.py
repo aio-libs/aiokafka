@@ -14,6 +14,7 @@ from aiokafka.errors import (
 )
 from aiokafka.structs import TopicPartition, OffsetAndMetadata
 from aiokafka.util import ensure_future, PY_35
+from aiokafka import __version__
 
 from .fetcher import Fetcher
 from .group_coordinator import GroupCoordinator, NoGroupCoordinator
@@ -143,7 +144,7 @@ class AIOKafkaConsumer(object):
     """
     def __init__(self, *topics, loop,
                  bootstrap_servers='localhost',
-                 client_id=None,
+                 client_id='aiokafka-' + __version__,
                  group_id=None,
                  key_deserializer=None, value_deserializer=None,
                  fetch_max_wait_ms=500,

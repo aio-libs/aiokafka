@@ -4,13 +4,15 @@ import pytest
 import unittest
 from unittest import mock
 
-from aiokafka import ensure_future
 from kafka.cluster import ClusterMetadata
 from kafka.common import (TopicPartition, KafkaTimeoutError,
                           NotLeaderForPartitionError,
                           LeaderNotAvailableError)
 from ._testutil import run_until_complete
-from aiokafka.message_accumulator import MessageAccumulator, MessageBatch
+from aiokafka.util import ensure_future
+from aiokafka.producer.message_accumulator import (
+    MessageAccumulator, MessageBatch
+)
 
 
 @pytest.mark.usefixtures('setup_test_class_serverless')

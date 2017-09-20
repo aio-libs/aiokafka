@@ -7,7 +7,7 @@ from kafka.protocol.commit import (
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
 import aiokafka.errors as Errors
-from aiokafka.util import ensure_future
+from aiokafka.util import ensure_future, create_future
 
 __all__ = ['AIOKafkaConnection', 'create_conn']
 
@@ -88,7 +88,7 @@ class AIOKafkaConnection:
     @asyncio.coroutine
     def connect(self):
         loop = self._loop
-        self._closed_fut = asyncio.Future(loop=loop)
+        self._closed_fut = create_future(loop=loop)
         if self._secutity_protocol == "PLAINTEXT":
             ssl = None
         else:
@@ -161,7 +161,7 @@ class AIOKafkaConnection:
 
         if not expect_response:
             return self._writer.drain()
-        fut = asyncio.Future(loop=self._loop)
+        fut = create_future(loop=self._loop)
         self._requests.append((correlation_id, request.RESPONSE_TYPE, fut))
         return asyncio.wait_for(fut, self._request_timeout, loop=self._loop)
 

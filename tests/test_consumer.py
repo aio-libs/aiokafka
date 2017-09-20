@@ -6,7 +6,7 @@ from contextlib import contextmanager
 import pytest
 
 from aiokafka.consumer import AIOKafkaConsumer
-from aiokafka.fetcher import RecordTooLargeError
+from aiokafka.consumer.fetcher import RecordTooLargeError
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka import (

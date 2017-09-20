@@ -10,9 +10,9 @@ import sys
 from contextlib import contextmanager
 from functools import wraps
 
-from kafka.common import ConnectionError
-from kafka.consumer.subscription_state import ConsumerRebalanceListener
+from aiokafka import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
+from aiokafka.errors import ConnectionError
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.helpers import create_ssl_context
 
