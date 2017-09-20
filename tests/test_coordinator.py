@@ -2,21 +2,19 @@ import asyncio
 from unittest import mock
 
 from kafka.protocol.group import JoinGroupRequest_v0 as JoinGroupRequest
-from kafka.common import (NoBrokersAvailable,
-                          GroupCoordinatorNotAvailableError,
-                          KafkaError)
-from kafka.common import OffsetAndMetadata, TopicPartition
 import kafka.common as Errors
-from kafka.consumer.subscription_state import (
-    SubscriptionState,
-    ConsumerRebalanceListener)
+from kafka.consumer.subscription_state import SubscriptionState
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
-from aiokafka.group_coordinator import (
-    GroupCoordinator, CoordinatorGroupRebalance)
+from aiokafka import ConsumerRebalanceListener
+from aiokafka.errors import (
+    NoBrokersAvailable, GroupCoordinatorNotAvailableError, KafkaError)
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
+from aiokafka.structs import OffsetAndMetadata, TopicPartition
+from aiokafka.consumer.group_coordinator import (
+    GroupCoordinator, CoordinatorGroupRebalance)
 
 
 class RebalanceListenerForTest(ConsumerRebalanceListener):

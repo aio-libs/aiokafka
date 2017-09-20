@@ -9,10 +9,10 @@ from kafka.protocol.message import PartialMessage
 from kafka.protocol.offset import OffsetRequest, OffsetResetStrategy
 
 import aiokafka.errors as Errors
-from aiokafka import ensure_future
 from aiokafka.errors import (
     ConsumerStoppedError, RecordTooLargeError, KafkaTimeoutError)
 from aiokafka.structs import OffsetAndTimestamp, TopicPartition, ConsumerRecord
+from aiokafka.util import ensure_future, create_future
 
 log = logging.getLogger(__name__)
 
@@ -241,7 +241,7 @@ class Fetcher:
         try:
             while True:
                 # Reset consuming signal future.
-                self._wait_consume_future = asyncio.Future(loop=self._loop)
+                self._wait_consume_future = create_future(loop=self._loop)
                 # Create and send fetch requests
                 requests, timeout = self._create_fetch_requests()
                 for node_id, request in requests:
@@ -758,7 +758,7 @@ class Fetcher:
             # No messages ready. Wait for some to arrive
             if self._wait_empty_future is None \
                     or self._wait_empty_future.done():
-                self._wait_empty_future = asyncio.Future(loop=self._loop)
+                self._wait_empty_future = create_future(loop=self._loop)
             yield from asyncio.shield(self._wait_empty_future, loop=self._loop)
 
     @asyncio.coroutine
@@ -805,7 +805,7 @@ class Fetcher:
 
             if self._wait_empty_future is None \
                     or self._wait_empty_future.done():
-                self._wait_empty_future = asyncio.Future(loop=self._loop)
+                self._wait_empty_future = create_future(loop=self._loop)
             done, _ = yield from asyncio.wait(
                 [self._wait_empty_future], timeout=timeout, loop=self._loop)
 

@@ -14,6 +14,7 @@ from aiokafka.errors import (KafkaTimeoutError,
                              ProducerClosed)
 
 from aiokafka.structs import RecordMetadata
+from aiokafka.util import create_future
 
 
 class BatchBuilder:
@@ -146,7 +147,7 @@ class MessageBatch:
         # Set when messages are delivered to Kafka based on ACK setting
         self._msg_futures = []
         # Set when sender takes this batch
-        self._drain_waiter = asyncio.Future(loop=loop)
+        self._drain_waiter = create_future(loop=loop)
 
     def append(self, key, value, timestamp_ms):
         """Append message (key and value) to batch
@@ -161,7 +162,7 @@ class MessageBatch:
         if size == 0:
             return None
 
-        future = asyncio.Future(loop=self._loop)
+        future = create_future(loop=self._loop)
         self._msg_futures.append(future)
         return future
 
@@ -213,7 +214,7 @@ class MessageAccumulator:
         self._compression_type = compression_type
         self._batch_ttl = batch_ttl
         self._loop = loop
-        self._wait_data_future = asyncio.Future(loop=loop)
+        self._wait_data_future = create_future(loop=loop)
         self._closed = False
         self._api_version = (0, 9)
 
@@ -319,6 +320,6 @@ class MessageAccumulator:
         # task
         if not self._wait_data_future.done():
             self._wait_data_future.set_result(None)
-        self._wait_data_future = asyncio.Future(loop=self._loop)
+        self._wait_data_future = create_future(loop=self._loop)
 
         return nodes, unknown_leaders_exist

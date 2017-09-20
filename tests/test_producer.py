@@ -16,7 +16,7 @@ from ._testutil import KafkaIntegrationTestCase, run_until_complete
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer
-from aiokafka.message_accumulator import ProducerClosed
+from aiokafka.errors import ProducerClosed
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):

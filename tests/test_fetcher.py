@@ -19,7 +19,9 @@ from aiokafka.errors import (
 )
 from aiokafka.structs import TopicPartition, OffsetAndTimestamp
 from aiokafka.client import AIOKafkaClient
-from aiokafka.fetcher import Fetcher, FetchResult, FetchError, ConsumerRecord
+from aiokafka.consumer.fetcher import (
+    Fetcher, FetchResult, FetchError, ConsumerRecord
+)
 from ._testutil import run_until_complete
 
 
@@ -369,7 +371,7 @@ class TestFetcher(unittest.TestCase):
                     ("topic", [(0, 3, -1, -1)]),
                 ])
             mocked.side_effect = mock_send
-            with self.assertLogs("aiokafka.fetcher", "WARN") as cm:
+            with self.assertLogs("aiokafka.consumer.fetcher", "WARN") as cm:
                 with self.assertRaises(UnknownTopicOrPartitionError):
                     yield from fetcher._proc_offset_request(
                         0, {"topic": (0, 1000)})

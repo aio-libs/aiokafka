@@ -6,17 +6,18 @@ from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.consumer.subscription_state import SubscriptionState
 from kafka.protocol.offset import OffsetResetStrategy
 
-from aiokafka.structs import TopicPartition, OffsetAndMetadata
+from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
     KafkaError, TopicAuthorizationFailedError, OffsetOutOfRangeError,
-    IllegalStateError)
-from aiokafka.client import AIOKafkaClient
-from aiokafka.group_coordinator import GroupCoordinator, NoGroupCoordinator
-from aiokafka.errors import (
-    ConsumerStoppedError, IllegalOperation, UnsupportedVersionError
+    ConsumerStoppedError, IllegalOperation, UnsupportedVersionError,
+    IllegalStateError
 )
-from aiokafka.fetcher import Fetcher
-from aiokafka import __version__, ensure_future, PY_35
+from aiokafka.structs import TopicPartition, OffsetAndMetadata
+from aiokafka.util import ensure_future, PY_35
+from aiokafka import __version__
+
+from .fetcher import Fetcher
+from .group_coordinator import GroupCoordinator, NoGroupCoordinator
 
 log = logging.getLogger(__name__)
 
