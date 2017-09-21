@@ -410,31 +410,31 @@ class AIOKafkaProducer(object):
             if request.required_acks == 0:
                 for batch in batches.values():
                     batch.done()
+            else:
+                for topic, partitions in response.topics:
+                    for partition_info in partitions:
+                        if response.API_VERSION < 2:
+                            partition, error_code, offset = partition_info
+                        else:
+                            partition, error_code, offset, _ = partition_info
+                        tp = TopicPartition(topic, partition)
+                        error = Errors.for_code(error_code)
+                        batch = batches.pop(tp, None)
+                        if batch is None:
+                            continue
 
-            for topic, partitions in response.topics:
-                for partition_info in partitions:
-                    if response.API_VERSION < 2:
-                        partition, error_code, offset = partition_info
-                    else:
-                        partition, error_code, offset, _ = partition_info
-                    tp = TopicPartition(topic, partition)
-                    error = Errors.for_code(error_code)
-                    batch = batches.pop(tp, None)
-                    if batch is None:
-                        continue
-
-                    if error is Errors.NoError:
-                        batch.done(offset)
-                    elif not self._can_retry(error(), batch):
-                        batch.done(exception=error())
-                    else:
-                        log.warning(
-                            "Got error produce response on topic-partition"
-                            " %s, retrying. Error: %s", tp, error)
-                        # Ok, we can retry this batch
-                        if getattr(error, "invalid_metadata", False):
-                            self.client.force_metadata_update()
-                        reenqueue.append(batch)
+                        if error is Errors.NoError:
+                            batch.done(offset)
+                        elif not self._can_retry(error(), batch):
+                            batch.done(exception=error())
+                        else:
+                            log.warning(
+                                "Got error produce response on topic-partition"
+                                " %s, retrying. Error: %s", tp, error)
+                            # Ok, we can retry this batch
+                            if getattr(error, "invalid_metadata", False):
+                                self.client.force_metadata_update()
+                            reenqueue.append(batch)
 
         if reenqueue:
             # Wait backoff before reequeue
