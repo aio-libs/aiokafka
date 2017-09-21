@@ -1,73 +1,40 @@
-import io
 import asyncio
 import collections
+import time
 
-from kafka.protocol.message import Message
-from kafka.protocol.types import Int32, Int64
-from kafka.codec import (has_gzip, has_snappy, has_lz4,
-                         gzip_encode, snappy_encode,
-                         lz4_encode, lz4_encode_old_kafka)
+from kafka.protocol.types import Int32
 
 from aiokafka.errors import (KafkaTimeoutError,
                              NotLeaderForPartitionError,
                              LeaderNotAvailableError,
                              ProducerClosed)
-
+from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import RecordMetadata
 from aiokafka.util import create_future
 
 
 class BatchBuilder:
 
-    _COMPRESSORS = {
-        'gzip': (has_gzip, gzip_encode, Message.CODEC_GZIP),
-        'snappy': (has_snappy, snappy_encode, Message.CODEC_SNAPPY),
-        'lz4': (has_lz4, lz4_encode, Message.CODEC_LZ4),
-        'lz4-old-kafka': (has_lz4, lz4_encode_old_kafka, Message.CODEC_LZ4),
-    }
-
-    LOG_OVERHEAD = 12  # offset + message_size
-
-    # crc(4), magic(1), attributes(1), key+value size(4*2)
-    HEADER_SIZE_V0 = 14
-    # crc(4), magic(1), attributes(1), timestamp(8), key+value size(4*2)
-    HEADER_SIZE_V1 = 22
-
     def __init__(self, magic, batch_size, compression_type):
-        if compression_type == 'lz4' and magic == 0:
-            compression_type = 'lz4-old-kafka'
-        if compression_type:
-            checker, _, _ = self._COMPRESSORS[compression_type]
-            assert checker(), 'Compression Libraries Not Found'
-
-        self._magic = magic
+        self._builder = LegacyRecordBatchBuilder(magic, compression_type)
         self._batch_size = batch_size
-        self._compression_type = compression_type
         self._relative_offset = 0
-        self._buffer = io.BytesIO()
-        self._buffer.write(Int32.encode(0))  # first 4 bytes for batch size
         self._closed = False
 
     def append(self, *, timestamp, key, value):
-        if not self._has_room_for(key, value):
+        if timestamp is None:
+            timestamp = int(time.time() * 1000)
+
+        if not self._has_room_for(timestamp, key, value):
             return 0
 
-        # `.encode()` is a weak method for some reason, so we need to save
-        # reference before calling it.
-        if self._magic == 0:
-            msg_inst = Message(value, key=key, magic=self._magic)
-        else:
-            msg_inst = Message(value, key=key, magic=self._magic,
-                               timestamp=timestamp)
+        crc, actual_size = self._builder.append(
+            self._relative_offset, timestamp, key, value)
 
-        encoded = msg_inst.encode()
-        msg = Int64.encode(self._relative_offset) + Int32.encode(len(encoded))
-        msg += encoded
-        actual_size = self._buffer.write(msg)
         self._relative_offset += 1
         return actual_size
 
-    def _has_room_for(self, key, value):
+    def _has_room_for(self, timestamp, key, value):
         """return True if batch does not have free capacity for append message
         """
         if self._is_full():
@@ -77,60 +44,31 @@ class BatchBuilder:
         if self._relative_offset == 0:
             return True
 
-        record_size = self._size_in_bytes(key, value)
+        record_size = self._builder.size_in_bytes(
+            self._relative_offset, timestamp, key, value)
 
-        return self._buffer.tell() + record_size < self._batch_size
+        return self._builder.size() + record_size < self._batch_size
 
     def _is_full(self):
         if self._closed:
             return True
-        return self._buffer.tell() >= self._batch_size
-
-    def _size_in_bytes(self, key, value):
-        if self._magic == 0:
-            needed_bytes = self.LOG_OVERHEAD + self.HEADER_SIZE_V0
-        else:
-            needed_bytes = self.LOG_OVERHEAD + self.HEADER_SIZE_V1
-
-        if key is not None:
-            needed_bytes += len(key)
-        if value is not None:
-            needed_bytes += len(value)
-        return needed_bytes
+        return self._builder.size() >= self._batch_size
 
     def _build(self):
-        if self._closed:
-            self._buffer.seek(0)
-            return self._buffer
-
+        assert not self._closed
         self._closed = True
-        memview = self._buffer.getbuffer()
-        if self._compression_type:
-            _, compressor, attrs = self._COMPRESSORS[self._compression_type]
-            msg = Message(compressor(memview[4:].tobytes()), attributes=attrs,
-                          magic=self._magic)
-            encoded = msg.encode()
-            # if compressed message is longer than original
-            # we should send it as is (not compressed)
-            header_size = 16   # 4(all size) + 8(offset) + 4(compressed size)
-            if len(encoded) + header_size < len(memview):
-                # write compressed message set (with header) to buffer
-                # using memory view (for avoid memory copying)
-                memview[:4] = Int32.encode(len(encoded) + 12)
-                memview[4:12] = Int64.encode(0)  # offset 0
-                memview[12:16] = Int32.encode(len(encoded))
-                memview[16:16 + len(encoded)] = encoded
+        buffer = self._builder.build()
+        del self._builder
 
-                memview.release()
-                self._buffer.seek(16 + len(encoded))
-                self._buffer.truncate()
-                self._buffer.seek(0)
-                return self._buffer
+        # We need to prepend size at buffer start.
+        size = buffer.tell()
+        buffer.write(b'\x00' * 4)
+        memview = buffer.getbuffer()
+        memview[4:] = memview[:-4]
+        memview[:4] = Int32.encode(size)
+        memview.release()
 
-        # update batch size (first 4 bytes of buffer)
-        memview[:4] = Int32.encode(self._buffer.tell() - 4)
-        self._buffer.seek(0)
-        return self._buffer
+        return buffer
 
 
 class MessageBatch:
@@ -196,9 +134,11 @@ class MessageBatch:
         """Compress batch to be ready for send"""
         if not self._drain_waiter.done():
             self._drain_waiter.set_result(None)
+            self._buffer = self._builder._build()
 
     def get_data_buffer(self):
-        return self._builder._build()
+        self._buffer.seek(0)
+        return self._buffer
 
 
 class MessageAccumulator:

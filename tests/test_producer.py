@@ -61,7 +61,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
-        with self.assertRaisesRegexp(AssertionError, 'value must be bytes'):
+        with self.assertRaisesRegexp(
+                TypeError, "Not supported type for value: <class 'str'>"):
             yield from producer.send(self.topic, 'hello, Kafka!')
         future = yield from producer.send(self.topic, b'hello, Kafka!')
         resp = yield from future
