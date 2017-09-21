@@ -211,6 +211,7 @@ class AIOKafkaProducer(object):
         """Flush all pending data and close all connections to kafka cluster"""
         if self._closed:
             return
+        self._closed = True
 
         yield from self._message_accumulator.close()
 
@@ -219,7 +220,6 @@ class AIOKafkaProducer(object):
             yield from self._sender_task
 
         yield from self.client.close()
-        self._closed = True
         log.debug("The Kafka producer has closed.")
 
     @asyncio.coroutine
@@ -353,7 +353,9 @@ class AIOKafkaProducer(object):
                 tasks -= done
 
         except asyncio.CancelledError:
-            pass
+            # done tasks should never produce errors, if they are it's a bug
+            for task in tasks:
+                yield from task
         except Exception:  # pragma: no cover
             log.error("Unexpected error in sender routine", exc_info=True)
 
