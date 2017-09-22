@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import time
+import io
 
 from kafka.protocol.types import Int32
 
@@ -60,15 +61,7 @@ class BatchBuilder:
         buffer = self._builder.build()
         del self._builder
 
-        # We need to prepend size at buffer start.
-        size = buffer.tell()
-        buffer.write(b'\x00' * 4)
-        memview = buffer.getbuffer()
-        memview[4:] = memview[:-4]
-        memview[:4] = Int32.encode(size)
-        memview.release()
-
-        return buffer
+        return io.BytesIO(Int32.encode(buffer.tell()) + buffer.getvalue())
 
 
 class MessageBatch:
