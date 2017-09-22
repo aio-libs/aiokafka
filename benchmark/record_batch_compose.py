@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import perf
-from aiokafka.message_accumulator import BatchBuilder
+from aiokafka.producer.message_accumulator import BatchBuilder
 import itertools
 import random
 
@@ -11,7 +11,7 @@ VALUE_SIZE = 60
 TIMESTAMP_RANGE = [1505824130000, 1505824140000]
 
 # With values above v1 record is 100 bytes, so 10_000 bytes for 100 messages
-MESSAGES_PER_BATCH = 10000
+MESSAGES_PER_BATCH = 100
 
 
 def random_bytes(length):
