@@ -288,6 +288,14 @@ class LegacyRecordBatchBuilder(LegacyRecordBase):
         """ Append message to batch.
         """
         assert not headers, "Headers not supported in v0/v1"
+        if type(offset) != int:
+            raise TypeError(offset)
+        if type(timestamp) != int:
+            if timestamp is None:
+                raise ValueError("Timestamp should be explicitly passed")
+            else:
+                raise TypeError(timestamp)
+
         size = self.size_in_bytes(offset, timestamp, key, value)
         msg_buffer = bytearray(size)
         crc = self._encode_msg(msg_buffer, offset, timestamp, key, value)

@@ -62,10 +62,10 @@ def test_written_bytes_equals_size_in_bytes(magic):
     size_in_bytes = builder.size_in_bytes(
         0, timestamp=9999999, key=key, value=value)
 
-    pos = builder._buffer.tell()
+    pos = builder.size()
     builder.append(0, timestamp=9999999, key=key, value=value)
 
-    assert builder._buffer.tell() - pos == size_in_bytes
+    assert builder.size() - pos == size_in_bytes
 
 
 @pytest.mark.parametrize("magic", [0, 1])
@@ -88,3 +88,42 @@ def test_estimate_size_in_bytes_bigger_than_batch(magic, compression_type):
     buf = builder.build()
     assert len(buf.getvalue()) <= estimate_size, \
         "Estimate should always be upper bound"
+
+
+@pytest.mark.parametrize("magic", [0, 1])
+def test_legacy_batch_builder_validates_arguments(magic):
+    builder = LegacyRecordBatchBuilder(
+        magic=magic, compression_type=0)
+
+    # Key should not be str
+    with pytest.raises(TypeError):
+        builder.append(
+            0, timestamp=9999999, key="some string", value=None)
+
+    # Value should not be str
+    with pytest.raises(TypeError):
+        builder.append(
+            0, timestamp=9999999, key=None, value="some string")
+
+    # Timestamp can not be None
+    with pytest.raises(ValueError):
+        builder.append(
+            0, timestamp=None, key=None, value=b"some string")
+
+    # Timestamp should be of proper type
+    with pytest.raises(TypeError):
+        builder.append(
+            0, timestamp="1243812793", key=None, value=b"some string")
+
+    # Offset of invalid type
+    with pytest.raises(TypeError):
+        builder.append(
+            "0", timestamp=9999999, key=None, value=b"some string")
+
+    # Ok to pass value as None
+    builder.append(
+        0, timestamp=9999999, key=b"123", value=None)
+
+    # Ok to pass offsets in not incremental order. This should not happen thou
+    builder.append(
+        5, timestamp=9999999, key=b"123", value=None)
