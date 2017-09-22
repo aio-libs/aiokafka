@@ -368,6 +368,7 @@ class Fetcher:
     @asyncio.coroutine
     def _proc_fetch_request(self, node_id, request):
         needs_wakeup = False
+        needs_position_update = []
         try:
             response = yield from self._client.send(node_id, request)
         except Errors.KafkaError as err:
@@ -439,13 +440,14 @@ class Fetcher:
                     fetch_offset = fetch_offsets[tp]
                     if self._subscriptions.has_default_offset_reset_policy():
                         self._subscriptions.need_offset_reset(tp)
+                        needs_position_update.append(tp)
                     else:
                         err = Errors.OffsetOutOfRangeError({tp: fetch_offset})
                         self._set_error(tp, err)
                         needs_wakeup = True
                     log.info(
-                        "Fetch offset %s is out of range, resetting offset",
-                        fetch_offset)
+                        "Fetch offset %s is out of range for partition %s,"
+                        " resetting offset", fetch_offset, tp)
                 elif error_type is Errors.TopicAuthorizationFailedError:
                     log.warn("Not authorized to read from topic %s.", tp.topic)
                     err = Errors.TopicAuthorizationFailedError(tp.topic)
@@ -454,6 +456,14 @@ class Fetcher:
                 else:
                     log.warn('Unexpected error while fetching data: %s',
                              error_type.__name__)
+
+        if needs_position_update:
+            try:
+                yield from self.update_fetch_positions(needs_position_update)
+            except Exception:  # pragma: no cover
+                log.error(
+                    "Unexpected error updating fetch positions", exc_info=True)
+
         return needs_wakeup
 
     def _set_error(self, tp, error):
@@ -487,10 +497,14 @@ class Fetcher:
 
             assignment = self._subscriptions.assignment[tp]
             if self._subscriptions.is_offset_reset_needed(tp):
+                log.debug("partition %s needs offset reset", tp)
                 futures.append(self._reset_offset(tp, assignment))
             elif self._subscriptions.assignment[tp].committed is None:
                 # there's no committed position, so we need to reset with the
                 # default strategy
+                log.debug(
+                    "partition %s has no committed position, resetting with"
+                    " default strategy", tp)
                 self._subscriptions.need_offset_reset(tp)
                 futures.append(self._reset_offset(tp, assignment))
             else:
