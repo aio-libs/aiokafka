@@ -3,6 +3,7 @@ import struct
 from .util import calc_crc32
 
 from aiokafka.errors import CorruptRecordException
+from aiokafka.util import NO_EXTENSIONS
 from kafka.codec import (
     gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
     gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka
@@ -413,3 +414,15 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
         else:
             return cls.RECORD_OVERHEAD_V1
 
+
+if NO_EXTENSIONS:
+    LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
+    print("Python")
+else:
+    try:
+        from ._legacy_records import _LegacyRecordBatchBuilderCython
+        LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderCython
+        print("CYTHON")
+    except ImportError:  # pragma: no cover
+        print("Python")
+        LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
