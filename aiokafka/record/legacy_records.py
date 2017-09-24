@@ -1,5 +1,3 @@
-import io
-import logging
 import struct
 
 from .util import calc_crc32
@@ -9,8 +7,6 @@ from kafka.codec import (
     gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
     gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka
 )
-
-log = logging.getLogger(__name__)
 
 
 class LegacyRecordBase:
@@ -31,7 +27,7 @@ class LegacyRecordBase:
         "q"  # timestamp => Int64
     )
 
-    LOG_OVERHEAD = struct.calcsize(
+    LOG_OVERHEAD = CRC_OFFSET = struct.calcsize(
         ">q"  # Offset
         "i"   # Size
     )
@@ -277,107 +273,107 @@ class LegacyRecord:
         )
 
 
-class LegacyRecordBatchBuilder(LegacyRecordBase):
+class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
 
-    def __init__(self, magic, compression_type, buffer=None):
+    def __init__(self, magic, compression_type):
         self._magic = magic
         self._compression_type = compression_type
-        self._buffer = buffer if buffer is not None else io.BytesIO()
+        self._buffer = bytearray()
 
-    def append(self, offset, timestamp, key, value, headers=None):
+    def append(self, offset, timestamp, key, value):
         """ Append message to batch.
         """
-        assert not headers, "Headers not supported in v0/v1"
         if type(offset) != int:
             raise TypeError(offset)
         if type(timestamp) != int:
-            if timestamp is None:
-                raise ValueError("Timestamp should be explicitly passed")
-            else:
-                raise TypeError(timestamp)
+            raise TypeError(timestamp)
 
+        # Allocate proper buffer length
+        pos = len(self._buffer)
         size = self.size_in_bytes(offset, timestamp, key, value)
-        msg_buffer = bytearray(size)
-        crc = self._encode_msg(msg_buffer, offset, timestamp, key, value)
-        self._buffer.write(msg_buffer)
+        self._buffer += bytearray(size)
+
+        # Encode message
+        crc = self._encode_msg(pos, offset, timestamp, key, value)
+
         return crc, size
 
-    def _encode_msg(self, msg_buffer, offset, timestamp, key, value,
+    def _encode_msg(self, start_pos, offset, timestamp, key, value,
                     attributes=0):
         """ Encode msg data into the `msg_buffer`, which should be allocated
             to at least the size of this message.
         """
         magic = self._magic
+        buf = self._buffer
+        pos = start_pos
 
         # Write key and value
-        pos = self.KEY_OFFSET_V0 if magic == 0 else self.KEY_OFFSET_V1
+        pos += self.KEY_OFFSET_V0 if magic == 0 else self.KEY_OFFSET_V1
 
         if key is None:
-            struct.pack_into(">i", msg_buffer, pos, -1)
+            struct.pack_into(">i", buf, pos, -1)
             pos += self.KEY_LENGTH
         else:
             if not isinstance(key, (bytes, bytearray, memoryview)):
                 raise TypeError(
                     "Not supported type for key: {}".format(type(key)))
             key_size = len(key)
-            struct.pack_into(">i", msg_buffer, pos, key_size)
+            struct.pack_into(">i", buf, pos, key_size)
             pos += self.KEY_LENGTH
-            msg_buffer[pos: pos + key_size] = key
+            buf[pos: pos + key_size] = key
             pos += key_size
 
         if value is None:
-            struct.pack_into(">i", msg_buffer, pos, -1)
+            struct.pack_into(">i", buf, pos, -1)
             pos += self.VALUE_LENGTH
         else:
             if not isinstance(value, (bytes, bytearray, memoryview)):
                 raise TypeError(
                     "Not supported type for value: {}".format(type(value)))
             value_size = len(value)
-            struct.pack_into(">i", msg_buffer, pos, value_size)
+            struct.pack_into(">i", buf, pos, value_size)
             pos += self.VALUE_LENGTH
-            msg_buffer[pos: pos + value_size] = value
+            buf[pos: pos + value_size] = value
             pos += value_size
-        length = pos - self.LOG_OVERHEAD
+        length = (pos - start_pos) - self.LOG_OVERHEAD
 
         # Write msg header. Note, that Crc will be updated later
         if magic == 0:
             self.HEADER_STRUCT_V0.pack_into(
-                msg_buffer, 0,
+                buf, start_pos,
                 offset, length, 0, magic, attributes)
         else:
             self.HEADER_STRUCT_V1.pack_into(
-                msg_buffer, 0,
+                buf, start_pos,
                 offset, length, 0, magic, attributes, timestamp)
 
         # Calculate CRC for msg
-        crc_data = memoryview(msg_buffer)[self.MAGIC_OFFSET:]
+        crc_data = memoryview(buf)[start_pos + self.MAGIC_OFFSET:]
         crc = calc_crc32(crc_data)
-        struct.pack_into(">I", msg_buffer, self.LOG_OVERHEAD, crc)
+        struct.pack_into(">I", buf, start_pos + self.CRC_OFFSET, crc)
         return crc
 
     def _maybe_compress(self):
         if self._compression_type:
-            data = self._buffer.getvalue()
             if self._compression_type == self.CODEC_GZIP:
-                compressed = gzip_encode(data)
+                compressed = gzip_encode(self._buffer)
             elif self._compression_type == self.CODEC_SNAPPY:
-                compressed = snappy_encode(data)
+                compressed = snappy_encode(self._buffer)
             elif self._compression_type == self.CODEC_LZ4:
                 if self._magic == 0:
-                    compressed = lz4_encode_old_kafka(data)
+                    compressed = lz4_encode_old_kafka(bytes(self._buffer))
                 else:
-                    compressed = lz4_encode(data)
-            del data
+                    compressed = lz4_encode(bytes(self._buffer))
             size = self.size_in_bytes(
                 0, timestamp=0, key=None, value=compressed)
-            msg_buffer = bytearray(size)
+            if size > len(self._buffer):
+                self._buffer = bytearray(size)
+            else:
+                del self._buffer[size:]
             self._encode_msg(
-                msg_buffer, 0, timestamp=0, key=None, value=compressed,
+                start_pos=0,
+                offset=0, timestamp=0, key=None, value=compressed,
                 attributes=self._compression_type)
-
-            self._buffer.seek(0)
-            self._buffer.write(msg_buffer)
-            self._buffer.truncate()
             return True
         return False
 
@@ -389,7 +385,7 @@ class LegacyRecordBatchBuilder(LegacyRecordBase):
     def size(self):
         """ Return current size of data written to buffer
         """
-        return self._buffer.tell()
+        return len(self._buffer)
 
     # Size calculations. Just copied Java's implementation
 
@@ -417,15 +413,3 @@ class LegacyRecordBatchBuilder(LegacyRecordBase):
         else:
             return cls.RECORD_OVERHEAD_V1
 
-    @classmethod
-    def estimate_size_in_bytes(cls, magic, compression_type, key, value):
-        """ Upper bound estimate of record size.
-        """
-        assert magic in [0, 1], "Not supported magic"
-        # In case of compression we may need another overhead for inner msg
-        if compression_type:
-            return (
-                cls.LOG_OVERHEAD + cls.record_overhead(magic) +
-                cls.record_size(magic, key, value)
-            )
-        return cls.LOG_OVERHEAD + cls.record_size(magic, key, value)

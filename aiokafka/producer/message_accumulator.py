@@ -61,7 +61,7 @@ class BatchBuilder:
         buffer = self._builder.build()
         del self._builder
 
-        return io.BytesIO(Int32.encode(buffer.tell()) + buffer.getvalue())
+        return io.BytesIO(Int32.encode(len(buffer)) + buffer)
 
 
 class MessageBatch:
