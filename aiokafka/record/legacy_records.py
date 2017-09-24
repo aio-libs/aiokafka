@@ -417,12 +417,9 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
 
 if NO_EXTENSIONS:
     LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
-    print("Python")
 else:
     try:
         from ._legacy_records import _LegacyRecordBatchBuilderCython
         LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderCython
-        print("CYTHON")
     except ImportError:  # pragma: no cover
-        print("Python")
         LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy

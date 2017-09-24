@@ -38,7 +38,10 @@ class BatchBuilder:
     def _has_room_for(self, timestamp, key, value):
         """return True if batch does not have free capacity for append message
         """
-        if self._is_full():
+        size = self._builder.size()
+        if self._closed:
+            return False
+        if size >= self._batch_size:
             return False
 
         # We always allow at least one record to be appended
@@ -48,12 +51,7 @@ class BatchBuilder:
         record_size = self._builder.size_in_bytes(
             self._relative_offset, timestamp, key, value)
 
-        return self._builder.size() + record_size < self._batch_size
-
-    def _is_full(self):
-        if self._closed:
-            return True
-        return self._builder.size() >= self._batch_size
+        return size + record_size < self._batch_size
 
     def _build(self):
         assert not self._closed

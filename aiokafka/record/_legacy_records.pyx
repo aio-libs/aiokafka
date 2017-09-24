@@ -1,3 +1,5 @@
+#cython: language_level=3
+
 import io
 import struct
 
@@ -13,12 +15,16 @@ cdef extern from "Python.h":
 
     object PyMemoryView_FromMemory(char *mem, ssize_t size, int flags)
 
+cdef extern from "zlib.h":
+    long crc32(unsigned long crc, const unsigned char *buf, int len);
+
 from cpython cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_WRITABLE, \
                      PyBUF_SIMPLE, PyBUF_READ, Py_buffer
 from libc.string cimport memcpy
 from libc.stdint cimport int32_t, int64_t, uint32_t
 
 from aiokafka.record cimport _hton as hton
+cimport cython
 
 
 # Those are used for fast size calculations
@@ -109,6 +115,8 @@ cdef class _LegacyRecordBatchBuilderCython:
                     compressed = lz4_encode_old_kafka(bytes(self._buffer))
                 else:
                     compressed = lz4_encode(bytes(self._buffer))
+            else:
+                return 0
             size = _size_in_bytes(self._magic, key=None, value=compressed)
             # We will just write the result into the same memory space.
             PyByteArray_Resize(self._buffer, size)  # FIXME: except memory error?
@@ -167,7 +175,7 @@ cdef object _encode_msg(
         int pos = start_pos
         int length
         object memview
-        object crc
+        int crc
 
     # Write key and value
     pos += KEY_OFFSET_V0 if magic == 0 else KEY_OFFSET_V1
@@ -204,11 +212,11 @@ cdef object _encode_msg(
         hton.pack_int64(&buf[start_pos + TIMESTAMP_OFFSET], <int64_t>timestamp)
 
     # Calculate CRC for msg
-    memview = PyMemoryView_FromMemory(
-        &buf[start_pos + MAGIC_OFFSET],
-        pos - (start_pos + MAGIC_OFFSET),
-        PyBUF_READ)
-    crc = calc_crc32(memview)
+    crc = crc32(
+        0,
+        <unsigned char*>&buf[start_pos + MAGIC_OFFSET],
+        pos - (start_pos + MAGIC_OFFSET)
+    )
     hton.pack_int32(&buf[start_pos + CRC_OFFSET], <uint32_t>crc)
 
     return crc
