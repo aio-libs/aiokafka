@@ -5,6 +5,7 @@ import collections
 from kafka.partitioner.default import DefaultPartitioner
 from kafka.protocol.message import Message, MessageSet
 from kafka.protocol.produce import ProduceRequest
+from kafka.codec import has_gzip, has_snappy, has_lz4
 
 import aiokafka.errors as Errors
 from aiokafka.client import AIOKafkaClient
@@ -135,6 +136,12 @@ class AIOKafkaProducer(object):
     """
     _PRODUCER_CLIENT_ID_SEQUENCE = 0
 
+    _COMPRESSORS = {
+        'gzip': (has_gzip, Message.CODEC_GZIP),
+        'snappy': (has_snappy, Message.CODEC_SNAPPY),
+        'lz4': (has_lz4, Message.CODEC_LZ4),
+    }
+
     def __init__(self, *, loop, bootstrap_servers='localhost',
                  client_id=None,
                  metadata_max_age_ms=300000, request_timeout_ms=40000,
@@ -149,6 +156,14 @@ class AIOKafkaProducer(object):
             raise ValueError("Invalid ACKS parameter")
         if compression_type not in ('gzip', 'snappy', 'lz4', None):
             raise ValueError("Invalid compression type!")
+        if compression_type:
+            checker, compression_attrs = self._COMPRESSORS[compression_type]
+            if not checker():
+                raise RuntimeError("Compression library for {} not found"
+                                   .format(compression_type))
+        else:
+            compression_attrs = 0
+
         if api_version not in (
                 'auto', '0.10', '0.9', '0.8.2', '0.8.1', '0.8.0'):
             raise ValueError("Unsupported Kafka version")
@@ -177,7 +192,7 @@ class AIOKafkaProducer(object):
             ssl_context=ssl_context)
         self._metadata = self.client.cluster
         self._message_accumulator = MessageAccumulator(
-            self._metadata, max_batch_size, self._compression_type,
+            self._metadata, max_batch_size, compression_attrs,
             self._request_timeout_ms / 1000, loop)
         self._sender_task = None
         self._in_flight = set()
