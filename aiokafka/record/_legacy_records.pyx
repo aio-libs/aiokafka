@@ -22,6 +22,7 @@ from cpython cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_WRITABLE, \
                      PyBUF_SIMPLE, PyBUF_READ, Py_buffer
 from libc.string cimport memcpy
 from libc.stdint cimport int32_t, int64_t, uint32_t
+from libc.time cimport time, time_t
 
 from aiokafka.record cimport _hton as hton
 cimport cython
@@ -55,35 +56,47 @@ cdef class _LegacyRecordBatchBuilderCython:
     cdef:
         char _magic
         char _compression_type
+        int _batch_size
         bytearray _buffer
 
     CODEC_GZIP = ATTR_CODEC_GZIP
     CODEC_SNAPPY = ATTR_CODEC_SNAPPY
     CODEC_LZ4 = ATTR_CODEC_LZ4
 
-    def __init__(self, magic, compression_type):
+    def __init__(self, char magic, char compression_type, int batch_size):
         self._magic = magic
         self._compression_type = compression_type
+        self._batch_size = batch_size
         self._buffer = bytearray()
 
-    def append(self, long offset, long timestamp, key, value):
+    def append(self, long offset, timestamp, key, value):
         """ Append message to batch.
         """
         cdef:
             int pos
             int size
             char *buf
+            long ts
+        if timestamp is None:
+            ts = <long> time(NULL)
+        else:
+            ts = timestamp
 
-        # Allocate proper buffer length
+        # Check if we have room for another message
         pos = PyByteArray_GET_SIZE(self._buffer)
         size = _size_in_bytes(self._magic, key, value)
+        # We always allow at least one record to be appended
+        if offset != 0 and pos + size >= self._batch_size:
+            return None, 0
+
+        # Allocate proper buffer length
         PyByteArray_Resize(self._buffer, pos + size)  # FIXME: except memory error?
 
         # Encode message
         buf = PyByteArray_AS_STRING(self._buffer)
         crc = _encode_msg(
             self._magic, pos, buf,
-            offset, timestamp, key, value, 0)
+            offset, ts, key, value, 0)
 
         return crc, size
 

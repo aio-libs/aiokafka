@@ -7,7 +7,7 @@ from aiokafka.record.legacy_records import (
 @pytest.mark.parametrize("magic", [0, 1])
 def test_read_write_serde_v0_v1_no_compression(magic):
     builder = LegacyRecordBatchBuilder(
-        magic=magic, compression_type=0)
+        magic=magic, compression_type=0, batch_size=1024 * 1024)
     builder.append(
         0, timestamp=9999999, key=b"test", value=b"Super")
     buffer = builder.build()
@@ -33,7 +33,7 @@ def test_read_write_serde_v0_v1_no_compression(magic):
 @pytest.mark.parametrize("magic", [0, 1])
 def test_read_write_serde_v0_v1_with_compression(compression_type, magic):
     builder = LegacyRecordBatchBuilder(
-        magic=magic, compression_type=compression_type)
+        magic=magic, compression_type=compression_type, batch_size=1024 * 1024)
     for offset in range(10):
         builder.append(
             offset, timestamp=9999999, key=b"test", value=b"Super")
@@ -57,7 +57,7 @@ def test_written_bytes_equals_size_in_bytes(magic):
     key = b"test"
     value = b"Super"
     builder = LegacyRecordBatchBuilder(
-        magic=magic, compression_type=0)
+        magic=magic, compression_type=0, batch_size=1024 * 1024)
 
     size_in_bytes = builder.size_in_bytes(
         0, timestamp=9999999, key=key, value=value)
@@ -93,7 +93,7 @@ def test_written_bytes_equals_size_in_bytes(magic):
 @pytest.mark.parametrize("magic", [0, 1])
 def test_legacy_batch_builder_validates_arguments(magic):
     builder = LegacyRecordBatchBuilder(
-        magic=magic, compression_type=0)
+        magic=magic, compression_type=0, batch_size=1024 * 1024)
 
     # Key should not be str
     with pytest.raises(TypeError):
@@ -104,11 +104,6 @@ def test_legacy_batch_builder_validates_arguments(magic):
     with pytest.raises(TypeError):
         builder.append(
             0, timestamp=9999999, key=None, value="some string")
-
-    # Timestamp can not be None
-    with pytest.raises(TypeError):
-        builder.append(
-            0, timestamp=None, key=None, value=b"some string")
 
     # Timestamp should be of proper type
     with pytest.raises(TypeError):
@@ -124,6 +119,33 @@ def test_legacy_batch_builder_validates_arguments(magic):
     builder.append(
         0, timestamp=9999999, key=b"123", value=None)
 
+    # Timestamp can be None
+    builder.append(
+        1, timestamp=None, key=None, value=b"some string")
+
     # Ok to pass offsets in not incremental order. This should not happen thou
     builder.append(
         5, timestamp=9999999, key=b"123", value=None)
+
+
+@pytest.mark.parametrize("magic", [0, 1])
+def test_legacy_batch_size_limit(magic):
+    # First message can be added even if it's too big
+    builder = LegacyRecordBatchBuilder(
+        magic=magic, compression_type=0, batch_size=1024)
+    crc, size = builder.append(0, timestamp=None, key=None, value=b"M" * 2000)
+    assert size > 0
+    assert crc is not None
+    assert len(builder.build()) > 2000
+
+    builder = LegacyRecordBatchBuilder(
+        magic=magic, compression_type=0, batch_size=1024)
+    crc, size = builder.append(0, timestamp=None, key=None, value=b"M" * 700)
+    assert size > 0
+    crc, size = builder.append(1, timestamp=None, key=None, value=b"M" * 700)
+    assert size == 0
+    assert crc is None
+    crc, size = builder.append(2, timestamp=None, key=None, value=b"M" * 700)
+    assert size == 0
+    assert crc is None
+    assert len(builder.build()) < 1000

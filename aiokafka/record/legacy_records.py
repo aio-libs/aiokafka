@@ -1,4 +1,5 @@
 import struct
+import time
 
 from .util import calc_crc32
 
@@ -276,23 +277,32 @@ class LegacyRecord:
 
 class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
 
-    def __init__(self, magic, compression_type):
+    def __init__(self, magic, compression_type, batch_size):
         self._magic = magic
         self._compression_type = compression_type
+        self._batch_size = batch_size
         self._buffer = bytearray()
 
     def append(self, offset, timestamp, key, value):
         """ Append message to batch.
         """
+        # Check types
         if type(offset) != int:
             raise TypeError(offset)
-        if type(timestamp) != int:
+        if timestamp is None:
+            timestamp = int(time.time() * 1000)
+        elif type(timestamp) != int:
             raise TypeError(timestamp)
 
-        # Allocate proper buffer length
+        # Check if we have room for another message
         pos = len(self._buffer)
         size = self.size_in_bytes(offset, timestamp, key, value)
-        self._buffer += bytearray(size)
+        # We always allow at least one record to be appended
+        if offset != 0 and pos + size >= self._batch_size:
+            return None, 0
+
+        # Allocate proper buffer length
+        self._buffer.extend(bytearray(size))
 
         # Encode message
         crc = self._encode_msg(pos, offset, timestamp, key, value)

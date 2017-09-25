@@ -1,6 +1,5 @@
 import asyncio
 import collections
-import time
 import io
 
 from kafka.protocol.types import Int32
@@ -17,41 +16,24 @@ from aiokafka.util import create_future
 class BatchBuilder:
 
     def __init__(self, magic, batch_size, compression_type):
-        self._builder = LegacyRecordBatchBuilder(magic, compression_type)
-        self._batch_size = batch_size
+        self._builder = LegacyRecordBatchBuilder(
+            magic, compression_type, batch_size)
         self._relative_offset = 0
         self._closed = False
 
     def append(self, *, timestamp, key, value):
-        if timestamp is None:
-            timestamp = int(time.time() * 1000)
-
-        if not self._has_room_for(timestamp, key, value):
+        if self._closed:
             return 0
 
         crc, actual_size = self._builder.append(
             self._relative_offset, timestamp, key, value)
 
+        # Check if we could add the message
+        if actual_size == 0:
+            return 0
+
         self._relative_offset += 1
         return actual_size
-
-    def _has_room_for(self, timestamp, key, value):
-        """return True if batch does not have free capacity for append message
-        """
-        size = self._builder.size()
-        if self._closed:
-            return False
-        if size >= self._batch_size:
-            return False
-
-        # We always allow at least one record to be appended
-        if self._relative_offset == 0:
-            return True
-
-        record_size = self._builder.size_in_bytes(
-            self._relative_offset, timestamp, key, value)
-
-        return size + record_size < self._batch_size
 
     def _build(self):
         assert not self._closed

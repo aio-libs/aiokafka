@@ -18,7 +18,8 @@ except ImportError:
 ext = '.pyx' if USE_CYTHON else '.c'
 
 extensions = [Extension('aiokafka.record._legacy_records',
-                        ['aiokafka/record/_legacy_records' + ext])]
+                        ['aiokafka/record/_legacy_records' + ext],
+                        depends=["aiokafka/record/_hton.pxd"])]
 
 
 if USE_CYTHON:
