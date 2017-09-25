@@ -3,6 +3,7 @@ import asyncio
 import signal
 from aiokafka import AIOKafkaProducer
 from collections import Counter
+import random
 
 
 class Benchmark:
@@ -48,7 +49,7 @@ class Benchmark:
             )
 
     async def bench_simple(self):
-        payload = b"m" * self._size
+        payload = bytearray(b"m" * self._size)
         topic = self._topic
         partition = self._partition
         loop = asyncio.get_event_loop()
@@ -60,6 +61,7 @@ class Benchmark:
         reporter_task = loop.create_task(self._stats_report(loop.time()))
         try:
             for i in range(self._num):
+                payload[i % self._size] = random.randint(0, 255)
                 await producer.send(topic, payload, partition=partition)
                 self._stats[-1]['count'] += 1
         except asyncio.CancelledError:
@@ -94,11 +96,17 @@ def parse_args():
     parser.add_argument(
         '--partition', type=int, default=0,
         help='Partition to produce messages to. Default {default}.')
+    parser.add_argument(
+        '--uvloop', action='store_true',
+        help='Use uvloop instead of asyncio default loop.')
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    if args.uvloop:
+        import uvloop
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
     loop = asyncio.get_event_loop()
     task = loop.create_task(Benchmark(args).bench_simple())
