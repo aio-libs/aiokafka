@@ -61,8 +61,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
-        with self.assertRaisesRegexp(
-                TypeError, "Not supported type for value: <class 'str'>"):
+        with self.assertRaises(TypeError):
             yield from producer.send(self.topic, 'hello, Kafka!')
         future = yield from producer.send(self.topic, b'hello, Kafka!')
         resp = yield from future

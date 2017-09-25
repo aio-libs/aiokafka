@@ -1,12 +1,9 @@
 #cython: language_level=3
 
-import io
-import struct
-
-from .util import calc_crc32
 from kafka.codec import (
     gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
 )
+from time import time
 
 cdef extern from "Python.h":
     ssize_t PyByteArray_GET_SIZE(object)
@@ -20,9 +17,8 @@ cdef extern from "zlib.h":
 
 from cpython cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_WRITABLE, \
                      PyBUF_SIMPLE, PyBUF_READ, Py_buffer
-from libc.string cimport memcpy
 from libc.stdint cimport int32_t, int64_t, uint32_t
-from libc.time cimport time, time_t
+from libc.string cimport memcpy
 
 from aiokafka.record cimport _hton as hton
 cimport cython
@@ -76,9 +72,10 @@ cdef class _LegacyRecordBatchBuilderCython:
             int pos
             int size
             char *buf
+
             long ts
         if timestamp is None:
-            ts = <long> time(NULL)
+            ts = time() * 1000
         else:
             ts = timestamp
 

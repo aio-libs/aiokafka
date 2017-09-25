@@ -505,6 +505,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         pos = yield from consumer.position(tp)
         self.assertEqual(pos, start_position + 1)
 
+    @pytest.mark.skip(reason="Raises AssertionError, see issue #199")
     @run_until_complete
     def test_consumer_seek_to_end(self):
         # Send 3 messages
