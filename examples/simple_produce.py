@@ -10,7 +10,8 @@ async def send_one():
     await producer.start()
     try:
         # Produce messages
-        await producer.send_and_wait("my_topic", b"Super message")
+        res = await producer.send_and_wait("my_topic", b"Super message")
+        print(res)
     finally:
         await producer.stop()
 

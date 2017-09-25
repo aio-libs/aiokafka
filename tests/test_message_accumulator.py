@@ -20,7 +20,7 @@ class TestMessageAccumulator(unittest.TestCase):
     @run_until_complete
     def test_basic(self):
         cluster = ClusterMetadata(metadata_max_age_ms=10000)
-        ma = MessageAccumulator(cluster, 1000, None, 30, self.loop)
+        ma = MessageAccumulator(cluster, 1000, 0, 30, self.loop)
         data_waiter = ma.data_waiter()
         done, _ = yield from asyncio.wait(
             [data_waiter], timeout=0.2, loop=self.loop)
@@ -128,7 +128,7 @@ class TestMessageAccumulator(unittest.TestCase):
         cluster.leader_for_partition = mock.MagicMock()
         cluster.leader_for_partition.side_effect = mocked_leader_for_partition
 
-        ma = MessageAccumulator(cluster, 1000, None, 1, self.loop)
+        ma = MessageAccumulator(cluster, 1000, 0, 1, self.loop)
         fut1 = yield from ma.add_message(
             tp2, None, b'msg for tp@2', timeout=2)
         fut2 = yield from ma.add_message(
