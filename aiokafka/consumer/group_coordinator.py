@@ -305,7 +305,10 @@ class GroupCoordinator(BaseCoordinator):
         self._assignment_snapshot = None
 
         # commit offsets prior to rebalance if auto-commit enabled
-        yield from self._maybe_auto_commit_offsets_sync()
+        try:
+            yield from self._maybe_auto_commit_offsets_sync()
+        except Errors.KafkaError as err:
+            log.error("OffsetCommit failed before join, ignoring: %s", err)
 
         # execute the user's callback before rebalance
         log.info("Revoking previously assigned partitions %s for group %s",

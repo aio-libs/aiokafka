@@ -328,6 +328,12 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             with self.assertRaises(Errors.RebalanceInProgressError):
                 yield from coordinator.commit_offsets(offsets)
             self.assertEqual(subscription.needs_partition_assignment, True)
+            subscription.needs_partition_assignment = False
+
+            mocked.return_value = Errors.UnknownMemberIdError
+            with self.assertRaises(Errors.UnknownMemberIdError):
+                yield from coordinator.commit_offsets(offsets)
+            self.assertEqual(subscription.needs_partition_assignment, True)
 
             mocked.return_value = KafkaError
             with self.assertRaises(KafkaError):
@@ -338,8 +344,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 yield from coordinator.commit_offsets(offsets)
             self.assertEqual(coordinator.coordinator_id, None)
 
-            with self.assertRaises(
-                    Errors.GroupCoordinatorNotAvailableError):
+            with self.assertRaises(Errors.GroupCoordinatorNotAvailableError):
                 yield from coordinator.commit_offsets(offsets)
 
         yield from coordinator.close()
@@ -544,6 +549,40 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             yield from client.force_metadata_update()
             yield from coordinator.ensure_active_group()
             self.assertEqual(mocked.call_count, 1)
+
+        yield from coordinator.close()
+        yield from client.close()
+
+    @run_until_complete
+    def test_coordinator_ensure_active_group_on_expired_membership(self):
+        # Do not fail ensure_active_group() if group membership has expired
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        yield from client.bootstrap()
+        yield from self.wait_topic(client, 'topic1')
+        subscription = SubscriptionState('earliest')
+        subscription.subscribe(topics=('topic1',))
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            group_id='test-offsets-group')
+        yield from coordinator.ensure_active_group()
+
+        # during OffsetCommit, UnknownMemberIdError is raised
+        offsets = {TopicPartition('topic1', 0): OffsetAndMetadata(1, '')}
+        with mock.patch('aiokafka.errors.for_code') as mocked:
+            mocked.return_value = Errors.UnknownMemberIdError
+            with self.assertRaises(Errors.UnknownMemberIdError):
+                yield from coordinator.commit_offsets(offsets)
+            self.assertEqual(subscription.needs_partition_assignment, True)
+
+        # same exception is raised during ensure_active_group()'s call to
+        # commit_offsets() via _on_join_prepare() but doesn't break this method
+        with mock.patch.object(coordinator, "commit_offsets") as mocked:
+            @asyncio.coroutine
+            def mock_commit_offsets(*args, **kwargs):
+                raise Errors.UnknownMemberIdError()
+            mocked.side_effect = mock_commit_offsets
+
+            yield from coordinator.ensure_active_group()
 
         yield from coordinator.close()
         yield from client.close()
