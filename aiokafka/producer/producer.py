@@ -3,7 +3,6 @@ import logging
 import collections
 
 from kafka.partitioner.default import DefaultPartitioner
-from kafka.protocol.message import Message, MessageSet
 from kafka.protocol.produce import ProduceRequest
 from kafka.codec import has_gzip, has_snappy, has_lz4
 
@@ -11,6 +10,7 @@ import aiokafka.errors as Errors
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
     MessageSizeTooLargeError, KafkaError, UnknownTopicOrPartitionError)
+from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import TopicPartition
 from aiokafka.util import ensure_future
 
@@ -137,9 +137,9 @@ class AIOKafkaProducer(object):
     _PRODUCER_CLIENT_ID_SEQUENCE = 0
 
     _COMPRESSORS = {
-        'gzip': (has_gzip, Message.CODEC_GZIP),
-        'snappy': (has_snappy, Message.CODEC_SNAPPY),
-        'lz4': (has_lz4, Message.CODEC_LZ4),
+        'gzip': (has_gzip, LegacyRecordBatchBuilder.CODEC_GZIP),
+        'snappy': (has_snappy, LegacyRecordBatchBuilder.CODEC_SNAPPY),
+        'lz4': (has_lz4, LegacyRecordBatchBuilder.CODEC_LZ4),
     }
 
     def __init__(self, *, loop, bootstrap_servers='localhost',
@@ -200,6 +200,7 @@ class AIOKafkaProducer(object):
         self._loop = loop
         self._retry_backoff = retry_backoff_ms / 1000
         self._linger_time = linger_ms / 1000
+        self._producer_magic = 0
 
     @asyncio.coroutine
     def start(self):
@@ -214,6 +215,7 @@ class AIOKafkaProducer(object):
         self._sender_task = ensure_future(
             self._sender_routine(), loop=self._loop)
         self._message_accumulator.set_api_version(self.client.api_version)
+        self._producer_magic = 0 if self.client.api_version < (0, 10) else 1
         log.debug("Kafka producer started")
 
     @asyncio.coroutine
@@ -489,7 +491,8 @@ class AIOKafkaProducer(object):
         else:
             serialized_value = value
 
-        message_size = MessageSet.HEADER_SIZE + Message.HEADER_SIZE
+        message_size = LegacyRecordBatchBuilder.record_overhead(
+            self._producer_magic)
         if serialized_key is not None:
             message_size += len(serialized_key)
         if serialized_value is not None:

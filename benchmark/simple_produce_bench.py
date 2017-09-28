@@ -61,7 +61,7 @@ class Benchmark:
         reporter_task = loop.create_task(self._stats_report(loop.time()))
         try:
             for i in range(self._num):
-                payload[i % self._size] = random.randint(0, 255)
+                # payload[i % self._size] = random.randint(0, 255)
                 await producer.send(topic, payload, partition=partition)
                 self._stats[-1]['count'] += 1
         except asyncio.CancelledError:
