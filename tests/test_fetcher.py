@@ -164,16 +164,38 @@ class TestFetcher(unittest.TestCase):
         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
         self.assertEqual(needs_wake_up, False)
 
-        # error -> offset out of range
+        # error -> offset out of range with offset strategy
         client.send.side_effect = asyncio.coroutine(
             lambda n, r: FetchResponse(
                 [('test', [(0, 1, 9, raw_batch)])]))
         fetcher._in_flight.add(0)
         fetcher._records.clear()
-        needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
-        self.assertEqual(needs_wake_up, False)
-        self.assertEqual(state.is_fetchable(), False)
+        with mock.patch.object(fetcher, "update_fetch_positions") as mocked:
+            mocked.side_effect = asyncio.coroutine(lambda o: None)
+            needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
+            self.assertEqual(needs_wake_up, False)
+            self.assertEqual(state.is_fetchable(), False)
+            mocked.assert_called_with([tp])
 
+        # error -> offset out of range with strategy errors out
+        state.seek(4)
+        client.send.side_effect = asyncio.coroutine(
+            lambda n, r: FetchResponse(
+                [('test', [(0, 1, 9, [(4, 10, msg)])])]))
+        fetcher._in_flight.add(0)
+        fetcher._records.clear()
+        with mock.patch.object(fetcher, "update_fetch_positions") as mocked:
+            # the exception should not fail execution here
+            @asyncio.coroutine
+            def mock_async_raises(offests):
+                raise Exception()
+            mocked.side_effect = mock_async_raises
+            needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
+            self.assertEqual(needs_wake_up, False)
+            self.assertEqual(state.is_fetchable(), False)
+            mocked.assert_called_with([tp])
+
+        # error -> offset out of range without offset strategy
         state.seek(4)
         subscriptions._default_offset_reset_strategy = OffsetResetStrategy.NONE
         client.send.side_effect = asyncio.coroutine(
