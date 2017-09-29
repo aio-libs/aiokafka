@@ -181,7 +181,7 @@ class TestFetcher(unittest.TestCase):
         state.seek(4)
         client.send.side_effect = asyncio.coroutine(
             lambda n, r: FetchResponse(
-                [('test', [(0, 1, 9, [(4, 10, msg)])])]))
+                [('test', [(0, 1, 9, [(4, 10, raw_batch)])])]))
         fetcher._in_flight.add(0)
         fetcher._records.clear()
         with mock.patch.object(fetcher, "update_fetch_positions") as mocked:
