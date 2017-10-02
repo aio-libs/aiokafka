@@ -16,22 +16,27 @@ python:
     - 3.6
 env:
     matrix:
-        - KAFKA_VERSION=0.9.0.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
-        - KAFKA_VERSION=0.10.2.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
-        - KAFKA_VERSION=0.11.0.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
+        - KAFKA_VERSION=0.9.0.1 SCALA_VERSION=2.11
+        - KAFKA_VERSION=0.9.0.1 SCALA_VERSION=2.11 AIOKAFKA_NO_EXTENSIONS=1
+        - KAFKA_VERSION=0.10.2.1 SCALA_VERSION=2.11
+        - KAFKA_VERSION=0.10.2.1 SCALA_VERSION=2.11 AIOKAFKA_NO_EXTENSIONS=1
+        - KAFKA_VERSION=0.11.0.0 SCALA_VERSION=2.12
+        - KAFKA_VERSION=0.11.0.0 SCALA_VERSION=2.12 AIOKAFKA_NO_EXTENSIONS=1
 
 before_install:
     - sudo apt-get update
     - sudo apt-get install -y libsnappy-dev
 
 install:
+    - pip install --upgrade pip setuptools wheel
     - pip install flake8
     - pip install pytest pytest-cov pytest-catchlog docker-py
     - pip install codecov
+    - pip install cython
     - pip install python-snappy
     - pip install lz4 xxhash
     - pip install pathlib
-    - pip install .
+    - pip install -vv -Ue .
 
 script:
   - make cov

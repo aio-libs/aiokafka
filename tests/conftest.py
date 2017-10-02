@@ -1,5 +1,4 @@
 import asyncio
-import fcntl
 import gc
 import docker as libdocker
 import pytest
@@ -58,7 +57,7 @@ def ssl_folder(docker_ip_address):
 @pytest.fixture(scope='session')
 def docker_ip_address(docker):
     """Returns IP address of the docker daemon service."""
-    if sys.platform == 'darwin':
+    if sys.platform == 'darwin' or sys.platform == 'windows':
         # docker for mac publishes ports on localhost
         return '127.0.0.1'
     else:
@@ -74,6 +73,7 @@ def docker_ip_address(docker):
         except libdocker.errors.InvalidVersion:
             pass
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        import fcntl
         return socket.inet_ntoa(fcntl.ioctl(
             s.fileno(),
             0x8915,  # SIOCGIFADDR

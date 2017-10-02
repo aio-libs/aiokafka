@@ -4,6 +4,7 @@ import time
 from .util import calc_crc32
 
 from aiokafka.errors import CorruptRecordException
+from aiokafka.util import NO_EXTENSIONS
 from kafka.codec import (
     gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
     gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka
@@ -274,7 +275,7 @@ class LegacyRecord:
         )
 
 
-class LegacyRecordBatchBuilder(LegacyRecordBase):
+class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
 
     def __init__(self, magic, compression_type, batch_size):
         self._magic = magic
@@ -451,3 +452,16 @@ class LegacyRecordMetadata:
     @property
     def timestamp(self):
         return self._timestamp
+
+
+if NO_EXTENSIONS:
+    LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
+    print("py")
+else:
+    try:
+        from ._legacy_records import _LegacyRecordBatchBuilderCython
+        LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderCython
+        print("cext")
+    except ImportError as err:  # pragma: no cover
+        LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
+        print("py_fall", err)
