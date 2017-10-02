@@ -88,7 +88,7 @@ def parse_args():
         '--batch-size', type=int, default=16384,
         help='`max_batch_size` attr of Producer. Default {default}.')
     parser.add_argument(
-        '--linger-ms', type=int, default=5,
+        '--linger-ms', type=int, default=0,
         help='`linger_ms` attr of Producer. Default {default}.')
     parser.add_argument(
         '--topic', default="test",

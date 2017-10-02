@@ -604,7 +604,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     def test_check_extended_message_record(self):
         s_time_ms = time.time() * 1000
-
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()

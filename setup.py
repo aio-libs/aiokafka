@@ -36,6 +36,12 @@ extensions = [
         extra_compile_args=CFLAGS,
         extra_link_args=LDFLAGS
     ),
+    Extension(
+        'aiokafka.record._memory_records',
+        ['aiokafka/record/_memory_records' + ext],
+        extra_compile_args=CFLAGS,
+        extra_link_args=LDFLAGS
+    ),
 ]
 
 

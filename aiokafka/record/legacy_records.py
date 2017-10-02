@@ -67,7 +67,7 @@ class LegacyRecordBase:
     CREATE_TIME = 0
 
 
-class LegacyRecordBatch(LegacyRecordBase):
+class _LegacyRecordBatchPy(LegacyRecordBase):
 
     def __init__(self, buffer, magic):
         self._buffer = memoryview(buffer)
@@ -217,7 +217,7 @@ class LegacyRecordBatch(LegacyRecordBase):
                 key, value, self._crc)
 
 
-class LegacyRecord:
+class _LegacyRecordPy:
 
     __slots__ = ("_offset", "_timestamp", "_timestamp_type", "_key", "_value",
                  "_crc")
@@ -466,14 +466,22 @@ class _LegacyRecordMetadataPy:
 if NO_EXTENSIONS:
     LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
     LegacyRecordMetadata = _LegacyRecordMetadataPy
+    LegacyRecordBatch = _LegacyRecordBatchPy
+    LegacyRecord = _LegacyRecordPy
 else:
     try:
         from ._legacy_records import (
             _LegacyRecordBatchBuilderCython,
-            LegacyRecordMetadata as _LegacyRecordMetadataCython
+            LegacyRecordMetadata as _LegacyRecordMetadataCython,
+            _LegacyRecordBatchCython,
+            LegacyRecord as _LegacyRecordCython
         )
         LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderCython
         LegacyRecordMetadata = _LegacyRecordMetadataCython
+        LegacyRecordBatch = _LegacyRecordBatchCython
+        LegacyRecord = _LegacyRecordCython
     except ImportError as err:  # pragma: no cover
-        LegacyRecordMetadata = _LegacyRecordMetadataPy
         LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
+        LegacyRecordMetadata = _LegacyRecordMetadataPy
+        LegacyRecordBatch = _LegacyRecordBatchPy
+        LegacyRecord = _LegacyRecordPy

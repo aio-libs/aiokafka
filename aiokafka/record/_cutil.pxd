@@ -70,19 +70,25 @@ ELSE:
 
 IF UNAME_SYSNAME == "Windows":
     from zlib import crc32 as py_crc32
-    cdef inline unsigned long calc_crc32(
-            unsigned long crc, unsigned char *buf, Py_ssize_t len) except -1:
+    cdef inline int calc_crc32(
+            unsigned long crc, unsigned char *buf, size_t len,
+            unsigned long *crc_out) except -1:
         cdef:
             object memview
-        memview = PyMemoryView_FromMemory(<char *>buf, len, PyBUF_READ)
-        return py_crc32(memview)
+        memview = PyMemoryView_FromMemory(
+            <char *>buf, <Py_ssize_t> len, PyBUF_READ)
+        crc_out[0] = py_crc32(memview)
+        crc_out[0] = crc_out[0] & 0xffffffff
+        return 0
 ELSE:
     cdef extern from "zlib.h":
         unsigned long crc32(
-            unsigned long crc, const unsigned char *buf, unsigned int len) nogil
+            unsigned long crc, const unsigned char *buf, unsigned int len
+        ) nogil
 
-    cdef inline unsigned long calc_crc32(
-            unsigned long crc, unsigned char *buf, Py_ssize_t len) except -1:
+    cdef inline int calc_crc32(
+            unsigned long crc, unsigned char *buf, size_t len,
+            unsigned long *crc_out) except -1:
         """ Implementation taken from Python's zlib source.
         """
         cdef:
@@ -103,7 +109,8 @@ ELSE:
         else:
             signed_val = crc32(crc, buf, <unsigned int> len)
 
-        return signed_val & 0xffffffff
+        crc_out[0] = signed_val & 0xffffffff
+        return 0
 
 # END: CRC32 function
 
