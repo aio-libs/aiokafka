@@ -25,7 +25,7 @@ env:
 
 before_install:
     - sudo apt-get update
-    - sudo apt-get install -y libsnappy-dev zlib1g-dev
+    - sudo apt-get install -y libsnappy-dev zlib1g-dev dpkg-dev
 
 install:
     - pip install --upgrade pip setuptools wheel
