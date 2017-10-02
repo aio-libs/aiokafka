@@ -32,6 +32,7 @@ extensions = [
     Extension(
         'aiokafka.record._legacy_records',
         ['aiokafka/record/_legacy_records' + ext],
+        libraries=['z'],
         extra_compile_args=CFLAGS,
         extra_link_args=LDFLAGS
     ),
