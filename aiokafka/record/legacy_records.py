@@ -458,10 +458,10 @@ if NO_EXTENSIONS:
     LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
     print("py")
 else:
-    try:
+    # try:
         from ._legacy_records import _LegacyRecordBatchBuilderCython
         LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderCython
         print("cext")
-    except ImportError as err:  # pragma: no cover
-        LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
-        print("py_fall", err)
+    # except ImportError as err:  # pragma: no cover
+    #     LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
+    #     print("py_fall", err)
