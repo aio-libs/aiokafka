@@ -53,14 +53,15 @@ cdef class _LegacyRecordBatchBuilderCython:
     cdef:
         char _magic
         char _compression_type
-        int _batch_size
+        Py_ssize_t _batch_size
         bytearray _buffer
 
     CODEC_GZIP = ATTR_CODEC_GZIP
     CODEC_SNAPPY = ATTR_CODEC_SNAPPY
     CODEC_LZ4 = ATTR_CODEC_LZ4
 
-    def __cinit__(self, char magic, char compression_type, int batch_size):
+    def __cinit__(self, char magic, char compression_type,
+                  Py_ssize_t batch_size):
         self._magic = magic
         self._compression_type = compression_type
         self._batch_size = batch_size
@@ -70,11 +71,11 @@ cdef class _LegacyRecordBatchBuilderCython:
         """ Append message to batch.
         """
         cdef:
-            int pos
-            int size
+            Py_ssize_t pos
+            Py_ssize_t size
             char *buf
-
             int64_t ts
+
         if timestamp is None:
             ts = cutil.get_time_as_unix_ms()
         else:
@@ -121,7 +122,7 @@ cdef class _LegacyRecordBatchBuilderCython:
         cdef:
             object compressed
             char *buf
-            int size
+            Py_ssize_t size
 
         if self._compression_type != 0:
             if self._compression_type == ATTR_CODEC_GZIP:
@@ -141,7 +142,7 @@ cdef class _LegacyRecordBatchBuilderCython:
 
             buf = PyByteArray_AS_STRING(self._buffer)
             _encode_msg(
-                self._magic, 0, buf,
+                self._magic, start_pos=0, buf=buf,
                 offset=0, timestamp=0, key=None, value=compressed,
                 attributes=self._compression_type)
             return 1
@@ -153,13 +154,13 @@ cdef class _LegacyRecordBatchBuilderCython:
         return self._buffer
 
 
-cdef int _size_in_bytes(char magic, object key, object value) except -1:
+cdef Py_ssize_t _size_in_bytes(char magic, object key, object value) except -1:
     """ Actual size of message to add
     """
     cdef:
         Py_buffer buf
-        int key_len
-        int value_len
+        Py_ssize_t key_len
+        Py_ssize_t value_len
 
     if key is None:
         key_len = 0
@@ -182,7 +183,7 @@ cdef int _size_in_bytes(char magic, object key, object value) except -1:
 
 
 cdef object _encode_msg(
-        char magic, int start_pos, char *buf,
+        char magic, Py_ssize_t start_pos, char *buf,
         long offset, long timestamp, object key, object value,
         char attributes):
     """ Encode msg data into the `msg_buffer`, which should be allocated
@@ -190,8 +191,8 @@ cdef object _encode_msg(
     """
     cdef:
         Py_buffer key_val_buf
-        int pos = start_pos
-        int length
+        Py_ssize_t pos = start_pos
+        int32_t length
         uint32_t crc
 
     # Write key and value
@@ -205,7 +206,7 @@ cdef object _encode_msg(
         hton.pack_int32(&buf[pos], <int32_t>key_val_buf.len)
         pos += KEY_LENGTH
         memcpy(&buf[pos], <char*>key_val_buf.buf, <size_t>key_val_buf.len)
-        pos += <int>key_val_buf.len
+        pos += key_val_buf.len
         PyBuffer_Release(&key_val_buf)
 
     if value is None:
@@ -216,24 +217,26 @@ cdef object _encode_msg(
         hton.pack_int32(&buf[pos], <int32_t>key_val_buf.len)
         pos += VALUE_LENGTH
         memcpy(&buf[pos], <char*>key_val_buf.buf, <size_t>key_val_buf.len)
-        pos += <int>key_val_buf.len
+        pos += key_val_buf.len
         PyBuffer_Release(&key_val_buf)
-    length = (pos - start_pos) - LOG_OVERHEAD
+    length = <int32_t> ((pos - start_pos) - LOG_OVERHEAD)
 
-    # Write msg header. Note, that Crc will be updated later
+    # Write msg header. Note, that Crc should be updated last
     hton.pack_int64(&buf[start_pos], <int64_t>offset)
-    hton.pack_int32(&buf[start_pos + LENGTH_OFFSET], <int32_t>length)
+    hton.pack_int32(&buf[start_pos + LENGTH_OFFSET], length)
     buf[start_pos + MAGIC_OFFSET] = magic
     buf[start_pos + ATTRIBUTES_OFFSET] = attributes
     if magic == 1:
         hton.pack_int64(&buf[start_pos + TIMESTAMP_OFFSET], <int64_t>timestamp)
 
     # Calculate CRC for msg
-    crc = <uint32_t>cutil.crc32(
+    # FIXME: This implementation may fail for large blocks. It should call
+    #        crc in cycle per each block of MAX_UINT size
+    crc = <uint32_t> cutil.crc32(
         0,
-        <unsigned char*>&buf[start_pos + MAGIC_OFFSET],
-        pos - (start_pos + MAGIC_OFFSET)
+        <unsigned char*> &buf[start_pos + MAGIC_OFFSET],
+        <unsigned int> (pos - (start_pos + MAGIC_OFFSET))
     )
-    hton.pack_int32(&buf[start_pos + CRC_OFFSET], crc)
+    hton.pack_int32(&buf[start_pos + CRC_OFFSET], <int32_t> crc)
 
     return crc

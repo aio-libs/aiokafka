@@ -70,13 +70,15 @@ ELSE:
 IF UNAME_SYSNAME == "Windows":
     from zlib import crc32 as py_crc32
     cdef inline unsigned long crc32(
-            unsigned long crc, unsigned char *buf, int len) except -1:
+            unsigned long crc, unsigned char *buf, unsigned int len) except -1:
         cdef:
             object memview
-        memview = PyMemoryView_FromMemory(<char *>buf, <ssize_t>len, PyBUF_READ)
+        memview = PyMemoryView_FromMemory(
+            <char *>buf, <Py_ssize_t>len, PyBUF_READ)
         return py_crc32(memview)
 ELSE:
     cdef extern from "zlib.h":
-        unsigned long crc32(unsigned long crc, const unsigned char *buf, int len)
+        unsigned long crc32(
+            unsigned long crc, const unsigned char *buf, unsigned int len)
 # END: CRC32 function
 
