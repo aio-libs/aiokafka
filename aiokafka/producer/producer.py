@@ -517,3 +517,34 @@ class AIOKafkaProducer(object):
         available = list(self._metadata.available_partitions_for_topic(topic))
         return self._partitioner(
             serialized_key, all_partitions, available)
+
+    def create_batch(self):
+        """Create and return an empty BatchBuilder.
+
+        The batch is not queued for send until submission to ``send_batch``.
+
+        Returns:
+            BatchBuilder: empty batch to be filled and submitted by the caller.
+        """
+        return self._message_accumulator.create_builder()
+
+    def send_batch(self, builder, topic, partition=None):
+        """Submit a BatchBuilder for publication.
+
+        Arguments:
+            builder (BatchBuilder): batch object to be published.
+            topic (str): topic where the batch will be published.
+            partition (int, optional): optionally specify the partition to
+                where this batch will be published. If unset, the partition
+                will be selected using the configured `partitioner` with key
+                and value set to None.
+
+        Returns:
+            asyncio.Future: object that will be set when the batch is
+                delivered.
+        """
+        partition = self._partition(topic, partition, None, None, None, None)
+        tp = TopicPartition(topic, partition)
+        log.debug("Sending batch to %s", tp)
+        batch = self._message_accumulator.add_batch(builder, tp)
+        return batch.future

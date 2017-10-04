@@ -11,7 +11,7 @@ from kafka.common import (TopicPartition, KafkaTimeoutError,
 from ._testutil import run_until_complete
 from aiokafka.util import ensure_future
 from aiokafka.producer.message_accumulator import (
-    MessageAccumulator, MessageBatch
+    MessageAccumulator, MessageBatch, BatchBuilder
 )
 
 
@@ -185,3 +185,40 @@ class TestMessageAccumulator(unittest.TestCase):
         batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         fut01.cancel()
         batches[0][tp0].done(base_offset=21)  # no error in this case
+
+    @run_until_complete
+    def test_message_batch_builder_basic(self):
+        magic = 0
+        batch_size = 1000
+        msg_count = 3
+        key = b"test key"
+        value = b"test value"
+        builder = BatchBuilder(magic, batch_size, None)
+        self.assertEqual(builder._actual_size, 0)
+        self.assertEqual(builder._relative_offset, 0)
+        self.assertIsNone(builder._buffer)
+        self.assertFalse(builder._closed)
+        self.assertEqual(builder.size(), 0)
+        self.assertEqual(len(builder), 0)
+
+        # adding messages returns size and increments appropriate values
+        for num in range(1, msg_count + 1):
+            old_size = builder.size()
+            msg_size = builder.append(key=key, value=value, timestamp=None)
+            self.assertTrue(msg_size > 0)
+            self.assertEqual(builder.size(), old_size + msg_size)
+            self.assertEqual(len(builder), num)
+        old_size = builder.size()
+        old_count = len(builder)
+
+        # close the builder
+        buf = builder._build()
+        self.assertIsNotNone(builder._buffer)
+        self.assertEqual(buf, builder._buffer)
+        self.assertTrue(builder._closed)
+
+        # nothing can be added after the builder has been closed
+        size = builder.append(key=key, value=value, timestamp=None)
+        self.assertEqual(size, 0)
+        self.assertEqual(builder.size(), old_size)
+        self.assertEqual(len(builder), old_count)

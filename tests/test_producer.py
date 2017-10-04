@@ -242,6 +242,62 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         yield from producer.stop()
 
     @run_until_complete
+    def test_producer_send_batch(self):
+        key = b'test key'
+        value = b'test value'
+        max_batch_size = 10000
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            max_batch_size=max_batch_size)
+        yield from producer.start()
+
+        partitions = yield from producer.partitions_for(self.topic)
+        partition = partitions.pop()
+
+        # silly method to find current offset for this partition
+        resp = yield from producer.send_and_wait(
+            self.topic, value=b'discovering offset', partition=partition)
+        offset = resp.offset
+
+        # only fills up to its limits, then returns None
+        batch = producer.create_batch()
+        self.assertEqual(len(batch), 0)
+        num = 0
+        while True:
+            size = batch.append(key=key, value=value, timestamp=None)
+            if size == 0:
+                break
+            num += 1
+        self.assertTrue(num > 0)
+        self.assertEqual(len(batch), num)
+
+        # batch gets properly sent
+        future = producer.send_batch(batch, self.topic, partition)
+        resp = yield from future
+        self.assertEqual(resp.topic, self.topic)
+        self.assertEqual(resp.partition, partition)
+        self.assertEqual(resp.offset, offset + 1)
+
+        # batch accepts a too-large message if it's the first
+        too_large = b'm' * (max_batch_size + 1)
+        batch = producer.create_batch()
+        self.assertNotEqual(
+            batch.append(key=None, value=too_large, timestamp=None), 0)
+
+        # batch rejects a too-large message if it's not the first
+        batch = producer.create_batch()
+        batch.append(key=None, value=b"short", timestamp=None)
+        self.assertEqual(
+            batch.append(key=None, value=too_large, timestamp=None), 0)
+
+        yield from producer.stop()
+
+        # batch can't be sent after closing time
+        with self.assertRaises(ProducerClosed):
+            producer.send_batch(batch, self.topic, partition)
+
+    @run_until_complete
     def test_producer_ssl(self):
         # Produce by SSL consume by PLAINTEXT
         topic = "test_ssl_produce"

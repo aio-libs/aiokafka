@@ -18,7 +18,9 @@ class BatchBuilder:
     def __init__(self, magic, batch_size, compression_type):
         self._builder = LegacyRecordBatchBuilder(
             magic, compression_type, batch_size)
+        self._actual_size = 0
         self._relative_offset = 0
+        self._buffer = None
         self._closed = False
 
     def append(self, *, timestamp, key, value):
@@ -32,16 +34,28 @@ class BatchBuilder:
         if actual_size == 0:
             return 0
 
+        self._actual_size += actual_size
         self._relative_offset += 1
         return actual_size
 
-    def _build(self):
-        assert not self._closed
+    def close(self):
+        if self._closed:
+            return
         self._closed = True
-        buffer = self._builder.build()
+        data = self._builder.build()
+        self._buffer = io.BytesIO(Int32.encode(len(data)) + data)
         del self._builder
 
-        return io.BytesIO(Int32.encode(len(buffer)) + buffer)
+    def _build(self):
+        if not self._closed:
+            self.close()
+        return self._buffer
+
+    def size(self):
+        return self._actual_size
+
+    def __len__(self):
+        return self._relative_offset
 
 
 class MessageBatch:
@@ -56,6 +70,7 @@ class MessageBatch:
 
         # Waiters
         # Set when messages are delivered to Kafka based on ACK setting
+        self.future = create_future(loop)
         self._msg_futures = []
         # Set when sender takes this batch
         self._drain_waiter = create_future(loop=loop)
@@ -80,24 +95,29 @@ class MessageBatch:
     def done(self, base_offset=None, exception=None):
         """Resolve all pending futures"""
         for relative_offset, future in enumerate(self._msg_futures):
-            if future.done():
-                continue
-            if exception is not None:
-                future.set_exception(exception)
-            elif base_offset is None:
-                future.set_result(None)
-            else:
-                res = RecordMetadata(self._tp.topic, self._tp.partition,
-                                     self._tp, base_offset + relative_offset)
-                future.set_result(res)
+            self._set_future(future, base_offset, relative_offset, exception)
+        self._set_future(self.future, base_offset, 0, exception)
 
-    def wait_deliver(self):
-        """Wait until all message from this batch is processed"""
-        return asyncio.wait(self._msg_futures, loop=self._loop)
+    def _set_future(self, future, base_offset, relative_offset, exception):
+        if future.done():
+            return
+        if exception is not None:
+            future.set_exception(exception)
+        elif base_offset is None:
+            future.set_result(None)
+        else:
+            res = RecordMetadata(self._tp.topic, self._tp.partition,
+                                 self._tp, base_offset + relative_offset)
+            future.set_result(res)
 
-    def wait_drain(self):
+    def wait_deliver(self, timeout=None):
         """Wait until all message from this batch is processed"""
-        return self._drain_waiter
+        return asyncio.wait([self.future], timeout=timeout, loop=self._loop)
+
+    def wait_drain(self, timeout=None):
+        """Wait until all message from this batch is processed"""
+        return asyncio.wait(
+            [self._drain_waiter], timeout=timeout, loop=self._loop)
 
     def expired(self):
         """Check that batch is expired or not"""
@@ -159,17 +179,8 @@ class MessageAccumulator:
 
         pending_batches = self._batches.get(tp)
         if not pending_batches:
-            magic = 0 if self._api_version < (0, 10) else 1
-            builder = BatchBuilder(
-                magic, self._batch_size, self._compression_type
-            )
-            batch = MessageBatch(
-                tp, builder, self._batch_ttl, self._loop)
-            self._batches[tp].append(batch)
-
-            if not self._wait_data_future.done():
-                # Wakeup sender task if it waits for data
-                self._wait_data_future.set_result(None)
+            builder = self.create_builder()
+            batch = self.add_batch(builder, tp)
         else:
             batch = pending_batches[-1]
 
@@ -178,8 +189,7 @@ class MessageAccumulator:
             # Batch is full, can't append data atm,
             # waiting until batch per topic-partition is drained
             start = self._loop.time()
-            yield from asyncio.wait(
-                [batch.wait_drain()], timeout=timeout, loop=self._loop)
+            yield from batch.wait_drain(timeout)
             timeout -= self._loop.time() - start
             if timeout <= 0:
                 raise KafkaTimeoutError()
@@ -236,3 +246,34 @@ class MessageAccumulator:
         self._wait_data_future = create_future(loop=self._loop)
 
         return nodes, unknown_leaders_exist
+
+    def create_builder(self):
+        magic = 0 if self._api_version < (0, 10) else 1
+        return BatchBuilder(magic, self._batch_size, self._compression_type)
+
+    def add_batch(self, builder, tp):
+        """Add BatchBuilder to queue by topic-partition.
+
+        This method applies no queue limits, so batches may be enqueued up to
+        memory limits.
+
+        Arguments:
+            builder (BatchBuilder): batch object to enqueue.
+            tp (TopicPartition): topic and partition to enqueue this batch for.
+
+        Returns:
+            asyncio.Future: object that will be set when the batch is delivered
+                to the broker.
+
+        Raises:
+            aiokafka.errors.ProducerClosed: the accumulator has already been
+                closed and flushed.
+        """
+        if self._closed:
+            raise ProducerClosed()
+
+        batch = MessageBatch(tp, builder, self._batch_ttl, self._loop)
+        self._batches[tp].append(batch)
+        if not self._wait_data_future.done():
+            self._wait_data_future.set_result(None)
+        return batch
