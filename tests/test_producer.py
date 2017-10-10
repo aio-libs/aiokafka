@@ -262,7 +262,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         # only fills up to its limits, then returns None
         batch = producer.create_batch()
-        self.assertEqual(len(batch), 0)
+        self.assertEqual(batch.length(), 0)
         num = 0
         while True:
             size = batch.append(key=key, value=value, timestamp=None)
@@ -270,10 +270,11 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 break
             num += 1
         self.assertTrue(num > 0)
-        self.assertEqual(len(batch), num)
+        self.assertEqual(batch.length(), num)
 
         # batch gets properly sent
-        future = producer.send_batch(batch, self.topic, partition)
+        future = yield from producer.send_batch(
+            batch, self.topic, partition=partition)
         resp = yield from future
         self.assertEqual(resp.topic, self.topic)
         self.assertEqual(resp.partition, partition)
@@ -295,7 +296,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         # batch can't be sent after closing time
         with self.assertRaises(ProducerClosed):
-            producer.send_batch(batch, self.topic, partition)
+            yield from producer.send_batch(
+                batch, self.topic, partition=partition)
 
     @run_until_complete
     def test_producer_ssl(self):

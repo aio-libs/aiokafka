@@ -194,12 +194,11 @@ class TestMessageAccumulator(unittest.TestCase):
         key = b"test key"
         value = b"test value"
         builder = BatchBuilder(magic, batch_size, None)
-        self.assertEqual(builder._actual_size, 0)
         self.assertEqual(builder._relative_offset, 0)
         self.assertIsNone(builder._buffer)
         self.assertFalse(builder._closed)
         self.assertEqual(builder.size(), 0)
-        self.assertEqual(len(builder), 0)
+        self.assertEqual(builder.length(), 0)
 
         # adding messages returns size and increments appropriate values
         for num in range(1, msg_count + 1):
@@ -207,9 +206,9 @@ class TestMessageAccumulator(unittest.TestCase):
             msg_size = builder.append(key=key, value=value, timestamp=None)
             self.assertTrue(msg_size > 0)
             self.assertEqual(builder.size(), old_size + msg_size)
-            self.assertEqual(len(builder), num)
+            self.assertEqual(builder.length(), num)
         old_size = builder.size()
-        old_count = len(builder)
+        old_count = builder.length()
 
         # close the builder
         buf = builder._build()
@@ -218,7 +217,8 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertTrue(builder._closed)
 
         # nothing can be added after the builder has been closed
+        old_size = builder.size()
         size = builder.append(key=key, value=value, timestamp=None)
         self.assertEqual(size, 0)
         self.assertEqual(builder.size(), old_size)
-        self.assertEqual(len(builder), old_count)
+        self.assertEqual(builder.length(), old_count)

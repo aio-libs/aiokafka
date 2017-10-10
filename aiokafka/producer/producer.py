@@ -528,16 +528,14 @@ class AIOKafkaProducer(object):
         """
         return self._message_accumulator.create_builder()
 
-    def send_batch(self, builder, topic, partition=None):
+    @asyncio.coroutine
+    def send_batch(self, batch, topic, *, partition):
         """Submit a BatchBuilder for publication.
 
         Arguments:
-            builder (BatchBuilder): batch object to be published.
+            batch (BatchBuilder): batch object to be published.
             topic (str): topic where the batch will be published.
-            partition (int, optional): optionally specify the partition to
-                where this batch will be published. If unset, the partition
-                will be selected using the configured `partitioner` with key
-                and value set to None.
+            partition (int): partition where this batch will be published.
 
         Returns:
             asyncio.Future: object that will be set when the batch is
@@ -546,5 +544,6 @@ class AIOKafkaProducer(object):
         partition = self._partition(topic, partition, None, None, None, None)
         tp = TopicPartition(topic, partition)
         log.debug("Sending batch to %s", tp)
-        batch = self._message_accumulator.add_batch(builder, tp)
-        return batch.future
+        msg_batch = yield from self._message_accumulator.add_batch(
+            batch, tp, self._request_timeout_ms / 1000)
+        return msg_batch.future

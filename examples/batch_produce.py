@@ -15,17 +15,18 @@ async def send_many(num):
 
     i = 0
     while i < num:
-        payload = "Test message %d" % i
-        if not batch.append(key=None, value=payload.encode(), timestamp=None):
+        msg = ("Test message %d" % i).encode("utf-8")
+        size = batch.append(key=None, value=msg, timestamp=None)
+        if size == 0:
             partitions = await producer.partitions_for(topic)
             partition = random.choice(tuple(partitions))
-            await producer.send_batch(batch, topic, partition)
+            await producer.send_batch(batch, topic, partition=partition)
             batch = producer.create_batch()
             continue
         i += 1
     partitions = await producer.partitions_for(topic)
     partition = random.choice(tuple(partitions))
-    await producer.send_batch(batch, topic, partition)
+    await producer.send_batch(batch, topic, partition=partition)
     await producer.stop()
 
 

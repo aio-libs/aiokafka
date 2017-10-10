@@ -18,7 +18,6 @@ class BatchBuilder:
     def __init__(self, magic, batch_size, compression_type):
         self._builder = LegacyRecordBatchBuilder(
             magic, compression_type, batch_size)
-        self._actual_size = 0
         self._relative_offset = 0
         self._buffer = None
         self._closed = False
@@ -34,7 +33,6 @@ class BatchBuilder:
         if actual_size == 0:
             return 0
 
-        self._actual_size += actual_size
         self._relative_offset += 1
         return actual_size
 
@@ -52,9 +50,12 @@ class BatchBuilder:
         return self._buffer
 
     def size(self):
-        return self._actual_size
+        if self._buffer:
+            return self._buffer.getbuffer().nbytes
+        else:
+            return self._builder.size()
 
-    def __len__(self):
+    def length(self):
         return self._relative_offset
 
 
@@ -180,7 +181,7 @@ class MessageAccumulator:
         pending_batches = self._batches.get(tp)
         if not pending_batches:
             builder = self.create_builder()
-            batch = self.add_batch(builder, tp)
+            batch = self._append_batch(builder, tp)
         else:
             batch = pending_batches[-1]
 
@@ -251,29 +252,42 @@ class MessageAccumulator:
         magic = 0 if self._api_version < (0, 10) else 1
         return BatchBuilder(magic, self._batch_size, self._compression_type)
 
-    def add_batch(self, builder, tp):
-        """Add BatchBuilder to queue by topic-partition.
-
-        This method applies no queue limits, so batches may be enqueued up to
-        memory limits.
-
-        Arguments:
-            builder (BatchBuilder): batch object to enqueue.
-            tp (TopicPartition): topic and partition to enqueue this batch for.
-
-        Returns:
-            asyncio.Future: object that will be set when the batch is delivered
-                to the broker.
-
-        Raises:
-            aiokafka.errors.ProducerClosed: the accumulator has already been
-                closed and flushed.
-        """
-        if self._closed:
-            raise ProducerClosed()
-
+    def _append_batch(self, builder, tp):
         batch = MessageBatch(tp, builder, self._batch_ttl, self._loop)
         self._batches[tp].append(batch)
         if not self._wait_data_future.done():
             self._wait_data_future.set_result(None)
         return batch
+
+    @asyncio.coroutine
+    def add_batch(self, builder, tp, timeout):
+        """Add BatchBuilder to queue by topic-partition.
+
+        Arguments:
+            builder (BatchBuilder): batch object to enqueue.
+            tp (TopicPartition): topic and partition to enqueue this batch for.
+            timeout (int): time in seconds to wait for a free slot in the batch
+                queue.
+
+        Returns:
+            MessageBatch: delivery wrapper around the BatchBuilder object.
+                to the broker.
+
+        Raises:
+            aiokafka.errors.ProducerClosed: the accumulator has already been
+                closed and flushed.
+            aiokafka.errors.KafkaTimeoutError: the batch could not be added
+                within the specified timeout.
+        """
+        if self._closed:
+            raise ProducerClosed()
+
+        while timeout > 0:
+            start = self._loop.time()
+            pending = self._batches.get(tp)
+            if pending:
+                yield from pending[-1].wait_drain()
+                timeout -= self._loop.time() - start
+            else:
+                return self._append_batch(builder, tp)
+        raise KafkaTimeoutError()
