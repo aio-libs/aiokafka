@@ -55,7 +55,7 @@ class BatchBuilder:
         else:
             return self._builder.size()
 
-    def length(self):
+    def record_count(self):
         return self._relative_offset
 
 
@@ -271,7 +271,6 @@ class MessageAccumulator:
 
         Returns:
             MessageBatch: delivery wrapper around the BatchBuilder object.
-                to the broker.
 
         Raises:
             aiokafka.errors.ProducerClosed: the accumulator has already been
@@ -282,11 +281,11 @@ class MessageAccumulator:
         if self._closed:
             raise ProducerClosed()
 
+        start = self._loop.time()
         while timeout > 0:
-            start = self._loop.time()
             pending = self._batches.get(tp)
             if pending:
-                yield from pending[-1].wait_drain()
+                yield from pending[-1].wait_drain(timeout=timeout)
                 timeout -= self._loop.time() - start
             else:
                 return self._append_batch(builder, tp)

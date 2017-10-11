@@ -262,7 +262,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         # only fills up to its limits, then returns None
         batch = producer.create_batch()
-        self.assertEqual(batch.length(), 0)
+        self.assertEqual(batch.record_count(), 0)
         num = 0
         while True:
             size = batch.append(key=key, value=value, timestamp=None)
@@ -270,7 +270,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 break
             num += 1
         self.assertTrue(num > 0)
-        self.assertEqual(batch.length(), num)
+        self.assertEqual(batch.record_count(), num)
 
         # batch gets properly sent
         future = yield from producer.send_batch(

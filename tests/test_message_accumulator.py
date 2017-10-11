@@ -198,7 +198,7 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertIsNone(builder._buffer)
         self.assertFalse(builder._closed)
         self.assertEqual(builder.size(), 0)
-        self.assertEqual(builder.length(), 0)
+        self.assertEqual(builder.record_count(), 0)
 
         # adding messages returns size and increments appropriate values
         for num in range(1, msg_count + 1):
@@ -206,9 +206,9 @@ class TestMessageAccumulator(unittest.TestCase):
             msg_size = builder.append(key=key, value=value, timestamp=None)
             self.assertTrue(msg_size > 0)
             self.assertEqual(builder.size(), old_size + msg_size)
-            self.assertEqual(builder.length(), num)
+            self.assertEqual(builder.record_count(), num)
         old_size = builder.size()
-        old_count = builder.length()
+        old_count = builder.record_count()
 
         # close the builder
         buf = builder._build()
@@ -221,4 +221,45 @@ class TestMessageAccumulator(unittest.TestCase):
         size = builder.append(key=key, value=value, timestamp=None)
         self.assertEqual(size, 0)
         self.assertEqual(builder.size(), old_size)
-        self.assertEqual(builder.length(), old_count)
+        self.assertEqual(builder.record_count(), old_count)
+
+    @run_until_complete
+    def test_add_batch_builder(self):
+        tp0 = TopicPartition("test-topic", 0)
+        tp1 = TopicPartition("test-topic", 1)
+
+        def mocked_leader_for_partition(tp):
+            if tp == tp0:
+                return 0
+            if tp == tp1:
+                return 1
+            return None
+
+        cluster = ClusterMetadata(metadata_max_age_ms=10000)
+        cluster.leader_for_partition = mock.MagicMock()
+        cluster.leader_for_partition.side_effect = mocked_leader_for_partition
+
+        ma = MessageAccumulator(cluster, 1000, 0, 1, self.loop)
+        builder0 = ma.create_builder()
+        builder1_1 = ma.create_builder()
+        builder1_2 = ma.create_builder()
+
+        # batches may queued one-per-TP
+        self.assertFalse(ma._wait_data_future.done())
+        yield from ma.add_batch(builder0, tp0, 1)
+        self.assertTrue(ma._wait_data_future.done())
+        self.assertEqual(len(ma._batches[tp0]), 1)
+
+        yield from ma.add_batch(builder1_1, tp1, 1)
+        self.assertEqual(len(ma._batches[tp1]), 1)
+        with self.assertRaises(KafkaTimeoutError):
+            yield from ma.add_batch(builder1_2, tp1, 0.1)
+        self.assertTrue(ma._wait_data_future.done())
+        self.assertEqual(len(ma._batches[tp1]), 1)
+
+        # second batch gets added once the others are cleared out
+        self.loop.call_later(0.1, ma.drain_by_nodes, [])
+        yield from ma.add_batch(builder1_2, tp1, 1)
+        self.assertTrue(ma._wait_data_future.done())
+        self.assertEqual(len(ma._batches[tp0]), 0)
+        self.assertEqual(len(ma._batches[tp1]), 1)
