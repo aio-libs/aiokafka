@@ -93,7 +93,8 @@ class MessageBatch:
         self._msg_futures.append((future, metadata))
         return future
 
-    def done(self, base_offset, timestamp=None):
+    def done(self, base_offset, timestamp=None,
+             _record_metadata_class=RecordMetadata):
         """Resolve all pending futures"""
         tp = self._tp
         topic = tp.topic
@@ -104,11 +105,9 @@ class MessageBatch:
             timestamp_type = 1
 
         # Set main batch future
-        res = RecordMetadata(
-            topic, partition, tp, base_offset,
-            timestamp, timestamp_type)
         if not self.future.done():
-            self.future.set_result(res)
+            self.future.set_result(_record_metadata_class(
+                topic, partition, tp, base_offset, timestamp, timestamp_type))
 
         # Set message futures
         for future, metadata in self._msg_futures:
@@ -119,7 +118,8 @@ class MessageBatch:
             if timestamp == -1:
                 timestamp = metadata.timestamp
             offset = base_offset + metadata.offset
-            future.set_result(res._replace(timestamp=timestamp, offset=offset))
+            future.set_result(_record_metadata_class(
+                topic, partition, tp, offset, timestamp, timestamp_type))
 
     def done_noack(self):
         """ Resolve all pending futures to None """
