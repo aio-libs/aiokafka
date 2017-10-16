@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import io
+from weakref import ref
 
 from kafka.protocol.types import Int32
 
@@ -76,7 +77,8 @@ class MessageBatch:
         # Set when sender takes this batch
         self._drain_waiter = create_future(loop=loop)
 
-    def append(self, key, value, timestamp_ms, _create_future=create_future):
+    def append(self, key, value, timestamp_ms, _create_future=create_future,
+               _ref=ref):
         """Append message (key and value) to batch
 
         Returns:
@@ -90,7 +92,7 @@ class MessageBatch:
             return None
 
         future = _create_future(loop=self._loop)
-        self._msg_futures.append((future, metadata))
+        self._msg_futures.append((_ref(future), metadata))
         return future
 
     def done(self, base_offset, timestamp=None):
@@ -111,8 +113,9 @@ class MessageBatch:
             self.future.set_result(res)
 
         # Set message futures
-        for future, metadata in self._msg_futures:
-            if future.done():
+        for future_ref, metadata in self._msg_futures:
+            future = future_ref()
+            if future is None or future.done():
                 continue
             # If timestamp returned by broker is -1 it means we need to take
             # the timestamp sent by user.
