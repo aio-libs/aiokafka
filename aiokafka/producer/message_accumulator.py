@@ -24,17 +24,17 @@ class BatchBuilder:
 
     def append(self, *, timestamp, key, value):
         if self._closed:
-            return 0
+            return None
 
-        crc, actual_size = self._builder.append(
+        metadata = self._builder.append(
             self._relative_offset, timestamp, key, value)
 
         # Check if we could add the message
-        if actual_size == 0:
-            return 0
+        if metadata is None:
+            return None
 
         self._relative_offset += 1
-        return actual_size
+        return metadata
 
     def close(self):
         if self._closed:
@@ -76,7 +76,7 @@ class MessageBatch:
         # Set when sender takes this batch
         self._drain_waiter = create_future(loop=loop)
 
-    def append(self, key, value, timestamp_ms):
+    def append(self, key, value, timestamp_ms, _create_future=create_future):
         """Append message (key and value) to batch
 
         Returns:
@@ -84,32 +84,60 @@ class MessageBatch:
               or
             asyncio.Future that will resolved when message is delivered
         """
-        size = self._builder.append(
+        metadata = self._builder.append(
             timestamp=timestamp_ms, key=key, value=value)
-        if size == 0:
+        if metadata is None:
             return None
 
-        future = create_future(loop=self._loop)
-        self._msg_futures.append(future)
+        future = _create_future(loop=self._loop)
+        self._msg_futures.append((future, metadata))
         return future
 
-    def done(self, base_offset=None, exception=None):
+    def done(self, base_offset, timestamp=None):
         """Resolve all pending futures"""
-        for relative_offset, future in enumerate(self._msg_futures):
-            self._set_future(future, base_offset, relative_offset, exception)
-        self._set_future(self.future, base_offset, 0, exception)
-
-    def _set_future(self, future, base_offset, relative_offset, exception):
-        if future.done():
-            return
-        if exception is not None:
-            future.set_exception(exception)
-        elif base_offset is None:
-            future.set_result(None)
+        tp = self._tp
+        topic = tp.topic
+        partition = tp.partition
+        if timestamp == -1:
+            timestamp_type = 0
         else:
-            res = RecordMetadata(self._tp.topic, self._tp.partition,
-                                 self._tp, base_offset + relative_offset)
-            future.set_result(res)
+            timestamp_type = 1
+
+        # Set main batch future
+        res = RecordMetadata(
+            topic, partition, tp, base_offset,
+            timestamp, timestamp_type)
+        if not self.future.done():
+            self.future.set_result(res)
+
+        # Set message futures
+        for future, metadata in self._msg_futures:
+            if future.done():
+                continue
+            # If timestamp returned by broker is -1 it means we need to take
+            # the timestamp sent by user.
+            if timestamp == -1:
+                timestamp = metadata.timestamp
+            offset = base_offset + metadata.offset
+            future.set_result(res._replace(timestamp=timestamp, offset=offset))
+
+    def done_noack(self):
+        """ Resolve all pending futures to None """
+        # Faster resolve for base_offset=None case.
+        if not self.future.done():
+            self.future.set_result(None)
+        for future, _ in self._msg_futures:
+            if future.done():
+                continue
+            future.set_result(None)
+
+    def failure(self, exception):
+        if not self.future.done():
+            self.future.set_exception(exception)
+        for future, _ in self._msg_futures:
+            if future.done():
+                continue
+            future.set_exception(exception)
 
     def wait_deliver(self, timeout=None):
         """Wait until all message from this batch is processed"""
@@ -230,7 +258,7 @@ class MessageAccumulator:
                         err = NotLeaderForPartitionError()
                     else:
                         err = LeaderNotAvailableError()
-                    batch.done(exception=err)
+                    batch.failure(exception=err)
                 unknown_leaders_exist = True
                 continue
             elif ignore_nodes and leader in ignore_nodes:
@@ -288,5 +316,6 @@ class MessageAccumulator:
                 yield from pending[-1].wait_drain(timeout=timeout)
                 timeout -= self._loop.time() - start
             else:
-                return self._append_batch(builder, tp)
+                batch = self._append_batch(builder, tp)
+                return asyncio.shield(batch.future, loop=self._loop)
         raise KafkaTimeoutError()

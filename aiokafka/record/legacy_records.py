@@ -306,7 +306,7 @@ class LegacyRecordBatchBuilder(LegacyRecordBase):
         size = self.size_in_bytes(offset, timestamp, key, value)
         # We always allow at least one record to be appended
         if offset != 0 and pos + size >= self._batch_size:
-            return None, 0
+            return None
 
         # Allocate proper buffer length
         self._buffer.extend(bytearray(size))
@@ -314,7 +314,7 @@ class LegacyRecordBatchBuilder(LegacyRecordBase):
         # Encode message
         crc = self._encode_msg(pos, offset, timestamp, key, value)
 
-        return crc, size
+        return LegacyRecordMetadata(offset, crc, size, timestamp)
 
     def _encode_msg(self, start_pos, offset, timestamp, key, value,
                     attributes=0):
@@ -424,3 +424,30 @@ class LegacyRecordBatchBuilder(LegacyRecordBase):
             return cls.RECORD_OVERHEAD_V0
         else:
             return cls.RECORD_OVERHEAD_V1
+
+
+class LegacyRecordMetadata:
+
+    __slots__ = ("_crc", "_size", "_timestamp", "_offset")
+
+    def __init__(self, offset, crc, size, timestamp):
+        self._offset = offset
+        self._crc = crc
+        self._size = size
+        self._timestamp = timestamp
+
+    @property
+    def offset(self):
+        return self._offset
+
+    @property
+    def crc(self):
+        return self._crc
+
+    @property
+    def size(self):
+        return self._size
+
+    @property
+    def timestamp(self):
+        return self._timestamp
