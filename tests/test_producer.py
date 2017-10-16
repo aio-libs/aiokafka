@@ -9,7 +9,7 @@ from kafka.common import (KafkaTimeoutError,
                           NotLeaderForPartitionError,
                           LeaderNotAvailableError,
                           RequestTimedOutError)
-from kafka.protocol.produce import ProduceResponse_v0 as ProduceResponse
+from kafka.protocol.produce import ProduceResponse
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -17,6 +17,8 @@ from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import ProducerClosed
+
+LOG_APPEND_TIME = 1
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
@@ -216,7 +218,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         @asyncio.coroutine
         def mocked_send(nodeid, req):
             # RequestTimedOutCode error for partition=0
-            return ProduceResponse([(self.topic, [(0, 7, 0), (1, 0, 111)])])
+            return ProduceResponse[0]([(self.topic, [(0, 7, 0), (1, 0, 111)])])
 
         with mock.patch.object(producer.client, 'send') as mocked:
             mocked.side_effect = mocked_send
@@ -231,7 +233,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         def mocked_send_with_sleep(nodeid, req):
             # RequestTimedOutCode error for partition=0
             yield from asyncio.sleep(0.1, loop=self.loop)
-            return ProduceResponse([(self.topic, [(0, 7, 0)])])
+            return ProduceResponse[0]([(self.topic, [(0, 7, 0)])])
 
         with mock.patch.object(producer.client, 'send') as mocked:
             mocked.side_effect = mocked_send_with_sleep
@@ -265,8 +267,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(batch.record_count(), 0)
         num = 0
         while True:
-            size = batch.append(key=key, value=value, timestamp=None)
-            if size == 0:
+            metadata = batch.append(key=key, value=value, timestamp=None)
+            if metadata is None:
                 break
             num += 1
         self.assertTrue(num > 0)
@@ -283,15 +285,14 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # batch accepts a too-large message if it's the first
         too_large = b'm' * (max_batch_size + 1)
         batch = producer.create_batch()
-        self.assertNotEqual(
-            batch.append(key=None, value=too_large, timestamp=None), 0)
+        metadata = batch.append(key=None, value=too_large, timestamp=None)
+        self.assertIsNotNone(metadata)
 
         # batch rejects a too-large message if it's not the first
         batch = producer.create_batch()
         batch.append(key=None, value=b"short", timestamp=None)
-        self.assertEqual(
-            batch.append(key=None, value=too_large, timestamp=None), 0)
-
+        metadata = batch.append(key=None, value=too_large, timestamp=None)
+        self.assertIsNone(metadata)
         yield from producer.stop()
 
         # batch can't be sent after closing time
@@ -352,3 +353,28 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         yield from producer.flush()
         self.assertTrue(fut1.done())
         self.assertTrue(fut2.done())
+
+    @run_until_complete
+    def test_producer_log_append_time_returned(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        yield from producer.start()
+
+        expected_timestamp = 999999999
+
+        @asyncio.coroutine
+        def mocked_send(*args, **kw):
+            # There's no easy way to set LOG_APPEND_TIME on server, so use this
+            # hack for now.
+            return ProduceResponse[2](
+                topics=[
+                    ('XXXX', [(0, 0, 0, expected_timestamp)])],
+                throttle_time_ms=0)
+
+        with mock.patch.object(producer.client, 'send') as mocked:
+            mocked.side_effect = mocked_send
+
+            res = yield from producer.send_and_wait(
+                "XXXX", b'text1', partition=0)
+            self.assertEqual(res.timestamp_type, LOG_APPEND_TIME)
+            self.assertEqual(res.timestamp, expected_timestamp)

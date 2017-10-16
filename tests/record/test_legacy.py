@@ -114,19 +114,19 @@ def test_legacy_batch_size_limit(magic):
     # First message can be added even if it's too big
     builder = LegacyRecordBatchBuilder(
         magic=magic, compression_type=0, batch_size=1024)
-    crc, size = builder.append(0, timestamp=None, key=None, value=b"M" * 2000)
-    assert size > 0
-    assert crc is not None
+    meta = builder.append(0, timestamp=None, key=None, value=b"M" * 2000)
+    assert meta.size > 0
+    assert meta.crc is not None
+    assert meta.offset == 0
+    assert meta.timestamp is not None
     assert len(builder.build()) > 2000
 
     builder = LegacyRecordBatchBuilder(
         magic=magic, compression_type=0, batch_size=1024)
-    crc, size = builder.append(0, timestamp=None, key=None, value=b"M" * 700)
-    assert size > 0
-    crc, size = builder.append(1, timestamp=None, key=None, value=b"M" * 700)
-    assert size == 0
-    assert crc is None
-    crc, size = builder.append(2, timestamp=None, key=None, value=b"M" * 700)
-    assert size == 0
-    assert crc is None
+    meta = builder.append(0, timestamp=None, key=None, value=b"M" * 700)
+    assert meta is not None
+    meta = builder.append(1, timestamp=None, key=None, value=b"M" * 700)
+    assert meta is None
+    meta = builder.append(2, timestamp=None, key=None, value=b"M" * 700)
+    assert meta is None
     assert len(builder.build()) < 1000

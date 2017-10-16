@@ -159,7 +159,7 @@ class TestMessageAccumulator(unittest.TestCase):
         class TestException(Exception):
             pass
 
-        batches[1][tp1].done(exception=TestException())
+        batches[1][tp1].failure(exception=TestException())
 
         res = yield from fut01
         self.assertEqual(res.topic, "test-topic")
@@ -175,7 +175,7 @@ class TestMessageAccumulator(unittest.TestCase):
         fut01 = yield from ma.add_message(
             tp0, b'key0', b'value#0', timeout=2)
         batches, _ = ma.drain_by_nodes(ignore_nodes=[])
-        batches[0][tp0].done(base_offset=None)
+        batches[0][tp0].done_noack()
         res = yield from fut01
         self.assertEqual(res, None)
 
@@ -203,7 +203,9 @@ class TestMessageAccumulator(unittest.TestCase):
         # adding messages returns size and increments appropriate values
         for num in range(1, msg_count + 1):
             old_size = builder.size()
-            msg_size = builder.append(key=key, value=value, timestamp=None)
+            metadata = builder.append(key=key, value=value, timestamp=None)
+            self.assertIsNotNone(metadata)
+            msg_size = metadata.size
             self.assertTrue(msg_size > 0)
             self.assertEqual(builder.size(), old_size + msg_size)
             self.assertEqual(builder.record_count(), num)
@@ -218,8 +220,8 @@ class TestMessageAccumulator(unittest.TestCase):
 
         # nothing can be added after the builder has been closed
         old_size = builder.size()
-        size = builder.append(key=key, value=value, timestamp=None)
-        self.assertEqual(size, 0)
+        metadata = builder.append(key=key, value=value, timestamp=None)
+        self.assertIsNone(metadata)
         self.assertEqual(builder.size(), old_size)
         self.assertEqual(builder.record_count(), old_count)
 

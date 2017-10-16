@@ -408,7 +408,6 @@ class AIOKafkaProducer(object):
             topics=list(topics.items()))
 
         reenqueue = []
-
         try:
             response = yield from self.client.send(node_id, request)
         except KafkaError as err:
@@ -419,21 +418,24 @@ class AIOKafkaProducer(object):
 
             for batch in batches.values():
                 if not self._can_retry(err, batch):
-                    batch.done(exception=err)
+                    batch.failure(exception=err)
                 else:
                     reenqueue.append(batch)
         else:
             # noacks, just mark batches as "done"
             if request.required_acks == 0:
                 for batch in batches.values():
-                    batch.done()
+                    batch.done_noack()
             else:
                 for topic, partitions in response.topics:
                     for partition_info in partitions:
                         if response.API_VERSION < 2:
                             partition, error_code, offset = partition_info
+                            # Mimic CREATE_TIME to take user provided timestamp
+                            timestamp = -1
                         else:
-                            partition, error_code, offset, _ = partition_info
+                            partition, error_code, offset, timestamp = \
+                                partition_info
                         tp = TopicPartition(topic, partition)
                         error = Errors.for_code(error_code)
                         batch = batches.pop(tp, None)
@@ -441,9 +443,9 @@ class AIOKafkaProducer(object):
                             continue
 
                         if error is Errors.NoError:
-                            batch.done(offset)
+                            batch.done(offset, timestamp)
                         elif not self._can_retry(error(), batch):
-                            batch.done(exception=error())
+                            batch.failure(exception=error())
                         else:
                             log.warning(
                                 "Got error produce response on topic-partition"
@@ -544,6 +546,6 @@ class AIOKafkaProducer(object):
         partition = self._partition(topic, partition, None, None, None, None)
         tp = TopicPartition(topic, partition)
         log.debug("Sending batch to %s", tp)
-        msg_batch = yield from self._message_accumulator.add_batch(
+        future = yield from self._message_accumulator.add_batch(
             batch, tp, self._request_timeout_ms / 1000)
-        return msg_batch.future
+        return future
