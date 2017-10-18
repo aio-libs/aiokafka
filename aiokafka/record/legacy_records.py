@@ -427,7 +427,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
             return cls.RECORD_OVERHEAD_V1
 
 
-class LegacyRecordMetadata:
+class _LegacyRecordMetadataPy:
 
     __slots__ = ("_crc", "_size", "_timestamp", "_offset")
 
@@ -453,15 +453,25 @@ class LegacyRecordMetadata:
     def timestamp(self):
         return self._timestamp
 
+    def __repr__(self):
+        return (
+            "LegacyRecordMetadata(offset={!r}, crc={!r}, size={!r},"
+            " timestamp={!r})".format(
+                self._offset, self._crc, self._size, self._timestamp)
+        )
+
 
 if NO_EXTENSIONS:
     LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
-    print("py")
+    LegacyRecordMetadata = _LegacyRecordMetadataPy
 else:
-    # try:
-        from ._legacy_records import _LegacyRecordBatchBuilderCython
+    try:
+        from ._legacy_records import (
+            _LegacyRecordBatchBuilderCython,
+            LegacyRecordMetadata as _LegacyRecordMetadataCython
+        )
         LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderCython
-        print("cext")
-    # except ImportError as err:  # pragma: no cover
-    #     LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
-    #     print("py_fall", err)
+        LegacyRecordMetadata = _LegacyRecordMetadataCython
+    except ImportError as err:  # pragma: no cover
+        LegacyRecordMetadata = _LegacyRecordMetadataPy
+        LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy

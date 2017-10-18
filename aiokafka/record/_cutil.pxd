@@ -1,4 +1,5 @@
 from libc.stdint cimport int64_t
+from libc.limits cimport UINT_MAX
 from cpython cimport PyBUF_READ
 cdef extern from "Python.h":
     object PyMemoryView_FromMemory(char *mem, ssize_t size, int flags)
@@ -69,16 +70,40 @@ ELSE:
 
 IF UNAME_SYSNAME == "Windows":
     from zlib import crc32 as py_crc32
-    cdef inline unsigned long crc32(
-            unsigned long crc, unsigned char *buf, unsigned int len) except -1:
+    cdef inline unsigned long calc_crc32(
+            unsigned long crc, unsigned char *buf, Py_ssize_t len) except -1:
         cdef:
             object memview
-        memview = PyMemoryView_FromMemory(
-            <char *>buf, <Py_ssize_t>len, PyBUF_READ)
+        memview = PyMemoryView_FromMemory(<char *>buf, len, PyBUF_READ)
         return py_crc32(memview)
 ELSE:
     cdef extern from "zlib.h":
         unsigned long crc32(
-            unsigned long crc, const unsigned char *buf, unsigned int len)
+            unsigned long crc, const unsigned char *buf, unsigned int len) nogil
+
+    cdef inline unsigned long calc_crc32(
+            unsigned long crc, unsigned char *buf, Py_ssize_t len) except -1:
+        """ Implementation taken from Python's zlib source.
+        """
+        cdef:
+            unsigned long signed_val
+
+        # Releasing the GIL for very small buffers is inefficient
+        # and may lower performance
+        if len > 1024*5:
+            with nogil:
+                # Avoid truncation of length for very large buffers. crc32()
+                # takes length as an unsigned int, which may be narrower than
+                # Py_ssize_t.
+                while (<size_t>len > UINT_MAX):
+                    crc = crc32(crc, buf, UINT_MAX)
+                    buf += <size_t> UINT_MAX
+                    len -= <size_t> UINT_MAX
+                signed_val = crc32(crc, buf, <unsigned int> len)
+        else:
+            signed_val = crc32(crc, buf, <unsigned int> len)
+
+        return signed_val & 0xffffffff
+
 # END: CRC32 function
 

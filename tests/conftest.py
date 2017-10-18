@@ -10,6 +10,15 @@ import pathlib
 import shutil
 import subprocess
 
+from aiokafka.record.legacy_records import (
+    LegacyRecordBatchBuilder, _LegacyRecordBatchBuilderPy)
+from aiokafka.util import NO_EXTENSIONS
+
+if not NO_EXTENSIONS:
+    assert LegacyRecordBatchBuilder is not _LegacyRecordBatchBuilderPy, \
+        "Expected to run tests with C extension, but it was not imported. "\
+        "To run tests without a C extensions set NO_EXTENSIONS=1 env veriable"
+
 
 def pytest_addoption(parser):
     parser.addoption('--docker-image',

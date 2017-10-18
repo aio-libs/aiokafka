@@ -193,7 +193,7 @@ class TestMessageAccumulator(unittest.TestCase):
         msg_count = 3
         key = b"test key"
         value = b"test value"
-        builder = BatchBuilder(magic, batch_size, None)
+        builder = BatchBuilder(magic, batch_size, 0)
         self.assertEqual(builder._relative_offset, 0)
         self.assertIsNone(builder._buffer)
         self.assertFalse(builder._closed)

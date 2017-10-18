@@ -47,6 +47,8 @@ DEF ATTR_CODEC_GZIP = 0x01
 DEF ATTR_CODEC_SNAPPY = 0x02
 DEF ATTR_CODEC_LZ4 = 0x03
 
+DEF LEGACY_RECORD_METADATA_FREELIST_SIZE = 20
+
 
 cdef class _LegacyRecordBatchBuilderCython:
 
@@ -75,6 +77,8 @@ cdef class _LegacyRecordBatchBuilderCython:
             Py_ssize_t size
             char *buf
             int64_t ts
+            LegacyRecordMetadata metadata
+            uint32_t crc
 
         if timestamp is None:
             ts = cutil.get_time_as_unix_ms()
@@ -86,18 +90,19 @@ cdef class _LegacyRecordBatchBuilderCython:
         size = _size_in_bytes(self._magic, key, value)
         # We always allow at least one record to be appended
         if offset != 0 and pos + size >= self._batch_size:
-            return None, 0
+            return None
 
         # Allocate proper buffer length
         PyByteArray_Resize(self._buffer, pos + size)
 
         # Encode message
         buf = PyByteArray_AS_STRING(self._buffer)
-        crc = _encode_msg(
+        _encode_msg(
             self._magic, pos, buf,
-            offset, ts, key, value, 0)
+            offset, ts, key, value, 0, &crc)
 
-        return crc, size
+        metadata = LegacyRecordMetadata.new(offset, crc, size, ts)
+        return metadata
 
     def size(self):
         """ Return current size of data written to buffer
@@ -123,6 +128,7 @@ cdef class _LegacyRecordBatchBuilderCython:
             object compressed
             char *buf
             Py_ssize_t size
+            uint32_t crc
 
         if self._compression_type != 0:
             if self._compression_type == ATTR_CODEC_GZIP:
@@ -144,7 +150,7 @@ cdef class _LegacyRecordBatchBuilderCython:
             _encode_msg(
                 self._magic, start_pos=0, buf=buf,
                 offset=0, timestamp=0, key=None, value=compressed,
-                attributes=self._compression_type)
+                attributes=self._compression_type, crc_out=&crc)
             return 1
         return 0
 
@@ -182,10 +188,10 @@ cdef Py_ssize_t _size_in_bytes(char magic, object key, object value) except -1:
         return LOG_OVERHEAD + RECORD_OVERHEAD_V1_DEF + key_len + value_len
 
 
-cdef object _encode_msg(
+cdef int _encode_msg(
         char magic, Py_ssize_t start_pos, char *buf,
         long offset, long timestamp, object key, object value,
-        char attributes):
+        char attributes, uint32_t* crc_out) except -1:
     """ Encode msg data into the `msg_buffer`, which should be allocated
         to at least the size of this message.
     """
@@ -229,14 +235,52 @@ cdef object _encode_msg(
     if magic == 1:
         hton.pack_int64(&buf[start_pos + TIMESTAMP_OFFSET], <int64_t>timestamp)
 
-    # Calculate CRC for msg
-    # FIXME: This implementation may fail for large blocks. It should call
-    #        crc in cycle per each block of MAX_UINT size
-    crc = <uint32_t> cutil.crc32(
+    crc = <uint32_t> cutil.calc_crc32(
         0,
         <unsigned char*> &buf[start_pos + MAGIC_OFFSET],
-        <unsigned int> (pos - (start_pos + MAGIC_OFFSET))
+        (pos - (start_pos + MAGIC_OFFSET))
     )
     hton.pack_int32(&buf[start_pos + CRC_OFFSET], <int32_t> crc)
 
-    return crc
+    crc_out[0] = crc
+    return 0
+
+
+@cython.no_gc_clear
+@cython.final
+@cython.freelist(LEGACY_RECORD_METADATA_FREELIST_SIZE)
+cdef class LegacyRecordMetadata:
+
+    cdef:
+        readonly int64_t offset
+        readonly uint32_t crc
+        readonly Py_ssize_t size
+        readonly int64_t timestamp
+
+    def __init__(self, int64_t offset, uint32_t crc, Py_ssize_t size,
+                 int64_t timestamp):
+        self.offset = offset
+        self.crc = crc
+        self.size = size
+        self.timestamp = timestamp
+
+    @staticmethod
+    cdef inline LegacyRecordMetadata new(
+            int64_t offset, uint32_t crc, Py_ssize_t size,
+            int64_t timestamp):
+        """ Fast constructor to initialize from C.
+        """
+        cdef LegacyRecordMetadata metadata
+        metadata = LegacyRecordMetadata.__new__(LegacyRecordMetadata)
+        metadata.offset = offset
+        metadata.crc = crc
+        metadata.size = size
+        metadata.timestamp = timestamp
+        return metadata
+
+    def __repr__(self):
+        return (
+            "LegacyRecordMetadata(offset={!r}, crc={!r}, size={!r},"
+            " timestamp={!r})".format(
+                self.offset, self.crc, self.size, self.timestamp)
+        )
