@@ -34,10 +34,9 @@ class BatchBuilder:
                 both be None.
 
         Returns:
-            The size in bytes of the encoded message added to this batch. If 0,
-            the message was not added either because the batch has already been
-            closed or because the message was too large to fit in the batch's
-            remaining space.
+            If the message was successfully added, returns a metadata object
+            with crc, offset, size, and timestamp fields. If the batch is full
+            or closed, returns None.
         """
         if self._closed:
             return None
