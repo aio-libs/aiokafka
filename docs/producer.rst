@@ -135,4 +135,4 @@ While any number of batches may be created, only a single batch per partition
 is sent at a time. Additional calls to ``send_batch()`` against the same
 partition will wait for the inflight batch to be delivered before sending.
 
-Upon delivery, ``RecordMetadata.offset`` will match the batch's first message.
+Upon delivery, ``record.offset`` will match the batch's first message.
