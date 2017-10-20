@@ -1,5 +1,6 @@
 import json
 import asyncio
+import time
 from unittest import mock
 
 from kafka.cluster import ClusterMetadata
@@ -129,7 +130,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # expect offset +1
         self.assertEqual(resp.offset, offset + 1)
 
-        value[23] = '*VALUE'*800
+        value[23] = '*VALUE' * 800
         with self.assertRaises(MessageSizeTooLargeError):
             yield from producer.send(self.topic, value, key=key)
 
@@ -157,7 +158,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         # now message will be compressed
         resp = yield from producer.send_and_wait(
-            self.topic, b'large_message-'*100)
+            self.topic, b'large_message-' * 100)
         self.assertEqual(resp.topic, self.topic)
         self.assertTrue(resp.partition in (0, 1))
         yield from producer.stop()
@@ -355,10 +356,19 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertTrue(fut2.done())
 
     @run_until_complete
-    def test_producer_log_append_time_returned(self):
+    def test_producer_correct_time_returned(self):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
+
+        send_time = (time.time() * 1000)
+        res = yield from producer.send_and_wait(
+            "XXXX", b'text1', partition=0)
+        self.assertLess(res.timestamp - send_time, 1000)  # 1s
+
+        res = yield from producer.send_and_wait(
+            "XXXX", b'text1', partition=0, timestamp_ms=123123123)
+        self.assertEqual(res.timestamp, 123123123)
 
         expected_timestamp = 999999999
 

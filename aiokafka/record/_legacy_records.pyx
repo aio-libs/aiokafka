@@ -80,7 +80,9 @@ cdef class _LegacyRecordBatchBuilderCython:
             LegacyRecordMetadata metadata
             uint32_t crc
 
-        if timestamp is None:
+        if self._magic == 0:
+            ts = -1
+        elif timestamp is None:
             ts = cutil.get_time_as_unix_ms()
         else:
             ts = timestamp

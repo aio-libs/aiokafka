@@ -289,7 +289,9 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
         # Check types
         if type(offset) != int:
             raise TypeError(offset)
-        if timestamp is None:
+        if self._magic == 0:
+            timestamp = -1
+        elif timestamp is None:
             timestamp = int(time.time() * 1000)
         elif type(timestamp) != int:
             raise TypeError(timestamp)
