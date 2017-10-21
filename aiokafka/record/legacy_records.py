@@ -4,6 +4,7 @@ import time
 from .util import calc_crc32
 
 from aiokafka.errors import CorruptRecordException
+from aiokafka.util import NO_EXTENSIONS
 from kafka.codec import (
     gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
     gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka
@@ -274,7 +275,7 @@ class LegacyRecord:
         )
 
 
-class LegacyRecordBatchBuilder(LegacyRecordBase):
+class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
 
     def __init__(self, magic, compression_type, batch_size):
         self._magic = magic
@@ -288,7 +289,9 @@ class LegacyRecordBatchBuilder(LegacyRecordBase):
         # Check types
         if type(offset) != int:
             raise TypeError(offset)
-        if timestamp is None:
+        if self._magic == 0:
+            timestamp = -1
+        elif timestamp is None:
             timestamp = int(time.time() * 1000)
         elif type(timestamp) != int:
             raise TypeError(timestamp)
@@ -426,7 +429,7 @@ class LegacyRecordBatchBuilder(LegacyRecordBase):
             return cls.RECORD_OVERHEAD_V1
 
 
-class LegacyRecordMetadata:
+class _LegacyRecordMetadataPy:
 
     __slots__ = ("_crc", "_size", "_timestamp", "_offset")
 
@@ -451,3 +454,26 @@ class LegacyRecordMetadata:
     @property
     def timestamp(self):
         return self._timestamp
+
+    def __repr__(self):
+        return (
+            "LegacyRecordMetadata(offset={!r}, crc={!r}, size={!r},"
+            " timestamp={!r})".format(
+                self._offset, self._crc, self._size, self._timestamp)
+        )
+
+
+if NO_EXTENSIONS:
+    LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
+    LegacyRecordMetadata = _LegacyRecordMetadataPy
+else:
+    try:
+        from ._legacy_records import (
+            _LegacyRecordBatchBuilderCython,
+            LegacyRecordMetadata as _LegacyRecordMetadataCython
+        )
+        LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderCython
+        LegacyRecordMetadata = _LegacyRecordMetadataCython
+    except ImportError as err:  # pragma: no cover
+        LegacyRecordMetadata = _LegacyRecordMetadataPy
+        LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy

@@ -306,9 +306,11 @@ class AIOKafkaProducer(object):
         return fut
 
     @asyncio.coroutine
-    def send_and_wait(self, topic, value=None, key=None, partition=None):
+    def send_and_wait(self, topic, value=None, key=None, partition=None,
+                      timestamp_ms=None):
         """Publish a message to a topic and wait the result"""
-        future = yield from self.send(topic, value, key, partition)
+        future = yield from self.send(
+            topic, value, key, partition, timestamp_ms)
         return (yield from future)
 
     @asyncio.coroutine

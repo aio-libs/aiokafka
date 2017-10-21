@@ -84,9 +84,10 @@ def test_legacy_batch_builder_validates_arguments(magic):
             0, timestamp=9999999, key=None, value="some string")
 
     # Timestamp should be of proper type
-    with pytest.raises(TypeError):
-        builder.append(
-            0, timestamp="1243812793", key=None, value=b"some string")
+    if magic != 0:
+        with pytest.raises(TypeError):
+            builder.append(
+                0, timestamp="1243812793", key=None, value=b"some string")
 
     # Offset of invalid type
     with pytest.raises(TypeError):
@@ -107,6 +108,22 @@ def test_legacy_batch_builder_validates_arguments(magic):
 
     # in case error handling code fails to fix inner buffer in builder
     assert len(builder.build()) == 119 if magic else 95
+
+
+@pytest.mark.parametrize("magic", [0, 1])
+def test_legacy_correct_metadata_response(magic):
+    builder = LegacyRecordBatchBuilder(
+        magic=magic, compression_type=0, batch_size=1024 * 1024)
+    meta = builder.append(
+        0, timestamp=9999999, key=b"test", value=b"Super")
+
+    assert meta.offset == 0
+    assert meta.timestamp == (9999999 if magic else -1)
+    assert meta.crc == (-2095076219 if magic else 278251978) & 0xffffffff
+    assert repr(meta) == (
+        "LegacyRecordMetadata(offset=0, crc={}, size={}, "
+        "timestamp={})".format(meta.crc, meta.size, meta.timestamp)
+    )
 
 
 @pytest.mark.parametrize("magic", [0, 1])
