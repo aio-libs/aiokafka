@@ -12,7 +12,9 @@ from kafka.common import (KafkaTimeoutError,
                           RequestTimedOutError)
 from kafka.protocol.produce import ProduceResponse
 
-from ._testutil import KafkaIntegrationTestCase, run_until_complete
+from ._testutil import (
+    KafkaIntegrationTestCase, run_until_complete, kafka_versions
+)
 
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
@@ -355,6 +357,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertTrue(fut1.done())
         self.assertTrue(fut2.done())
 
+    @kafka_versions('>=0.10.0')
     @run_until_complete
     def test_producer_correct_time_returned(self):
         producer = AIOKafkaProducer(
