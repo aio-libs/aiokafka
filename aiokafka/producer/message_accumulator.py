@@ -14,7 +14,6 @@ from aiokafka.util import create_future
 
 
 class BatchBuilder:
-
     def __init__(self, magic, batch_size, compression_type):
         self._builder = LegacyRecordBatchBuilder(
             magic, compression_type, batch_size)
@@ -23,6 +22,22 @@ class BatchBuilder:
         self._closed = False
 
     def append(self, *, timestamp, key, value):
+        """Add a message to the batch.
+
+        Arguments:
+            timestamp (float or None): epoch timestamp in seconds. If None,
+                the timestamp will be set to the current time. If submitting to
+                an 0.8.x or 0.9.x broker, the timestamp will be ignored.
+            key (bytes or None): the message key. `key` and `value` may not
+                both be None.
+            value (bytes or None): the message value. `key` and `value` may not
+                both be None.
+
+        Returns:
+            If the message was successfully added, returns a metadata object
+            with crc, offset, size, and timestamp fields. If the batch is full
+            or closed, returns None.
+        """
         if self._closed:
             return None
 
@@ -37,6 +52,17 @@ class BatchBuilder:
         return metadata
 
     def close(self):
+        """Close the batch to further updates.
+
+        Closing the batch before submitting to the producer ensures that no
+        messages are added via the ``producer.send()`` interface. To gracefully
+        support both the batch and individual message interfaces, leave the
+        batch open. For complete control over the batch's contents, close
+        before submission. Closing a batch has no effect on when it's sent to
+        the broker.
+
+        A batch may not be reopened after it's closed.
+        """
         if self._closed:
             return
         self._closed = True
@@ -50,12 +76,14 @@ class BatchBuilder:
         return self._buffer
 
     def size(self):
+        """Get the size of batch in bytes."""
         if self._buffer:
             return self._buffer.getbuffer().nbytes
         else:
             return self._builder.size()
 
     def record_count(self):
+        """Get the number of records in the batch."""
         return self._relative_offset
 
 

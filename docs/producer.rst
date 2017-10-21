@@ -50,7 +50,7 @@ makes a strict guarantee on message order in a partition.
 By default, a new batch is sent immediately after the previous one (even if
 it's not full). If you want to reduce the number of requests you can set
 ``linger_ms`` to something other than 0. This will add an additional delay
-before sending next batch (but only if it's not full).
+before sending next batch if it's not yet full.
 
 ``aiokafka`` does not (yet!) support some options, supported by Java's client:
 
@@ -103,3 +103,36 @@ containing fields:
     * ``topic`` - *string* topic name
     * ``partition`` - *int* partition number
 
+
+Direct batch control
+--------------------
+
+Users who need precise control over batch flow may use the lower-level
+``create_batch()`` and ``send_batch()`` interfaces::
+
+    # Create the batch without queueing for delivery.
+    batch = producer.create_batch()
+
+    # Populate the batch. The append() method will return metadata for the
+    # added message or None if batch is full.
+    for i in range(2):
+        metadata = batch.append(value=b"msg %d" % i, key=None, timestamp=None)
+        assert metadata is not None
+
+    # Optionaly close the batch to further submission. If left open, the batch
+    # may be appended to by producer.send().
+    batch.close()
+
+    # Add the batch to the first partition's submission queue. If this method
+    # times out, we can say for sure that batch will never be sent.
+    fut = await producer.send_batch(batch, "my_topic", partition=1)
+
+    # Batch will either be delivered or an unrecoverable error will occur.
+    # Cancelling this future will not cancel the send.
+    record = await fut
+
+While any number of batches may be created, only a single batch per partition
+is sent at a time. Additional calls to ``send_batch()`` against the same
+partition will wait for the inflight batch to be delivered before sending.
+
+Upon delivery, ``record.offset`` will match the batch's first message.
