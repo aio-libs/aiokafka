@@ -50,10 +50,6 @@ DEF ATTR_CODEC_LZ4 = 0x03
 
 DEF TIMESTAMP_TYPE_MASK = 0x08
 
-# TIMESTAMP_TYPE values
-DEF LOG_APPEND_TIME = 1
-DEF CREATE_TIME = 0
-
 # NOTE: freelists are used based on the assumption, that those will only be
 #       temporary objects and actual structs from `aiokafka.structs` will be
 #       return to user.
@@ -250,10 +246,10 @@ cdef class _LegacyRecordBatchCython:
                 )
             else:
                 absolute_base_offset = -1
+            timestamp_type = self._main_record.attributes & TIMESTAMP_TYPE_MASK
 
             while pos < self._buffer.len:
                 next_record = self._read_record(&pos)
-                timestamp_type = next_record.attributes & TIMESTAMP_TYPE_MASK
                 # There should only ever be a single layer of compression
                 assert not next_record.attributes & ATTR_CODEC_MASK, (
                     'MessageSet at offset %d appears double-compressed. This '
@@ -263,8 +259,9 @@ cdef class _LegacyRecordBatchCython:
                 # When magic value is greater than 0, the timestamp
                 # of a compressed message depends on the
                 # typestamp type of the wrapper message:
-                if timestamp_type == LOG_APPEND_TIME:
+                if timestamp_type != 0:
                     next_record.timestamp = self._main_record.timestamp
+                    next_record.attributes |= TIMESTAMP_TYPE_MASK
 
                 if absolute_base_offset >= 0:
                     next_record.offset += absolute_base_offset
@@ -318,7 +315,10 @@ cdef class LegacyRecord:
     @property
     def timestamp_type(self):
         if self.timestamp != -1:
-            return self.attributes & TIMESTAMP_TYPE_MASK
+            if self.attributes & TIMESTAMP_TYPE_MASK:
+                return 1
+            else:
+                return 0
         else:
             return None
 

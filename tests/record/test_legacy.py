@@ -1,3 +1,5 @@
+import struct
+
 import pytest
 from aiokafka.record.legacy_records import (
     LegacyRecordBatch, LegacyRecordBatchBuilder
@@ -50,6 +52,35 @@ def test_read_write_serde_v0_v1_with_compression(compression_type, magic):
         assert msg.value == b"Super"
         assert msg.checksum == (-2095076219 if magic else 278251978) & \
             0xffffffff
+
+
+ATTRIBUTES_OFFSET = 17
+TIMESTAMP_OFFSET = 18
+TIMESTAMP_TYPE_MASK = 0x08
+
+
+def test_read_log_append_time():
+    builder = LegacyRecordBatchBuilder(
+        magic=1, compression_type=LegacyRecordBatch.CODEC_GZIP,
+        batch_size=1024 * 1024)
+    for offset in range(10):
+        builder.append(
+            offset, timestamp=9999999, key=b"test", value=b"Super")
+    buffer = builder.build()
+    # As Builder does not support creating data with `timestamp_type==1` we
+    # patch the result manually
+
+    buffer[ATTRIBUTES_OFFSET] |= TIMESTAMP_TYPE_MASK
+    expected_timestamp = 10000000
+    struct.pack_into(">q", buffer, TIMESTAMP_OFFSET, expected_timestamp)
+
+    batch = LegacyRecordBatch(buffer, 1)
+    msgs = list(batch)
+
+    for offset, msg in enumerate(msgs):
+        assert msg.offset == offset
+        assert msg.timestamp == expected_timestamp
+        assert msg.timestamp_type == 1
 
 
 @pytest.mark.parametrize("magic", [0, 1])
