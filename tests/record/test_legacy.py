@@ -67,7 +67,7 @@ def test_written_bytes_equals_size_in_bytes(magic):
         magic=magic, compression_type=0, batch_size=1024 * 1024)
 
     size_in_bytes = builder.size_in_bytes(
-        0, timestamp=9999999, key=key, value=value)
+        0, timestamp=9999999, key_size=len(key), value_size=len(value))
 
     pos = builder.size()
     builder.append(0, timestamp=9999999, key=key, value=value)
@@ -90,7 +90,7 @@ def test_legacy_batch_builder_validates_arguments(magic):
         builder.append(
             0, timestamp=9999999, key=None, value="some string")
 
-    # Timestamp should be of proper type
+    # Timestamp should be of proper type (timestamp is ignored for magic == 0)
     if magic != 0:
         with pytest.raises(TypeError):
             builder.append(
@@ -193,6 +193,7 @@ def test_read_log_append_time_v1():
 @pytest.mark.parametrize("magic", [0, 1])
 def test_reader_corrupt_record_v0_v1(magic):
     buffer = _make_compressed_batch(magic)
+    buffer = bytearray(buffer)
     len_offset = 8
 
     # If the wrapper of compressed messages has a key it will just be ignored.
