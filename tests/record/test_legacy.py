@@ -193,6 +193,7 @@ def test_read_log_append_time_v1():
 @pytest.mark.parametrize("magic", [0, 1])
 def test_reader_corrupt_record_v0_v1(magic):
     buffer = _make_compressed_batch(magic)
+    len_offset = 8
 
     # If the wrapper of compressed messages has a key it will just be ignored.
     key_offset = 26 if magic else 18
@@ -201,7 +202,7 @@ def test_reader_corrupt_record_v0_v1(magic):
         b"\x00\x00\x00\x03123" +  # Insert some KEY into wrapper
         buffer[key_offset + 4:]  # Ignore the 4 byte -1 value for old KEY==None
     )
-    print(buffer[:key_offset], buffer[key_offset + 1:])
+    struct.pack_into(">i", new_buffer, len_offset, len(new_buffer) - 12)
     batch = LegacyRecordBatch(new_buffer, magic)
     msgs = list(batch)
     for offset, msg in enumerate(msgs):
@@ -219,6 +220,7 @@ def test_reader_corrupt_record_v0_v1(magic):
         buffer[:value_offset] +
         b"\xff\xff\xff\xff"  # Set `value` to None by altering size to -1
     )
+    struct.pack_into(">i", new_buffer, len_offset, len(new_buffer) - 12)
     with pytest.raises(
             CorruptRecordException,
             match="Value of compressed message is None"):
