@@ -108,7 +108,7 @@ class TestFetcher(unittest.TestCase):
         builder = LegacyRecordBatchBuilder(
             magic=1, compression_type=0, batch_size=99999999)
         builder.append(offset=4, value=b"test msg", key=None, timestamp=None)
-        raw_batch = builder.build()
+        raw_batch = bytes(builder.build())
 
         client.send.side_effect = asyncio.coroutine(
             lambda n, r: FetchResponse(
@@ -295,7 +295,7 @@ class TestFetcher(unittest.TestCase):
         builder.append(160, value=b"12345", key=b"1", timestamp=None)
         builder.append(162, value=b"23456", key=b"2", timestamp=None)
         builder.append(167, value=b"34567", key=b"3", timestamp=None)
-        batch = builder.build()
+        batch = bytes(builder.build())
 
         resp = FetchResponse(
             [('test', [(

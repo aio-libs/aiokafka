@@ -22,10 +22,11 @@
 import struct
 
 from aiokafka.errors import CorruptRecordException
+from aiokafka.util import NO_EXTENSIONS
 from .legacy_records import LegacyRecordBatch
 
 
-class MemoryRecords:
+class _MemoryRecordsPy:
 
     LENGTH_OFFSET = struct.calcsize(">q")
     LOG_OVERHEAD = struct.calcsize(">qi")
@@ -90,3 +91,13 @@ class MemoryRecords:
             raise NotImplementedError("Record V2 still not implemented")
         else:
             return LegacyRecordBatch(next_slice, magic)
+
+
+if NO_EXTENSIONS:
+    MemoryRecords = _MemoryRecordsPy
+else:
+    try:
+        from ._memory_records import _MemoryRecordsCython
+        MemoryRecords = _MemoryRecordsCython
+    except ImportError as err:  # pragma: no cover
+        MemoryRecords = _MemoryRecordsPy

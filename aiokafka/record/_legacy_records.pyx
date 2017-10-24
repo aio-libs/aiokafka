@@ -2,6 +2,7 @@
 
 from kafka.codec import (
     gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
+    gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka
 )
 from aiokafka.errors import CorruptRecordException
 from zlib import crc32 as py_crc32  # needed for windows macro
@@ -47,7 +48,291 @@ DEF ATTR_CODEC_GZIP = 0x01
 DEF ATTR_CODEC_SNAPPY = 0x02
 DEF ATTR_CODEC_LZ4 = 0x03
 
+DEF TIMESTAMP_TYPE_MASK = 0x08
+
+# NOTE: freelists are used based on the assumption, that those will only be
+#       temporary objects and actual structs from `aiokafka.structs` will be
+#       return to user.
 DEF LEGACY_RECORD_METADATA_FREELIST_SIZE = 20
+# Fetcher will only use 1 parser per partition, so this is based on how much
+# partitions can be used simultaniously.
+DEF LEGACY_RECORD_BATCH_FREELIST_SIZE = 100
+DEF LEGACY_RECORD_FREELIST_SIZE = 100
+
+
+@cython.no_gc_clear
+@cython.final
+@cython.freelist(LEGACY_RECORD_BATCH_FREELIST_SIZE)
+cdef class _LegacyRecordBatchCython:
+
+    RECORD_OVERHEAD_V0 = RECORD_OVERHEAD_V0_DEF
+    RECORD_OVERHEAD_V1 = RECORD_OVERHEAD_V1_DEF
+    CODEC_GZIP = ATTR_CODEC_GZIP
+    CODEC_SNAPPY = ATTR_CODEC_SNAPPY
+    CODEC_LZ4 = ATTR_CODEC_LZ4
+
+    def __init__(self, object buffer, char magic):
+        PyObject_GetBuffer(buffer, &self._buffer, PyBUF_SIMPLE)
+        self._magic = magic
+        self._decompressed = 0
+        self._main_record = self._read_record(NULL)
+
+    @staticmethod
+    cdef inline _LegacyRecordBatchCython new(
+            bytes buffer, Py_ssize_t pos, Py_ssize_t slice_end, char magic):
+        """ Fast constructor to initialize from C.
+            NOTE: We take ownership of the Py_buffer object, so caller does not
+                  need to call PyBuffer_Release.
+        """
+        cdef:
+            _LegacyRecordBatchCython batch
+            char* buf
+        batch = _LegacyRecordBatchCython.__new__(_LegacyRecordBatchCython)
+        PyObject_GetBuffer(buffer, &batch._buffer, PyBUF_SIMPLE)
+        buf = <char *>batch._buffer.buf
+        # Change the buffer to include a proper slice
+        batch._buffer.buf = <void *> &buf[pos]
+        batch._buffer.len = slice_end - pos
+
+        batch._magic = magic
+        batch._decompressed = 0
+        batch._main_record = batch._read_record(NULL)
+        return batch
+
+    def __dealloc__(self):
+        PyBuffer_Release(&self._buffer)
+
+    def validate_crc(self):
+        cdef:
+            unsigned long crc = 0
+            char * buf
+
+        buf = <char*> self._buffer.buf
+        cutil.calc_crc32(
+            0,
+            <unsigned char*> &buf[MAGIC_OFFSET],
+            <size_t> self._buffer.len - MAGIC_OFFSET,
+            &crc
+        )
+
+        return self._main_record.crc == <uint32_t> crc
+
+    cdef int _decompress(self, char compression_type) except -1:
+        cdef:
+            bytes value
+
+        if self._main_record.value is None:
+            raise CorruptRecordException("Value of compressed message is None")
+        value = self._main_record.value
+
+        if compression_type == ATTR_CODEC_GZIP:
+            uncompressed = gzip_decode(value)
+        elif compression_type == ATTR_CODEC_SNAPPY:
+            uncompressed = snappy_decode(value)
+        elif compression_type == ATTR_CODEC_LZ4:
+            if self._magic == 0:
+                uncompressed = lz4_decode_old_kafka(value)
+            else:
+                uncompressed = lz4_decode(value)
+
+        PyBuffer_Release(&self._buffer)
+        PyObject_GetBuffer(uncompressed, &self._buffer, PyBUF_SIMPLE)
+        return 0
+
+    cdef int64_t _read_last_offset(self) except -1:
+        cdef:
+            Py_ssize_t buffer_len = self._buffer.len
+            Py_ssize_t pos = 0
+            Py_ssize_t length = 0
+            char* buf
+        buf = <char*> self._buffer.buf
+        while pos < buffer_len:
+            length = <Py_ssize_t> hton.unpack_int32(&buf[pos + LENGTH_OFFSET])
+            pos += LOG_OVERHEAD + length
+        if pos > buffer_len:
+            raise CorruptRecordException("Corrupted compressed message")
+        pos -= LOG_OVERHEAD + length
+        return hton.unpack_int64(&buf[pos])
+
+    cdef inline int _check_bounds(
+            self, Py_ssize_t pos, Py_ssize_t size) except -1:
+        """ Confirm that the slice is not outside buffer range
+        """
+        if pos + size > self._buffer.len:
+            raise CorruptRecordException(
+                "Can't read {} bytes from pos {}".format(size, pos))
+
+    cdef LegacyRecord _read_record(self, Py_ssize_t* read_pos):
+        """ Read records from position `read_pos`. After reading set `read_pos`
+        to the offset of the next record. Can pass NULL to read from start.
+        """
+
+        cdef:
+            Py_ssize_t pos
+            char* buf
+            Py_ssize_t read_size
+
+            int64_t offset
+            int64_t timestamp
+            char attrs,
+            uint32_t crc
+
+        if read_pos == NULL:
+            pos = 0
+        else:
+            pos = read_pos[0]
+
+        # Minimum record size check
+        self._check_bounds(pos, RECORD_OVERHEAD_V0_DEF + LOG_OVERHEAD)
+
+        buf = <char*>self._buffer.buf
+        offset = hton.unpack_int64(&buf[pos])
+        crc = <uint32_t> hton.unpack_int32(&buf[pos + CRC_OFFSET])
+        magic = buf[pos + MAGIC_OFFSET]
+        attrs = buf[pos + ATTRIBUTES_OFFSET]
+        if magic == 1:
+            # Minimum record size for V1
+            self._check_bounds(pos, RECORD_OVERHEAD_V1_DEF + LOG_OVERHEAD)
+            timestamp = hton.unpack_int64(&buf[pos + TIMESTAMP_OFFSET])
+            pos += KEY_OFFSET_V1
+        else:
+            timestamp = -1
+            pos += KEY_OFFSET_V0
+
+        # Read key
+        read_size = <Py_ssize_t> hton.unpack_int32(&buf[pos])
+        pos += KEY_LENGTH
+        if read_size != -1:
+            self._check_bounds(pos, read_size)
+            key = PyBytes_FromStringAndSize(&buf[pos], read_size)
+            pos += read_size
+        else:
+            key = None
+        # Read value
+        read_size = <Py_ssize_t> hton.unpack_int32(&buf[pos])
+        pos += VALUE_LENGTH
+        if read_size != -1:
+            self._check_bounds(pos, read_size)
+            value = PyBytes_FromStringAndSize(&buf[pos], read_size)
+            pos += read_size
+        else:
+            value = None
+
+        if read_pos != NULL:
+            read_pos[0] = pos
+        return LegacyRecord.new(
+            offset, timestamp, attrs, key=key, value=value, crc=crc)
+
+    def __iter__(self):
+        cdef:
+            char compression
+            int64_t absolute_base_offset
+            Py_ssize_t pos = 0
+            LegacyRecord next_record
+            char timestamp_type
+
+        compression = self._main_record.attributes & ATTR_CODEC_MASK
+        if compression:
+            # In case we will call iter again
+            if not self._decompressed:
+                self._decompress(compression)
+                self._decompressed = True
+
+            # If relative offset is used, we need to decompress the entire
+            # message first to compute the absolute offset.
+            if self._magic > 0:
+                absolute_base_offset = (
+                    self._main_record.offset - self._read_last_offset()
+                )
+            else:
+                absolute_base_offset = -1
+            timestamp_type = self._main_record.attributes & TIMESTAMP_TYPE_MASK
+
+            while pos < self._buffer.len:
+                next_record = self._read_record(&pos)
+                # There should only ever be a single layer of compression
+                assert not next_record.attributes & ATTR_CODEC_MASK, (
+                    'MessageSet at offset %d appears double-compressed. This '
+                    'should not happen -- check your producers!'
+                    % next_record.offset)
+
+                # When magic value is greater than 0, the timestamp
+                # of a compressed message depends on the
+                # typestamp type of the wrapper message:
+                if timestamp_type != 0:
+                    next_record.timestamp = self._main_record.timestamp
+                    next_record.attributes |= TIMESTAMP_TYPE_MASK
+
+                if absolute_base_offset >= 0:
+                    next_record.offset += absolute_base_offset
+
+                yield next_record
+        else:
+            yield self._main_record
+
+
+@cython.no_gc_clear
+@cython.final
+@cython.freelist(LEGACY_RECORD_FREELIST_SIZE)
+cdef class LegacyRecord:
+
+    def __init__(self, int64_t offset, int64_t timestamp, char attributes,
+                  object key, object value, uint32_t crc):
+        self.offset = offset
+        self.timestamp = timestamp
+        self.attributes = attributes
+        self.key = key
+        self.value = value
+        self.crc = crc
+
+    @staticmethod
+    cdef inline LegacyRecord new(
+            int64_t offset, int64_t timestamp, char attributes,
+            object key, object value, uint32_t crc):
+        """ Fast constructor to initialize from C.
+        """
+        cdef LegacyRecord record
+        record = LegacyRecord.__new__(LegacyRecord)
+        record.offset = offset
+        record.timestamp = timestamp
+        record.attributes = attributes
+        record.key = key
+        record.value = value
+        record.crc = crc
+        return record
+
+    @property
+    def headers(self):
+        return []
+
+    @property
+    def timestamp(self):
+        if self.timestamp != -1:
+            return self.timestamp
+        else:
+            return None
+
+    @property
+    def timestamp_type(self):
+        if self.timestamp != -1:
+            if self.attributes & TIMESTAMP_TYPE_MASK:
+                return 1
+            else:
+                return 0
+        else:
+            return None
+
+    @property
+    def checksum(self):
+        return self.crc
+
+    def __repr__(self):
+        return (
+            "LegacyRecord(offset={!r}, timestamp={!r}, timestamp_type={!r},"
+            " key={!r}, value={!r}, crc={!r})".format(
+                self.offset, self.timestamp, self.timestamp_type,
+                self.key, self.value, self.crc)
+        )
 
 
 cdef class _LegacyRecordBatchBuilderCython:
@@ -201,7 +486,7 @@ cdef int _encode_msg(
         Py_buffer key_val_buf
         Py_ssize_t pos = start_pos
         int32_t length
-        uint32_t crc
+        unsigned long crc = 0
 
     # Write key and value
     pos += KEY_OFFSET_V0 if magic == 0 else KEY_OFFSET_V1
@@ -237,14 +522,15 @@ cdef int _encode_msg(
     if magic == 1:
         hton.pack_int64(&buf[start_pos + TIMESTAMP_OFFSET], <int64_t>timestamp)
 
-    crc = <uint32_t> cutil.calc_crc32(
+    cutil.calc_crc32(
         0,
         <unsigned char*> &buf[start_pos + MAGIC_OFFSET],
-        (pos - (start_pos + MAGIC_OFFSET))
+        <size_t> (pos - (start_pos + MAGIC_OFFSET)),
+        &crc
     )
     hton.pack_int32(&buf[start_pos + CRC_OFFSET], <int32_t> crc)
 
-    crc_out[0] = crc
+    crc_out[0] = <uint32_t> crc
     return 0
 
 
