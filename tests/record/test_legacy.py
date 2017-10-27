@@ -193,7 +193,6 @@ def test_read_log_append_time_v1():
 @pytest.mark.parametrize("magic", [0, 1])
 def test_reader_corrupt_record_v0_v1(magic):
     buffer = _make_compressed_batch(magic)
-    buffer = bytearray(buffer)
     len_offset = 8
 
     # If the wrapper of compressed messages has a key it will just be ignored.

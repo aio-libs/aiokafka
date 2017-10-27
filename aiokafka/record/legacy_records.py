@@ -412,7 +412,8 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
     def build(self):
         """Compress batch to be ready for send"""
         self._maybe_compress()
-        return memoryview(self._buffer)[:self._pos]
+        del self._buffer[self._pos:]
+        return self._buffer
 
     def size(self):
         """ Return current size of data written to buffer
