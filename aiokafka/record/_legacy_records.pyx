@@ -21,7 +21,7 @@ cdef extern from "Python.h":
     object PyMemoryView_FromMemory(char *mem, ssize_t size, int flags)
 
 
-# This should be before _cutil to generate include for `winsock2.h` before 
+# This should be before _cutil to generate include for `winsock2.h` before
 # `windows.h`
 from aiokafka.record cimport _hton as hton
 from aiokafka.record cimport _cutil as cutil
@@ -360,6 +360,8 @@ cdef class _LegacyRecordBatchBuilderCython:
         cdef:
             Py_ssize_t pos
             Py_ssize_t size
+            Py_ssize_t key_size
+            Py_ssize_t value_size
             char *buf
             int64_t ts
             LegacyRecordMetadata metadata
@@ -372,9 +374,12 @@ cdef class _LegacyRecordBatchBuilderCython:
         else:
             ts = timestamp
 
+        key_size = _size_of_bytearray(key)
+        value_size = _size_of_bytearray(value)
+
         # Check if we have room for another message
         pos = PyByteArray_GET_SIZE(self._buffer)
-        size = _size_in_bytes(self._magic, key, value)
+        size = _size_in_bytes(self._magic, key_size, value_size)
         # We always allow at least one record to be appended
         if offset != 0 and pos + size >= self._batch_size:
             return None
@@ -398,10 +403,10 @@ cdef class _LegacyRecordBatchBuilderCython:
 
     # Size calculations. Just copied Java's implementation
 
-    def size_in_bytes(self, offset, timestamp, key, value):
+    def size_in_bytes(self, offset, timestamp, key_size, value_size):
         """ Actual size of message to add
         """
-        return _size_in_bytes(self._magic, key, value)
+        return _size_in_bytes(self._magic, key_size, value_size)
 
     @staticmethod
     def record_overhead(char magic):
@@ -415,6 +420,7 @@ cdef class _LegacyRecordBatchBuilderCython:
             object compressed
             char *buf
             Py_ssize_t size
+            Py_ssize_t value_size
             uint32_t crc
 
         if self._compression_type != 0:
@@ -429,7 +435,9 @@ cdef class _LegacyRecordBatchBuilderCython:
                     compressed = lz4_encode(bytes(self._buffer))
             else:
                 return 0
-            size = _size_in_bytes(self._magic, key=None, value=compressed)
+            value_size = _size_of_bytearray(compressed)
+            size = _size_in_bytes(
+                self._magic, key_size=0, value_size=value_size)
             # We will just write the result into the same memory space.
             PyByteArray_Resize(self._buffer, size)
 
@@ -447,32 +455,28 @@ cdef class _LegacyRecordBatchBuilderCython:
         return self._buffer
 
 
-cdef Py_ssize_t _size_in_bytes(char magic, object key, object value) except -1:
+cdef Py_ssize_t _size_in_bytes(char magic, Py_ssize_t key_size, Py_ssize_t value_size) except -1:
     """ Actual size of message to add
+    """
+    if magic == 0:
+        return LOG_OVERHEAD + RECORD_OVERHEAD_V0_DEF + key_size + value_size
+    else:
+        return LOG_OVERHEAD + RECORD_OVERHEAD_V1_DEF + key_size + value_size
+
+
+cdef Py_ssize_t _size_of_bytearray(object obj) except -1:
+    """ Properly return size of bytearray object
     """
     cdef:
         Py_buffer buf
-        Py_ssize_t key_len
-        Py_ssize_t value_len
 
-    if key is None:
-        key_len = 0
+    if obj is None:
+        return 0
     else:
-        PyObject_GetBuffer(key, &buf, PyBUF_SIMPLE)
-        key_len = buf.len
+        PyObject_GetBuffer(obj, &buf, PyBUF_SIMPLE)
+        obj_size = buf.len
         PyBuffer_Release(&buf)
-
-    if value is None:
-        value_len = 0
-    else:
-        PyObject_GetBuffer(value, &buf, PyBUF_SIMPLE)
-        value_len = buf.len
-        PyBuffer_Release(&buf)
-
-    if magic == 0:
-        return LOG_OVERHEAD + RECORD_OVERHEAD_V0_DEF + key_len + value_len
-    else:
-        return LOG_OVERHEAD + RECORD_OVERHEAD_V1_DEF + key_len + value_len
+        return obj_size
 
 
 cdef int _encode_msg(
