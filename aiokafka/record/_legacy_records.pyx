@@ -477,7 +477,7 @@ cdef Py_ssize_t _size_in_bytes(char magic, object key, object value) except -1:
 
 cdef int _encode_msg(
         char magic, Py_ssize_t start_pos, char *buf,
-        long offset, long timestamp, object key, object value,
+        int64_t offset, int64_t timestamp, object key, object value,
         char attributes, uint32_t* crc_out) except -1:
     """ Encode msg data into the `msg_buffer`, which should be allocated
         to at least the size of this message.
@@ -515,12 +515,12 @@ cdef int _encode_msg(
     length = <int32_t> ((pos - start_pos) - LOG_OVERHEAD)
 
     # Write msg header. Note, that Crc should be updated last
-    hton.pack_int64(&buf[start_pos], <int64_t>offset)
+    hton.pack_int64(&buf[start_pos], offset)
     hton.pack_int32(&buf[start_pos + LENGTH_OFFSET], length)
     buf[start_pos + MAGIC_OFFSET] = magic
     buf[start_pos + ATTRIBUTES_OFFSET] = attributes
     if magic == 1:
-        hton.pack_int64(&buf[start_pos + TIMESTAMP_OFFSET], <int64_t>timestamp)
+        hton.pack_int64(&buf[start_pos + TIMESTAMP_OFFSET], timestamp)
 
     cutil.calc_crc32(
         0,
