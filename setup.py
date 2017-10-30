@@ -12,11 +12,13 @@ from setuptools import setup, Extension
 
 CFLAGS = ['-O2']
 LDFLAGS = []
+LIBRARIES = []
 
 if platform.uname().system == 'Windows':
     LDFLAGS.append('ws2_32.lib')
 else:
     CFLAGS.extend(['-Wall', '-Wsign-compare', '-Wconversion'])
+    LIBRARIES.append('z')
 
 # The extension part is copied from aiohttp's setup.py
 
@@ -32,13 +34,14 @@ extensions = [
     Extension(
         'aiokafka.record._legacy_records',
         ['aiokafka/record/_legacy_records' + ext],
-        libraries=['z'],
+        libraries=LIBRARIES,
         extra_compile_args=CFLAGS,
         extra_link_args=LDFLAGS
     ),
     Extension(
         'aiokafka.record._memory_records',
         ['aiokafka/record/_memory_records' + ext],
+        libraries=LIBRARIES,
         extra_compile_args=CFLAGS,
         extra_link_args=LDFLAGS
     ),
