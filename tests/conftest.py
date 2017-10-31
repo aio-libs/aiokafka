@@ -65,6 +65,7 @@ def ssl_folder(docker_ip_address):
 
     return ssl_dir
 
+
 if sys.platform == 'darwin' or sys.platform == 'win32':
 
     @pytest.fixture(scope='session')
