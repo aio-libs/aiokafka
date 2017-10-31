@@ -11,12 +11,14 @@ from aiokafka.errors import CorruptRecordException
 @pytest.mark.parametrize("key,value,checksum", [
     (b"test", b"Super", [278251978, -2095076219]),
     (b"test", None, [580701536, 164492157]),
-    (None, b"Super", [2797021502, 3315209433])])
+    (None, b"Super", [2797021502, 3315209433]),
+    (b"", b"Super", [1446809667, 890351012]),
+    (b"test", b"", [4230475139, 3614888862]),
+])
 def test_read_write_serde_v0_v1_no_compression(magic, key, value, checksum):
     builder = LegacyRecordBatchBuilder(
         magic=magic, compression_type=0, batch_size=1024 * 1024)
-    builder.append(
-        0, timestamp=9999999, key=key, value=value)
+    builder.append(0, timestamp=9999999, key=key, value=value)
     buffer = builder.build()
 
     batch = LegacyRecordBatch(buffer, magic)

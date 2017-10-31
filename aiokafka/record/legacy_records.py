@@ -361,7 +361,8 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
                 "%ds"  # value => bytes
                 % (key_size, value_size),
                 buf, 0, offset, length, 0, magic, attributes,
-                key_size or -1, key or b"", value_size or -1, value or b"")
+                key_size if key is not None else -1, key or b"",
+                value_size if value is not None else -1, value or b"")
         else:
             length += self.KEY_OFFSET_V1
             struct.pack_into(
@@ -377,7 +378,8 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
                 "%ds"  # value => bytes
                 % (key_size, value_size),
                 buf, 0, offset, length, 0, magic, attributes, timestamp,
-                key_size or -1, key or b"", value_size or -1, value or b"")
+                key_size if key is not None else -1, key or b"",
+                value_size if value is not None else -1, value or b"")
 
         crc = crc32(buf[self.MAGIC_OFFSET:size])
         struct.pack_into(">I", buf, self.CRC_OFFSET, crc)
