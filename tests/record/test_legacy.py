@@ -1,4 +1,5 @@
 import struct
+from unittest import mock
 
 import pytest
 from aiokafka.record.legacy_records import (
@@ -102,6 +103,15 @@ def test_legacy_batch_builder_validates_arguments(magic):
     with pytest.raises(TypeError):
         builder.append(
             "0", timestamp=9999999, key=None, value=b"some string")
+
+    # Unknown struct errors are passed through
+    with mock.patch.object(builder, "_encode_msg") as mocked:
+        err = struct.error("test error")
+        mocked.side_effect = err
+        with pytest.raises(struct.error) as excinfo:
+            builder.append(
+                0, timestamp=None, key=None, value=b"some string")
+        assert excinfo.value == err
 
     # Ok to pass value as None
     builder.append(
@@ -228,3 +238,15 @@ def test_reader_corrupt_record_v0_v1(magic):
             match="Value of compressed message is None"):
         batch = LegacyRecordBatch(new_buffer, magic)
         list(batch)
+
+
+def test_record_overhead():
+    known = {
+        0: 14,
+        1: 22,
+    }
+    for magic, size in known.items():
+        assert LegacyRecordBatchBuilder.record_overhead(magic) == size
+
+    with pytest.raises(ValueError):
+        LegacyRecordBatchBuilder.record_overhead(9)
