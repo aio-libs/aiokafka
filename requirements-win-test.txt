@@ -7,4 +7,4 @@ lz4==0.10.1
 xxhash==1.0.1
 python-snappy==0.5.1
 # pypiwin32==219
-cython==0.27.2
+cython==0.27.3
