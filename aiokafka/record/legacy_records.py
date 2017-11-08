@@ -284,12 +284,14 @@ class _LegacyRecordPy:
 
 class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
 
-    def __init__(self, magic, compression_type, batch_size):
+    def __init__(self, magic, compression_type, batch_size,
+                 buffer_chunk_size=256*1024):
         assert magic in [0, 1]
         self._magic = magic
         self._compression_type = compression_type
         self._batch_size = batch_size
-        self._buffer = bytearray(batch_size)
+        self._chunk_size = min(batch_size, buffer_chunk_size)
+        self._buffer = bytearray(self._chunk_size)
         self._pos = 0
 
     def append(self, offset, timestamp, key, value):
@@ -305,16 +307,14 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
         value_size = len(value) if value is not None else 0
 
         pos = self._pos
-        size = self.size_in_bytes(offset, timestamp, key_size, value_size)
+        size = self._size_in_bytes(key_size, value_size)
+        free = len(self._buffer) - pos
+
         # always allow at least one record to be appended
         if offset != 0 and pos + size >= self._batch_size:
             return None
-        elif offset == 0 and size > self._batch_size:
-            # if adding the message fails for any reason, this buffer will
-            # remain in its expanded state. Since position is tracked
-            # independently and comparisons are made against self._batch_size,
-            # this will have no ill effects
-            self._buffer = bytearray(size)
+        elif size > free:
+            self._buffer.extend(bytearray(max(self._chunk_size, size - free)))
 
         try:
             crc = self._encode_msg(
@@ -398,8 +398,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
                 else:
                     compressed = lz4_encode(bytes(buf))
             compressed_size = len(compressed)
-            size = self.size_in_bytes(
-                0, timestamp=0, key_size=0, value_size=compressed_size)
+            size = self._size_in_bytes(key_size=0, value_size=compressed_size)
             if size > len(self._buffer):
                 self._buffer = bytearray(size)
             self._encode_msg(
@@ -422,13 +421,19 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
         """
         return self._pos
 
-    def size_in_bytes(self, offset, timestamp, key_size, value_size,
-                      headers=None):
+    def size_in_bytes(self, offset, timestamp, key, value, headers=None):
         """ Actual size of message to add
         """
         assert not headers, "Headers not supported in v0/v1"
-        return (self.LOG_OVERHEAD + self.RECORD_OVERHEAD[self._magic]
-                + key_size + value_size)
+        key_size = len(key) if key is not None else 0
+        value_size = len(value) if value is not None else 0
+        return self._size_in_bytes(key_size, value_size)
+
+    def _size_in_bytes(self, key_size, value_size):
+        return (self.LOG_OVERHEAD
+                + self.RECORD_OVERHEAD[self._magic]
+                + key_size
+                + value_size)
 
     @classmethod
     def record_overhead(cls, magic):

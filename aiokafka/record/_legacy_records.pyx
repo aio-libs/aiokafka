@@ -348,11 +348,12 @@ cdef class _LegacyRecordBatchBuilderCython:
     CODEC_LZ4 = ATTR_CODEC_LZ4
 
     def __cinit__(self, char magic, char compression_type,
-                  Py_ssize_t batch_size):
+                  Py_ssize_t batch_size, Py_ssize_t buffer_chunk_size=0):
         self._magic = magic
         self._compression_type = compression_type
         self._batch_size = batch_size
         self._buffer = bytearray()
+        # ignore buffer_chunk_size
 
     def append(self, int64_t offset, timestamp, key, value):
         """ Append message to batch.
@@ -403,17 +404,21 @@ cdef class _LegacyRecordBatchBuilderCython:
 
     # Size calculations. Just copied Java's implementation
 
-    def size_in_bytes(self, offset, timestamp, key_size, value_size):
+    def size_in_bytes(self, offset, timestamp, key, value):
         """ Actual size of message to add
         """
+        key_size = _size_of_bytearray(key)
+        value_size = _size_of_bytearray(value)
         return _size_in_bytes(self._magic, key_size, value_size)
 
     @staticmethod
     def record_overhead(char magic):
         if magic == 0:
             return RECORD_OVERHEAD_V0_DEF
-        else:
+        elif magic == 1:
             return RECORD_OVERHEAD_V1_DEF
+        else:
+            raise ValueError("Unsupported magic: %d" % magic)
 
     cdef int _maybe_compress(self) except -1:
         cdef:

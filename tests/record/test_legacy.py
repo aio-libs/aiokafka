@@ -70,7 +70,7 @@ def test_written_bytes_equals_size_in_bytes(magic):
         magic=magic, compression_type=0, batch_size=1024 * 1024)
 
     size_in_bytes = builder.size_in_bytes(
-        0, timestamp=9999999, key_size=len(key), value_size=len(value))
+        0, timestamp=9999999, key=key, value=value)
 
     pos = builder.size()
     builder.append(0, timestamp=9999999, key=key, value=value)
@@ -104,14 +104,18 @@ def test_legacy_batch_builder_validates_arguments(magic):
         builder.append(
             "0", timestamp=9999999, key=None, value=b"some string")
 
-    # Unknown struct errors are passed through
-    with mock.patch.object(builder, "_encode_msg") as mocked:
-        err = struct.error("test error")
-        mocked.side_effect = err
-        with pytest.raises(struct.error) as excinfo:
-            builder.append(
-                0, timestamp=None, key=None, value=b"some string")
-        assert excinfo.value == err
+    # Unknown struct errors are passed through. These are theoretical and
+    # indicate a bug in the implementation. The C implementation locates
+    # _encode_msg elsewhere and is less vulnerable to such bugs since it's
+    # statically typed, so we skip the test there.
+    if hasattr(builder, "_encode_msg"):
+        with mock.patch.object(builder, "_encode_msg") as mocked:
+            err = struct.error("test error")
+            mocked.side_effect = err
+            with pytest.raises(struct.error) as excinfo:
+                builder.append(
+                    0, timestamp=None, key=None, value=b"some string")
+            assert excinfo.value == err
 
     # Ok to pass value as None
     builder.append(
