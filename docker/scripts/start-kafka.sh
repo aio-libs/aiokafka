@@ -30,7 +30,7 @@ if [ ! -z "$ADVERTISED_SSL_PORT" ]; then
     OPTIONS="$OPTIONS --override ssl.truststore.password=abcdefgh"
     OPTIONS="$OPTIONS --override ssl.client.auth=required"
     OPTIONS="$OPTIONS --override security.inter.broker.protocol=SSL"
-    OPTIONS="$OPTIONS --override listeners=PLAINTEXT://:9092,SSL://:9093"
+    OPTIONS="$OPTIONS --override listeners=PLAINTEXT://:$ADVERTISED_PORT,SSL://:$ADVERTISED_SSL_PORT"
 
 else
 
@@ -38,13 +38,14 @@ else
     echo "advertised host: $ADVERTISED_HOST"
     echo "advertised port: $ADVERTISED_PORT"
     OPTIONS="$OPTIONS --override advertised.listeners=PLAINTEXT://$ADVERTISED_HOST:$ADVERTISED_PORT"    
+    OPTIONS="$OPTIONS --override listeners=PLAINTEXT://:$ADVERTISED_PORT"
 
 fi
 
-# Enable/disable auto creation of topics
+# Enable auto creation of topics
 OPTIONS="$OPTIONS --override auto.create.topics.enable=true"
 
 # Run Kafka
 echo "$KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server.properties $OPTIONS"
 
-$KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server.properties $OPTIONS
+exec $KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server.properties $OPTIONS

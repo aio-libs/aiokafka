@@ -1,5 +1,4 @@
 import asyncio
-import fcntl
 import gc
 import docker as libdocker
 import pytest
@@ -10,6 +9,18 @@ import sys
 import pathlib
 import shutil
 import subprocess
+
+from aiokafka.record.legacy_records import (
+    LegacyRecordBatchBuilder, _LegacyRecordBatchBuilderPy)
+from aiokafka.util import NO_EXTENSIONS
+
+if not NO_EXTENSIONS:
+    assert LegacyRecordBatchBuilder is not _LegacyRecordBatchBuilderPy, \
+        "Expected to run tests with C extension, but it was not imported. "\
+        "To run tests without a C extensions set NO_EXTENSIONS=1 env veriable"
+    print("Running tests with C extension")
+else:
+    print("Running tests without C extension")
 
 
 def pytest_addoption(parser):
@@ -55,25 +66,36 @@ def ssl_folder(docker_ip_address):
     return ssl_dir
 
 
-@pytest.fixture(scope='session')
-def docker_ip_address(docker):
-    """Returns IP address of the docker daemon service."""
-    # Fallback docker daemon bridge name
-    ifname = 'docker0'
-    try:
-        for network in docker.networks():
-            _ifname = network['Options'].get(
-                'com.docker.network.bridge.name')
-            if _ifname is not None:
-                ifname = _ifname
-                break
-    except libdocker.errors.InvalidVersion:
-        pass
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    return socket.inet_ntoa(fcntl.ioctl(
-        s.fileno(),
-        0x8915,  # SIOCGIFADDR
-        struct.pack('256s', ifname[:15].encode('utf-8')))[20:24])
+if sys.platform == 'darwin' or sys.platform == 'win32':
+
+    @pytest.fixture(scope='session')
+    def docker_ip_address():
+        """Returns IP address of the docker daemon service."""
+        # docker for mac publishes ports on localhost
+        return '127.0.0.1'
+
+else:
+
+    @pytest.fixture(scope='session')
+    def docker_ip_address(docker):
+        """Returns IP address of the docker daemon service."""
+        # Fallback docker daemon bridge name
+        ifname = 'docker0'
+        try:
+            for network in docker.networks():
+                _ifname = network['Options'].get(
+                    'com.docker.network.bridge.name')
+                if _ifname is not None:
+                    ifname = _ifname
+                    break
+        except libdocker.errors.InvalidVersion:
+            pass
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        import fcntl
+        return socket.inet_ntoa(fcntl.ioctl(
+            s.fileno(),
+            0x8915,  # SIOCGIFADDR
+            struct.pack('256s', ifname[:15].encode('utf-8')))[20:24])
 
 
 @pytest.fixture(scope='session')
@@ -90,43 +112,52 @@ def session_id():
     return str(uuid.uuid4())
 
 
-@pytest.yield_fixture(scope='session')
-def kafka_server(request, docker, docker_ip_address,
-                 unused_port, session_id, ssl_folder):
-    image = request.config.getoption('--docker-image')
-    if not request.config.getoption('--no-pull'):
-        docker.pull(image)
-    kafka_host = docker_ip_address
-    kafka_port = unused_port()
-    kafka_ssl_port = unused_port()
-    container = docker.create_container(
-        image=image,
-        name='aiokafka-tests',
-        # name='aiokafka-tests-{}'.format(session_id),
-        ports=[2181, 9092, 9093],
-        volumes=['/ssl_cert'],
-        environment={
-            'ADVERTISED_HOST': kafka_host,
-            'ADVERTISED_PORT': kafka_port,
-            'ADVERTISED_SSL_PORT': kafka_ssl_port,
-            'NUM_PARTITIONS': 2
-        },
-        host_config=docker.create_host_config(
-            port_bindings={
-                2181: (kafka_host, unused_port()),
-                9092: (kafka_host, kafka_port),
-                9093: (kafka_host, kafka_ssl_port)
+if sys.platform != 'win32':
+
+    @pytest.yield_fixture(scope='session')
+    def kafka_server(request, docker, docker_ip_address,
+                     unused_port, session_id, ssl_folder):
+        image = request.config.getoption('--docker-image')
+        if not request.config.getoption('--no-pull'):
+            docker.pull(image)
+        kafka_host = docker_ip_address
+        kafka_port = unused_port()
+        kafka_ssl_port = unused_port()
+        container = docker.create_container(
+            image=image,
+            name='aiokafka-tests',
+            # name='aiokafka-tests-{}'.format(session_id),
+            ports=[2181, kafka_port, kafka_ssl_port],
+            volumes=['/ssl_cert'],
+            environment={
+                'ADVERTISED_HOST': kafka_host,
+                'ADVERTISED_PORT': kafka_port,
+                'ADVERTISED_SSL_PORT': kafka_ssl_port,
+                'NUM_PARTITIONS': 2
             },
-            binds={
-                str(ssl_folder.resolve()): {
-                    "bind": "/ssl_cert",
-                    "mode": "ro"
-                }
-            }))
-    docker.start(container=container['Id'])
-    yield kafka_host, kafka_port, kafka_ssl_port
-    docker.kill(container=container['Id'])
-    docker.remove_container(container['Id'])
+            host_config=docker.create_host_config(
+                port_bindings={
+                    2181: (kafka_host, unused_port()),
+                    kafka_port: (kafka_host, kafka_port),
+                    kafka_ssl_port: (kafka_host, kafka_ssl_port)
+                },
+                binds={
+                    str(ssl_folder.resolve()): {
+                        "bind": "/ssl_cert",
+                        "mode": "ro"
+                    }
+                }))
+        docker.start(container=container['Id'])
+        yield kafka_host, kafka_port, kafka_ssl_port
+        docker.kill(container=container['Id'])
+        docker.remove_container(container['Id'])
+
+else:
+
+    @pytest.fixture(scope='session')
+    def kafka_server():
+        pytest.skip("Only unit tests on windows for now =(")
+        return
 
 
 @pytest.yield_fixture(scope='class')

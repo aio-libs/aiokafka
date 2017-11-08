@@ -10,9 +10,9 @@ import sys
 from contextlib import contextmanager
 from functools import wraps
 
-from kafka.common import ConnectionError
-from kafka.consumer.subscription_state import ConsumerRebalanceListener
+from aiokafka import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
+from aiokafka.errors import ConnectionError
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.helpers import create_ssl_context
 
@@ -120,9 +120,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         cls.hosts = ['{}:{}'.format(cls.kafka_host, cls.kafka_port)]
 
         # Reconnecting until Kafka in docker becomes available
-        client = AIOKafkaClient(
-            loop=cls.loop, bootstrap_servers=cls.hosts)
-
+        client = AIOKafkaClient(loop=cls.loop, bootstrap_servers=cls.hosts)
         for i in range(500):
             try:
                 cls.loop.run_until_complete(client.bootstrap())
@@ -134,7 +132,8 @@ class KafkaIntegrationTestCase(unittest.TestCase):
                 time.sleep(0.1)
             else:
                 cls.loop.run_until_complete(client.close())
-                break
+                return
+        assert False, "Kafka server never started"
 
     def setUp(self):
         super().setUp()

@@ -6,7 +6,8 @@ __all__ = [
 ]
 
 RecordMetadata = collections.namedtuple(
-    'RecordMetadata', ['topic', 'partition', 'topic_partition', 'offset'])
+    'RecordMetadata', ['topic', 'partition', 'topic_partition', 'offset',
+                       'timestamp', 'timestamp_type'])
 
 ConsumerRecord = collections.namedtuple(
     "ConsumerRecord", ["topic", "partition", "offset", "timestamp",

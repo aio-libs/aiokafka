@@ -1,6 +1,19 @@
 CHANGES
 --------
 
+0.3.X (2017-XX-XX)
+^^^^^^^^^^^^^^^^^^
+
+
+0.3.1 (2017-09-19)
+^^^^^^^^^^^^^^^^^^
+
+* Added `AIOKafkaProducer.flush()` method. (PR #209 by @vineet-rh)
+* Fixed a bug with uvloop involving `float("inf")` for timeout. (PR #210 by 
+   dmitry-moroz)
+* Changed test runner to allow running tests on OSX. (PR #213 by @shargan)
+
+
 0.3.0 (2017-08-17)
 ^^^^^^^^^^^^^^^^^^
 

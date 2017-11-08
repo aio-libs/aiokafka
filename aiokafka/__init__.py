@@ -1,21 +1,15 @@
-import sys
+__version__ = '0.3.2.dev'  # noqa
 
-from .errors import ConsumerStoppedError, IllegalOperation
 from .abc import ConsumerRebalanceListener
+from .client import AIOKafkaClient
+from .consumer import AIOKafkaConsumer
+from .errors import ConsumerStoppedError, IllegalOperation
+from .producer import AIOKafkaProducer
+from .structs import (
+    TopicPartition, ConsumerRecord, OffsetAndTimestamp, OffsetAndMetadata
+)
+from .util import PY_35, ensure_future
 
-try:
-    from asyncio import ensure_future
-except ImportError:
-    from asyncio import async as ensure_future
-
-__version__ = '0.3.0'
-PY_35 = sys.version_info >= (3, 5)
-
-from .structs import TopicPartition  # noqa
-from .client import AIOKafkaClient  # noqa
-from .producer import AIOKafkaProducer  # noqa
-from .consumer import AIOKafkaConsumer  # noqa
-from aiokafka.fetcher import ConsumerRecord  # noqa
 
 __all__ = [
     # Clients API
@@ -26,7 +20,8 @@ __all__ = [
     # Errors
     "ConsumerStoppedError", "IllegalOperation",
     # Structs
-    "ConsumerRecord", "TopicPartition"
+    "ConsumerRecord", "TopicPartition", "OffsetAndTimestamp",
+    "OffsetAndMetadata"
 ]
 
-(AIOKafkaClient, ensure_future)
+(PY_35, ensure_future, AIOKafkaClient)

@@ -4,15 +4,15 @@ import logging
 import random
 from itertools import chain
 
-from kafka.protocol.fetch import FetchRequest
-from kafka.protocol.message import PartialMessage
 from kafka.protocol.offset import OffsetRequest, OffsetResetStrategy
 
+from aiokafka.consumer.fetch import FetchRequest
 import aiokafka.errors as Errors
-from aiokafka import ensure_future
 from aiokafka.errors import (
     ConsumerStoppedError, RecordTooLargeError, KafkaTimeoutError)
+from aiokafka.record.memory_records import MemoryRecords
 from aiokafka.structs import OffsetAndTimestamp, TopicPartition, ConsumerRecord
+from aiokafka.util import ensure_future, create_future
 
 log = logging.getLogger(__name__)
 
@@ -20,10 +20,12 @@ UNKNOWN_OFFSET = -1
 
 
 class FetchResult:
-    def __init__(self, tp, *, subscriptions, loop, messages, backoff):
+    def __init__(
+            self, tp, *, subscriptions, loop, records, backoff):
         self._topic_partition = tp
         self._subscriptions = subscriptions
-        self._messages = messages
+        self._message_iter = records
+
         self._created = loop.time()
         self._backoff = backoff
         self._loop = loop
@@ -41,29 +43,32 @@ class FetchResult:
             # fetched records are returned
             log.debug("Not returning fetched records for partition %s"
                       " since it is no fetchable (unassigned or paused)", tp)
-            self._messages.clear()
+            self._message_iter = None
             return False
         return True
 
     def getone(self):
         tp = self._topic_partition
-        if not self.check_assignment(tp):
+        if not self.check_assignment(tp) or not self.has_more():
             return
 
         tp_assignment = self._subscriptions.assignment[tp]
+        next_batch_iter = self._message_iter
         while True:
-            if not self._messages:
+            try:
+                msg = next(next_batch_iter)
+            except StopIteration:
+                self._message_iter = None
                 return
 
-            msg = self._messages.popleft()
             if msg.offset < tp_assignment.position:
-                # Probably just a compressed messageset, it's ok.
+                # Probably just a compressed messageset, it's ok to skip.
                 continue
             elif (msg.offset > tp_assignment.position and
                     tp_assignment.drop_pending_message_set):
                 # We seeked to a different position between `get*` calls,
                 # so we can't verify if the message is correct.
-                self._messages.clear()
+                self._message_iter = None
                 return
 
             tp_assignment.position = msg.offset + 1
@@ -71,34 +76,39 @@ class FetchResult:
 
     def getall(self, max_records=None):
         tp = self._topic_partition
-        if not self.check_assignment(tp) or not self._messages:
+        if not self.check_assignment(tp) or not self.has_more():
             return []
 
-        if max_records is None:
-            max_records = len(self._messages)
-
         tp_assignment = self._subscriptions.assignment[tp]
-        if self._messages[0].offset > tp_assignment.position:
+        next_batch_iter = self._message_iter
+        try:
+            first_msg = next(next_batch_iter)
+        except StopIteration:
+            self._message_iter = None
+            return []
+
+        # In getall() we do this check only for the first message, other ones
+        # were fetched in the same call, so should be valid as well.
+        if first_msg.offset > tp_assignment.position:
             if tp_assignment.drop_pending_message_set:
                 # We seeked to a different position between `get*` calls,
                 # so we can't verify if the message is correct.
-                self._messages.clear()
+                self._message_iter = None
                 return []
 
         ret_list = []
-        while True:
-            if not self._messages or len(ret_list) == max_records:
-                return ret_list
-
-            msg = self._messages.popleft()
+        for msg in chain([first_msg], next_batch_iter):
             if msg.offset < tp_assignment.position:
                 # Probably just a compressed messageset, it's ok.
                 continue
-            tp_assignment.position = msg.offset + 1
             ret_list.append(msg)
+            if max_records is not None and len(ret_list) >= max_records:
+                break
+        tp_assignment.position = ret_list[-1].offset + 1
+        return ret_list
 
     def has_more(self):
-        return bool(self._messages)
+        return self._message_iter is not None
 
 
 class FetchError:
@@ -241,7 +251,7 @@ class Fetcher:
         try:
             while True:
                 # Reset consuming signal future.
-                self._wait_consume_future = asyncio.Future(loop=self._loop)
+                self._wait_consume_future = create_future(loop=self._loop)
                 # Create and send fetch requests
                 requests, timeout = self._create_fetch_requests()
                 for node_id, request in requests:
@@ -358,6 +368,7 @@ class Fetcher:
     @asyncio.coroutine
     def _proc_fetch_request(self, node_id, request):
         needs_wakeup = False
+        needs_position_update = []
         try:
             response = yield from self._client.send(node_id, request)
         except Errors.KafkaError as err:
@@ -372,7 +383,7 @@ class Fetcher:
                 fetch_offsets[TopicPartition(topic, partition)] = offset
 
         for topic, partitions in response.topics:
-            for partition, error_code, highwater, messages in partitions:
+            for partition, error_code, highwater, raw_batch in partitions:
                 tp = TopicPartition(topic, partition)
                 error_type = Errors.for_code(error_code)
                 if not self._subscriptions.is_fetchable(tp):
@@ -390,32 +401,24 @@ class Fetcher:
                     fetch_offset = fetch_offsets[tp]
                     if fetch_offset == tp_assignment.position:
                         tp_assignment.drop_pending_message_set = False
-                    partial = None
-                    if messages and \
-                            isinstance(messages[-1][-1], PartialMessage):
-                        partial = messages.pop()
 
-                    if messages:
+                    records = MemoryRecords(raw_batch)
+                    if records.has_next():
                         log.debug(
                             "Adding fetched record for partition %s with"
                             " offset %d to buffered record list",
                             tp, fetch_offset)
-                        try:
-                            messages = collections.deque(
-                                self._unpack_message_set(tp, messages))
-                        except Errors.InvalidMessageError as err:
-                            self._set_error(tp, err)
-                            continue
 
+                        message_iterator = self._unpack_records(tp, records)
                         self._records[tp] = FetchResult(
-                            tp, messages=messages,
+                            tp, records=message_iterator,
                             subscriptions=self._subscriptions,
                             backoff=self._prefetch_backoff,
                             loop=self._loop)
 
                         # We added at least 1 successful record
                         needs_wakeup = True
-                    elif partial:
+                    elif records.size_in_bytes() > 0:
                         # we did not read a single message from a non-empty
                         # buffer because that message's size is larger than
                         # fetch size, in this case record this exception
@@ -437,13 +440,14 @@ class Fetcher:
                     fetch_offset = fetch_offsets[tp]
                     if self._subscriptions.has_default_offset_reset_policy():
                         self._subscriptions.need_offset_reset(tp)
+                        needs_position_update.append(tp)
                     else:
                         err = Errors.OffsetOutOfRangeError({tp: fetch_offset})
                         self._set_error(tp, err)
                         needs_wakeup = True
                     log.info(
-                        "Fetch offset %s is out of range, resetting offset",
-                        fetch_offset)
+                        "Fetch offset %s is out of range for partition %s,"
+                        " resetting offset", fetch_offset, tp)
                 elif error_type is Errors.TopicAuthorizationFailedError:
                     log.warn("Not authorized to read from topic %s.", tp.topic)
                     err = Errors.TopicAuthorizationFailedError(tp.topic)
@@ -452,6 +456,14 @@ class Fetcher:
                 else:
                     log.warn('Unexpected error while fetching data: %s',
                              error_type.__name__)
+
+        if needs_position_update:
+            try:
+                yield from self.update_fetch_positions(needs_position_update)
+            except Exception:  # pragma: no cover
+                log.error(
+                    "Unexpected error updating fetch positions", exc_info=True)
+
         return needs_wakeup
 
     def _set_error(self, tp, error):
@@ -485,10 +497,14 @@ class Fetcher:
 
             assignment = self._subscriptions.assignment[tp]
             if self._subscriptions.is_offset_reset_needed(tp):
+                log.debug("partition %s needs offset reset", tp)
                 futures.append(self._reset_offset(tp, assignment))
             elif self._subscriptions.assignment[tp].committed is None:
                 # there's no committed position, so we need to reset with the
                 # default strategy
+                log.debug(
+                    "partition %s has no committed position, resetting with"
+                    " default strategy", tp)
                 self._subscriptions.need_offset_reset(tp)
                 futures.append(self._reset_offset(tp, assignment))
             else:
@@ -588,7 +604,8 @@ class Fetcher:
             try:
                 offsets = yield from asyncio.wait_for(
                     self._proc_offset_requests(timestamps),
-                    timeout=remaining, loop=self._loop
+                    timeout=None if remaining == float("inf") else remaining,
+                    loop=self._loop
                 )
             except asyncio.TimeoutError:
                 break
@@ -757,7 +774,7 @@ class Fetcher:
             # No messages ready. Wait for some to arrive
             if self._wait_empty_future is None \
                     or self._wait_empty_future.done():
-                self._wait_empty_future = asyncio.Future(loop=self._loop)
+                self._wait_empty_future = create_future(loop=self._loop)
             yield from asyncio.shield(self._wait_empty_future, loop=self._loop)
 
     @asyncio.coroutine
@@ -804,68 +821,43 @@ class Fetcher:
 
             if self._wait_empty_future is None \
                     or self._wait_empty_future.done():
-                self._wait_empty_future = asyncio.Future(loop=self._loop)
+                self._wait_empty_future = create_future(loop=self._loop)
+
+            wait_empty_future = self._wait_empty_future
+
             done, _ = yield from asyncio.wait(
-                [self._wait_empty_future], timeout=timeout, loop=self._loop)
+                [wait_empty_future], timeout=timeout, loop=self._loop)
 
             # _wait_empty_future can be set an exception in `close()` call
             # to stop all long running tasks
-            if not done or self._wait_empty_future.exception() is not None:
+            if not done or wait_empty_future.exception() is not None:
                 return {}
 
             # Decrease timeout accordingly
             timeout = timeout - (self._loop.time() - start_time)
             timeout = max(0, timeout)
 
-    def _unpack_message_set(self, tp, messages):
-        for offset, size, msg in messages:
-            if self._check_crcs and not msg.validate_crc():
-                raise Errors.InvalidMessageError(msg)
-            elif msg.is_compressed():
-                # If relative offset is used, we need to decompress the entire
-                # message first to compute the absolute offset.
-                inner_mset = msg.decompress()
-                if msg.magic > 0:
-                    last_offset, _, _ = inner_mset[-1]
-                    absolute_base_offset = offset - last_offset
-                else:
-                    absolute_base_offset = -1
-
-                for inner_offset, inner_size, inner_msg in inner_mset:
-                    if msg.magic > 0:
-                        # When magic value is greater than 0, the timestamp
-                        # of a compressed message depends on the
-                        # typestamp type of the wrapper message:
-                        if msg.timestamp_type == 0:  # CREATE_TIME (0)
-                            inner_timestamp = inner_msg.timestamp
-                        elif msg.timestamp_type == 1:  # LOG_APPEND_TIME (1)
-                            inner_timestamp = msg.timestamp
-                        else:
-                            raise ValueError('Unknown timestamp type: {0}'
-                                             .format(msg.timestamp_type))
-                    else:
-                        inner_timestamp = msg.timestamp
-
-                    if absolute_base_offset >= 0:
-                        inner_offset += absolute_base_offset
-
-                    key, value = self._deserialize(inner_msg)
-                    yield ConsumerRecord(
-                        tp.topic, tp.partition, inner_offset,
-                        inner_timestamp, msg.timestamp_type,
-                        key, value, inner_msg.crc,
-                        len(inner_msg.key)
-                        if inner_msg.key is not None else -1,
-                        len(inner_msg.value)
-                        if inner_msg.value is not None else -1)
-            else:
-                key, value = self._deserialize(msg)
+    def _unpack_records(self, tp, records):
+        # NOTE: if the batch is not compressed it's equal to 1 record in
+        #       v0 and v1.
+        deserialize = self._deserialize
+        check_crcs = self._check_crcs
+        while records.has_next():
+            next_batch = records.next_batch()
+            if check_crcs and not next_batch.validate_crc():
+                # This iterator will be closed after the exception, so we don't
+                # try to drain other batches here. They will be refetched.
+                raise Errors.CorruptRecordException("Invalid CRC")
+            for record in next_batch:
+                # Save encoded sizes
+                key_size = len(record.key) if record.key is not None else -1
+                value_size = \
+                    len(record.value) if record.value is not None else -1
+                key, value = deserialize(record)
                 yield ConsumerRecord(
-                    tp.topic, tp.partition, offset,
-                    msg.timestamp, msg.timestamp_type,
-                    key, value, msg.crc,
-                    len(msg.key) if msg.key is not None else -1,
-                    len(msg.value) if msg.value is not None else -1)
+                    tp.topic, tp.partition, record.offset, record.timestamp,
+                    record.timestamp_type, key, value, record.checksum,
+                    key_size, value_size)
 
     def _deserialize(self, msg):
         if self._key_deserializer:

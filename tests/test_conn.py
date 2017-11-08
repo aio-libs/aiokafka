@@ -3,7 +3,6 @@ import unittest
 import pytest
 import struct
 from unittest import mock
-from kafka.common import ConnectionError, CorrelationIdError
 from kafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
 from kafka.protocol.message import Message
 from kafka.protocol.metadata import (
@@ -14,6 +13,7 @@ from kafka.protocol.commit import (
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
 from aiokafka.conn import AIOKafkaConnection, create_conn
+from aiokafka.errors import ConnectionError, CorrelationIdError
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 

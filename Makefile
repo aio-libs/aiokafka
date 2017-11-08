@@ -2,7 +2,7 @@
 
 FLAGS=
 SCALA_VERSION?=2.11
-KAFKA_VERSION?=0.10.1.0
+KAFKA_VERSION?=0.10.2.1
 DOCKER_IMAGE=aiolibs/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
 DIFF_BRANCH=origin/master
 
@@ -21,7 +21,7 @@ vtest: flake
 	py.test -s -v --no-print-logs --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
 cov cover coverage: flake
-	py.test -s --no-print-logs --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	py.test -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 	@echo "open file://`pwd`/htmlcov/index.html"
 
 coverage.xml: .coverage
@@ -48,6 +48,8 @@ clean:
 	rm -rf docs/_build/
 	rm -rf cover
 	rm -rf dist
+	rm -f aiokafka/record/_*.c
+	rm -f aiokafka/record/_*.html
 
 doc:
 	make -C docs html

@@ -16,9 +16,9 @@ from kafka.protocol.group import (
     SyncGroupRequest_v0 as SyncGroupRequest)
 
 import aiokafka.errors as Errors
-from aiokafka import ensure_future
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.client import ConnectionGroup
+from aiokafka.util import ensure_future, create_future
 
 log = logging.getLogger(__name__)
 
@@ -231,7 +231,7 @@ class GroupCoordinator(BaseCoordinator):
         self._auto_commit_task = None
 
         # _closing future used as a signal to heartbeat task for finish ASAP
-        self._closing = asyncio.Future(loop=loop)
+        self._closing = create_future(loop=loop)
 
         self.heartbeat_task = ensure_future(
             self._heartbeat_task_routine(), loop=loop)
@@ -305,7 +305,10 @@ class GroupCoordinator(BaseCoordinator):
         self._assignment_snapshot = None
 
         # commit offsets prior to rebalance if auto-commit enabled
-        yield from self._maybe_auto_commit_offsets_sync()
+        try:
+            yield from self._maybe_auto_commit_offsets_sync()
+        except Errors.KafkaError as err:
+            log.error("OffsetCommit failed before join, ignoring: %s", err)
 
         # execute the user's callback before rebalance
         log.info("Revoking previously assigned partitions %s for group %s",
@@ -715,7 +718,7 @@ class GroupCoordinator(BaseCoordinator):
             if self.pending_rejoin_fut is None:
                 yield from self._on_join_prepare(
                     self.generation, self.member_id)
-                self.pending_rejoin_fut = asyncio.Future(loop=self._loop)
+                self.pending_rejoin_fut = create_future(loop=self._loop)
 
             while self.need_rejoin():
                 yield from self.ensure_coordinator_known()

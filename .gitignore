@@ -64,3 +64,9 @@ target/
 kafka_2*
 
 tests/ssl_cert
+
+# Cython extensions
+aiokafka/record/_legacy_records.c
+aiokafka/record/_legacy_records.html
+aiokafka/record/_memory_records.c
+aiokafka/record/_memory_records.html

@@ -2,24 +2,25 @@ import asyncio
 import pytest
 import unittest
 import sys
-from collections import deque
 from contextlib import contextmanager
 from unittest import mock
 
 from kafka.consumer.subscription_state import (
     SubscriptionState, TopicPartitionState)
 from kafka.protocol.offset import OffsetResetStrategy, OffsetResponse
-from kafka.protocol.fetch import (
-    FetchRequest_v0 as FetchRequest, FetchResponse_v0 as FetchResponse)
-from kafka.protocol.message import Message
+from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 
+from aiokafka.consumer.fetch import (
+    FetchRequest_v0 as FetchRequest, FetchResponse_v0 as FetchResponse)
 from aiokafka.errors import (
     TopicAuthorizationFailedError, UnknownError, UnknownTopicOrPartitionError,
     OffsetOutOfRangeError, KafkaTimeoutError, NotLeaderForPartitionError
 )
 from aiokafka.structs import TopicPartition, OffsetAndTimestamp
 from aiokafka.client import AIOKafkaClient
-from aiokafka.fetcher import Fetcher, FetchResult, FetchError, ConsumerRecord
+from aiokafka.consumer.fetcher import (
+    Fetcher, FetchResult, FetchError, ConsumerRecord
+)
 from ._testutil import run_until_complete
 
 
@@ -103,11 +104,15 @@ class TestFetcher(unittest.TestCase):
         client.force_metadata_update.side_effect = asyncio.coroutine(
             lambda: False)
         client.send = mock.MagicMock()
-        msg = Message(b"test msg")
-        msg._encode_self()
+
+        builder = LegacyRecordBatchBuilder(
+            magic=1, compression_type=0, batch_size=99999999)
+        builder.append(offset=4, value=b"test msg", key=None, timestamp=None)
+        raw_batch = bytes(builder.build())
+
         client.send.side_effect = asyncio.coroutine(
             lambda n, r: FetchResponse(
-                [('test', [(0, 0, 9, [(4, 10, msg)])])]))
+                [('test', [(0, 0, 9, raw_batch)])]))
         fetcher._in_flight.add(0)
         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
         self.assertEqual(needs_wake_up, False)
@@ -133,7 +138,7 @@ class TestFetcher(unittest.TestCase):
         # error -> no partition found
         client.send.side_effect = asyncio.coroutine(
             lambda n, r: FetchResponse(
-                [('test', [(0, 3, 9, [(4, 10, msg)])])]))
+                [('test', [(0, 3, 9, raw_batch)])]))
         fetcher._in_flight.add(0)
         fetcher._records.clear()
         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
@@ -142,7 +147,7 @@ class TestFetcher(unittest.TestCase):
         # error -> topic auth failed
         client.send.side_effect = asyncio.coroutine(
             lambda n, r: FetchResponse(
-                [('test', [(0, 29, 9, [(4, 10, msg)])])]))
+                [('test', [(0, 29, 9, raw_batch)])]))
         fetcher._in_flight.add(0)
         fetcher._records.clear()
         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
@@ -153,27 +158,49 @@ class TestFetcher(unittest.TestCase):
         # error -> unknown
         client.send.side_effect = asyncio.coroutine(
             lambda n, r: FetchResponse(
-                [('test', [(0, -1, 9, [(4, 10, msg)])])]))
+                [('test', [(0, -1, 9, raw_batch)])]))
         fetcher._in_flight.add(0)
         fetcher._records.clear()
         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
         self.assertEqual(needs_wake_up, False)
 
-        # error -> offset out of range
+        # error -> offset out of range with offset strategy
         client.send.side_effect = asyncio.coroutine(
             lambda n, r: FetchResponse(
-                [('test', [(0, 1, 9, [(4, 10, msg)])])]))
+                [('test', [(0, 1, 9, raw_batch)])]))
         fetcher._in_flight.add(0)
         fetcher._records.clear()
-        needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
-        self.assertEqual(needs_wake_up, False)
-        self.assertEqual(state.is_fetchable(), False)
+        with mock.patch.object(fetcher, "update_fetch_positions") as mocked:
+            mocked.side_effect = asyncio.coroutine(lambda o: None)
+            needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
+            self.assertEqual(needs_wake_up, False)
+            self.assertEqual(state.is_fetchable(), False)
+            mocked.assert_called_with([tp])
 
+        # error -> offset out of range with strategy errors out
+        state.seek(4)
+        client.send.side_effect = asyncio.coroutine(
+            lambda n, r: FetchResponse(
+                [('test', [(0, 1, 9, [(4, 10, raw_batch)])])]))
+        fetcher._in_flight.add(0)
+        fetcher._records.clear()
+        with mock.patch.object(fetcher, "update_fetch_positions") as mocked:
+            # the exception should not fail execution here
+            @asyncio.coroutine
+            def mock_async_raises(offests):
+                raise Exception()
+            mocked.side_effect = mock_async_raises
+            needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
+            self.assertEqual(needs_wake_up, False)
+            self.assertEqual(state.is_fetchable(), False)
+            mocked.assert_called_with([tp])
+
+        # error -> offset out of range without offset strategy
         state.seek(4)
         subscriptions._default_offset_reset_strategy = OffsetResetStrategy.NONE
         client.send.side_effect = asyncio.coroutine(
             lambda n, r: FetchResponse(
-                [('test', [(0, 1, 9, [(4, 10, msg)])])]))
+                [('test', [(0, 1, 9, raw_batch)])]))
         fetcher._in_flight.add(0)
         fetcher._records.clear()
         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
@@ -207,7 +234,7 @@ class TestFetcher(unittest.TestCase):
             serialized_key_size=0, serialized_value_size=4)]
         fetcher._records[tp2] = FetchResult(
             tp2, subscriptions=subscriptions, loop=self.loop,
-            messages=deque(messages), backoff=0)
+            records=iter(messages), backoff=0)
         # Add some error
         fetcher._records[tp1] = FetchError(
             loop=self.loop, error=OffsetOutOfRangeError({}), backoff=0)
@@ -262,19 +289,18 @@ class TestFetcher(unittest.TestCase):
         req = FetchRequest(
             -1,  # replica_id
             100, 100, [(tp.topic, [(tp.partition, 155, 100000)])])
-        msg1 = Message(b"12345", key=b"1")
-        msg1._encode_self()
-        msg2 = Message(b"23456", key=b"2")
-        msg2._encode_self()
-        msg3 = Message(b"34567", key=b"3")
-        msg3._encode_self()
+
+        builder = LegacyRecordBatchBuilder(
+            magic=1, compression_type=0, batch_size=99999999)
+        builder.append(160, value=b"12345", key=b"1", timestamp=None)
+        builder.append(162, value=b"23456", key=b"2", timestamp=None)
+        builder.append(167, value=b"34567", key=b"3", timestamp=None)
+        batch = bytes(builder.build())
+
         resp = FetchResponse(
             [('test', [(
                 0, 0, 3000,  # partition, error_code, highwater_offset
-                [(160, 5, msg1),  # offset, len_bytes, bytes
-                 (162, 5, msg2),
-                 (167, 5, msg3),
-                 ]
+                batch  # Batch raw bytes
             )])])
 
         client.send.side_effect = asyncio.coroutine(lambda n, r: resp)
@@ -293,17 +319,17 @@ class TestFetcher(unittest.TestCase):
         self.assertEqual(state.position, 161)
         self.assertEqual(
             (first.value, first.key, first.offset),
-            (msg1.value, msg1.key, 160))
+            (b"12345", b"1", 160))
 
         # Test successful getmany
         second, third = buf.getall()
         self.assertEqual(state.position, 168)
         self.assertEqual(
             (second.value, second.key, second.offset),
-            (msg2.value, msg2.key, 162))
+            (b"23456", b"2", 162))
         self.assertEqual(
             (third.value, third.key, third.offset),
-            (msg3.value, msg3.key, 167))
+            (b"34567", b"3", 167))
 
     @run_until_complete
     def test_fetcher_offsets_for_times(self):
@@ -369,7 +395,7 @@ class TestFetcher(unittest.TestCase):
                     ("topic", [(0, 3, -1, -1)]),
                 ])
             mocked.side_effect = mock_send
-            with self.assertLogs("aiokafka.fetcher", "WARN") as cm:
+            with self.assertLogs("aiokafka.consumer.fetcher", "WARN") as cm:
                 with self.assertRaises(UnknownTopicOrPartitionError):
                     yield from fetcher._proc_offset_request(
                         0, {"topic": (0, 1000)})

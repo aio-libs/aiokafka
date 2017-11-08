@@ -9,6 +9,7 @@ from kafka.protocol.produce import ProduceRequest
 from kafka.protocol.commit import OffsetFetchRequest
 
 import aiokafka.errors as Errors
+from aiokafka import __version__
 from aiokafka.conn import create_conn, CloseReason
 from aiokafka.errors import (
     KafkaError,
@@ -17,7 +18,7 @@ from aiokafka.errors import (
     RequestTimedOutError,
     UnknownTopicOrPartitionError,
     UnrecognizedBrokerVersion)
-from aiokafka import ensure_future, __version__
+from aiokafka.util import ensure_future, create_future
 
 
 __all__ = ['AIOKafkaClient']
@@ -83,6 +84,7 @@ class AIOKafkaClient:
         if security_protocol == "SSL" and ssl_context is None:
             raise ValueError(
                 "`ssl_context` is mandatory if security_protocol=='SSL'")
+
         self._bootstrap_servers = bootstrap_servers
         self._client_id = client_id
         self._metadata_max_age_ms = metadata_max_age_ms
@@ -100,7 +102,7 @@ class AIOKafkaClient:
         self._sync_task = None
 
         self._md_update_fut = None
-        self._md_update_waiter = asyncio.Future(loop=self._loop)
+        self._md_update_waiter = create_future(loop=self._loop)
         self._get_conn_lock = asyncio.Lock(loop=loop)
 
     def __repr__(self):
@@ -199,7 +201,7 @@ class AIOKafkaClient:
 
             topics = self._topics
             if self._md_update_fut is None:
-                self._md_update_fut = asyncio.Future(loop=self._loop)
+                self._md_update_fut = create_future(loop=self._loop)
             ret = yield from self._metadata_update(self.cluster, topics)
             # If list of topics changed during metadata update we must update
             # it again right away.
@@ -208,7 +210,7 @@ class AIOKafkaClient:
             # Earlier this waiter was set before sending metadata_request,
             # but that was to avoid topic list changes being unnoticed, which
             # is handled explicitly now.
-            self._md_update_waiter = asyncio.Future(loop=self._loop)
+            self._md_update_waiter = create_future(loop=self._loop)
 
             self._md_update_fut.set_result(ret)
             self._md_update_fut = None
@@ -278,7 +280,7 @@ class AIOKafkaClient:
             # Wake up the `_md_synchronizer` task
             if not self._md_update_waiter.done():
                 self._md_update_waiter.set_result(None)
-            self._md_update_fut = asyncio.Future(loop=self._loop)
+            self._md_update_fut = create_future(loop=self._loop)
         # Metadata will be updated in the background by syncronizer
         return self._md_update_fut
 
@@ -299,7 +301,7 @@ class AIOKafkaClient:
             topic (str): topic to track
         """
         if topic in self._topics:
-            res = asyncio.Future(loop=self._loop)
+            res = create_future(loop=self._loop)
             res.set_result(True)
         else:
             res = self.force_metadata_update()
@@ -316,7 +318,7 @@ class AIOKafkaClient:
         if not topics or set(topics).difference(self._topics):
             res = self.force_metadata_update()
         else:
-            res = asyncio.Future(loop=self._loop)
+            res = create_future(loop=self._loop)
             res.set_result(True)
         self._topics = set(topics)
         return res

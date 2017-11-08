@@ -1,5 +1,6 @@
 import json
 import asyncio
+import time
 from unittest import mock
 
 from kafka.cluster import ClusterMetadata
@@ -9,14 +10,18 @@ from kafka.common import (KafkaTimeoutError,
                           NotLeaderForPartitionError,
                           LeaderNotAvailableError,
                           RequestTimedOutError)
-from kafka.protocol.produce import ProduceResponse_v0 as ProduceResponse
+from kafka.protocol.produce import ProduceResponse
 
-from ._testutil import KafkaIntegrationTestCase, run_until_complete
+from ._testutil import (
+    KafkaIntegrationTestCase, run_until_complete, kafka_versions
+)
 
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer
-from aiokafka.message_accumulator import ProducerClosed
+from aiokafka.errors import ProducerClosed
+
+LOG_APPEND_TIME = 1
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
@@ -61,7 +66,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
-        with self.assertRaisesRegexp(AssertionError, 'value must be bytes'):
+        with self.assertRaises(TypeError):
             yield from producer.send(self.topic, 'hello, Kafka!')
         future = yield from producer.send(self.topic, b'hello, Kafka!')
         resp = yield from future
@@ -127,7 +132,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # expect offset +1
         self.assertEqual(resp.offset, offset + 1)
 
-        value[23] = '*VALUE'*800
+        value[23] = '*VALUE' * 800
         with self.assertRaises(MessageSizeTooLargeError):
             yield from producer.send(self.topic, value, key=key)
 
@@ -155,7 +160,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         # now message will be compressed
         resp = yield from producer.send_and_wait(
-            self.topic, b'large_message-'*100)
+            self.topic, b'large_message-' * 100)
         self.assertEqual(resp.topic, self.topic)
         self.assertTrue(resp.partition in (0, 1))
         yield from producer.stop()
@@ -216,7 +221,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         @asyncio.coroutine
         def mocked_send(nodeid, req):
             # RequestTimedOutCode error for partition=0
-            return ProduceResponse([(self.topic, [(0, 7, 0), (1, 0, 111)])])
+            return ProduceResponse[0]([(self.topic, [(0, 7, 0), (1, 0, 111)])])
 
         with mock.patch.object(producer.client, 'send') as mocked:
             mocked.side_effect = mocked_send
@@ -231,7 +236,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         def mocked_send_with_sleep(nodeid, req):
             # RequestTimedOutCode error for partition=0
             yield from asyncio.sleep(0.1, loop=self.loop)
-            return ProduceResponse([(self.topic, [(0, 7, 0)])])
+            return ProduceResponse[0]([(self.topic, [(0, 7, 0)])])
 
         with mock.patch.object(producer.client, 'send') as mocked:
             mocked.side_effect = mocked_send_with_sleep
@@ -240,6 +245,63 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                     self.topic, b'text1', partition=0)
                 yield from future
         yield from producer.stop()
+
+    @run_until_complete
+    def test_producer_send_batch(self):
+        key = b'test key'
+        value = b'test value'
+        max_batch_size = 10000
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            max_batch_size=max_batch_size)
+        yield from producer.start()
+
+        partitions = yield from producer.partitions_for(self.topic)
+        partition = partitions.pop()
+
+        # silly method to find current offset for this partition
+        resp = yield from producer.send_and_wait(
+            self.topic, value=b'discovering offset', partition=partition)
+        offset = resp.offset
+
+        # only fills up to its limits, then returns None
+        batch = producer.create_batch()
+        self.assertEqual(batch.record_count(), 0)
+        num = 0
+        while True:
+            metadata = batch.append(key=key, value=value, timestamp=None)
+            if metadata is None:
+                break
+            num += 1
+        self.assertTrue(num > 0)
+        self.assertEqual(batch.record_count(), num)
+
+        # batch gets properly sent
+        future = yield from producer.send_batch(
+            batch, self.topic, partition=partition)
+        resp = yield from future
+        self.assertEqual(resp.topic, self.topic)
+        self.assertEqual(resp.partition, partition)
+        self.assertEqual(resp.offset, offset + 1)
+
+        # batch accepts a too-large message if it's the first
+        too_large = b'm' * (max_batch_size + 1)
+        batch = producer.create_batch()
+        metadata = batch.append(key=None, value=too_large, timestamp=None)
+        self.assertIsNotNone(metadata)
+
+        # batch rejects a too-large message if it's not the first
+        batch = producer.create_batch()
+        batch.append(key=None, value=b"short", timestamp=None)
+        metadata = batch.append(key=None, value=too_large, timestamp=None)
+        self.assertIsNone(metadata)
+        yield from producer.stop()
+
+        # batch can't be sent after closing time
+        with self.assertRaises(ProducerClosed):
+            yield from producer.send_batch(
+                batch, self.topic, partition=partition)
 
     @run_until_complete
     def test_producer_ssl(self):
@@ -279,3 +341,53 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 loop=self.loop,
                 bootstrap_servers=self.hosts,
                 security_protocol="SSL", ssl_context=None)
+
+    @run_until_complete
+    def test_producer_flush_test(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        yield from producer.start()
+
+        fut1 = yield from producer.send("producer_flush_test", b'text1')
+        fut2 = yield from producer.send("producer_flush_test", b'text2')
+        self.assertFalse(fut1.done())
+        self.assertFalse(fut2.done())
+
+        yield from producer.flush()
+        self.assertTrue(fut1.done())
+        self.assertTrue(fut2.done())
+
+    @kafka_versions('>=0.10.0')
+    @run_until_complete
+    def test_producer_correct_time_returned(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        yield from producer.start()
+
+        send_time = (time.time() * 1000)
+        res = yield from producer.send_and_wait(
+            "XXXX", b'text1', partition=0)
+        self.assertLess(res.timestamp - send_time, 1000)  # 1s
+
+        res = yield from producer.send_and_wait(
+            "XXXX", b'text1', partition=0, timestamp_ms=123123123)
+        self.assertEqual(res.timestamp, 123123123)
+
+        expected_timestamp = 999999999
+
+        @asyncio.coroutine
+        def mocked_send(*args, **kw):
+            # There's no easy way to set LOG_APPEND_TIME on server, so use this
+            # hack for now.
+            return ProduceResponse[2](
+                topics=[
+                    ('XXXX', [(0, 0, 0, expected_timestamp)])],
+                throttle_time_ms=0)
+
+        with mock.patch.object(producer.client, 'send') as mocked:
+            mocked.side_effect = mocked_send
+
+            res = yield from producer.send_and_wait(
+                "XXXX", b'text1', partition=0)
+            self.assertEqual(res.timestamp_type, LOG_APPEND_TIME)
+            self.assertEqual(res.timestamp, expected_timestamp)

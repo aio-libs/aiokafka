@@ -1,7 +1,76 @@
 import os
 import re
+import platform
 import sys
-from setuptools import setup
+from distutils.command.build_ext import build_ext
+from distutils.errors import (CCompilerError, DistutilsExecError,
+                              DistutilsPlatformError)
+
+from setuptools import setup, Extension
+
+# Those are needed to build _hton for windows
+
+CFLAGS = ['-O2']
+LDFLAGS = []
+LIBRARIES = []
+
+if platform.uname().system == 'Windows':
+    LDFLAGS.append('ws2_32.lib')
+else:
+    CFLAGS.extend(['-Wall', '-Wsign-compare', '-Wconversion'])
+    LIBRARIES.append('z')
+
+# The extension part is copied from aiohttp's setup.py
+
+try:
+    from Cython.Build import cythonize
+    USE_CYTHON = True
+except ImportError:
+    USE_CYTHON = False
+
+ext = '.pyx' if USE_CYTHON else '.c'
+
+extensions = [
+    Extension(
+        'aiokafka.record._legacy_records',
+        ['aiokafka/record/_legacy_records' + ext],
+        libraries=LIBRARIES,
+        extra_compile_args=CFLAGS,
+        extra_link_args=LDFLAGS
+    ),
+    Extension(
+        'aiokafka.record._memory_records',
+        ['aiokafka/record/_memory_records' + ext],
+        libraries=LIBRARIES,
+        extra_compile_args=CFLAGS,
+        extra_link_args=LDFLAGS
+    ),
+]
+
+
+if USE_CYTHON:
+    extensions = cythonize(extensions)
+
+
+class BuildFailed(Exception):
+    pass
+
+
+class ve_build_ext(build_ext):
+    # This class allows C extension building to fail.
+
+    def run(self):
+        try:
+            build_ext.run(self)
+        except (DistutilsPlatformError, FileNotFoundError):
+            raise BuildFailed()
+
+    def build_extension(self, ext):
+        try:
+            build_ext.build_extension(self, ext)
+        except (CCompilerError, DistutilsExecError,
+                DistutilsPlatformError, ValueError):
+            raise BuildFailed()
 
 
 install_requires = ['kafka-python==1.3.3']
@@ -50,18 +119,32 @@ classifiers = [
 ]
 
 
-setup(name='aiokafka',
-      version=read_version(),
-      description=('Kafka integration with asyncio.'),
-      long_description='\n\n'.join((read('README.rst'), read('CHANGES.rst'))),
-      classifiers=classifiers,
-      platforms=['POSIX'],
-      author='Andrew Svetlov',
-      author_email='andrew.svetlov@gmail.com',
-      url='http://aiokafka.readthedocs.org',
-      download_url='https://pypi.python.org/pypi/aiokafka',
-      license='Apache 2',
-      packages=['aiokafka'],
-      install_requires=install_requires,
-      extras_require=extras_require,
-      include_package_data=True)
+args = dict(
+    name='aiokafka',
+    version=read_version(),
+    description=('Kafka integration with asyncio.'),
+    long_description='\n\n'.join((read('README.rst'), read('CHANGES.rst'))),
+    classifiers=classifiers,
+    platforms=['POSIX'],
+    author='Andrew Svetlov',
+    author_email='andrew.svetlov@gmail.com',
+    url='http://aiokafka.readthedocs.org',
+    download_url='https://pypi.python.org/pypi/aiokafka',
+    license='Apache 2',
+    packages=['aiokafka'],
+    install_requires=install_requires,
+    extras_require=extras_require,
+    include_package_data=True,
+    ext_modules=extensions,
+    cmdclass=dict(build_ext=ve_build_ext)
+)
+
+try:
+    setup(**args)
+except BuildFailed:
+    print("************************************************************")
+    print("Cannot compile C accelerator module, use pure python version")
+    print("************************************************************")
+    del args['ext_modules']
+    del args['cmdclass']
+    setup(**args)

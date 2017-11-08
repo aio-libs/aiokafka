@@ -6,17 +6,18 @@ from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.consumer.subscription_state import SubscriptionState
 from kafka.protocol.offset import OffsetResetStrategy
 
-from aiokafka.structs import TopicPartition, OffsetAndMetadata
+from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
     KafkaError, TopicAuthorizationFailedError, OffsetOutOfRangeError,
-    IllegalStateError)
-from aiokafka.client import AIOKafkaClient
-from aiokafka.group_coordinator import GroupCoordinator, NoGroupCoordinator
-from aiokafka.errors import (
-    ConsumerStoppedError, IllegalOperation, UnsupportedVersionError
+    ConsumerStoppedError, IllegalOperation, UnsupportedVersionError,
+    IllegalStateError
 )
-from aiokafka.fetcher import Fetcher
-from aiokafka import __version__, ensure_future, PY_35
+from aiokafka.structs import TopicPartition, OffsetAndMetadata
+from aiokafka.util import ensure_future, PY_35
+from aiokafka import __version__
+
+from .fetcher import Fetcher
+from .group_coordinator import GroupCoordinator, NoGroupCoordinator
 
 log = logging.getLogger(__name__)
 
@@ -180,6 +181,7 @@ class AIOKafkaConsumer(object):
 
         self._group_id = group_id
         self._heartbeat_interval_ms = heartbeat_interval_ms
+        self._session_timeout_ms = session_timeout_ms
         self._retry_backoff_ms = retry_backoff_ms
         self._request_timeout_ms = request_timeout_ms
         self._enable_auto_commit = enable_auto_commit
@@ -243,6 +245,7 @@ class AIOKafkaConsumer(object):
                 self._client, self._subscription, loop=self._loop,
                 group_id=self._group_id,
                 heartbeat_interval_ms=self._heartbeat_interval_ms,
+                session_timeout_ms=self._session_timeout_ms,
                 retry_backoff_ms=self._retry_backoff_ms,
                 enable_auto_commit=self._enable_auto_commit,
                 auto_commit_interval_ms=self._auto_commit_interval_ms,

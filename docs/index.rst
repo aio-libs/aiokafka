@@ -107,6 +107,9 @@ To enable LZ4 compression/decompression, install lz4tools and xxhash:
 >>> pip3 install lz4tools
 >>> pip3 install xxhash
 
+Note, that on **Windows** you will need Visual Studio build tools, available for download
+from http://landinghub.visualstudio.com/visual-cpp-build-tools
+
 
 Optional Snappy install
 +++++++++++++++++++++++
@@ -142,6 +145,9 @@ From Source:
 .. code:: bash
 
     pip3 install python-snappy
+
+For **Windows** the easiest way is to fetch a precompiled wheel from
+http://www.lfd.uci.edu/~gohlke/pythonlibs/#python-snappy
 
 
 
