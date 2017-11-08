@@ -486,7 +486,7 @@ class AIOKafkaConsumer(object):
             'Partition is not assigned'
         offset = self._subscription.assignment[partition].position
         if offset is None:
-            yield from self._update_fetch_positions([partition])
+            yield from self._update_fetch_positions(partition)
             offset = self._subscription.assignment[partition].position
         return offset
 
