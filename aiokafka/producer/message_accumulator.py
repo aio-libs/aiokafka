@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import io
+import copy
 
 from kafka.protocol.types import Int32
 
@@ -165,7 +166,9 @@ class MessageBatch:
         for future, _ in self._msg_futures:
             if future.done():
                 continue
-            future.set_exception(exception)
+            # we need to copy exception so traceback is not multiplied
+            # https://github.com/aio-libs/aiokafka/issues/246
+            future.set_exception(copy.copy(exception))
 
     def wait_deliver(self, timeout=None):
         """Wait until all message from this batch is processed"""
