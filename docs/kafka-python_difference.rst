@@ -82,7 +82,7 @@ to control rebalance start and end moments.
 Prefetching is more sophisticated
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In Kafka Java Client and ``python-kafka`` the prefetching is very simple, as
+In Kafka Java Client and ``kafka-python`` the prefetching is very simple, as
 it only performs prefetches:
  
   * in ``poll()`` call if we don't have enough data stored to satisfy another
