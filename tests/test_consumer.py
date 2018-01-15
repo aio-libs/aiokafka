@@ -451,7 +451,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Seek should invalidate the remaining message
         tp = TopicPartition(self.topic, rmsg1.partition)
         consumer.seek(tp, rmsg1.offset + 2)
-        with self.count_fetch_requests(consumer, 0):
+        with self.count_fetch_requests(consumer, 1):
             rmsg2 = yield from consumer.getone()
             self.assertEqual(rmsg2.value, b'3')
 
@@ -473,7 +473,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Seek should invalidate the remaining message
         tp = TopicPartition(self.topic, rmsg1.partition)
         consumer.seek(tp, rmsg1.offset + 2)
-        with self.count_fetch_requests(consumer, 0):
+        with self.count_fetch_requests(consumer, 1):
             rmsg2 = yield from consumer.getmany(timeout_ms=500)
             rmsg2 = rmsg2[tp][0]
             self.assertEqual(rmsg2.value, b'3')
@@ -505,7 +505,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         pos = yield from consumer.position(tp)
         self.assertEqual(pos, start_position + 1)
 
-    @pytest.mark.skip(reason="Raises AssertionError, see issue #199")
     @run_until_complete
     def test_consumer_seek_to_end(self):
         # Send 3 messages
@@ -840,7 +839,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # Now lets actualy produce some data and verify that it is consumed
         yield from producer.send(my_topic, b'test msg')
-        data = yield from consume_task
+        data = yield from asyncio.wait_for(
+            consume_task, timeout=2, loop=self.loop)
         self.assertEqual(data.value, b'test msg')
 
     @run_until_complete
@@ -885,7 +885,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # Now lets actualy produce some data and verify that it is consumed
         yield from producer.send(my_topic, b'test msg')
-        data = yield from consume_task
+        data = yield from asyncio.wait_for(
+            consume_task, timeout=2, loop=self.loop)
         self.assertEqual(data.value, b'test msg')
 
     @run_until_complete
@@ -1227,20 +1228,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer.subscribe([self.topic], listener=listener)
         yield from consumer.start()
         self.assertTrue(listener.seek_task.done())
-
-    @run_until_complete
-    def test_consumer_stop_cancels_pending_position_fetches(self):
-        consumer = AIOKafkaConsumer(
-            self.topic,
-            loop=self.loop, bootstrap_servers=self.hosts,
-            group_id='group-%s' % self.id())
-        yield from consumer.start()
-        self.add_cleanup(consumer.stop)
-
-        self.assertTrue(consumer._pending_position_fetches)
-        pending_task = list(consumer._pending_position_fetches)[0]
-        yield from consumer.stop()
-        self.assertTrue(pending_task.cancelled())
 
     @run_until_complete
     def test_commit_not_blocked_by_long_poll_fetch(self):

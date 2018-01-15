@@ -7,7 +7,7 @@ from unittest import mock
 
 from kafka.consumer.subscription_state import (
     SubscriptionState, TopicPartitionState)
-from kafka.protocol.offset import OffsetResetStrategy, OffsetResponse
+from kafka.protocol.offset import OffsetResponse
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 
 from aiokafka.consumer.fetch import (
@@ -19,7 +19,7 @@ from aiokafka.errors import (
 from aiokafka.structs import TopicPartition, OffsetAndTimestamp
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer.fetcher import (
-    Fetcher, FetchResult, FetchError, ConsumerRecord
+    Fetcher, FetchResult, FetchError, ConsumerRecord, OffsetResetStrategy
 )
 from ._testutil import run_until_complete
 

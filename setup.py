@@ -81,6 +81,7 @@ if PY_VER >= (3, 4):
     pass
 elif PY_VER >= (3, 3):
     install_requires.append('asyncio')
+    install_requires.append('enum')
 else:
     raise RuntimeError("aiokafka doesn't suppport Python earlier than 3.3")
 
