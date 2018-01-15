@@ -231,7 +231,8 @@ class AIOKafkaConnection:
         except (OSError, EOFError, ConnectionError) as exc:
             for _, _, fut in self._requests:
                 conn_exc = Errors.ConnectionError(
-                    "Connection at {0}:{1} broken".format(self._host, self._port))
+                    "Connection at {0}:{1} broken"
+                    .format(self._host, self._port))
                 conn_exc.__cause__ = exc
                 conn_exc.__context__ = exc
                 fut.set_exception(conn_exc)
