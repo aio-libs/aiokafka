@@ -150,6 +150,9 @@ class FetchResult:
     def has_more(self):
         return self._message_iter is not None
 
+    def __repr__(self):
+        return "<FetchResult position={!r}>".format(self._expected_position)
+
 
 class FetchError:
     def __init__(self, *, loop, error, backoff):
@@ -167,6 +170,9 @@ class FetchError:
     def check_raise(self):
         # TODO: Do we need to raise error if partition not assigned anymore
         raise self._error
+
+    def __repr__(self):
+        return "<FetchError error={!r}>".format(self._error)
 
 
 class Fetcher:
@@ -290,6 +296,16 @@ class Fetcher:
         """
         try:
             assignment = None
+
+            def start_pending_task(coro, node_id, self=self):
+                task = ensure_future(coro, loop=self._loop)
+                self._pending_tasks.add(task)
+                self._in_flight.add(node_id)
+
+                def on_done(fut, self=self):
+                    self._in_flight.discard(node_id)
+                task.add_done_callback(on_done)
+
             while True:
                 # If we lose assignment we just cancel all current tasks,
                 # wait for new assignment and restart the loop
@@ -316,18 +332,14 @@ class Fetcher:
                     self._get_actions_per_node(assignment)
                 # Start fetch tasks
                 for node_id, request in fetch_requests:
-                    task = ensure_future(
+                    start_pending_task(
                         self._proc_fetch_request(assignment, node_id, request),
-                        loop=self._loop)
-                    self._pending_tasks.add(task)
-                    self._in_flight.add(node_id)
+                        node_id=node_id)
                 # Start update position tasks
                 for node_id, tps in reset_requests.items():
-                    task = ensure_future(
+                    start_pending_task(
                         self._update_fetch_positions(assignment, node_id, tps),
-                        loop=self._loop)
-                    self._pending_tasks.add(task)
-                    self._in_flight.add(node_id)
+                        node_id=node_id)
                 # Apart from pending requests we also need to react to other
                 # events to send new fetches as soon as possible
                 other_futs = [self._wait_consume_future,
@@ -371,7 +383,15 @@ class Fetcher:
             tp_state = assignment.state_value(tp)
             node_id = self._client.cluster.leader_for_partition(tp)
             backoff = 0
-            if node_id in self._in_flight:
+            if tp in self._records:
+                # We have data still not consumed by user. In this case we
+                # usually wait for the user to finish consumption, but to avoid
+                # blocking other partitions we have a timeout here.
+                record = self._records[tp]
+                backoff = record.calculate_backoff()
+                if backoff:
+                    backoff_by_nodes[node_id].append(backoff)
+            elif node_id in self._in_flight:
                 # We have in-flight fetches to this node
                 continue
             elif node_id is None or node_id == -1:
@@ -380,16 +400,6 @@ class Fetcher:
                 invalid_metadata = True
             elif not tp_state.has_valid_position:
                 awaiting_reset[node_id].append(tp)
-            # We moved this below to be after reset condition. We need to reset
-            # right away, even if the cache contains results.
-            elif tp in self._records:
-                # We have data still not consumed by user. In this case we
-                # usually wait for the user to finish consumption, but to avoid
-                # blocking other partitions we have a timeout here.
-                record = self._records[tp]
-                backoff = record.calculate_backoff()
-                if backoff:
-                    backoff_by_nodes[node_id].append(backoff)
             else:
                 position = tp_state.position
                 fetchable[node_id].append((tp, position))
@@ -434,7 +444,6 @@ class Fetcher:
     @asyncio.coroutine
     def _proc_fetch_request(self, assignment, node_id, request):
         needs_wakeup = False
-
         try:
             response = yield from self._client.send(node_id, request)
         except Errors.KafkaError as err:
@@ -444,8 +453,6 @@ class Fetcher:
             # Either `close()` or partition unassigned. Either way the result
             # is no longer of interest.
             return False
-        finally:
-            self._in_flight.remove(node_id)
 
         assert assignment.active
 
@@ -460,6 +467,13 @@ class Fetcher:
                 error_type = Errors.for_code(error_code)
                 fetch_offset = fetch_offsets[tp]
                 tp_state = assignment.state_value(tp)
+                if not tp_state.has_valid_position or \
+                        tp_state.position != fetch_offset:
+                    log.debug(
+                        "Discarding fetch response for partition %s "
+                        "since its offset %s does not match the current "
+                        "position", tp, fetch_offset)
+                    continue
 
                 if error_type is Errors.NoError:
                     tp_state.highwater = highwater
@@ -498,7 +512,7 @@ class Fetcher:
 
                 elif error_type in (Errors.NotLeaderForPartitionError,
                                     Errors.UnknownTopicOrPartitionError):
-                    yield from self._client.force_metadata_update()
+                    self._client.force_metadata_update()
                 elif error_type is Errors.OffsetOutOfRangeError:
                     if self._default_reset_strategy != \
                             OffsetResetStrategy.NONE:
@@ -521,7 +535,7 @@ class Fetcher:
         return needs_wakeup
 
     def _set_error(self, tp, error):
-        assert tp not in self._records
+        assert tp not in self._records, self._records[tp]
         self._records[tp] = FetchError(
             error=error, backoff=self._prefetch_backoff, loop=self._loop)
 
@@ -546,10 +560,14 @@ class Fetcher:
                 try:
                     yield from tp_state.wait_for_committed()
                 except asyncio.CancelledError:
-                    self._in_flight.remove(node_id)
                     return needs_wakeup
                 committed = tp_state.committed
             assert committed is not None
+
+            # There could have been a seek() call of some sort while
+            # waiting for committed point
+            if tp_state.has_valid_position or tp_state.awaiting_reset:
+                continue
 
             if committed.offset == UNKNOWN_OFFSET:
                 # No offset stored in Kafka, need to reset
@@ -562,13 +580,9 @@ class Fetcher:
                 log.debug(
                     "No committed offset found for %s", tp)
             else:
-                # There could have been a seek() call of some sort while
-                # waiting for committed point
-                if not tp_state.has_valid_position and not \
-                        tp_state.awaiting_reset:
-                    log.debug("Resetting offset for partition %s to the "
-                              "committed offset %s", tp, committed)
-                    tp_state.reset_to(committed.offset)
+                log.debug("Resetting offset for partition %s to the "
+                          "committed offset %s", tp, committed)
+                tp_state.reset_to(committed.offset)
 
         topic_data = collections.defaultdict(list)
         needs_reset = []
@@ -595,8 +609,6 @@ class Fetcher:
             return needs_wakeup
         except asyncio.CancelledError:
             return needs_wakeup
-        finally:
-            self._in_flight.remove(node_id)
 
         for tp in needs_reset:
             offset = offsets[tp][0]
@@ -918,6 +930,10 @@ class Fetcher:
             tp_state = assignment.state_value(tp)
             tp_state.await_reset(strategy)
             waiters.append(tp_state.wait_for_position())
+            # Invalidate previous fetch result
+            if tp in self._records:
+                del self._records[tp]
+
         # XXX: Maybe we should use a different future or rename? Not really
         # describing the purpose.
         self._notify(self._wait_consume_future)
@@ -928,6 +944,18 @@ class Fetcher:
             loop=self._loop, return_when=asyncio.FIRST_COMPLETED
         )
         return assignment.active
+
+    def seek_to(self, tp, offset):
+        """ Force a position change to specific offset. Called from
+        `Consumer.seek()` API.
+        """
+        self._subscriptions.seek(tp, offset)
+        if tp in self._records:
+            del self._records[tp]
+
+        # XXX: Maybe we should use a different future or rename? Not really
+        # describing the purpose.
+        self._notify(self._wait_consume_future)
 
     def _unpack_records(self, tp, records):
         # NOTE: if the batch is not compressed it's equal to 1 record in

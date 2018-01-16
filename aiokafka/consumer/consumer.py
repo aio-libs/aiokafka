@@ -307,7 +307,8 @@ class AIOKafkaConsumer(object):
         self._client.set_topics([tp.topic for tp in partitions])
         if self._group_id is not None:
             # refresh commit positions for all assigned partitions
-            yield from self._coordinator.refresh_committed_offsets()
+            assignment = self._subscription.subscription.assignment
+            self._coordinator.start_commit_offsets_refresh_task(assignment)
 
     def assignment(self):
         """ Get the set of partitions currently assigned to this consumer.
@@ -571,7 +572,7 @@ class AIOKafkaConsumer(object):
         if not isinstance(offset, int):
             raise ValueError("Offset must be a positive integer")
         log.debug("Seeking to offset %s for partition %s", offset, partition)
-        self._subscription.seek(partition, offset)
+        self._fetcher.seek_to(partition, offset)
 
     @asyncio.coroutine
     def seek_to_beginning(self, *partitions):
@@ -676,7 +677,7 @@ class AIOKafkaConsumer(object):
             offset = yield from self.committed(tp)
             log.debug("Seeking to committed of partition %s %s", tp, offset)
             if offset and offset > 0:
-                self.seek(tp, offset)
+                self._fetcher.seek_to(tp, offset)
 
     @asyncio.coroutine
     def offsets_for_times(self, timestamps):

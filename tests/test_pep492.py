@@ -70,7 +70,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             self.topic, loop=self.loop,
             bootstrap_servers=self.hosts,
-            auto_offset_reset=None)
+            auto_offset_reset="none")
         await consumer.start()
 
         with self.assertRaises(OffsetOutOfRangeError):
@@ -82,7 +82,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             self.topic, loop=self.loop,
             bootstrap_servers=self.hosts,
-            auto_offset_reset=None)
+            auto_offset_reset="none")
         await consumer.start()
 
         async def iterator():

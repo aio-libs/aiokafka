@@ -17,7 +17,7 @@ from aiokafka.structs import (
 )
 from aiokafka.errors import (
     IllegalStateError, UnknownTopicOrPartitionError, OffsetOutOfRangeError,
-    UnsupportedVersionError, KafkaTimeoutError
+    UnsupportedVersionError, KafkaTimeoutError, NoOffsetForPartitionError
 )
 
 from ._testutil import (
@@ -486,7 +486,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     def test_consumer_seek_to_beginning(self):
         # Send 3 messages
         yield from self.send_messages(0, [1, 2, 3])
-
         consumer = yield from self.consumer_factory()
         self.add_cleanup(consumer.stop)
 
@@ -1035,14 +1034,22 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             auto_offset_reset="none")
         yield from consumer.start()
         self.add_cleanup(consumer.stop)
+        tp = TopicPartition(self.topic, 0)
 
-        with self.assertRaises(OffsetOutOfRangeError):
+        with self.assertRaises(NoOffsetForPartitionError):
             for x in range(2):
                 yield from consumer.getmany(timeout_ms=1000)
-
-        with self.assertRaises(OffsetOutOfRangeError):
+        with self.assertRaises(NoOffsetForPartitionError):
             for x in range(2):
                 yield from consumer.getone()
+
+        consumer.seek(tp, 19999)
+        with self.assertRaises(OffsetOutOfRangeError):
+            for x in range(2):
+                yield from consumer.getmany(tp, timeout_ms=1000)
+        with self.assertRaises(OffsetOutOfRangeError):
+            for x in range(2):
+                yield from consumer.getone(tp)
 
     @run_until_complete
     def test_consumer_cleanup_unassigned_data_getone(self):
@@ -1217,8 +1224,16 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             @asyncio.coroutine
             def on_partitions_assigned(self, assigned):
                 self.seek_task = self.consumer._loop.create_task(
-                    self.consumer.seek_to_end(tp0))
+                    self._super_reseek())
                 yield from self.seek_task
+
+            @asyncio.coroutine
+            def _super_reseek(self):
+                committed = yield from self.consumer.committed(tp0)
+                position = yield from self.consumer.position(tp0)
+                yield from self.consumer.seek_to_end(tp0)
+                position2 = yield from self.consumer.position(tp0)
+                return committed, position, position2
 
         consumer = AIOKafkaConsumer(
             loop=self.loop, group_id="test_rebalance_listener_with_coroutines",
@@ -1227,7 +1242,10 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         listener = SimpleRebalanceListener(consumer)
         consumer.subscribe([self.topic], listener=listener)
         yield from consumer.start()
-        self.assertTrue(listener.seek_task.done())
+        committed, position, position2 = yield from listener.seek_task
+        self.assertIsNone(committed)
+        self.assertIsNotNone(position)
+        self.assertIsNotNone(position2)
 
     @run_until_complete
     def test_commit_not_blocked_by_long_poll_fetch(self):

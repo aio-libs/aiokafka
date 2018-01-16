@@ -226,6 +226,7 @@ class GroupCoordinator(BaseCoordinator):
 
         # Will be started/stopped by coordination task
         self._heartbeat_task = None
+        self._commit_refresh_task = None
 
         self._coordinator_lookup_lock = asyncio.Lock(loop=loop)
         # Will synchronize edits to TopicPartitionState.committed, as it may be
@@ -271,6 +272,7 @@ class GroupCoordinator(BaseCoordinator):
         # We must let the coordination task properly finish all pending work
         yield from self._coordination_task
         yield from self._stop_heartbeat_task()
+        yield from self._stop_commit_offsets_refresh_task()
 
         if self.generation > 0:
             # this is a minimal effort attempt to leave the group. we do not
@@ -374,6 +376,13 @@ class GroupCoordinator(BaseCoordinator):
         # give the assignor a chance to update internal state
         # based on the received assignment
         assignor.on_assignment(assignment)
+
+        # We need to start this task before callback to avoid deadlocks.
+        # Callback can rely on something like ``Consumer.position()`` that
+        # requires committed point to be refreshed.
+        yield from self._stop_commit_offsets_refresh_task()
+        self.start_commit_offsets_refresh_task(
+            self._subscription.subscription.assignment)
 
         assigned = set(self._subscription.assigned_partitions())
         log.info("Setting newly assigned partitions %s for group %s",
@@ -481,7 +490,6 @@ class GroupCoordinator(BaseCoordinator):
         coordination. This task will spawn/stop heartbeat task and perform
         autocommit in times it's safe to do so.
         """
-        retry_backoff = self._retry_backoff_ms / 1000
         subscription = self._subscription.subscription
         assignment = None
         performed_join_prepare = False
@@ -535,6 +543,8 @@ class GroupCoordinator(BaseCoordinator):
                 else:
                     # Backoff is done in group rejoin
                     continue
+            else:
+                assignment = subscription.assignment
 
             assert assignment is not None and assignment.active
 
@@ -543,12 +553,6 @@ class GroupCoordinator(BaseCoordinator):
             # time to next autocommit deadline. If autocommit is disabled
             # timeout will be ``None``, ie. no timeout.
             wait_timeout = yield from self._maybe_do_autocommit(assignment)
-
-            # During an autocommit or as a result of rebalance some partitions
-            # commit cache may have been invalidated.
-            success = yield from self._maybe_refresh_commit_offsets(assignment)
-            if not success:
-                wait_timeout = retry_backoff
 
             futures = [
                 self._closing,  # Will exit fast if close() called
@@ -564,6 +568,10 @@ class GroupCoordinator(BaseCoordinator):
             done, _ = yield from asyncio.wait(
                 futures, timeout=wait_timeout, loop=self._loop,
                 return_when=asyncio.FIRST_COMPLETED)
+
+        # Closing finallization
+        if assignment is not None:
+            yield from self._maybe_do_last_autocommit(assignment)
 
     def _start_heartbeat_task(self):
         if self._heartbeat_task is None:
@@ -658,6 +666,48 @@ class GroupCoordinator(BaseCoordinator):
             err = error_type()
             log.error("Heartbeat failed: %r", err)
         return False
+
+    def start_commit_offsets_refresh_task(self, assignment):
+        if self._commit_refresh_task is not None:
+            self._commit_refresh_task.cancel()
+        self._commit_refresh_task = ensure_future(
+            self._commit_refresh_routine(assignment), loop=self._loop)
+
+    @asyncio.coroutine
+    def _stop_commit_offsets_refresh_task(self):
+        # The previous task should end after assinment changed
+        if self._commit_refresh_task is not None:
+            self._commit_refresh_task.cancel()
+            yield from self._commit_refresh_task
+            self._commit_refresh_task = None
+
+    @asyncio.coroutine
+    def _commit_refresh_routine(self, assignment):
+        """ Task that will do a commit cache refresh if someone is waiting for
+        it.
+        """
+        retry_backoff_ms = self._retry_backoff_ms / 1000
+        commit_refresh_needed = assignment.commit_refresh_needed
+        try:
+            while assignment.active:
+                success = yield from self._maybe_refresh_commit_offsets(
+                    assignment)
+
+                wait_futures = [assignment.unassign_future]
+                if not success:
+                    timeout = retry_backoff_ms
+                else:
+                    timeout = None
+                    commit_refresh_needed.clear()
+                    wait_futures.append(commit_refresh_needed.wait())
+
+                yield from asyncio.wait(
+                    wait_futures,
+                    timeout=timeout,
+                    return_when=asyncio.FIRST_COMPLETED,
+                    loop=self._loop)
+        except asyncio.CancelledError:
+            pass
 
     @asyncio.coroutine
     def _do_rejoin_group(self, subscription):

@@ -1,5 +1,5 @@
 import logging
-from asyncio import AbstractEventLoop as ALoop, shield
+from asyncio import AbstractEventLoop as ALoop, shield, Event
 from enum import Enum
 from typing import Set, Pattern, Dict
 
@@ -329,7 +329,7 @@ class ManualSubscription(Subscription):
         assert False, "Should not be called"
 
     @property
-    def reassignment_in_progress(self):
+    def _reassignment_in_progress(self):
         return False
 
     def _begin_reassignment(self):
@@ -352,10 +352,11 @@ class Assignment:
 
         self._tp_state = {}  # type: Dict[TopicPartition:TopicPartitionState]
         for tp in self._topic_partitions:
-            self._tp_state[tp] = TopicPartitionState(loop=loop)
+            self._tp_state[tp] = TopicPartitionState(self, loop=loop)
 
         self._loop = loop
         self.unassign_future = create_future(loop)
+        self.commit_refresh_needed = Event(loop=loop)
 
     @property
     def tps(self):
@@ -414,7 +415,7 @@ class TopicPartitionState(object):
 
     """
 
-    def __init__(self, *, loop):
+    def __init__(self, assignment, *, loop):
         # Synchronized values
         self._committed = None  # Last committed position and metadata
         self._committed_fut = create_future(loop=loop)
@@ -430,6 +431,7 @@ class TopicPartitionState(object):
         self._status = PartitionStatus.ASSIGNED  # type: PartitionStatus
 
         self._loop = loop
+        self._assignment = assignment
 
     @property
     def committed(self) -> OffsetAndMetadata:
@@ -489,6 +491,9 @@ class TopicPartitionState(object):
             self._committed_fut.set_result(None)
 
     def wait_for_committed(self):
+        if self._committed is not None:
+            return
+        self._assignment.commit_refresh_needed.set()
         return shield(self._committed_fut, loop=self._loop)
 
     # Position manipulation
