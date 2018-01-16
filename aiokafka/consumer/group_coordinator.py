@@ -522,6 +522,19 @@ class GroupCoordinator(BaseCoordinator):
                     yield from self._on_join_prepare(assignment)
                     performed_join_prepare = True
 
+                    # due to a race condition between the initial metadata
+                    # fetch and the initial rebalance, we need to ensure that
+                    # the metadata is fresh before joining initially. This
+                    # ensures that we have matched the pattern against the
+                    # cluster's topics at least once before joining.
+                    # Also the rebalance can be issued by another node, that
+                    # discovered a new topic, which is still unknown to this
+                    # one.
+                    if self._subscription.subscribed_pattern:
+                        yield from self._client.force_metadata_update()
+                        if not subscription.active:
+                            continue
+
                 # NOTE: we did not stop heartbeat task before to keep the
                 # member alive during the callback, as it can commit offsets.
                 # See the ``RebalanceInProgressError`` case in heartbeat
@@ -688,6 +701,7 @@ class GroupCoordinator(BaseCoordinator):
         """
         retry_backoff_ms = self._retry_backoff_ms / 1000
         commit_refresh_needed = assignment.commit_refresh_needed
+        event_waiter = None
         try:
             while assignment.active:
                 success = yield from self._maybe_refresh_commit_offsets(
@@ -699,7 +713,9 @@ class GroupCoordinator(BaseCoordinator):
                 else:
                     timeout = None
                     commit_refresh_needed.clear()
-                    wait_futures.append(commit_refresh_needed.wait())
+                    event_waiter = ensure_future(
+                        commit_refresh_needed.wait(), loop=self._loop)
+                    wait_futures.append(event_waiter)
 
                 yield from asyncio.wait(
                     wait_futures,
@@ -708,6 +724,12 @@ class GroupCoordinator(BaseCoordinator):
                     loop=self._loop)
         except asyncio.CancelledError:
             pass
+
+        # Just to make sure we properly close started tasks we cancel
+        # event.wait() task
+        if event_waiter is not None and not event_waiter.done():
+            event_waiter.cancel()
+            event_waiter = None
 
     @asyncio.coroutine
     def _do_rejoin_group(self, subscription):
@@ -800,6 +822,10 @@ class GroupCoordinator(BaseCoordinator):
 
     @asyncio.coroutine
     def _do_commit_offsets(self, assignment, offsets):
+        # Fast return if nothing to commit
+        if not offsets:
+            return
+
         # Signal all topics that we are starting commit
         for tp in offsets:
             assert tp in assignment.tps
