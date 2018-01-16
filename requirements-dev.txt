@@ -15,3 +15,4 @@ alabaster==0.7.10
 
 diff-cover==1.0.1
 setuptools>=34.4.0
+pycodestyle>=2.3.0
