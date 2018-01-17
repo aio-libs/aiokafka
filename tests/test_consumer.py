@@ -671,6 +671,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             consumer = yield from self.consumer_factory(
                 max_poll_records=0)
 
+    @pytest.mark.ssl
     @run_until_complete
     def test_ssl_consume(self):
         # Produce by PLAINTEXT, Consume by SSL

@@ -1,5 +1,6 @@
 import json
 import asyncio
+import pytest
 import time
 from unittest import mock
 
@@ -303,6 +304,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             yield from producer.send_batch(
                 batch, self.topic, partition=partition)
 
+    @pytest.mark.ssl
     @run_until_complete
     def test_producer_ssl(self):
         # Produce by SSL consume by PLAINTEXT
