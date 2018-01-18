@@ -621,3 +621,34 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         yield from coordinator.close()
         yield from client.close()
+
+    @run_until_complete
+    def test_coordinator__send_req(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        yield from client.bootstrap()
+        subscription = SubscriptionState(loop=self.loop)
+        subscription.subscribe(topics=set(['topic1']))
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            group_id='test-my-group', session_timeout_ms=6000,
+            heartbeat_interval_ms=1000)
+
+        request = OffsetCommitRequest[2](topics=[])
+
+        # We did not call ensure_coordinator_known yet
+        with self.assertRaises(GroupCoordinatorNotAvailableError):
+            yield from coordinator._send_req(request)
+
+        yield from coordinator.ensure_coordinator_known()
+        self.assertIsNotNone(coordinator.coordinator_id)
+
+        with mock.patch.object(client, "send") as mocked:
+            @asyncio.coroutine
+            def mock_send(*args, **kw):
+                raise KafkaError("Some unexpected error")
+            mocked.side_effect = mock_send
+
+            # _send_req should mark coordinator dead on errors
+            with self.assertRaises(KafkaError):
+                yield from coordinator._send_req(request)
+            self.assertIsNone(coordinator.coordinator_id)

@@ -472,7 +472,7 @@ class TopicPartitionState(object):
             self._committed_fut.set_result(None)
 
     def wait_for_committed(self):
-        assert self._committed is not None
+        assert self._committed is None
         self._assignment.commit_refresh_needed.set()
         return shield(self._committed_fut, loop=self._loop)
 
