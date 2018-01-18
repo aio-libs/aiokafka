@@ -1,7 +1,6 @@
 import asyncio
 from aiokafka.consumer import AIOKafkaConsumer
-from aiokafka.errors import ConsumerStoppedError
-from kafka.common import OffsetOutOfRangeError
+from aiokafka.errors import ConsumerStoppedError, NoOffsetForPartitionError
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, random_string)
 
@@ -73,7 +72,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
             auto_offset_reset="none")
         await consumer.start()
 
-        with self.assertRaises(OffsetOutOfRangeError):
+        with self.assertRaises(NoOffsetForPartitionError):
             async for m in consumer:
                 m  # pragma: no cover
 

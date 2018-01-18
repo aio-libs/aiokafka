@@ -493,7 +493,6 @@ class GroupCoordinator(BaseCoordinator):
         subscription = self._subscription.subscription
         assignment = None
         performed_join_prepare = False
-
         while not self._closing.done():
             # Check if there was a change to subscription
             if subscription is not None and not subscription.active:
@@ -509,7 +508,7 @@ class GroupCoordinator(BaseCoordinator):
                      self._closing],
                     return_when=asyncio.FIRST_COMPLETED, loop=self._loop)
                 if self._closing.done():
-                    return
+                    break
                 subscription = self._subscription.subscription
             assert subscription is not None and subscription.active
             auto_assigned = self._subscription.partitions_auto_assigned()
@@ -517,23 +516,23 @@ class GroupCoordinator(BaseCoordinator):
             # Ensure active group
             yield from self.ensure_coordinator_known()
             if auto_assigned and self.need_rejoin(subscription):
+                # due to a race condition between the initial metadata
+                # fetch and the initial rebalance, we need to ensure that
+                # the metadata is fresh before joining initially. This
+                # ensures that we have matched the pattern against the
+                # cluster's topics at least once before joining.
+                # Also the rebalance can be issued by another node, that
+                # discovered a new topic, which is still unknown to this
+                # one.
+                if self._subscription.subscribed_pattern:
+                    yield from self._client.force_metadata_update()
+                    if not subscription.active:
+                        continue
+
                 if not performed_join_prepare:
                     # NOTE: We pass the previously used assignment here.
                     yield from self._on_join_prepare(assignment)
                     performed_join_prepare = True
-
-                    # due to a race condition between the initial metadata
-                    # fetch and the initial rebalance, we need to ensure that
-                    # the metadata is fresh before joining initially. This
-                    # ensures that we have matched the pattern against the
-                    # cluster's topics at least once before joining.
-                    # Also the rebalance can be issued by another node, that
-                    # discovered a new topic, which is still unknown to this
-                    # one.
-                    if self._subscription.subscribed_pattern:
-                        yield from self._client.force_metadata_update()
-                        if not subscription.active:
-                            continue
 
                 # NOTE: we did not stop heartbeat task before to keep the
                 # member alive during the callback, as it can commit offsets.

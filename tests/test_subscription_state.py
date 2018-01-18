@@ -122,6 +122,7 @@ def test_unsubscribe(subscription_state):
 
     # After unsubscribe you can change the type to say pattern.
     subscription_state.subscribe_pattern(re.compile("pattern"))
+    subscription_state.subscribe_from_pattern(set(["tp33"]))
 
     assert subscription_state.subscription is not None
 
@@ -133,6 +134,9 @@ def test_seek(subscription_state):
 
     assignment = subscription_state.subscription.assignment
     assert assignment.state_value(tp) is not None
-    assert assignment.state_value(tp).position is None
+    assert not assignment.state_value(tp).has_valid_position
+    assert assignment.state_value(tp)._position is None
 
     subscription_state.seek(tp, 1000)
+
+    assert assignment.state_value(tp).position == 1000

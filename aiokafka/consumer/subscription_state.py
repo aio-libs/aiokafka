@@ -189,14 +189,6 @@ class SubscriptionState:
         self._listener = None
         self._subscription_type = SubscriptionType.NONE
 
-    def need_offset_reset(self, tp: Set[TopicPartition], strategy: int):
-        """ Reset fetch position to either end or start
-
-        Caller: Consumer.
-        Affects: TopicPartitionState.reset_strategy
-        """
-        self._assigned_state(tp).await_reset(strategy)
-
     # Coordinator callable API:
 
     def subscribe_from_pattern(self, topics: Set[str]):
@@ -221,25 +213,14 @@ class SubscriptionState:
         self._subscription._assign(assignment)
         self._notify_assignment_waiters()
 
-    def committed(self, tp: TopicPartition, offset_meta: OffsetAndMetadata):
-        """ Saved the position to Kafka.
-
-        Caller: Coordinator
-        Affects: TopicPartitionState.committed
-        """
-        self._assigned_state(tp).committed(offset_meta)
-
     def begin_reassignment(self):
         """ Signal from Coordinator that a group re-join is needed. For example
         this will be called if a commit or heartbeat fails with an
         InvalidMember error.
+
+        Caller: Coordinator
         """
         self._subscription._begin_reassignment()
-
-    def wait_for_subscription(self):
-        fut = create_future(loop=self._loop)
-        self._subscription_waiters.append(fut)
-        return fut
 
     # Fetcher callable API:
 
@@ -251,7 +232,20 @@ class SubscriptionState:
         """
         self._assigned_state(tp).seek(offset)
 
+    # Waiters
+
+    def wait_for_subscription(self):
+        """ Wait for subscription change. This will always wait for next
+        subscription.
+        """
+        fut = create_future(loop=self._loop)
+        self._subscription_waiters.append(fut)
+        return fut
+
     def wait_for_assignment(self):
+        """ Wait for next assignment. Be careful, as this will always wait for
+        next assignment, even if the current one is active.
+        """
         fut = create_future(loop=self._loop)
         self._assignment_waiters.append(fut)
         return fut
@@ -377,7 +371,7 @@ class Assignment:
         all_consumed = {}
         for tp in self._topic_partitions:
             state = self.state_value(tp)
-            if state.has_valid_position:
+            if state.has_valid_position and state.position != state.committed:
                 all_consumed[tp] = OffsetAndMetadata(state.position, '')
         return all_consumed
 

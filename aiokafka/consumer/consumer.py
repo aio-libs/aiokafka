@@ -7,9 +7,10 @@ from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
-    KafkaError, TopicAuthorizationFailedError, OffsetOutOfRangeError,
+    TopicAuthorizationFailedError, OffsetOutOfRangeError,
     ConsumerStoppedError, IllegalOperation, UnsupportedVersionError,
-    IllegalStateError
+    IllegalStateError, NoOffsetForPartitionError, RecordTooLargeError,
+    CorruptRecordException
 )
 from aiokafka.structs import TopicPartition, OffsetAndMetadata
 from aiokafka.util import PY_35
@@ -857,6 +858,9 @@ class AIOKafkaConsumer(object):
                     "{!r} is not a valid pattern: {}".format(pattern, err))
             self._subscription.subscribe_pattern(
                 pattern=pattern, listener=listener)
+            # NOTE: set_topics will trigger a rebalance, so the coordinator
+            # will get the initial subscription shortly by ``metadata_changed``
+            # handler.
             self._client.set_topics([])
             log.info("Subscribed to topic pattern: %s", pattern)
         elif topics:
@@ -993,7 +997,9 @@ class AIOKafkaConsumer(object):
                 except ConsumerStoppedError:
                     raise StopAsyncIteration  # noqa: F821
                 except (TopicAuthorizationFailedError,
-                        OffsetOutOfRangeError) as err:
+                        OffsetOutOfRangeError,
+                        NoOffsetForPartitionError) as err:
                     raise err
-                except KafkaError as err:
-                    log.error("error in consumer iterator: %s", err)
+                except (RecordTooLargeError,
+                        CorruptRecordException):
+                    log.exception("error in consumer iterator: %s")
