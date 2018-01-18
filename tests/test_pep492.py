@@ -81,7 +81,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             self.topic, loop=self.loop,
             bootstrap_servers=self.hosts,
-            auto_offset_reset="none")
+            auto_offset_reset="earliest")
         await consumer.start()
 
         async def iterator():

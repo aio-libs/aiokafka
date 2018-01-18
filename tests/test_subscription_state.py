@@ -140,3 +140,38 @@ def test_seek(subscription_state):
     subscription_state.seek(tp, 1000)
 
     assert assignment.state_value(tp).position == 1000
+
+
+def test_assigned_partitions(subscription_state):
+    assert subscription_state.assigned_partitions() == set([])
+    subscription_state.subscribe(topics=set(["tp1"]))
+    assert subscription_state.assigned_partitions() == set([])
+    assignment = {TopicPartition("tp1", 0)}
+    subscription_state.assign_from_subscribed(assignment)
+    assert subscription_state.assigned_partitions() == assignment
+
+
+def test_is_assigned(subscription_state):
+    tp1 = TopicPartition("topic", 0)
+    tp2 = TopicPartition("topic", 1)
+    assert not subscription_state.is_assigned(tp1)
+    subscription_state.subscribe(set(["topic"]))
+    assert not subscription_state.is_assigned(tp1)
+    subscription_state.assign_from_subscribed(set([tp1]))
+    assert subscription_state.is_assigned(tp1)
+    assert not subscription_state.is_assigned(tp2)
+
+
+def test_assigned_state(subscription_state):
+    tp1 = TopicPartition("topic", 0)
+    tp2 = TopicPartition("topic", 1)
+
+    subscription_state.assign_from_user(set([tp1]))
+    with pytest.raises(IllegalStateError):
+        subscription_state._assigned_state(tp2)
+
+    tp_state = subscription_state._assigned_state(tp1)
+    assert tp_state is not None
+
+    assert repr(tp_state) == \
+        "TopicPartitionState<Status=PartitionStatus.ASSIGNED position=None>"

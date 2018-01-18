@@ -46,10 +46,6 @@ class SubscriptionState:
         return self._subscription
 
     @property
-    def subscription_type(self) -> SubscriptionType:
-        return self._subscription_type
-
-    @property
     def subscribed_pattern(self) -> Pattern:
         return self._subscribed_pattern
 
@@ -75,12 +71,6 @@ class SubscriptionState:
             self._subscription_type == SubscriptionType.AUTO_TOPICS or
             self._subscription_type == SubscriptionType.AUTO_PATTERN
         )
-
-    def all_consumed_offsets(self) -> Dict[TopicPartition, OffsetAndMetadata]:
-        """Returns consumed offsets as {TopicPartition: OffsetAndMetadata}"""
-        assignment = self._subscription.assignment
-        assert assignment is not None
-        return assignment.all_consumed_offsets()
 
     def is_assigned(self, tp: TopicPartition) -> bool:
         if self._subscription is None:
@@ -112,7 +102,7 @@ class SubscriptionState:
         tp_state = self._subscription.assignment.state_value(tp)
         if tp_state is None:
             raise IllegalStateError(
-                "No current assignment for partition %s" % tp)
+                "No current assignment for partition {}".format(tp))
         return tp_state
 
     def _notify_subscription_waiters(self):
@@ -281,10 +271,6 @@ class Subscription:
     def assignment(self):
         return self._assignment
 
-    @property
-    def reassignment_in_progress(self):
-        return self._reassignment_in_progress
-
     def _assign(self, topic_partitions: Set[TopicPartition]):
         for tp in topic_partitions:
             assert tp.topic in self._topics, \
@@ -319,14 +305,15 @@ class ManualSubscription(Subscription):
         self._loop = loop
         self.unsubscribe_future = create_future(loop)
 
-    def _assign(self, topic_partitions: Set[TopicPartition]):
+    def _assign(
+            self, topic_partitions: Set[TopicPartition]):  # pragma: no cover
         assert False, "Should not be called"
 
     @property
     def _reassignment_in_progress(self):
         return False
 
-    def _begin_reassignment(self):
+    def _begin_reassignment(self):  # pragma: no cover
         assert False, "Should not be called"
 
 
@@ -485,8 +472,7 @@ class TopicPartitionState(object):
             self._committed_fut.set_result(None)
 
     def wait_for_committed(self):
-        if self._committed is not None:
-            return
+        assert self._committed is not None
         self._assignment.commit_refresh_needed.set()
         return shield(self._committed_fut, loop=self._loop)
 
