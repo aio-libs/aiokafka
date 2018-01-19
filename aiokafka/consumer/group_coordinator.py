@@ -1129,6 +1129,13 @@ class CoordinatorGroupRebalance:
             log.debug("Attempt to join group %s failed due to obsolete "
                       "coordinator information: %s", self.group_id,
                       err)
+        elif error_type in (Errors.InconsistentGroupProtocolError,
+                            Errors.InvalidSessionTimeoutError,
+                            Errors.InvalidGroupIdError):
+            err = error_type()
+            log.error(
+                "Attempt to join group failed due to fatal error: %s", err)
+            raise err
         else:
             err = error_type()
             log.error(
@@ -1195,8 +1202,6 @@ class CoordinatorGroupRebalance:
         # set it directly after JoinGroup to avoid a false rejoin in case
         # ``_perform_assignment()`` does a metadata update.
         self._coordinator._rejoin_needed_fut = create_future(loop=self._loop)
-
-        response = None
         try:
             response = yield from self._coordinator._send_req(request)
         except Errors.KafkaError:
@@ -1216,7 +1221,7 @@ class CoordinatorGroupRebalance:
         if error_type is Errors.RebalanceInProgressError:
             log.debug("SyncGroup for group %s failed due to group"
                       " rebalance", self.group_id)
-        elif error_type is (Errors.UnknownMemberIdError,
+        elif error_type in (Errors.UnknownMemberIdError,
                             Errors.IllegalGenerationError):
             err = error_type()
             log.debug("SyncGroup for group %s failed due to %s,",
@@ -1224,10 +1229,11 @@ class CoordinatorGroupRebalance:
             self._coordinator.reset_generation()
         elif error_type in (Errors.GroupCoordinatorNotAvailableError,
                             Errors.NotCoordinatorForGroupError):
+            err = error_type()
             log.debug("SyncGroup for group %s failed due to %s",
                       self.group_id, err)
             self._coordinator.coordinator_dead()
-        elif error_type is Errors.KafkaError:
+        else:
             err = error_type()
             log.error("Unexpected error from SyncGroup: %s", err)
             raise Errors.KafkaError(repr(err))

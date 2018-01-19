@@ -2,22 +2,26 @@ import asyncio
 import re
 from unittest import mock
 
-from kafka.protocol.group import JoinGroupRequest_v0 as JoinGroupRequest
+from kafka.protocol.group import (
+    JoinGroupRequest_v0 as JoinGroupRequest,
+    SyncGroupResponse_v0 as SyncGroupResponse,
+    LeaveGroupRequest_v0 as LeaveGroupRequest
+)
 from kafka.protocol.commit import OffsetCommitRequest, OffsetCommitResponse_v2
 import kafka.common as Errors
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 from aiokafka import ConsumerRebalanceListener
-from aiokafka.errors import (
-    NoBrokersAvailable, GroupCoordinatorNotAvailableError, KafkaError,
-    for_code)
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.consumer.group_coordinator import (
     GroupCoordinator, CoordinatorGroupRebalance)
 from aiokafka.consumer.subscription_state import SubscriptionState
+from aiokafka.util import create_future, ensure_future
+
+UNKNOWN_MEMBER_ID = JoinGroupRequest.UNKNOWN_MEMBER_ID
 
 
 class RebalanceListenerForTest(ConsumerRebalanceListener):
@@ -116,106 +120,148 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         yield from coordinator2.close()
         yield from client2.close()
 
-    # @run_until_complete
-    # def test_failed_group_join(self):
-    #     client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
-    #     subscription = SubscriptionState('latest')
-    #     subscription.subscribe(topics=('topic1',))
-    #     coordinator = GroupCoordinator(
-    #         client, subscription, loop=self.loop,
-    #         retry_backoff_ms=10)
+    @run_until_complete
+    def test_failed_group_join(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        yield from client.bootstrap()
+        yield from self.wait_topic(client, 'topic1')
+        self.add_cleanup(client.close)
 
-    #     @asyncio.coroutine
-    #     def do_rebalance():
-    #         rebalance = CoordinatorGroupRebalance(
-    #             coordinator, coordinator.group_id, coordinator.coordinator_id,
-    #             subscription.subscription, coordinator._assignors,
-    #             coordinator._session_timeout_ms,
-    #             coordinator._retry_backoff_ms,
-    #             loop=self.loop)
-    #         yield from rebalance.perform_group_join()
+        subscription = SubscriptionState(loop=self.loop)
+        subscription.subscribe(topics=set(['topic1']))
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            retry_backoff_ms=10)
+        coordinator._coordination_task.cancel()  # disable for test
+        try:
+            yield from coordinator._coordination_task
+        except asyncio.CancelledError:
+            pass
+        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        coordinator.coordinator_id = 15
+        self.add_cleanup(coordinator.close)
 
-    #     yield from client.bootstrap()
-    #     yield from self.wait_topic(client, 'topic1')
+        @asyncio.coroutine
+        def do_rebalance():
+            rebalance = CoordinatorGroupRebalance(
+                coordinator, coordinator.group_id, coordinator.coordinator_id,
+                subscription.subscription, coordinator._assignors,
+                coordinator._session_timeout_ms,
+                coordinator._retry_backoff_ms,
+                loop=self.loop)
+            yield from rebalance.perform_group_join()
 
-    #     mocked = mock.MagicMock()
-    #     coordinator._client = mocked
+        mocked = mock.MagicMock()
+        coordinator._client = mocked
+        error_type = None
 
-    #     # no exception expected, just wait
-    #     mocked.send.side_effect = Errors.GroupLoadInProgressError()
-    #     yield from do_rebalance()
-    #     self.assertEqual(coordinator.need_rejoin(), True)
+        @asyncio.coroutine
+        def send(*agrs, **kw):
+            resp = JoinGroupRequest.RESPONSE_TYPE(
+                error_code=error_type.errno,
+                generation_id=-1,  # generation_id
+                group_protocol="roundrobin",
+                leader_id="111",  # leader_id
+                member_id="111",  # member_id
+                members=[]
+            )
+            return resp
 
-    #     mocked.send.side_effect = Errors.InvalidGroupIdError()
-    #     with self.assertRaises(Errors.InvalidGroupIdError):
-    #         yield from do_rebalance()
-    #     self.assertEqual(coordinator.need_rejoin(), True)
+        mocked.send.side_effect = send
+        subsc = subscription.subscription
 
-    #     # no exception expected, member_id should be reseted
-    #     coordinator.member_id = 'some_invalid_member_id'
-    #     mocked.send.side_effect = Errors.UnknownMemberIdError()
-    #     yield from do_rebalance()
-    #     self.assertEqual(coordinator.need_rejoin(), True)
-    #     self.assertEqual(
-    #         coordinator.member_id, JoinGroupRequest.UNKNOWN_MEMBER_ID)
+        # no exception expected, just wait
+        error_type = Errors.GroupLoadInProgressError
+        yield from do_rebalance()
+        self.assertEqual(coordinator.need_rejoin(subsc), True)
 
-    #     # no exception expected, coordinator_id should be reseted
-    #     coordinator.coordinator_id = 'some_id'
-    #     mocked.send.side_effect = Errors.GroupCoordinatorNotAvailableError()
-    #     yield from do_rebalance()
-    #     self.assertEqual(coordinator.need_rejoin(), True)
-    #     self.assertEqual(coordinator.coordinator_id, None)
-    #     yield from client.close()
+        error_type = Errors.InvalidGroupIdError
+        with self.assertRaises(Errors.InvalidGroupIdError):
+            yield from do_rebalance()
+        self.assertEqual(coordinator.need_rejoin(subsc), True)
 
-    # @run_until_complete
-    # def test_failed_sync_group(self):
-    #     client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
-    #     subscription = SubscriptionState('latest')
-    #     subscription.subscribe(topics=('topic1',))
-    #     coordinator = GroupCoordinator(
-    #         client, subscription, loop=self.loop,
-    #         heartbeat_interval_ms=20000)
+        # no exception expected, member_id should be reseted
+        coordinator.member_id = 'some_invalid_member_id'
+        error_type = Errors.UnknownMemberIdError
+        yield from do_rebalance()
+        self.assertEqual(coordinator.need_rejoin(subsc), True)
+        self.assertEqual(
+            coordinator.member_id, JoinGroupRequest.UNKNOWN_MEMBER_ID)
 
-    #     @asyncio.coroutine
-    #     def do_sync_group():
-    #         rebalance = CoordinatorGroupRebalance(
-    #             coordinator, coordinator.group_id, coordinator.coordinator_id,
-    #             subscription.subscription, coordinator._assignors,
-    #             coordinator._session_timeout_ms,
-    #             coordinator._retry_backoff_ms,
-    #             loop=self.loop)
-    #         yield from rebalance._on_join_follower()
+        error_type = Errors.UnknownError()
+        with self.assertRaises(Errors.KafkaError):  # Masked as unknown error
+            yield from do_rebalance()
 
-    #     with self.assertRaises(GroupCoordinatorNotAvailableError):
-    #         yield from do_sync_group()
+        # no exception expected, coordinator_id should be reseted
+        error_type = Errors.GroupCoordinatorNotAvailableError
+        yield from do_rebalance()
+        self.assertEqual(coordinator.need_rejoin(subsc), True)
+        self.assertEqual(coordinator.coordinator_id, None)
 
-    #     mocked = mock.MagicMock()
-    #     coordinator._client = mocked
+    @run_until_complete
+    def test_failed_sync_group(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        subscription = SubscriptionState(loop=self.loop)
+        subscription.subscribe(topics=set(['topic1']))
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            heartbeat_interval_ms=20000)
+        coordinator._coordination_task.cancel()  # disable for test
+        try:
+            yield from coordinator._coordination_task
+        except asyncio.CancelledError:
+            pass
+        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        coordinator.coordinator_id = 15
+        self.add_cleanup(coordinator.close)
 
-    #     coordinator.member_id = 'some_invalid_member_id'
-    #     coordinator.coordinator_unknown = asyncio.coroutine(lambda: False)
-    #     mocked.send.side_effect = Errors.UnknownMemberIdError()
-    #     with self.assertRaises(Errors.UnknownMemberIdError):
-    #         yield from do_sync_group()
-    #     self.assertEqual(
-    #         coordinator.member_id, JoinGroupRequest.UNKNOWN_MEMBER_ID)
+        @asyncio.coroutine
+        def do_sync_group():
+            rebalance = CoordinatorGroupRebalance(
+                coordinator, coordinator.group_id, coordinator.coordinator_id,
+                subscription.subscription, coordinator._assignors,
+                coordinator._session_timeout_ms,
+                coordinator._retry_backoff_ms,
+                loop=self.loop)
+            yield from rebalance._on_join_follower()
 
-    #     mocked.send.side_effect = Errors.NotCoordinatorForGroupError()
-    #     coordinator.coordinator_id = 'some_id'
-    #     with self.assertRaises(Errors.NotCoordinatorForGroupError):
-    #         yield from do_sync_group()
-    #     self.assertEqual(coordinator.coordinator_id, None)
+        mocked = mock.MagicMock()
+        coordinator._client = mocked
+        subsc = subscription.subscription
+        error_type = None
 
-    #     mocked.send.side_effect = KafkaError()
-    #     with self.assertRaises(KafkaError):
-    #         yield from do_sync_group()
+        @asyncio.coroutine
+        def send(*agrs, **kw):
+            resp = SyncGroupResponse(
+                error_code=error_type.errno,
+                member_assignment=b"123"
+            )
+            return resp
 
-    #     # client sends LeaveGroupRequest to group coordinator
-    #     # if generation > 0 (means that client is a member of group)
-    #     # expecting no exception in this case (error should be ignored in close
-    #     # method)
-    #     coordinator.generation = 33
-    #     yield from coordinator.close()
+        mocked.send.side_effect = send
+
+        coordinator.member_id = 'some_invalid_member_id'
+
+        error_type = Errors.RebalanceInProgressError
+        yield from do_sync_group()
+        self.assertEqual(coordinator.member_id, 'some_invalid_member_id')
+        self.assertEqual(coordinator.need_rejoin(subsc), True)
+
+        error_type = Errors.UnknownMemberIdError
+        yield from do_sync_group()
+        self.assertEqual(coordinator.member_id, UNKNOWN_MEMBER_ID)
+        self.assertEqual(coordinator.need_rejoin(subsc), True)
+
+        error_type = Errors.NotCoordinatorForGroupError
+        yield from do_sync_group()
+        self.assertEqual(coordinator.coordinator_id, None)
+        self.assertEqual(coordinator.need_rejoin(subsc), True)
+        coordinator.coordinator_id = 15
+
+        error_type = Errors.UnknownError()
+        with self.assertRaises(Errors.KafkaError):  # Masked as some KafkaError
+            yield from do_sync_group()
+        self.assertEqual(coordinator.need_rejoin(subsc), True)
 
     @run_until_complete
     def test_subscribe_pattern(self):
@@ -286,92 +332,112 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         yield from coordinator.close()
         yield from client.close()
 
-    # @run_until_complete
-    # def test_commit_failed_scenarios(self):
-    #     client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
-    #     yield from client.bootstrap()
-    #     yield from self.wait_topic(client, 'topic1')
-    #     subscription = SubscriptionState(loop=self.loop)
-    #     subscription.subscribe(topics=set(['topic1']))
-    #     coordinator = GroupCoordinator(
-    #         client, subscription, loop=self.loop,
-    #         group_id='test-offsets-group')
+    @run_until_complete
+    def test_commit_failed_scenarios(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        yield from client.bootstrap()
+        yield from self.wait_topic(client, 'topic1')
+        subscription = SubscriptionState(loop=self.loop)
+        subscription.subscribe(topics=set(['topic1']))
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            group_id='test-offsets-group')
 
-    #     yield from subscription.wait_for_assignment()
-    #     assignment = subscription.subscription.assignment
+        yield from subscription.wait_for_assignment()
+        assignment = subscription.subscription.assignment
 
-    #     offsets = {TopicPartition('topic1', 0): OffsetAndMetadata(1, '')}
-    #     yield from coordinator.commit_offsets(assignment, offsets)
-    #     with mock.patch('aiokafka.errors.for_code') as mocked:
-    #         # Not retriable errors are propagated
-    #         mocked.return_value = Errors.GroupAuthorizationFailedError
-    #         with self.assertRaises(Errors.GroupAuthorizationFailedError):
-    #             yield from coordinator.commit_offsets(assignment, offsets)
+        offsets = {TopicPartition('topic1', 0): OffsetAndMetadata(1, '')}
+        yield from coordinator.commit_offsets(assignment, offsets)
 
-    #         mocked.return_value = Errors.TopicAuthorizationFailedError
-    #         with self.assertRaises(Errors.TopicAuthorizationFailedError):
-    #             yield from coordinator.commit_offsets(assignment, offsets)
+        _orig_send_req = coordinator._send_req
+        with mock.patch.object(coordinator, "_send_req") as mocked:
+            commit_error = None
 
-    #         mocked.return_value = Errors.InvalidCommitOffsetSizeError
-    #         with self.assertRaises(Errors.InvalidCommitOffsetSizeError):
-    #             yield from coordinator.commit_offsets(assignment, offsets)
+            @asyncio.coroutine
+            def mock_send_req(request):
+                if request.API_KEY == OffsetCommitRequest[0].API_KEY:
+                    if isinstance(commit_error, list):
+                        error_code = commit_error.pop(0).errno
+                    else:
+                        error_code = commit_error.errno
+                    resp_topics = [("topic1", [(0, error_code)])]
+                    return OffsetCommitResponse_v2(resp_topics)
+                return (yield from _orig_send_req(request))
+            mocked.side_effect = mock_send_req
 
-    #         mocked.return_value = Errors.OffsetMetadataTooLargeError
-    #         with self.assertRaises(Errors.OffsetMetadataTooLargeError):
-    #             yield from coordinator.commit_offsets(assignment, offsets)
+            # Not retriable errors are propagated
+            commit_error = Errors.GroupAuthorizationFailedError
+            with self.assertRaises(Errors.GroupAuthorizationFailedError):
+                yield from coordinator.commit_offsets(assignment, offsets)
 
-    #         # retriable erros should be retried
-    #         mocked.side_effect = [
-    #             Errors.GroupLoadInProgressError,
-    #             Errors.GroupLoadInProgressError,
-    #             Errors.NoError
-    #         ]
-    #         with self.assertRaises(Errors.GroupLoadInProgressError):
-    #             yield from coordinator.commit_offsets(assignment, offsets)
+            commit_error = Errors.TopicAuthorizationFailedError
+            with self.assertRaises(Errors.TopicAuthorizationFailedError):
+                yield from coordinator.commit_offsets(assignment, offsets)
 
-    #         # If rebalance is needed we can't commit offset
-    #         mocked.return_value = Errors.RebalanceInProgressError
-    #         with self.assertRaises(Errors.CommitFailedError):
-    #             yield from coordinator.commit_offsets(assignment, offsets)
-    #         self.assertTrue(coordinator.need_rejoin(subscription.subscription))
-    #         self.assertIsNotNone(coordinator.member_id)
-    #         mocked.side_effect = for_code
-    #         yield from subscription.wait_for_assignment()
-    #         assignment = subscription.subscription.assignment
+            commit_error = Errors.InvalidCommitOffsetSizeError
+            with self.assertRaises(Errors.InvalidCommitOffsetSizeError):
+                yield from coordinator.commit_offsets(assignment, offsets)
 
-    #         mocked.return_value = Errors.UnknownMemberIdError
-    #         with self.assertRaises(Errors.CommitFailedError):
-    #             yield from coordinator.commit_offsets(assignment, offsets)
-    #         self.assertTrue(coordinator.need_rejoin(subscription.subscription))
-    #         self.assertIsNone(coordinator.member_id)
-    #         mocked.side_effect = for_code
-    #         yield from subscription.wait_for_assignment()
-    #         assignment = subscription.subscription.assignment
+            commit_error = Errors.OffsetMetadataTooLargeError
+            with self.assertRaises(Errors.OffsetMetadataTooLargeError):
+                yield from coordinator.commit_offsets(assignment, offsets)
 
-    #         # Unknown errors are just propagated too
-    #         mocked.return_value = KafkaError
-    #         with self.assertRaises(KafkaError):
-    #             yield from coordinator.commit_offsets(assignment, offsets)
+            # retriable erros should be retried
+            commit_error = [
+                Errors.GroupLoadInProgressError,
+                Errors.GroupLoadInProgressError,
+                Errors.NoError,
+            ]
+            yield from coordinator.commit_offsets(assignment, offsets)
 
+            # If rebalance is needed we can't commit offset
+            commit_error = Errors.RebalanceInProgressError
+            with self.assertRaises(Errors.CommitFailedError):
+                yield from coordinator.commit_offsets(assignment, offsets)
+            self.assertTrue(coordinator.need_rejoin(subscription.subscription))
+            self.assertNotEqual(coordinator.member_id, UNKNOWN_MEMBER_ID)
+            yield from subscription.wait_for_assignment()
+            assignment = subscription.subscription.assignment
 
+            commit_error = Errors.UnknownMemberIdError
+            was_member_id = coordinator.member_id
+            with self.assertRaises(Errors.CommitFailedError):
+                yield from coordinator.commit_offsets(assignment, offsets)
+            self.assertTrue(coordinator.need_rejoin(subscription.subscription))
+            self.assertEqual(coordinator.member_id, UNKNOWN_MEMBER_ID)
+            # NOTE: Reconnecting with unknown ID will force a
+            # session_timeout_ms wait on broker, so we leave group to avoid
+            # that. Hack for test purposes)
+            request = LeaveGroupRequest(coordinator.group_id, was_member_id)
+            yield from coordinator._send_req(request)
+            yield from subscription.wait_for_assignment()
+            assignment = subscription.subscription.assignment
 
-    #         # mocked.side_effect = [
-    #         #     Errors.GroupCoordinatorNotAvailableError,
-    #         #     Errors.NoError
-    #         # ]
-    #         # with self.assertRaises(Errors.GroupCoordinatorNotAvailableError):
-    #         #     yield from coordinator.commit_offsets(assignment, offsets)
+            # Coordinator errors should be retried after it was found again
+            commit_error = [
+                Errors.GroupCoordinatorNotAvailableError,
+                Errors.NoError
+            ]
+            yield from coordinator.commit_offsets(assignment, offsets)
+            commit_error = [
+                Errors.NotCoordinatorForGroupError,
+                Errors.NoError
+            ]
+            yield from coordinator.commit_offsets(assignment, offsets)
 
-    #         # mocked.return_value = Errors.NotCoordinatorForGroupError
-    #         # with self.assertRaises(Errors.NotCoordinatorForGroupError):
-    #         #     yield from coordinator.commit_offsets(assignment, offsets)
-    #         # self.assertEqual(coordinator.coordinator_id, None)
+            # Make sure coordinator_id is reset properly each retry
+            commit_error = Errors.GroupCoordinatorNotAvailableError
+            with self.assertRaises(Errors.GroupCoordinatorNotAvailableError):
+                yield from coordinator._do_commit_offsets(assignment, offsets)
+            self.assertEqual(coordinator.coordinator_id, None)
 
-    #         # with self.assertRaises(Errors.GroupCoordinatorNotAvailableError):
-    #         #     yield from coordinator.commit_offsets(assignment, offsets)
+            # Unknown errors are just propagated too
+            commit_error = Errors.UnknownError
+            with self.assertRaises(Errors.UnknownError):
+                yield from coordinator.commit_offsets(assignment, offsets)
 
-    #     yield from coordinator.close()
-    #     yield from client.close()
+        yield from coordinator.close()
+        yield from client.close()
 
     # @run_until_complete
     # def test_fetchoffsets_failed_scenarios(self):
@@ -588,7 +654,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     def test_coordinator_ensure_active_group_on_expired_membership(self):
-        # Do not fail ensure_active_group() if group membership has expired
+        # Do not fail group join if group membership has expired (ie autocommit
+        # fails on join prepare)
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         yield from client.bootstrap()
         yield from self.wait_topic(client, 'topic1')
@@ -601,7 +668,12 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         yield from subscription.wait_for_assignment()
         assignment = subscription.subscription.assignment
 
-        offsets = {TopicPartition('topic1', 0): OffsetAndMetadata(1, '')}
+        # Make sure we have something to commit before rejoining
+        tp = TopicPartition('topic1', 0)
+        subscription.seek(tp, 0)
+        offsets = assignment.all_consumed_offsets()
+        self.assertTrue(offsets)  # Not empty
+
         # during OffsetCommit, UnknownMemberIdError is raised
         _orig_send_req = coordinator._send_req
         resp_topics = [("topic1", [(0, Errors.UnknownMemberIdError.errno)])]
@@ -626,17 +698,19 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     def test_coordinator__send_req(self):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         yield from client.bootstrap()
+        self.add_cleanup(client.close)
         subscription = SubscriptionState(loop=self.loop)
         subscription.subscribe(topics=set(['topic1']))
         coordinator = GroupCoordinator(
             client, subscription, loop=self.loop,
             group_id='test-my-group', session_timeout_ms=6000,
             heartbeat_interval_ms=1000)
+        self.add_cleanup(coordinator.close)
 
         request = OffsetCommitRequest[2](topics=[])
 
         # We did not call ensure_coordinator_known yet
-        with self.assertRaises(GroupCoordinatorNotAvailableError):
+        with self.assertRaises(Errors.GroupCoordinatorNotAvailableError):
             yield from coordinator._send_req(request)
 
         yield from coordinator.ensure_coordinator_known()
@@ -645,10 +719,45 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         with mock.patch.object(client, "send") as mocked:
             @asyncio.coroutine
             def mock_send(*args, **kw):
-                raise KafkaError("Some unexpected error")
+                raise Errors.KafkaError("Some unexpected error")
             mocked.side_effect = mock_send
 
             # _send_req should mark coordinator dead on errors
-            with self.assertRaises(KafkaError):
+            with self.assertRaises(Errors.KafkaError):
                 yield from coordinator._send_req(request)
             self.assertIsNone(coordinator.coordinator_id)
+
+    @run_until_complete
+    def test_coordinator_close(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        yield from client.bootstrap()
+        self.add_cleanup(client.close)
+        subscription = SubscriptionState(loop=self.loop)
+        waiter = create_future(loop=self.loop)
+
+        class WaitingListener(ConsumerRebalanceListener):
+            def on_partitions_revoked(self, revoked):
+                pass
+
+            @asyncio.coroutine
+            def on_partitions_assigned(self, assigned, waiter=waiter):
+                yield from waiter
+
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            group_id='test-my-group', session_timeout_ms=6000,
+            heartbeat_interval_ms=1000)
+        subscription.subscribe(
+            topics=set(['topic1']), listener=WaitingListener())
+
+        # Close task should be loyal to rebalance and wait for it to finish
+        close_task = ensure_future(coordinator.close(), loop=self.loop)
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        self.assertFalse(close_task.done())
+
+        # Releasing the waiter on listener will allow close task to finish
+        waiter.set_result(True)
+        yield from close_task
+
+        # You can close again with no effect
+        yield from coordinator.close()
