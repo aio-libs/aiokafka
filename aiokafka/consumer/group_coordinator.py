@@ -1012,7 +1012,7 @@ class GroupCoordinator(BaseCoordinator):
                     else:
                         log.error("Unknown error fetching offsets for %s: %s",
                                   tp, error)
-                        raise error
+                        raise Errors.KafkaError(repr(error))
                 # record the position with the offset
                 # (-1 indicates no committed offset to fetch)
                 if offset == UNKNOWN_OFFSET:

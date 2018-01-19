@@ -5,8 +5,6 @@ import sys
 from contextlib import contextmanager
 from unittest import mock
 
-from kafka.consumer.subscription_state import (
-    SubscriptionState, TopicPartitionState)
 from kafka.protocol.offset import OffsetResponse
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 
@@ -21,6 +19,7 @@ from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer.fetcher import (
     Fetcher, FetchResult, FetchError, ConsumerRecord, OffsetResetStrategy
 )
+from aiokafka.consumer.subscription_state import SubscriptionState
 from ._testutil import run_until_complete
 
 
@@ -212,127 +211,125 @@ class TestFetcher(unittest.TestCase):
 
     #     yield from fetcher.close()
 
-    # def _setup_error_after_data(self):
-    #     subscriptions = SubscriptionState(loop=self.loop)
-    #     client = AIOKafkaClient(
-    #         loop=self.loop,
-    #         bootstrap_servers=[])
-    #     fetcher = Fetcher(client, subscriptions, loop=self.loop)
-    #     tp1 = TopicPartition('some_topic', 0)
-    #     tp2 = TopicPartition('some_topic', 1)
+    def _setup_error_after_data(self):
+        subscriptions = SubscriptionState(loop=self.loop)
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=[])
+        fetcher = Fetcher(client, subscriptions, loop=self.loop)
+        tp1 = TopicPartition('some_topic', 0)
+        tp2 = TopicPartition('some_topic', 1)
 
-    #     subscriptions.subscribe(set(["some_topic"]))
-    #     state = TopicPartitionState()
-    #     state.seek(0)
-    #     subscriptions.assignment[tp1] = state
-    #     state = TopicPartitionState()
-    #     state.seek(0)
-    #     subscriptions.assignment[tp2] = state
-    #     subscriptions.needs_partition_assignment = False
+        subscriptions.subscribe(set(["some_topic"]))
+        subscriptions.assign_from_subscribed({tp1, tp2})
+        assignment = subscriptions.subscription.assignment
+        subscriptions.seek(tp1, 0)
+        subscriptions.seek(tp2, 0)
 
-    #     # Add some data
-    #     messages = [ConsumerRecord(
-    #         topic="some_topic", partition=1, offset=0, timestamp=0,
-    #         timestamp_type=0, key=None, value=b"some", checksum=None,
-    #         serialized_key_size=0, serialized_value_size=4)]
-    #     fetcher._records[tp2] = FetchResult(
-    #         tp2, subscriptions=subscriptions, loop=self.loop,
-    #         records=iter(messages), backoff=0)
-    #     # Add some error
-    #     fetcher._records[tp1] = FetchError(
-    #         loop=self.loop, error=OffsetOutOfRangeError({}), backoff=0)
-    #     return fetcher, tp1, tp2, messages
+        # Add some data
+        messages = [ConsumerRecord(
+            topic="some_topic", partition=1, offset=0, timestamp=0,
+            timestamp_type=0, key=None, value=b"some", checksum=None,
+            serialized_key_size=0, serialized_value_size=4)]
+        fetcher._records[tp2] = FetchResult(
+            tp2, assignment=assignment, loop=self.loop,
+            message_iterator=iter(messages), backoff=0,
+            fetch_offset=0)
+        # Add some error
+        fetcher._records[tp1] = FetchError(
+            loop=self.loop, error=OffsetOutOfRangeError({}), backoff=0)
+        return fetcher, tp1, tp2, messages
 
-    # @run_until_complete
-    # def test_fetched_records_error_after_data(self):
-    #     # Test error after some data. fetched_records should not discard data.
-    #     fetcher, tp1, tp2, messages = self._setup_error_after_data()
+    @run_until_complete
+    def test_fetched_records_error_after_data(self):
+        # Test error after some data. fetched_records should not discard data.
+        fetcher, tp1, tp2, messages = self._setup_error_after_data()
 
-    #     msg = yield from fetcher.fetched_records([])
-    #     self.assertEqual(msg, {tp2: messages})
+        msg = yield from fetcher.fetched_records([])
+        self.assertEqual(msg, {tp2: messages})
 
-    #     with self.assertRaises(OffsetOutOfRangeError):
-    #         msg = yield from fetcher.fetched_records([])
+        with self.assertRaises(OffsetOutOfRangeError):
+            msg = yield from fetcher.fetched_records([])
 
-    #     msg = yield from fetcher.fetched_records([])
-    #     self.assertEqual(msg, {})
+        msg = yield from fetcher.fetched_records([])
+        self.assertEqual(msg, {})
 
-    # @run_until_complete
-    # def test_next_record_error_after_data(self):
-    #     # Test error after some data. next_record should not discard data.
-    #     fetcher, tp1, tp2, messages = self._setup_error_after_data()
+    @run_until_complete
+    def test_next_record_error_after_data(self):
+        # Test error after some data. next_record should not discard data.
+        fetcher, tp1, tp2, messages = self._setup_error_after_data()
 
-    #     msg = yield from fetcher.next_record([])
-    #     self.assertEqual(msg, messages[0])
+        msg = yield from fetcher.next_record([])
+        self.assertEqual(msg, messages[0])
 
-    #     with self.assertRaises(OffsetOutOfRangeError):
-    #         msg = yield from fetcher.next_record([])
+        with self.assertRaises(OffsetOutOfRangeError):
+            msg = yield from fetcher.next_record([])
 
-    #     with self.assertRaises(asyncio.TimeoutError):
-    #         yield from asyncio.wait_for(
-    #             fetcher.next_record([]), timeout=0.1, loop=self.loop)
+        with self.assertRaises(asyncio.TimeoutError):
+            yield from asyncio.wait_for(
+                fetcher.next_record([]), timeout=0.1, loop=self.loop)
 
-    # @run_until_complete
-    # def test_compacted_topic_consumption(self):
-    #     # Compacted topics can have offsets skipped
-    #     client = AIOKafkaClient(
-    #         loop=self.loop,
-    #         bootstrap_servers=[])
-    #     client.ready = mock.MagicMock()
-    #     client.ready.side_effect = asyncio.coroutine(lambda a: True)
-    #     client.force_metadata_update = mock.MagicMock()
-    #     client.force_metadata_update.side_effect = asyncio.coroutine(
-    #         lambda: False)
-    #     client.send = mock.MagicMock()
+    @run_until_complete
+    def test_compacted_topic_consumption(self):
+        # Compacted topics can have offsets skipped
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=[])
+        client.ready = mock.MagicMock()
+        client.ready.side_effect = asyncio.coroutine(lambda a: True)
+        client.force_metadata_update = mock.MagicMock()
+        client.force_metadata_update.side_effect = asyncio.coroutine(
+            lambda: False)
+        client.send = mock.MagicMock()
 
-    #     subscriptions = SubscriptionState('latest')
-    #     fetcher = Fetcher(client, subscriptions, loop=self.loop)
+        subscriptions = SubscriptionState(loop=self.loop)
+        fetcher = Fetcher(client, subscriptions, loop=self.loop)
 
-    #     tp = TopicPartition('test', 0)
-    #     req = FetchRequest(
-    #         -1,  # replica_id
-    #         100, 100, [(tp.topic, [(tp.partition, 155, 100000)])])
+        tp = TopicPartition('test', 0)
+        req = FetchRequest(
+            -1,  # replica_id
+            100, 100, [(tp.topic, [(tp.partition, 155, 100000)])])
 
-    #     builder = LegacyRecordBatchBuilder(
-    #         magic=1, compression_type=0, batch_size=99999999)
-    #     builder.append(160, value=b"12345", key=b"1", timestamp=None)
-    #     builder.append(162, value=b"23456", key=b"2", timestamp=None)
-    #     builder.append(167, value=b"34567", key=b"3", timestamp=None)
-    #     batch = bytes(builder.build())
+        builder = LegacyRecordBatchBuilder(
+            magic=1, compression_type=0, batch_size=99999999)
+        builder.append(160, value=b"12345", key=b"1", timestamp=None)
+        builder.append(162, value=b"23456", key=b"2", timestamp=None)
+        builder.append(167, value=b"34567", key=b"3", timestamp=None)
+        batch = bytes(builder.build())
 
-    #     resp = FetchResponse(
-    #         [('test', [(
-    #             0, 0, 3000,  # partition, error_code, highwater_offset
-    #             batch  # Batch raw bytes
-    #         )])])
+        resp = FetchResponse(
+            [('test', [(
+                0, 0, 3000,  # partition, error_code, highwater_offset
+                batch  # Batch raw bytes
+            )])])
 
-    #     client.send.side_effect = asyncio.coroutine(lambda n, r: resp)
-    #     state = TopicPartitionState()
-    #     state.seek(155)
-    #     state.drop_pending_message_set = False
-    #     subscriptions.assignment[tp] = state
-    #     subscriptions.needs_partition_assignment = False
-    #     fetcher._in_flight.add(0)
+        subscriptions.assign_from_user({tp})
+        assignment = subscriptions.subscription.assignment
+        tp_state = assignment.state_value(tp)
+        client.send.side_effect = asyncio.coroutine(lambda n, r: resp)
 
-    #     needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
-    #     self.assertEqual(needs_wake_up, True)
-    #     buf = fetcher._records[tp]
-    #     # Test successful getone
-    #     first = buf.getone()
-    #     self.assertEqual(state.position, 161)
-    #     self.assertEqual(
-    #         (first.value, first.key, first.offset),
-    #         (b"12345", b"1", 160))
+        tp_state.seek(155)
+        fetcher._in_flight.add(0)
+        needs_wake_up = yield from fetcher._proc_fetch_request(
+            assignment, 0, req)
+        self.assertEqual(needs_wake_up, True)
+        buf = fetcher._records[tp]
+        # Test successful getone, the closest in batch offset=160
+        first = buf.getone()
+        self.assertEqual(tp_state.position, 161)
+        self.assertEqual(
+            (first.value, first.key, first.offset),
+            (b"12345", b"1", 160))
 
-    #     # Test successful getmany
-    #     second, third = buf.getall()
-    #     self.assertEqual(state.position, 168)
-    #     self.assertEqual(
-    #         (second.value, second.key, second.offset),
-    #         (b"23456", b"2", 162))
-    #     self.assertEqual(
-    #         (third.value, third.key, third.offset),
-    #         (b"34567", b"3", 167))
+        # Test successful getmany
+        second, third = buf.getall()
+        self.assertEqual(tp_state.position, 168)
+        self.assertEqual(
+            (second.value, second.key, second.offset),
+            (b"23456", b"2", 162))
+        self.assertEqual(
+            (third.value, third.key, third.offset),
+            (b"34567", b"3", 167))
 
     @run_until_complete
     def test_fetcher_offsets_for_times(self):

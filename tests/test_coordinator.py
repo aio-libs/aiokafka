@@ -5,9 +5,12 @@ from unittest import mock
 from kafka.protocol.group import (
     JoinGroupRequest_v0 as JoinGroupRequest,
     SyncGroupResponse_v0 as SyncGroupResponse,
-    LeaveGroupRequest_v0 as LeaveGroupRequest
+    LeaveGroupRequest_v0 as LeaveGroupRequest,
 )
-from kafka.protocol.commit import OffsetCommitRequest, OffsetCommitResponse_v2
+from kafka.protocol.commit import (
+    OffsetCommitRequest, OffsetCommitResponse_v2,
+    OffsetFetchRequest_v1 as OffsetFetchRequest
+)
 import kafka.common as Errors
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
@@ -36,18 +39,6 @@ class RebalanceListenerForTest(ConsumerRebalanceListener):
     def on_partitions_assigned(self, assigned):
         self.assigned.append(assigned)
         raise Exception("coordinator should ignore this exception")
-
-
-class MockedKafkaErrCode:
-    def __init__(self, *exc_classes):
-        self.exc_classes = exc_classes
-        self.idx = 0
-
-    def __call__(self, *args, **kwargs):
-        ec = self.exc_classes[self.idx]
-        self.idx += 1
-        self.idx %= len(self.exc_classes)
-        return ec
 
 
 class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
@@ -439,47 +430,71 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         yield from coordinator.close()
         yield from client.close()
 
-    # @run_until_complete
-    # def test_fetchoffsets_failed_scenarios(self):
-    #     client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
-    #     yield from client.bootstrap()
-    #     yield from self.wait_topic(client, 'topic1')
-    #     subscription = SubscriptionState('earliest')
-    #     subscription.subscribe(topics=('topic1',))
-    #     coordinator = GroupCoordinator(
-    #         client, subscription, loop=self.loop,
-    #         group_id='fetch-offsets-group')
+    @run_until_complete
+    def test_fetchoffsets_failed_scenarios(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        yield from client.bootstrap()
+        yield from self.wait_topic(client, 'topic1')
+        subscription = SubscriptionState(loop=self.loop)
+        subscription.subscribe(topics=set(['topic1']))
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            group_id='fetch-offsets-group')
+        yield from subscription.wait_for_assignment()
 
-    #     yield from coordinator.ensure_active_group()
+        tp = TopicPartition('topic1', 0)
+        partitions = {tp}
+        _orig_send_req = coordinator._send_req
+        with mock.patch.object(coordinator, "_send_req") as mocked:
+            fetch_error = None
 
-    #     offsets = {TopicPartition('topic1', 0): OffsetAndMetadata(1, '')}
-    #     with mock.patch('aiokafka.errors.for_code') as mocked:
-    #         mocked.side_effect = MockedKafkaErrCode(
-    #             Errors.GroupLoadInProgressError, Errors.NoError)
-    #         yield from coordinator.fetch_committed_offsets(offsets)
+            @asyncio.coroutine
+            def mock_send_req(request):
+                if request.API_KEY == OffsetFetchRequest.API_KEY:
+                    if isinstance(fetch_error, list):
+                        error_code = fetch_error.pop(0).errno
+                    else:
+                        error_code = fetch_error.errno
+                    if error_code == Errors.NoError.errno:
+                        offset = 10
+                    else:
+                        offset = -1
+                    resp_topics = [("topic1", [(0, offset, "", error_code)])]
+                    return request.RESPONSE_TYPE(resp_topics)
+                return (yield from _orig_send_req(request))
+            mocked.side_effect = mock_send_req
 
-    #         mocked.side_effect = MockedKafkaErrCode(
-    #             Errors.UnknownMemberIdError, Errors.NoError)
-    #         with self.assertRaises(Errors.UnknownMemberIdError):
-    #             yield from coordinator.fetch_committed_offsets(offsets)
-    #         self.assertEqual(subscription.needs_partition_assignment, True)
+            fetch_error = [
+                Errors.GroupLoadInProgressError,
+                Errors.GroupLoadInProgressError,
+                Errors.NoError,
+                Errors.NoError,
+                Errors.NoError
+            ]
+            res = yield from coordinator.fetch_committed_offsets(partitions)
+            self.assertEqual(res, {tp: OffsetAndMetadata(10, "")})
 
-    #         mocked.side_effect = None
-    #         mocked.return_value = Errors.UnknownTopicOrPartitionError
-    #         r = yield from coordinator.fetch_committed_offsets(offsets)
-    #         self.assertEqual(r, {})
+            # Just omit the topic with a warning
+            fetch_error = Errors.UnknownTopicOrPartitionError
+            res = yield from coordinator.fetch_committed_offsets(partitions)
+            self.assertEqual(res, {})
 
-    #         mocked.return_value = KafkaError
-    #         with self.assertRaises(KafkaError):
-    #             yield from coordinator.fetch_committed_offsets(offsets)
+            fetch_error = [
+                Errors.NotCoordinatorForGroupError,
+                Errors.NotCoordinatorForGroupError,
+                Errors.NoError,
+                Errors.NoError,
+                Errors.NoError
+            ]
+            r = yield from coordinator.fetch_committed_offsets(partitions)
+            self.assertEqual(r, {tp: OffsetAndMetadata(10, "")})
 
-    #         mocked.side_effect = MockedKafkaErrCode(
-    #             Errors.NotCoordinatorForGroupError,
-    #             Errors.NoError, Errors.NoError, Errors.NoError)
-    #         yield from coordinator.fetch_committed_offsets(offsets)
+            fetch_error = Errors.UnknownError
+            with self.assertRaises(Errors.KafkaError):
+                yield from coordinator.fetch_committed_offsets(partitions)
 
-    #     yield from coordinator.close()
-    #     yield from client.close()
+        yield from coordinator.close()
+        yield from client.close()
 
     @run_until_complete
     def test_coordinator_subscription_replace_on_rebalance(self):

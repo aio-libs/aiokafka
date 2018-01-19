@@ -199,9 +199,6 @@ class AIOKafkaConsumer(object):
         self._fetch_max_wait_ms = fetch_max_wait_ms
         self._max_partition_fetch_bytes = max_partition_fetch_bytes
         self._exclude_internal_topics = exclude_internal_topics
-        if max_poll_records is not None and (
-                not isinstance(max_poll_records, int) or max_poll_records < 1):
-            raise ValueError("`max_poll_records` should be positive Integer")
         self._max_poll_records = max_poll_records
         self._consumer_timeout = consumer_timeout_ms / 1000
         self._check_crcs = check_crcs
