@@ -516,7 +516,7 @@ class Fetcher:
                 elif error_type is Errors.OffsetOutOfRangeError:
                     if self._default_reset_strategy != \
                             OffsetResetStrategy.NONE:
-                        tp_state.await_reset(tp, self._default_reset_strategy)
+                        tp_state.await_reset(self._default_reset_strategy)
                     else:
                         err = Errors.OffsetOutOfRangeError({tp: fetch_offset})
                         self._set_error(tp, err)

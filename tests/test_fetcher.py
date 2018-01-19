@@ -83,133 +83,111 @@ class TestFetcher(unittest.TestCase):
     #         yield from fetcher.update_fetch_positions([partition])
     #     yield from fetcher.close()
 
-    # @run_until_complete
-    # def test_proc_fetch_request(self):
-    #     client = AIOKafkaClient(
-    #         loop=self.loop,
-    #         bootstrap_servers=[])
-    #     subscriptions = SubscriptionState(loop=self.loop)
-    #     fetcher = Fetcher(
-    #         client, subscriptions, auto_offset_reset="latest", loop=self.loop)
+    @run_until_complete
+    def test_proc_fetch_request(self):
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=[])
+        subscriptions = SubscriptionState(loop=self.loop)
+        fetcher = Fetcher(
+            client, subscriptions, auto_offset_reset="latest", loop=self.loop)
 
-    #     tp = TopicPartition('test', 0)
-    #     tp_info = (tp.topic, [(tp.partition, 155, 100000)])
-    #     req = FetchRequest(
-    #         -1,  # replica_id
-    #         100, 100, [tp_info])
+        tp = TopicPartition('test', 0)
+        tp_info = (tp.topic, [(tp.partition, 4, 100000)])
+        req = FetchRequest(
+            -1,  # replica_id
+            100, 100, [tp_info])
 
-    #     client.ready = mock.MagicMock()
-    #     client.ready.side_effect = asyncio.coroutine(lambda a: True)
-    #     client.force_metadata_update = mock.MagicMock()
-    #     client.force_metadata_update.side_effect = asyncio.coroutine(
-    #         lambda: False)
-    #     client.send = mock.MagicMock()
+        client.ready = mock.MagicMock()
+        client.ready.side_effect = asyncio.coroutine(lambda a: True)
+        client.force_metadata_update = mock.MagicMock()
+        client.force_metadata_update.side_effect = asyncio.coroutine(
+            lambda: False)
+        client.send = mock.MagicMock()
 
-    #     builder = LegacyRecordBatchBuilder(
-    #         magic=1, compression_type=0, batch_size=99999999)
-    #     builder.append(offset=4, value=b"test msg", key=None, timestamp=None)
-    #     raw_batch = bytes(builder.build())
+        builder = LegacyRecordBatchBuilder(
+            magic=1, compression_type=0, batch_size=99999999)
+        builder.append(offset=4, value=b"test msg", key=None, timestamp=None)
+        raw_batch = bytes(builder.build())
 
-    #     client.send.side_effect = asyncio.coroutine(
-    #         lambda n, r: FetchResponse(
-    #             [('test', [(0, 0, 9, raw_batch)])]))
-    #     fetcher._in_flight.add(0)
-    #     needs_wake_up = yield from fetcher._proc_fetch_request(
-    #         assignment, 0, req)
-    #     self.assertEqual(needs_wake_up, False)
+        client.send.side_effect = asyncio.coroutine(
+            lambda n, r: FetchResponse(
+                [('test', [(0, 0, 9, raw_batch)])]))
+        subscriptions.assign_from_user({tp})
+        assignment = subscriptions.subscription.assignment
+        tp_state = assignment.state_value(tp)
 
-    #     state = TopicPartitionState()
-    #     state.seek(0)
-    #     subscriptions.assignment[tp] = state
-    #     subscriptions.needs_partition_assignment = False
-    #     fetcher._in_flight.add(0)
-    #     needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
-    #     self.assertEqual(needs_wake_up, True)
-    #     buf = fetcher._records[tp]
-    #     self.assertEqual(buf.getone(), None)  # invalid offset, msg is ignored
+        # The partition has no active position, so will ignore result
+        needs_wake_up = yield from fetcher._proc_fetch_request(
+            assignment, 0, req)
+        self.assertEqual(needs_wake_up, False)
+        self.assertEqual(fetcher._records, {})
 
-    #     state.seek(4)
-    #     fetcher._in_flight.add(0)
-    #     fetcher._records.clear()
-    #     needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
-    #     self.assertEqual(needs_wake_up, True)
-    #     buf = fetcher._records[tp]
-    #     self.assertEqual(buf.getone().value, b"test msg")
+        # The partition's position does not match request's fetch offset
+        subscriptions.seek(tp, 0)
+        needs_wake_up = yield from fetcher._proc_fetch_request(
+            assignment, 0, req)
+        self.assertEqual(needs_wake_up, False)
+        self.assertEqual(fetcher._records, {})
 
-    #     # error -> no partition found
-    #     client.send.side_effect = asyncio.coroutine(
-    #         lambda n, r: FetchResponse(
-    #             [('test', [(0, 3, 9, raw_batch)])]))
-    #     fetcher._in_flight.add(0)
-    #     fetcher._records.clear()
-    #     needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
-    #     self.assertEqual(needs_wake_up, False)
+        subscriptions.seek(tp, 4)
+        needs_wake_up = yield from fetcher._proc_fetch_request(
+            assignment, 0, req)
+        self.assertEqual(needs_wake_up, True)
+        buf = fetcher._records[tp]
+        self.assertEqual(buf.getone().value, b"test msg")
 
-    #     # error -> topic auth failed
-    #     client.send.side_effect = asyncio.coroutine(
-    #         lambda n, r: FetchResponse(
-    #             [('test', [(0, 29, 9, raw_batch)])]))
-    #     fetcher._in_flight.add(0)
-    #     fetcher._records.clear()
-    #     needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
-    #     self.assertEqual(needs_wake_up, True)
-    #     with self.assertRaises(TopicAuthorizationFailedError):
-    #         yield from fetcher.next_record([])
+        # error -> no partition found (UnknownTopicOrPartitionError)
+        subscriptions.seek(tp, 4)
+        fetcher._records.clear()
+        client.send.side_effect = asyncio.coroutine(
+            lambda n, r: FetchResponse(
+                [('test', [(0, 3, 9, raw_batch)])]))
+        cc = client.force_metadata_update.call_count
+        needs_wake_up = yield from fetcher._proc_fetch_request(
+            assignment, 0, req)
+        self.assertEqual(needs_wake_up, False)
+        self.assertEqual(client.force_metadata_update.call_count, cc + 1)
 
-    #     # error -> unknown
-    #     client.send.side_effect = asyncio.coroutine(
-    #         lambda n, r: FetchResponse(
-    #             [('test', [(0, -1, 9, raw_batch)])]))
-    #     fetcher._in_flight.add(0)
-    #     fetcher._records.clear()
-    #     needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
-    #     self.assertEqual(needs_wake_up, False)
+        # error -> topic auth failed (TopicAuthorizationFailedError)
+        client.send.side_effect = asyncio.coroutine(
+            lambda n, r: FetchResponse(
+                [('test', [(0, 29, 9, raw_batch)])]))
+        needs_wake_up = yield from fetcher._proc_fetch_request(
+            assignment, 0, req)
+        self.assertEqual(needs_wake_up, True)
+        with self.assertRaises(TopicAuthorizationFailedError):
+            yield from fetcher.next_record([])
 
-    #     # error -> offset out of range with offset strategy
-    #     client.send.side_effect = asyncio.coroutine(
-    #         lambda n, r: FetchResponse(
-    #             [('test', [(0, 1, 9, raw_batch)])]))
-    #     fetcher._in_flight.add(0)
-    #     fetcher._records.clear()
-    #     with mock.patch.object(fetcher, "update_fetch_positions") as mocked:
-    #         mocked.side_effect = asyncio.coroutine(lambda o: None)
-    #         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
-    #         self.assertEqual(needs_wake_up, False)
-    #         self.assertEqual(state.is_fetchable(), False)
-    #         mocked.assert_called_with([tp])
+        # error -> unknown
+        client.send.side_effect = asyncio.coroutine(
+            lambda n, r: FetchResponse(
+                [('test', [(0, -1, 9, raw_batch)])]))
+        needs_wake_up = yield from fetcher._proc_fetch_request(
+            assignment, 0, req)
+        self.assertEqual(needs_wake_up, False)
 
-    #     # error -> offset out of range with strategy errors out
-    #     state.seek(4)
-    #     client.send.side_effect = asyncio.coroutine(
-    #         lambda n, r: FetchResponse(
-    #             [('test', [(0, 1, 9, [(4, 10, raw_batch)])])]))
-    #     fetcher._in_flight.add(0)
-    #     fetcher._records.clear()
-    #     with mock.patch.object(fetcher, "update_fetch_positions") as mocked:
-    #         # the exception should not fail execution here
-    #         @asyncio.coroutine
-    #         def mock_async_raises(offests):
-    #             raise Exception()
-    #         mocked.side_effect = mock_async_raises
-    #         needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
-    #         self.assertEqual(needs_wake_up, False)
-    #         self.assertEqual(state.is_fetchable(), False)
-    #         mocked.assert_called_with([tp])
+        # error -> offset out of range with offset strategy
+        client.send.side_effect = asyncio.coroutine(
+            lambda n, r: FetchResponse(
+                [('test', [(0, 1, 9, raw_batch)])]))
+        needs_wake_up = yield from fetcher._proc_fetch_request(
+            assignment, 0, req)
+        self.assertEqual(needs_wake_up, False)
+        self.assertEqual(tp_state.has_valid_position, False)
+        self.assertEqual(tp_state.awaiting_reset, True)
+        self.assertEqual(tp_state.reset_strategy, OffsetResetStrategy.LATEST)
 
-    #     # error -> offset out of range without offset strategy
-    #     state.seek(4)
-    #     subscriptions._default_offset_reset_strategy = OffsetResetStrategy.NONE
-    #     client.send.side_effect = asyncio.coroutine(
-    #         lambda n, r: FetchResponse(
-    #             [('test', [(0, 1, 9, raw_batch)])]))
-    #     fetcher._in_flight.add(0)
-    #     fetcher._records.clear()
-    #     needs_wake_up = yield from fetcher._proc_fetch_request(0, req)
-    #     self.assertEqual(needs_wake_up, True)
-    #     with self.assertRaises(OffsetOutOfRangeError):
-    #         yield from fetcher.next_record([])
+        # error -> offset out of range without offset strategy
+        subscriptions.seek(tp, 4)
+        fetcher._default_reset_strategy = OffsetResetStrategy.NONE
+        needs_wake_up = yield from fetcher._proc_fetch_request(
+            assignment, 0, req)
+        self.assertEqual(needs_wake_up, True)
+        with self.assertRaises(OffsetOutOfRangeError):
+            yield from fetcher.next_record([])
 
-    #     yield from fetcher.close()
+        yield from fetcher.close()
 
     def _setup_error_after_data(self):
         subscriptions = SubscriptionState(loop=self.loop)
