@@ -701,6 +701,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     def test_consumer_commit_validation(self):
         consumer = yield from self.consumer_factory()
+        self.add_cleanup(consumer.stop)
 
         tp = TopicPartition(self.topic, 0)
         offset = yield from consumer.position(tp)
@@ -735,6 +736,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             group_id='group-{}'.format(self.id()),
             bootstrap_servers=self.hosts)
         yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+
         consumer.subscribe(topics=set([self.topic]))
         with self.assertRaisesRegexp(
                 IllegalStateError, "No partitions assigned"):
@@ -745,6 +748,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from self.send_messages(0, [1, 2, 3])
 
         consumer = yield from self.consumer_factory(enable_auto_commit=False)
+        self.add_cleanup(consumer.stop)
         tp = TopicPartition(self.topic, 0)
         offset = yield from consumer.position(tp)
         self.assertEqual(offset, 0)
@@ -771,6 +775,19 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer.subscribe((self.topic, ))
         offset = yield from position_task
         self.assertEqual(offset, 0)
+
+        # Same case, but when we lose subscription
+        consumer.subscribe((self.topic, another_topic))
+        yield from consumer._subscription.wait_for_assignment()
+
+        position_task = ensure_future(consumer.position(tp), loop=self.loop)
+        yield from asyncio.sleep(0.0001, loop=self.loop)
+        self.assertFalse(position_task.done())
+
+        # We can't recover after subscription is lost
+        consumer.unsubscribe()
+        with self.assertRaises(IllegalStateError):
+            yield from position_task
 
     @run_until_complete
     def test_consumer_commit_no_group(self):

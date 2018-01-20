@@ -883,6 +883,8 @@ class AIOKafkaConsumer(object):
     def unsubscribe(self):
         """ Unsubscribe from all topics and clear all assigned partitions. """
         self._subscription.unsubscribe()
+        if self._group_id is not None:
+            self._coordinator.maybe_leave_group()
         self._client.set_topics([])
         log.info(
             "Unsubscribed all topics or patterns and assigned partitions")

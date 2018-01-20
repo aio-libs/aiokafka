@@ -274,6 +274,14 @@ class GroupCoordinator(BaseCoordinator):
         yield from self._stop_heartbeat_task()
         yield from self._stop_commit_offsets_refresh_task()
 
+        yield from self._maybe_leave_group()
+
+    def maybe_leave_group(self):
+        task = ensure_future(self._maybe_leave_group(), loop=self._loop)
+        return task
+
+    @asyncio.coroutine
+    def _maybe_leave_group(self):
         if self.generation > 0:
             # this is a minimal effort attempt to leave the group. we do not
             # attempt any resending if the request fails or times out.
@@ -284,6 +292,7 @@ class GroupCoordinator(BaseCoordinator):
                 log.error("LeaveGroup request failed: %s", err)
             else:
                 log.info("LeaveGroup request succeeded")
+        self.reset_generation()
 
     def _lookup_assignor(self, name):
         for assignor in self._assignors:
@@ -583,7 +592,11 @@ class GroupCoordinator(BaseCoordinator):
 
         # Closing finallization
         if assignment is not None:
-            yield from self._maybe_do_last_autocommit(assignment)
+            try:
+                yield from self._maybe_do_last_autocommit(assignment)
+            except Errors.KafkaError as err:
+                # We did all we could, all we can is show this to user
+                log.error("Failed to commit on finallization: %s", err)
 
     def _start_heartbeat_task(self):
         if self._heartbeat_task is None:

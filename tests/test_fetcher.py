@@ -23,6 +23,20 @@ from aiokafka.consumer.subscription_state import SubscriptionState
 from ._testutil import run_until_complete
 
 
+def test_offset_reset_strategy():
+    assert OffsetResetStrategy.from_str("latest") == OffsetResetStrategy.LATEST
+    assert OffsetResetStrategy.from_str("earliest") == \
+        OffsetResetStrategy.EARLIEST
+    assert OffsetResetStrategy.from_str("none") == OffsetResetStrategy.NONE
+    assert OffsetResetStrategy.from_str("123") == OffsetResetStrategy.NONE
+
+    assert OffsetResetStrategy.to_str(OffsetResetStrategy.LATEST) == "latest"
+    assert OffsetResetStrategy.to_str(OffsetResetStrategy.EARLIEST) == \
+        "earliest"
+    assert OffsetResetStrategy.to_str(OffsetResetStrategy.NONE) == "none"
+    assert OffsetResetStrategy.to_str(100) == "timestamp(100)"
+
+
 @pytest.mark.usefixtures('setup_test_class_serverless')
 class TestFetcher(unittest.TestCase):
 
