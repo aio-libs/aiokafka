@@ -317,6 +317,7 @@ class Fetcher:
                             task.cancel()
                         yield from task
                     self._pending_tasks.clear()
+                    self._records.clear()
 
                     subscription = self._subscriptions.subscription
                     if subscription is None or \
@@ -545,6 +546,7 @@ class Fetcher:
         partition. It may be right after assignment, on seek_to_* calls of
         Consumer or if current position went out of range.
         """
+        log.debug("Updating fetch positions for partitions %s", tps)
         needs_wakeup = False
         # The list of partitions provided can consist of paritions that are
         # awaiting reset already and freshly assigned partitions. The second

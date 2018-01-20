@@ -515,6 +515,11 @@ class AIOKafkaConsumer(object):
                     return_when=asyncio.FIRST_COMPLETED, loop=self._loop,
                 )
                 if not tp_state.has_valid_position:
+                    if self._subscription.subscription is None:
+                        raise IllegalStateError(
+                            'Partition {} is not assigned'.format(partition))
+                    if self._subscription.subscription.assignment is None:
+                        yield from self._subscription.wait_for_assignment()
                     continue
             return tp_state.position
 

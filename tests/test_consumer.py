@@ -5,19 +5,19 @@ from contextlib import contextmanager
 
 import pytest
 
+from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.consumer.fetcher import RecordTooLargeError
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
-from aiokafka import (
-    ConsumerStoppedError, IllegalOperation, ConsumerRebalanceListener
-)
+from aiokafka.util import ensure_future
 from aiokafka.structs import (
     OffsetAndTimestamp, TopicPartition, OffsetAndMetadata
 )
 from aiokafka.errors import (
-    IllegalStateError, UnknownTopicOrPartitionError, OffsetOutOfRangeError,
-    UnsupportedVersionError, KafkaTimeoutError, NoOffsetForPartitionError
+    IllegalStateError, OffsetOutOfRangeError, UnsupportedVersionError,
+    KafkaTimeoutError, NoOffsetForPartitionError, ConsumerStoppedError,
+    IllegalOperation
 )
 
 from ._testutil import (
@@ -367,6 +367,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             consumer.subscribe(topics=(), pattern=None)
         with self.assertRaises(ValueError):
             consumer.subscribe(pattern="^(spome(")
+        with self.assertRaises(ValueError):
+            consumer.subscribe("some_topic")  # should be a list
 
     @run_until_complete
     def test_compress_decompress(self):
@@ -586,19 +588,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(set(available_msgs), set(result))
         yield from consumer.stop()
 
-    @pytest.mark.xfail
-    @run_until_complete
-    def test_unknown_topic_or_partition(self):
-        consumer = AIOKafkaConsumer(
-            loop=self.loop, group_id=None,
-            bootstrap_servers=self.hosts, auto_offset_reset='earliest',
-            enable_auto_commit=False)
-        yield from consumer.start()
-
-        with self.assertRaises(UnknownTopicOrPartitionError):
-            yield from consumer.assign([TopicPartition(self.topic, 2222)])
-        yield from consumer.stop()
-
     @run_until_complete
     def test_check_extended_message_record(self):
         s_time_ms = time.time() * 1000
@@ -721,6 +710,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             yield from consumer.commit({})
         with self.assertRaises(ValueError):
             yield from consumer.commit("something")
+        with self.assertRaises(ValueError):
+            yield from consumer.commit({tp: (offset, "metadata", 100)})
         with self.assertRaisesRegexp(
                 ValueError, "Key should be TopicPartition instance"):
             yield from consumer.commit({"my_topic": offset_and_metadata})
@@ -730,6 +721,56 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         with self.assertRaisesRegexp(
                 ValueError, "Metadata should be a string"):
             yield from consumer.commit({tp: (offset, b"\x00\x02")})
+
+        with self.assertRaisesRegexp(
+                IllegalStateError, "Partition .* is not assigned"):
+            yield from consumer.commit({TopicPartition(self.topic, 10): 1000})
+        consumer.unsubscribe()
+        with self.assertRaisesRegexp(
+                IllegalStateError, "Not subscribed to any topics"):
+            yield from consumer.commit({tp: 1000})
+
+        consumer = AIOKafkaConsumer(
+            loop=self.loop,
+            group_id='group-{}'.format(self.id()),
+            bootstrap_servers=self.hosts)
+        yield from consumer.start()
+        consumer.subscribe(topics=set([self.topic]))
+        with self.assertRaisesRegexp(
+                IllegalStateError, "No partitions assigned"):
+            yield from consumer.commit({tp: 1000})
+
+    @run_until_complete
+    def test_consumer_position(self):
+        yield from self.send_messages(0, [1, 2, 3])
+
+        consumer = yield from self.consumer_factory(enable_auto_commit=False)
+        tp = TopicPartition(self.topic, 0)
+        offset = yield from consumer.position(tp)
+        self.assertEqual(offset, 0)
+        yield from consumer.getone()
+        offset = yield from consumer.position(tp)
+        self.assertEqual(offset, 1)
+
+        with self.assertRaises(IllegalStateError):
+            yield from consumer.position(TopicPartition(self.topic, 1000))
+
+        # If we lose assignment when waiting for position we should retry
+        # with new assignment
+        another_topic = self.topic + "-1"
+        consumer.subscribe((self.topic, another_topic))
+        yield from consumer._subscription.wait_for_assignment()
+        assert tp in consumer.assignment()
+        # At this moment the assignment is done, but position should be
+        # undefined
+        position_task = ensure_future(consumer.position(tp), loop=self.loop)
+        yield from asyncio.sleep(0.0001, loop=self.loop)
+        self.assertFalse(position_task.done())
+
+        # We change subscription to imitate a rebalance
+        consumer.subscribe((self.topic, ))
+        offset = yield from position_task
+        self.assertEqual(offset, 0)
 
     @run_until_complete
     def test_consumer_commit_no_group(self):

@@ -323,13 +323,10 @@ class TestFetcher(unittest.TestCase):
         client.cluster.leader_for_partition.return_value = 0
         client._api_version = (0, 10, 1)
 
-        subscriptions = SubscriptionState('latest')
+        subscriptions = SubscriptionState(loop=self.loop)
         fetcher = Fetcher(client, subscriptions, loop=self.loop)
         tp0 = TopicPartition("topic", 0)
         tp1 = TopicPartition("topic", 1)
-
-        subscriptions = SubscriptionState('latest')
-        fetcher = Fetcher(client, subscriptions, loop=self.loop)
 
         # Timeouting will result in KafkaTimeoutError
         with mock.patch.object(fetcher, "_proc_offset_requests") as mocked:
