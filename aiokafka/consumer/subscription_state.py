@@ -1,6 +1,10 @@
 import logging
 from asyncio import AbstractEventLoop as ALoop, shield, Event
-from enum import Enum
+try:
+    from enum import Enum
+except ImportError:
+    Enum = object
+
 from typing import Set, Pattern, Dict
 
 from aiokafka.errors import IllegalStateError
