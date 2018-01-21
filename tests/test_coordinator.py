@@ -6,6 +6,7 @@ from kafka.protocol.group import (
     JoinGroupRequest_v0 as JoinGroupRequest,
     SyncGroupResponse_v0 as SyncGroupResponse,
     LeaveGroupRequest_v0 as LeaveGroupRequest,
+    HeartbeatRequest_v0 as HeartbeatRequest,
 )
 from kafka.protocol.commit import (
     OffsetCommitRequest, OffsetCommitResponse_v2,
@@ -776,3 +777,219 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         # You can close again with no effect
         yield from coordinator.close()
+
+    @run_until_complete
+    def test_coordinator_close_autocommit(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        yield from client.bootstrap()
+        self.add_cleanup(client.close)
+        subscription = SubscriptionState(loop=self.loop)
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            group_id='test-my-group', session_timeout_ms=6000,
+            heartbeat_interval_ms=1000)
+        subscription.subscribe(topics=set(['topic1']))
+
+        waiter = create_future(loop=self.loop)
+
+        @asyncio.coroutine
+        def commit_offsets(*args, **kw):
+            yield from waiter
+
+        coordinator.commit_offsets = mock.Mock
+        coordinator.commit_offsets.side_effect = commit_offsets
+
+        # Close task should call autocommit last time
+        close_task = ensure_future(coordinator.close(), loop=self.loop)
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        self.assertFalse(close_task.done())
+
+        # Raising an error should not prevent from closing. Error should be
+        # just logged
+        waiter.set_exception(Errors.UnknownError())
+        yield from close_task
+
+    @run_until_complete
+    def test_coordinator_ensure_coordinator_known(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        subscription = SubscriptionState(loop=self.loop)
+        subscription.subscribe(topics=set(['topic1']))
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            heartbeat_interval_ms=20000)
+        coordinator._coordination_task.cancel()  # disable for test
+        try:
+            yield from coordinator._coordination_task
+        except asyncio.CancelledError:
+            pass
+        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        self.add_cleanup(coordinator.close)
+
+        client.ready = mock.Mock()
+        client.force_metadata_update = mock.Mock()
+        client.force_metadata_update.side_effect = \
+            asyncio.coroutine(lambda: True)
+
+        @asyncio.coroutine
+        def ready(node_id, group=None):
+            if node_id == 0:
+                return True
+            return False
+        client.ready.side_effect = ready
+        coordinator._do_coordinator_lookup = mock.Mock()
+
+        coordinator_lookup = None
+
+        @asyncio.coroutine
+        def _do_coordinator_lookup():
+            node_id = coordinator_lookup.pop()
+            if isinstance(node_id, Exception):
+                raise node_id
+            return node_id
+        coordinator._do_coordinator_lookup.side_effect = _do_coordinator_lookup
+
+        # CASE: the lookup returns a broken node, that can't be connected
+        # to. Ensure should wait until coordinator lookup finds the correct
+        # node.
+        coordinator.coordinator_dead()
+        coordinator_lookup = [0, 1, 1]
+        yield from coordinator.ensure_coordinator_known()
+        self.assertEqual(coordinator.coordinator_id, 0)
+        self.assertEqual(client.force_metadata_update.call_count, 0)
+
+        # CASE: lookup fails with error first time. We update metadata and try
+        # again
+        coordinator.coordinator_dead()
+        coordinator_lookup = [0, Errors.UnknownError()]
+        yield from coordinator.ensure_coordinator_known()
+        self.assertEqual(client.force_metadata_update.call_count, 1)
+
+    @run_until_complete
+    def test_coordinator__do_heartbeat(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        subscription = SubscriptionState(loop=self.loop)
+        subscription.subscribe(topics=set(['topic1']))
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            heartbeat_interval_ms=20000)
+        coordinator._coordination_task.cancel()  # disable for test
+        try:
+            yield from coordinator._coordination_task
+        except asyncio.CancelledError:
+            pass
+        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        self.add_cleanup(coordinator.close)
+
+        _orig_send_req = coordinator._send_req
+        coordinator._send_req = mocked = mock.Mock()
+        heartbeat_error = None
+
+        @asyncio.coroutine
+        def mock_send_req(request):
+            if request.API_KEY == HeartbeatRequest.API_KEY:
+                if isinstance(heartbeat_error, list):
+                    error_code = heartbeat_error.pop(0).errno
+                else:
+                    error_code = heartbeat_error.errno
+                return HeartbeatRequest.RESPONSE_TYPE(error_code)
+            return (yield from _orig_send_req(request))
+        mocked.side_effect = mock_send_req
+
+        coordinator.coordinator_id = 15
+        heartbeat_error = Errors.GroupCoordinatorNotAvailableError()
+        success = yield from coordinator._do_heartbeat()
+        self.assertFalse(success)
+        self.assertIsNone(coordinator.coordinator_id)
+
+        coordinator._rejoin_needed_fut = create_future(loop=self.loop)
+        heartbeat_error = Errors.RebalanceInProgressError()
+        success = yield from coordinator._do_heartbeat()
+        self.assertTrue(success)
+        self.assertTrue(coordinator._rejoin_needed_fut.done())
+
+        coordinator.member_id = "some_member"
+        coordinator._rejoin_needed_fut = create_future(loop=self.loop)
+        heartbeat_error = Errors.IllegalGenerationError()
+        success = yield from coordinator._do_heartbeat()
+        self.assertFalse(success)
+        self.assertTrue(coordinator._rejoin_needed_fut.done())
+        self.assertEqual(coordinator.member_id, UNKNOWN_MEMBER_ID)
+
+        coordinator.member_id = "some_member"
+        coordinator._rejoin_needed_fut = create_future(loop=self.loop)
+        heartbeat_error = Errors.UnknownMemberIdError()
+        success = yield from coordinator._do_heartbeat()
+        self.assertFalse(success)
+        self.assertTrue(coordinator._rejoin_needed_fut.done())
+        self.assertEqual(coordinator.member_id, UNKNOWN_MEMBER_ID)
+
+        heartbeat_error = Errors.UnknownError()
+        success = yield from coordinator._do_heartbeat()
+        self.assertFalse(success)
+
+        heartbeat_error = Errors.NoError()
+        success = yield from coordinator._do_heartbeat()
+        self.assertTrue(success)
+
+    @run_until_complete
+    def test_coordinator__heartbeat_routine(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        subscription = SubscriptionState(loop=self.loop)
+        subscription.subscribe(topics=set(['topic1']))
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            heartbeat_interval_ms=100,
+            session_timeout_ms=300,
+            retry_backoff_ms=50)
+        coordinator._coordination_task.cancel()  # disable for test
+        try:
+            yield from coordinator._coordination_task
+        except asyncio.CancelledError:
+            pass
+        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        self.add_cleanup(coordinator.close)
+
+        coordinator._do_heartbeat = mocked = mock.Mock()
+        coordinator.coordinator_id = 15
+        success = None
+
+        @asyncio.coroutine
+        def _do_heartbeat(*args, **kw):
+            if isinstance(success, list):
+                return success.pop(0)
+            return success
+        mocked.side_effect = _do_heartbeat
+
+        coordinator.ensure_coordinator_known = mock.Mock()
+        coordinator.ensure_coordinator_known.side_effect = asyncio.coroutine(
+            lambda: None)
+
+        routine = ensure_future(
+            coordinator._heartbeat_routine(), loop=self.loop)
+
+        def cleanup():
+            routine.cancel()
+            return routine
+        self.add_cleanup(cleanup)
+
+        # CASE: simple heartbeat
+        success = True
+        yield from asyncio.sleep(0.13, loop=self.loop)
+        self.assertFalse(routine.done())
+        self.assertEqual(mocked.call_count, 1)
+
+        # CASE: 2 heartbeat fail
+        success = False
+        yield from asyncio.sleep(0.15, loop=self.loop)
+        self.assertFalse(routine.done())
+        # We did 2 heartbeats as we waited only retry_backoff_ms between them
+        self.assertEqual(mocked.call_count, 3)
+
+        # CASE: session_timeout_ms elapsed without heartbeat
+        yield from asyncio.sleep(0.10, loop=self.loop)
+        self.assertEqual(mocked.call_count, 5)
+        self.assertEqual(coordinator.coordinator_id, 15)
+        # last heartbeat try
+        yield from asyncio.sleep(0.05, loop=self.loop)
+        self.assertEqual(mocked.call_count, 6)
+        self.assertIsNone(coordinator.coordinator_id)

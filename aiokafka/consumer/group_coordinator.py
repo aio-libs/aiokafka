@@ -626,15 +626,15 @@ class GroupCoordinator(BaseCoordinator):
 
                 t0 = self._loop.time()
                 success = yield from self._do_heartbeat()
-                if success:
-                    last_ok_heartbeat = self._loop.time()
-                else:
-                    sleep_time = retry_backoff
-                    continue
             except asyncio.CancelledError:
                 return
 
-            sleep_time = max((0, hb_interval - self._loop.time() + t0))
+            if success:
+                last_ok_heartbeat = self._loop.time()
+                sleep_time = max((0, hb_interval - self._loop.time() + t0))
+            else:
+                sleep_time = retry_backoff
+
             session_time = self._loop.time() - last_ok_heartbeat
             if session_time > session_timeout:
                 # the session timeout has expired without seeing a successful

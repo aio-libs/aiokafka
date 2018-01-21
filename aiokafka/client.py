@@ -421,7 +421,7 @@ class AIOKafkaClient:
         """Attempt to guess the broker version"""
         if node_id is None:
             default_group_conns = [
-                node_id for (node_id, group) in self._conns.keys()
+                n_id for (n_id, group) in self._conns.keys()
                 if group == ConnectionGroup.DEFAULT
             ]
             if default_group_conns:
