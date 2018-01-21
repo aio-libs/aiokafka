@@ -14,12 +14,15 @@ from aiokafka.errors import (
     TopicAuthorizationFailedError, UnknownError, UnknownTopicOrPartitionError,
     OffsetOutOfRangeError, KafkaTimeoutError, NotLeaderForPartitionError
 )
-from aiokafka.structs import TopicPartition, OffsetAndTimestamp
+from aiokafka.structs import (
+    TopicPartition, OffsetAndTimestamp, OffsetAndMetadata
+)
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer.fetcher import (
     Fetcher, FetchResult, FetchError, ConsumerRecord, OffsetResetStrategy
 )
 from aiokafka.consumer.subscription_state import SubscriptionState
+from aiokafka.util import ensure_future
 from ._testutil import run_until_complete
 
 
@@ -37,6 +40,22 @@ def test_offset_reset_strategy():
     assert OffsetResetStrategy.to_str(100) == "timestamp(100)"
 
 
+def test_fetch_result_and_error(loop):
+    # Add some data
+    messages = [ConsumerRecord(
+        topic="some_topic", partition=1, offset=0, timestamp=0,
+        timestamp_type=0, key=None, value=b"some", checksum=None,
+        serialized_key_size=0, serialized_value_size=4)]
+    result = FetchResult(
+        TopicPartition("test", 0), assignment=mock.Mock(), loop=loop,
+        message_iterator=iter(messages), backoff=0,
+        fetch_offset=0)
+    assert repr(result) == "<FetchResult position=0>"
+    error = FetchError(
+        loop=loop, error=OffsetOutOfRangeError({}), backoff=0)
+    assert repr(error) == "<FetchError error=OffsetOutOfRangeError({},)>"
+
+
 @pytest.mark.usefixtures('setup_test_class_serverless')
 class TestFetcher(unittest.TestCase):
 
@@ -51,51 +70,153 @@ class TestFetcher(unittest.TestCase):
     def _assert_logs_noop(self):
         yield
 
-    # @run_until_complete
-    # def test_update_fetch_positions(self):
-    #     client = AIOKafkaClient(
-    #         loop=self.loop,
-    #         bootstrap_servers=[])
-    #     subscriptions = SubscriptionState('latest')
-    #     fetcher = Fetcher(client, subscriptions, loop=self.loop)
-    #     partition = TopicPartition('test', 0)
-    #     # partition is not assigned, should be ignored
-    #     yield from fetcher.update_fetch_positions([partition])
+    def setUp(self):
+        super().setUp()
+        self._cleanup = []
 
-    #     state = TopicPartitionState()
-    #     state.seek(0)
-    #     subscriptions.assignment[partition] = state
-    #     # partition is fetchable, no need to update position
-    #     yield from fetcher.update_fetch_positions([partition])
+    def tearDown(self):
+        super().tearDown()
+        for coro, args, kw in reversed(self._cleanup):
+            task = asyncio.wait_for(coro(*args, **kw), 30, loop=self.loop)
+            self.loop.run_until_complete(task)
 
-    #     client.ready = mock.MagicMock()
-    #     client.ready.side_effect = asyncio.coroutine(lambda a: True)
-    #     client.force_metadata_update = mock.MagicMock()
-    #     client.force_metadata_update.side_effect = asyncio.coroutine(
-    #         lambda: False)
-    #     client.send = mock.MagicMock()
-    #     client.send.side_effect = asyncio.coroutine(
-    #         lambda n, r: OffsetResponse[0]([('test', [(0, 0, [4])])]))
-    #     state.await_reset(OffsetResetStrategy.LATEST)
-    #     client.cluster.leader_for_partition = mock.MagicMock()
-    #     client.cluster.leader_for_partition.side_effect = [None, -1, 0]
-    #     yield from fetcher.update_fetch_positions([partition])
-    #     self.assertEqual(state.position, 4)
+    def add_cleanup(self, cb_or_coro, *args, **kw):
+        self._cleanup.append((cb_or_coro, args, kw))
 
-    #     client.cluster.leader_for_partition = mock.MagicMock()
-    #     client.cluster.leader_for_partition.return_value = 1
-    #     client.send = mock.MagicMock()
-    #     client.send.side_effect = asyncio.coroutine(
-    #         lambda n, r: OffsetResponse[0]([('test', [(0, 3, [])])]))
-    #     state.await_reset(OffsetResetStrategy.LATEST)
-    #     with self.assertRaises(UnknownTopicOrPartitionError):
-    #         yield from fetcher.update_fetch_positions([partition])
+    @run_until_complete
+    def test_fetcher__update_fetch_positions(self):
+        client = AIOKafkaClient(
+            loop=self.loop,
+            bootstrap_servers=[])
+        subscriptions = SubscriptionState(loop=self.loop)
+        fetcher = Fetcher(client, subscriptions, loop=self.loop)
+        self.add_cleanup(fetcher.close)
+        # Disable backgroud task
+        fetcher._fetch_task.cancel()
+        try:
+            yield from fetcher._fetch_task
+        except asyncio.CancelledError:
+            pass
+        fetcher._fetch_task = ensure_future(
+            asyncio.sleep(1000000, loop=self.loop), loop=self.loop)
 
-    #     client.send.side_effect = asyncio.coroutine(
-    #         lambda n, r: OffsetResponse[0]([('test', [(0, -1, [])])]))
-    #     with self.assertRaises(UnknownError):
-    #         yield from fetcher.update_fetch_positions([partition])
-    #     yield from fetcher.close()
+        partition = TopicPartition('test', 0)
+        offsets = {partition: OffsetAndTimestamp(12, -1)}
+
+        @asyncio.coroutine
+        def _proc_offset_request(node_id, topic_data):
+            return offsets
+
+        fetcher._proc_offset_request = mock.Mock()
+        fetcher._proc_offset_request.side_effect = _proc_offset_request
+
+        def reset_assignment():
+            subscriptions.assign_from_user({partition})
+            assignment = subscriptions.subscription.assignment
+            tp_state = assignment.state_value(partition)
+            return assignment, tp_state
+        assignment, tp_state = reset_assignment()
+
+        self.assertIsNone(tp_state._position)
+
+        # CASE: reset from committed
+        # In basic case we will need to wait for committed
+        update_task = ensure_future(
+            fetcher._update_fetch_positions(assignment, 0, [partition]),
+            loop=self.loop
+        )
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        self.assertFalse(update_task.done())
+        # Will continue only after committed is resolved
+        tp_state.reset_committed(OffsetAndMetadata(4, ""))
+        needs_wakeup = yield from update_task
+        self.assertFalse(needs_wakeup)
+        self.assertEqual(tp_state._position, 4)
+        self.assertEqual(fetcher._proc_offset_request.call_count, 0)
+
+        # CASE: reset for already valid position will have no effect
+        tp_state.begin_commit()  # reset commit, to make sure we don't wait it
+        yield from fetcher._update_fetch_positions(assignment, 0, [partition])
+        self.assertEqual(tp_state._position, 4)
+        self.assertEqual(fetcher._proc_offset_request.call_count, 0)
+
+        # CASE: awaiting_reset for the partition
+        tp_state.await_reset(OffsetResetStrategy.LATEST)
+        self.assertIsNone(tp_state._position)
+        yield from fetcher._update_fetch_positions(assignment, 0, [partition])
+        self.assertEqual(tp_state._position, 12)
+        self.assertEqual(fetcher._proc_offset_request.call_count, 1)
+
+        # CASE: seeked while waiting for committed to be resolved
+        assignment, tp_state = reset_assignment()
+        update_task = ensure_future(
+            fetcher._update_fetch_positions(assignment, 0, [partition]),
+            loop=self.loop
+        )
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        self.assertFalse(update_task.done())
+
+        tp_state.seek(8)
+        tp_state.reset_committed(OffsetAndMetadata(4, ""))
+        yield from update_task
+        self.assertEqual(tp_state._position, 8)
+        self.assertEqual(fetcher._proc_offset_request.call_count, 1)
+
+        # CASE: awaiting_reset during waiting
+        assignment, tp_state = reset_assignment()
+        update_task = ensure_future(
+            fetcher._update_fetch_positions(assignment, 0, [partition]),
+            loop=self.loop
+        )
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        self.assertFalse(update_task.done())
+
+        tp_state.await_reset(OffsetResetStrategy.LATEST)
+        tp_state.reset_committed(OffsetAndMetadata(4, ""))
+        yield from update_task
+        self.assertEqual(tp_state._position, 12)
+        self.assertEqual(fetcher._proc_offset_request.call_count, 2)
+
+        # CASE: reset using default strategy if committed offset undefined
+        assignment, tp_state = reset_assignment()
+        tp_state.reset_committed(OffsetAndMetadata(-1, ""))
+        yield from fetcher._update_fetch_positions(assignment, 0, [partition])
+        self.assertEqual(tp_state._position, 12)
+        self.assertEqual(fetcher._records, {})
+
+        # CASE: set error if _default_reset_strategy = OffsetResetStrategy.NONE
+        assignment, tp_state = reset_assignment()
+        tp_state.reset_committed(OffsetAndMetadata(-1, ""))
+        fetcher._default_reset_strategy = OffsetResetStrategy.NONE
+        needs_wakeup = yield from fetcher._update_fetch_positions(
+            assignment, 0, [partition])
+        self.assertTrue(needs_wakeup)
+        self.assertIsNone(tp_state._position)
+        self.assertIsInstance(fetcher._records[partition], FetchError)
+        fetcher._records.clear()
+
+        # CASE: if _proc_offset_request errored, we will retry on another spin
+        fetcher._proc_offset_request.side_effect = UnknownError()
+        assignment, tp_state = reset_assignment()
+        tp_state.await_reset(OffsetResetStrategy.LATEST)
+        yield from fetcher._update_fetch_positions(assignment, 0, [partition])
+        self.assertIsNone(tp_state._position)
+        self.assertTrue(tp_state.awaiting_reset)
+
+        # CASE: reset 2 partitions separately, 1 will rese, 1 will get
+        #       committed
+        fetcher._proc_offset_request.side_effect = _proc_offset_request
+        partition2 = TopicPartition('test', 1)
+        subscriptions.assign_from_user({partition, partition2})
+        assignment = subscriptions.subscription.assignment
+        tp_state = assignment.state_value(partition)
+        tp_state2 = assignment.state_value(partition2)
+        tp_state.await_reset(OffsetResetStrategy.LATEST)
+        tp_state2.reset_committed(OffsetAndMetadata(5, ""))
+        yield from fetcher._update_fetch_positions(
+            assignment, 0, [partition, partition2])
+        self.assertEqual(tp_state.position, 12)
+        self.assertEqual(tp_state2.position, 5)
 
     @run_until_complete
     def test_proc_fetch_request(self):
@@ -150,6 +271,24 @@ class TestFetcher(unittest.TestCase):
         self.assertEqual(needs_wake_up, True)
         buf = fetcher._records[tp]
         self.assertEqual(buf.getone().value, b"test msg")
+
+        # If position changed after fetch request passed
+        subscriptions.seek(tp, 4)
+        needs_wake_up = yield from fetcher._proc_fetch_request(
+            assignment, 0, req)
+        subscriptions.seek(tp, 10)
+        self.assertIsNone(buf.getone())
+
+        # If assignment is lost after fetch request passed
+        subscriptions.seek(tp, 4)
+        needs_wake_up = yield from fetcher._proc_fetch_request(
+            assignment, 0, req)
+        subscriptions.unsubscribe()
+        self.assertIsNone(buf.getone())
+
+        subscriptions.assign_from_user({tp})
+        assignment = subscriptions.subscription.assignment
+        tp_state = assignment.state_value(tp)
 
         # error -> no partition found (UnknownTopicOrPartitionError)
         subscriptions.seek(tp, 4)

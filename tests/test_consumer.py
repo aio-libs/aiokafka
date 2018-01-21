@@ -369,6 +369,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             consumer.subscribe(pattern="^(spome(")
         with self.assertRaises(ValueError):
             consumer.subscribe("some_topic")  # should be a list
+        with self.assertRaises(TypeError):
+            consumer.subscribe(topics=["some_topic"], listener=object())
 
     @run_until_complete
     def test_compress_decompress(self):
@@ -558,10 +560,15 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             yield from consumer.seek_to_end(tp1)
 
     @run_until_complete
-    def test_consumer_seek_type_errors(self):
+    def test_consumer_seek_errors(self):
         consumer = yield from self.consumer_factory()
         self.add_cleanup(consumer.stop)
+        tp = TopicPartition("topic", 0)
 
+        with self.assertRaises(ValueError):
+            consumer.seek(tp, -1)
+        with self.assertRaises(ValueError):
+            consumer.seek(tp, "")
         with self.assertRaises(TypeError):
             yield from consumer.seek_to_beginning(1)
         with self.assertRaises(TypeError):

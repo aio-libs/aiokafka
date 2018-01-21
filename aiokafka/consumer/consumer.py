@@ -572,7 +572,7 @@ class AIOKafkaConsumer(object):
             Changed ``AssertionError`` to ``IllegalStateError`` and
             ``ValueError`` in respective cases.
         """
-        if not isinstance(offset, int):
+        if not isinstance(offset, int) or offset < 0:
             raise ValueError("Offset must be a positive integer")
         log.debug("Seeking to offset %s for partition %s", offset, partition)
         self._fetcher.seek_to(partition, offset)

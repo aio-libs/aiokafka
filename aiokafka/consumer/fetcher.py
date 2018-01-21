@@ -553,7 +553,7 @@ class Fetcher:
         # ones can yet have no commit point fetched, so we will check that.
         for tp in tps:
             tp_state = assignment.state_value(tp)
-            if tp_state.awaiting_reset:
+            if tp_state.has_valid_position or tp_state.awaiting_reset:
                 continue
 
             committed = tp_state.committed
@@ -590,10 +590,9 @@ class Fetcher:
         needs_reset = []
         for tp in tps:
             tp_state = assignment.state_value(tp)
-            if tp_state.awaiting_reset:
-                needs_reset.append(tp)
-            else:
+            if not tp_state.awaiting_reset:
                 continue
+            needs_reset.append(tp)
 
             strategy = tp_state.reset_strategy
             assert strategy is not None
@@ -605,10 +604,13 @@ class Fetcher:
             return needs_wakeup
 
         try:
-            offsets = yield from self._proc_offset_request(node_id, topic_data)
-        except Errors.KafkaError as err:
-            log.error("Failed fetch offsets from %s: %s", node_id, err)
-            return needs_wakeup
+            try:
+                offsets = yield from self._proc_offset_request(
+                    node_id, topic_data)
+            except Errors.KafkaError as err:
+                log.error("Failed fetch offsets from %s: %s", node_id, err)
+                yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+                return needs_wakeup
         except asyncio.CancelledError:
             return needs_wakeup
 
@@ -618,7 +620,7 @@ class Fetcher:
             # There could have been some `seek` call while fetching offset
             if tp_state.awaiting_reset:
                 tp_state.reset_to(offset)
-        return True
+        return needs_wakeup
 
     @asyncio.coroutine
     def _retrieve_offsets(self, timestamps, timeout_ms=float("inf")):
