@@ -782,7 +782,8 @@ class GroupCoordinator(BaseCoordinator):
                 log.warning("Auto offset commit failed: %s", error)
                 if error.retriable:
                     # Retry after backoff.
-                    self._next_autocommit_deadline = now + backoff
+                    self._next_autocommit_deadline = \
+                        self._loop.time() + backoff
                     return backoff
             except Exception as error:  # pragma: no cover
                 log.exception("Auto offset commit errored: %s", error)
@@ -1043,10 +1044,6 @@ class CoordinatorGroupRebalance:
         On how to handle cases read in https://cwiki.apache.org/confluence/\
             display/KAFKA/Kafka+Client-side+Assignment+Proposal
     """
-
-    __slots__ = ("_coordinator", "group_id", "coordinator_id", "_subscription",
-                 "_assignors", "_session_timeout_ms", "_retry_backoff_ms",
-                 "_loop")
 
     def __init__(self, coordinator, group_id, coordinator_id, subscription,
                  assignors, session_timeout_ms, retry_backoff_ms, *, loop):

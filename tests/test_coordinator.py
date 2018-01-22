@@ -133,6 +133,10 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator.coordinator_id = 15
         self.add_cleanup(coordinator.close)
 
+        _on_join_leader_mock = mock.Mock()
+        _on_join_leader_mock.side_effect = asyncio.coroutine(
+            lambda resp: b"123")
+
         @asyncio.coroutine
         def do_rebalance():
             rebalance = CoordinatorGroupRebalance(
@@ -141,11 +145,12 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 coordinator._session_timeout_ms,
                 coordinator._retry_backoff_ms,
                 loop=self.loop)
-            yield from rebalance.perform_group_join()
+            rebalance._on_join_leader = _on_join_leader_mock
+            return (yield from rebalance.perform_group_join())
 
         mocked = mock.MagicMock()
         coordinator._client = mocked
-        error_type = None
+        error_type = Errors.NoError
 
         @asyncio.coroutine
         def send(*agrs, **kw):
@@ -162,9 +167,15 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         mocked.send.side_effect = send
         subsc = subscription.subscription
 
+        # Success case, joined successfully
+        resp = yield from do_rebalance()
+        self.assertEqual(resp, ("roundrobin", b"123"))
+        self.assertEqual(_on_join_leader_mock.call_count, 1)
+
         # no exception expected, just wait
         error_type = Errors.GroupLoadInProgressError
-        yield from do_rebalance()
+        resp = yield from do_rebalance()
+        self.assertIsNone(resp)
         self.assertEqual(coordinator.need_rejoin(subsc), True)
 
         error_type = Errors.InvalidGroupIdError
@@ -175,7 +186,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # no exception expected, member_id should be reseted
         coordinator.member_id = 'some_invalid_member_id'
         error_type = Errors.UnknownMemberIdError
-        yield from do_rebalance()
+        resp = yield from do_rebalance()
+        self.assertIsNone(resp)
         self.assertEqual(coordinator.need_rejoin(subsc), True)
         self.assertEqual(
             coordinator.member_id, JoinGroupRequest.UNKNOWN_MEMBER_ID)
@@ -186,7 +198,35 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         # no exception expected, coordinator_id should be reseted
         error_type = Errors.GroupCoordinatorNotAvailableError
-        yield from do_rebalance()
+        resp = yield from do_rebalance()
+        self.assertIsNone(resp)
+        self.assertEqual(coordinator.need_rejoin(subsc), True)
+        self.assertEqual(coordinator.coordinator_id, None)
+        coordinator.coordinator_id = 15
+        coordinator._coordinator_dead_fut = create_future(loop=self.loop)
+
+        # Sync group fails case
+        error_type = Errors.NoError
+        _on_join_leader_mock.side_effect = asyncio.coroutine(
+            lambda resp: None)
+        resp = yield from do_rebalance()
+        self.assertEqual(coordinator.coordinator_id, 15)
+        self.assertIsNone(resp)
+        self.assertEqual(_on_join_leader_mock.call_count, 2)
+
+        # Subscription changes before rebalance finishes
+        def send_change_sub(*args, **kw):
+            subscription.subscribe(topics=set(['topic2']))
+            return (yield from send(*args, **kw))
+        mocked.send.side_effect = send_change_sub
+        resp = yield from do_rebalance()
+        self.assertEqual(resp, None)
+        self.assertEqual(_on_join_leader_mock.call_count, 2)
+
+        # `_send_req` itself raises an error
+        mocked.send.side_effect = Errors.GroupCoordinatorNotAvailableError()
+        resp = yield from do_rebalance()
+        self.assertIsNone(resp)
         self.assertEqual(coordinator.need_rejoin(subsc), True)
         self.assertEqual(coordinator.coordinator_id, None)
 
@@ -249,10 +289,17 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertEqual(coordinator.coordinator_id, None)
         self.assertEqual(coordinator.need_rejoin(subsc), True)
         coordinator.coordinator_id = 15
+        coordinator._coordinator_dead_fut = create_future(loop=self.loop)
 
         error_type = Errors.UnknownError()
         with self.assertRaises(Errors.KafkaError):  # Masked as some KafkaError
             yield from do_sync_group()
+        self.assertEqual(coordinator.need_rejoin(subsc), True)
+
+        # If ``send()`` itself raises an error
+        mocked.send.side_effect = Errors.GroupCoordinatorNotAvailableError()
+        yield from do_sync_group()
+        self.assertEqual(coordinator.coordinator_id, None)
         self.assertEqual(coordinator.need_rejoin(subsc), True)
 
     @run_until_complete
@@ -464,6 +511,11 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                     return request.RESPONSE_TYPE(resp_topics)
                 return (yield from _orig_send_req(request))
             mocked.side_effect = mock_send_req
+
+            # 0 partitions call should just fast return
+            res = yield from coordinator.fetch_committed_offsets({})
+            self.assertEqual(res, {})
+            self.assertEqual(mocked.call_count, 0)
 
             fetch_error = [
                 Errors.GroupLoadInProgressError,
@@ -994,3 +1046,136 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         yield from asyncio.sleep(0.05, loop=self.loop)
         self.assertEqual(mocked.call_count, 6)
         self.assertIsNone(coordinator.coordinator_id)
+
+    @run_until_complete
+    def test_coordinator__maybe_refresh_commit_offsets(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        subscription = SubscriptionState(loop=self.loop)
+        tp = TopicPartition("topic1", 0)
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            heartbeat_interval_ms=20000)
+        coordinator._coordination_task.cancel()  # disable for test
+        try:
+            yield from coordinator._coordination_task
+        except asyncio.CancelledError:
+            pass
+        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        self.add_cleanup(coordinator.close)
+
+        coordinator._do_fetch_commit_offsets = mocked = mock.Mock()
+        fetched_offsets = {tp: OffsetAndMetadata(12, "")}
+        test_self = self
+
+        @asyncio.coroutine
+        def do_fetch(need_update):
+            test_self.assertEqual(need_update, [tp])
+            return fetched_offsets
+        mocked.side_effect = do_fetch
+
+        def reset_assignment():
+            subscription.assign_from_user({tp})
+            assignment = subscription.subscription.assignment
+            tp_state = assignment.state_value(tp)
+            return assignment, tp_state
+        assignment, tp_state = reset_assignment()
+
+        # Success case
+        resp = yield from coordinator._maybe_refresh_commit_offsets(assignment)
+        self.assertEqual(resp, True)
+        self.assertEqual(tp_state.committed, OffsetAndMetadata(12, ""))
+
+        # Calling again will fast return without a request
+        resp = yield from coordinator._maybe_refresh_commit_offsets(assignment)
+        self.assertEqual(resp, True)
+        self.assertEqual(mocked.call_count, 1)
+
+        # Commit not found case
+        fetched_offsets = {}
+        assignment, tp_state = reset_assignment()
+        resp = yield from coordinator._maybe_refresh_commit_offsets(assignment)
+        self.assertEqual(resp, True)
+        self.assertEqual(tp_state.committed, OffsetAndMetadata(-1, ""))
+
+        # Retriable error will be skipped
+        assignment, tp_state = reset_assignment()
+        mocked.side_effect = Errors.GroupCoordinatorNotAvailableError()
+        resp = yield from coordinator._maybe_refresh_commit_offsets(assignment)
+        self.assertEqual(resp, False)
+
+        # Not retriable error will be skipped also...?
+        mocked.side_effect = Errors.UnknownError()
+        resp = yield from coordinator._maybe_refresh_commit_offsets(assignment)
+        self.assertEqual(resp, False)
+
+    @run_until_complete
+    def test_coordinator__maybe_do_autocommit(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        subscription = SubscriptionState(loop=self.loop)
+        tp = TopicPartition("topic1", 0)
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            heartbeat_interval_ms=20000, auto_commit_interval_ms=1000,
+            retry_backoff_ms=50)
+        coordinator._coordination_task.cancel()  # disable for test
+        try:
+            yield from coordinator._coordination_task
+        except asyncio.CancelledError:
+            pass
+        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        self.add_cleanup(coordinator.close)
+
+        coordinator._do_commit_offsets = mocked = mock.Mock()
+        loop = self.loop
+
+        @asyncio.coroutine
+        def do_commit(*args, **kw):
+            yield from asyncio.sleep(0.1, loop=loop)
+            return
+        mocked.side_effect = do_commit
+
+        def reset_assignment():
+            subscription.assign_from_user({tp})
+            assignment = subscription.subscription.assignment
+            tp_state = assignment.state_value(tp)
+            return assignment, tp_state
+        assignment, tp_state = reset_assignment()
+
+        # Fast return if autocommit disabled
+        coordinator._enable_auto_commit = False
+        timeout = yield from coordinator._maybe_do_autocommit(assignment)
+        self.assertIsNone(timeout)  # Infinite timeout in this case
+        self.assertEqual(mocked.call_count, 0)
+        coordinator._enable_auto_commit = True
+
+        # Successful case should count time to next autocommit
+        now = self.loop.time()
+        interval = 1
+        coordinator._next_autocommit_deadline = 0
+        timeout = yield from coordinator._maybe_do_autocommit(assignment)
+        # 1000ms interval minus 100 sleep
+        self.assertAlmostEqual(timeout, 0.9, places=1)
+        self.assertAlmostEqual(
+            coordinator._next_autocommit_deadline, now + interval, places=1)
+        self.assertEqual(mocked.call_count, 1)
+
+        # Retriable errors should backoff and retry, no skip autocommit
+        coordinator._next_autocommit_deadline = 0
+        mocked.side_effect = Errors.NotCoordinatorForGroupError()
+        now = self.loop.time()
+        timeout = yield from coordinator._maybe_do_autocommit(assignment)
+        self.assertEqual(timeout, 0.05)
+        # Dealine should be set into future, not depending on commit time, to
+        # avoid busy loops
+        self.assertAlmostEqual(
+            coordinator._next_autocommit_deadline, now + timeout,
+            places=1)
+
+        # Not retriable errors should skip autocommit and log
+        mocked.side_effect = Errors.UnknownError()
+        now = self.loop.time()
+        coordinator._next_autocommit_deadline = 0
+        timeout = yield from coordinator._maybe_do_autocommit(assignment)
+        self.assertAlmostEqual(timeout, 1, places=1)
+        self.assertAlmostEqual(
+            coordinator._next_autocommit_deadline, now + interval, places=1)
