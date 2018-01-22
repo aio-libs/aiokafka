@@ -1179,3 +1179,152 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertAlmostEqual(timeout, 1, places=1)
         self.assertAlmostEqual(
             coordinator._next_autocommit_deadline, now + interval, places=1)
+
+    @run_until_complete
+    def test_coordinator__coordination_routine(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        subscription = SubscriptionState(loop=self.loop)
+        tp = TopicPartition("topic1", 0)
+        coordinator = GroupCoordinator(
+            client, subscription, loop=self.loop,
+            heartbeat_interval_ms=20000, auto_commit_interval_ms=1000,
+            retry_backoff_ms=50)
+        self.add_cleanup(coordinator.close)
+
+        def start_coordination():
+            coordinator._coordination_task = task = ensure_future(
+                coordinator._coordination_routine(), loop=self.loop)
+            return task
+
+        @asyncio.coroutine
+        def stop_coordination():
+            coordinator._coordination_task.cancel()  # disable for test
+            try:
+                yield from coordinator._coordination_task
+            except asyncio.CancelledError:
+                pass
+            coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+
+        yield from stop_coordination()
+
+        coordinator.ensure_coordinator_known = coord_mock = mock.Mock()
+        coord_mock.side_effect = asyncio.coroutine(lambda: None)
+
+        coordinator._on_join_prepare = prepare_mock = mock.Mock()
+        prepare_mock.side_effect = asyncio.coroutine(lambda assign: None)
+
+        coordinator._do_rejoin_group = rejoin_mock = mock.Mock()
+        rejoin_ok = True
+
+        @asyncio.coroutine
+        def do_rejoin(subsc):
+            if rejoin_ok:
+                subscription.assign_from_subscribed({tp})
+                coordinator._rejoin_needed_fut = create_future(loop=self.loop)
+                return True
+            else:
+                yield from asyncio.sleep(0.1, loop=self.loop)
+                return False
+        rejoin_mock.side_effect = do_rejoin
+
+        coordinator._maybe_do_autocommit = autocommit_mock = mock.Mock()
+        autocommit_mock.side_effect = asyncio.coroutine(lambda assign: None)
+        coordinator._start_heartbeat_task = mock.Mock()
+
+        client.force_metadata_update = metadata_mock = mock.Mock()
+        done_fut = create_future(loop=self.loop)
+        done_fut.set_result(None)
+        metadata_mock.side_effect = lambda: done_fut
+
+        # CASE: coordination should stop and wait if subscription is not
+        # present
+        task = start_coordination()
+        yield from asyncio.sleep(0.01, loop=self.loop)
+        self.assertFalse(task.done())
+        self.assertEqual(coord_mock.call_count, 0)
+
+        # CASE: user assignment should skip rebalance calls
+        subscription.assign_from_user({tp})
+        yield from asyncio.sleep(0.01, loop=self.loop)
+        self.assertFalse(task.done())
+        self.assertEqual(coord_mock.call_count, 1)
+        self.assertEqual(prepare_mock.call_count, 0)
+        self.assertEqual(rejoin_mock.call_count, 0)
+        self.assertEqual(autocommit_mock.call_count, 1)
+
+        # CASE: with user assignment routine should not react to request_rejoin
+        coordinator.request_rejoin()
+        yield from asyncio.sleep(0.01, loop=self.loop)
+        self.assertFalse(task.done())
+        self.assertEqual(coord_mock.call_count, 1)
+        self.assertEqual(prepare_mock.call_count, 0)
+        self.assertEqual(rejoin_mock.call_count, 0)
+        self.assertEqual(autocommit_mock.call_count, 1)
+        coordinator._rejoin_needed_fut = create_future(loop=self.loop)
+
+        # CASE: Changing subscription should propagete a rebalance
+        subscription.unsubscribe()
+        subscription.subscribe(set(["topic1"]))
+        yield from asyncio.sleep(0.01, loop=self.loop)
+        self.assertFalse(task.done())
+        self.assertEqual(coord_mock.call_count, 2)
+        self.assertEqual(prepare_mock.call_count, 1)
+        self.assertEqual(rejoin_mock.call_count, 1)
+        self.assertEqual(autocommit_mock.call_count, 2)
+
+        # CASE: If rejoin fails, we do it again without autocommit
+        rejoin_ok = False
+        coordinator.request_rejoin()
+        yield from asyncio.sleep(0.01, loop=self.loop)
+        self.assertFalse(task.done())
+        self.assertEqual(coord_mock.call_count, 3)
+        self.assertEqual(prepare_mock.call_count, 2)
+        self.assertEqual(rejoin_mock.call_count, 2)
+        self.assertEqual(autocommit_mock.call_count, 2)
+
+        # CASE: After we retry we should not call _on_join_prepare again
+        rejoin_ok = True
+        yield from subscription.wait_for_assignment()
+        self.assertFalse(task.done())
+        self.assertEqual(coord_mock.call_count, 4)
+        self.assertEqual(prepare_mock.call_count, 2)
+        self.assertEqual(rejoin_mock.call_count, 3)
+        self.assertEqual(autocommit_mock.call_count, 3)
+
+        # CASE: If pattern subscription present we should update metadata
+        # before joining.
+        subscription.unsubscribe()
+        subscription.subscribe_pattern(re.compile("^topic1&"))
+        subscription.subscribe_from_pattern(set(["topic1"]))
+        self.assertEqual(metadata_mock.call_count, 0)
+        yield from asyncio.sleep(0.01, loop=self.loop)
+        self.assertFalse(task.done())
+        self.assertEqual(coord_mock.call_count, 5)
+        self.assertEqual(prepare_mock.call_count, 3)
+        self.assertEqual(rejoin_mock.call_count, 4)
+        self.assertEqual(autocommit_mock.call_count, 4)
+        self.assertEqual(metadata_mock.call_count, 1)
+
+        # CASE: on unsubscribe we should stop and wait for new subscription
+        subscription.unsubscribe()
+        yield from asyncio.sleep(0.01, loop=self.loop)
+        self.assertFalse(task.done())
+        self.assertEqual(coord_mock.call_count, 5)
+        self.assertEqual(prepare_mock.call_count, 3)
+        self.assertEqual(rejoin_mock.call_count, 4)
+        self.assertEqual(autocommit_mock.call_count, 4)
+        self.assertEqual(metadata_mock.call_count, 1)
+
+        # CASE: on close we should perform finalizer and ignore it's error
+        coordinator._maybe_do_last_autocommit = last_commit_mock = mock.Mock()
+        last_commit_mock.side_effect = Errors.UnknownError()
+        yield from coordinator.close()
+        self.assertTrue(task.done())
+
+        # As we continued from a subscription wait it should fast exit
+        self.assertEqual(coord_mock.call_count, 5)
+        self.assertEqual(prepare_mock.call_count, 3)
+        self.assertEqual(rejoin_mock.call_count, 4)
+        self.assertEqual(autocommit_mock.call_count, 4)
+        self.assertEqual(metadata_mock.call_count, 1)
+        self.assertEqual(last_commit_mock.call_count, 1)
