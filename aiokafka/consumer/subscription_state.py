@@ -1,9 +1,6 @@
 import logging
 from asyncio import AbstractEventLoop as ALoop, shield, Event
-try:
-    from enum import Enum
-except ImportError:
-    Enum = object
+from enum import Enum
 
 from typing import Set, Pattern, Dict
 
