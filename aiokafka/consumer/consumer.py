@@ -374,10 +374,22 @@ class AIOKafkaConsumer(object):
                 to commit with the configured ``group_id``. Defaults to current
                 consumed offsets for all subscribed partitions.
         Raises:
-            IllegalOperation: If used with ``group_id == None``
-            ValueError: If offsets is of wrong format
+            IllegalOperation: If used with ``group_id == None``.
+            IllegalStateError: If partitions not assigned.
+            ValueError: If offsets is of wrong format.
+            CommitFailedError: If membership already changed on broker.
             KafkaError: If commit failed on broker side. This could be due to
                 invalid offset, too long metadata, authorization failure, etc.
+
+        .. versionchanged:: 0.4.0
+
+            Changed ``AssertionError`` to ``IllegalStateError`` in case of
+            unassigned partition.
+
+        .. versionchanged:: 0.4.0
+
+            Will now raise ``CommitFailedError`` in case membership changed,
+            as (posibly) this partition is handled by another consumer.
         """
         if self._group_id is None:
             raise IllegalOperation("Requires group_id")
@@ -501,6 +513,11 @@ class AIOKafkaConsumer(object):
 
         Raises:
             IllegalStateError: partition is not assigned
+
+        .. versionchanged:: 0.4.0
+
+            Changed ``AssertionError`` to ``IllegalStateError`` in case of
+            unassigned partition
         """
         while True:
             if not self._subscription.is_assigned(partition):
