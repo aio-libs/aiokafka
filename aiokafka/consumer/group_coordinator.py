@@ -716,6 +716,7 @@ class GroupCoordinator(BaseCoordinator):
         event_waiter = None
         try:
             while assignment.active:
+                commit_refresh_needed.clear()
                 success = yield from self._maybe_refresh_commit_offsets(
                     assignment)
 
@@ -724,7 +725,6 @@ class GroupCoordinator(BaseCoordinator):
                     timeout = retry_backoff_ms
                 else:
                     timeout = None
-                    commit_refresh_needed.clear()
                     event_waiter = ensure_future(
                         commit_refresh_needed.wait(), loop=self._loop)
                     wait_futures.append(event_waiter)
