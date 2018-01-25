@@ -38,6 +38,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             auto_offset_reset=auto_offset_reset,
             **kwargs)
         yield from consumer.start()
+        self.add_cleanup(consumer.stop)
         if group is not None:
             yield from consumer.seek_to_committed()
         return consumer
@@ -120,7 +121,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         task2 = asyncio.async(task(p1, messages), loop=self.loop)
         yield from asyncio.wait([task1, task2], loop=self.loop)
         self.assert_message_count(messages, 200)
-        yield from consumer.stop()
 
     @run_until_complete
     def test_none_group(self):
@@ -145,8 +145,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             message = yield from consumer2.getone()
             messages.append(message)
         self.assert_message_count(messages, 200)
-        yield from consumer1.stop()
-        yield from consumer2.stop()
 
     @run_until_complete
     def test_consumer_poll(self):
@@ -187,8 +185,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 break
         self.assert_message_count(messages, 200)
 
-        yield from consumer.stop()
-
     @run_until_complete
     def test_large_messages(self):
         # Produce 10 "normal" size messages
@@ -208,7 +204,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             actual_messages.append(m)
         actual_messages = {m.value for m in actual_messages}
         self.assertEqual(expected_messages, set(actual_messages))
-        yield from consumer.stop()
 
     @run_until_complete
     def test_too_large_messages_getone(self):
@@ -230,7 +225,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         m = yield from consumer.getone()
         self.assertEqual(m.value, messages[2])
-        yield from consumer.stop()
 
     @run_until_complete
     def test_too_large_messages_getmany(self):
@@ -257,7 +251,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         m = yield from consumer.getmany(timeout_ms=1000)
         self.assertTrue(m)
         self.assertEqual(m[tp][0].value, messages[2])
-        yield from consumer.stop()
 
     @run_until_complete
     def test_offset_behavior__resuming_behavior(self):
@@ -282,8 +275,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 break
 
         self.assertEqual(set(available_msgs), set(result))
-        yield from consumer1.stop()
-        yield from consumer2.stop()
 
     @run_until_complete
     def test_subscribe_manual(self):
@@ -326,6 +317,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             enable_auto_commit=False)
         consumer.subscribe(pattern="topic-test_manual_subs*")
         yield from consumer.start()
+        self.add_cleanup(consumer.stop)
         yield from consumer.seek_to_committed()
         result = []
         for i in range(20):
@@ -349,6 +341,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             enable_auto_commit=False)
         consumer.subscribe(topics=(self.topic,))
         yield from consumer.start()
+        self.add_cleanup(consumer.stop)
         yield from consumer.seek_to_committed()
         result = []
         for i in range(10):
@@ -356,7 +349,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             result.append(msg.value)
         self.assertEqual(set(msgs2), set(result))
         self.assertEqual(consumer.subscription(), set([self.topic]))
-        yield from consumer.stop()
 
     @run_until_complete
     def test_subscribe_errors(self):
@@ -390,7 +382,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(rmsg1.value, msg1)
         rmsg2 = yield from consumer.getone()
         self.assertEqual(rmsg2.value, msg2)
-        yield from consumer.stop()
 
     @run_until_complete
     def test_compress_decompress_lz4(self):
@@ -410,7 +401,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(rmsg1.value, msg1)
         rmsg2 = yield from consumer.getone()
         self.assertEqual(rmsg2.value, msg2)
-        yield from consumer.stop()
 
     @run_until_complete
     def test_consumer_seek_backward(self):
@@ -439,7 +429,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             self.assertEqual(rmsg3.value, b'2')
             rmsg3 = res[tp][1]
             self.assertEqual(rmsg3.value, b'3')
-        yield from consumer.stop()
 
     @run_until_complete
     def test_consumer_seek_forward_getone(self):
@@ -461,7 +450,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         res = yield from consumer.getmany(timeout_ms=0)
         self.assertEqual(res, {})
-        yield from consumer.stop()
 
     @run_until_complete
     def test_consumer_seek_forward_getmany(self):
@@ -484,14 +472,12 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         res = yield from consumer.getmany(timeout_ms=0)
         self.assertEqual(res, {})
-        yield from consumer.stop()
 
     @run_until_complete
     def test_consumer_seek_to_beginning(self):
         # Send 3 messages
         yield from self.send_messages(0, [1, 2, 3])
         consumer = yield from self.consumer_factory()
-        self.add_cleanup(consumer.stop)
 
         tp = TopicPartition(self.topic, 0)
         start_position = yield from consumer.position(tp)
@@ -514,7 +500,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from self.send_messages(0, [1, 2, 3])
 
         consumer = yield from self.consumer_factory()
-        self.add_cleanup(consumer.stop)
 
         tp = TopicPartition(self.topic, 0)
         start_position = yield from consumer.position(tp)
@@ -562,7 +547,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     def test_consumer_seek_errors(self):
         consumer = yield from self.consumer_factory()
-        self.add_cleanup(consumer.stop)
         tp = TopicPartition("topic", 0)
 
         with self.assertRaises(ValueError):
@@ -588,12 +572,12 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             enable_auto_commit=False)
         consumer.subscribe(topics=(self.topic,))
         yield from consumer.start()
+        self.add_cleanup(consumer.stop)
         result = []
         for i in range(20):
             msg = yield from consumer.getone()
             result.append(msg.value)
         self.assertEqual(set(available_msgs), set(result))
-        yield from consumer.stop()
 
     @run_until_complete
     def test_check_extended_message_record(self):
@@ -618,7 +602,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         else:
             self.assertEqual(rmsg1.timestamp, None)
             self.assertEqual(rmsg1.timestamp_type, None)
-        yield from consumer.stop()
 
     @run_until_complete
     def test_equal_consumption(self):
@@ -684,11 +667,11 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             auto_offset_reset="earliest",
             security_protocol="SSL", ssl_context=context)
         yield from consumer.start()
+        self.add_cleanup(consumer.stop)
         results = yield from consumer.getmany(timeout_ms=1000)
         [msgs] = results.values()  # only 1 partition anyway
         msgs = [msg.value for msg in msgs]
         self.assertEqual(msgs, [b"1", b"2", b"3"])
-        yield from consumer.stop()
 
     def test_consumer_arguments(self):
         with self.assertRaisesRegexp(
@@ -847,6 +830,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             topic, loop=self.loop, bootstrap_servers=self.hosts)
         yield from consumer.start()
+        self.add_cleanup(consumer.stop)
         consume_task = self.loop.create_task(consumer.getone())
         # just to be sure getone does not fail (before produce)
         yield from asyncio.sleep(0.5, loop=self.loop)
@@ -860,7 +844,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         data = yield from consume_task
         self.assertEqual(data.value, b'test msg')
-        yield from consumer.stop()
 
     @run_until_complete
     def test_consumer_subscribe_pattern_with_autocreate(self):
@@ -1149,8 +1132,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertNotIn(tp, consumer._fetcher._records)
         self.assertNotIn(tp2, consumer._fetcher._records)
 
-        yield from consumer.stop()
-
     @run_until_complete
     def test_consumer_cleanup_unassigned_data_getmany(self):
         # Send 3 messages
@@ -1183,8 +1164,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Verify that we have no more precached records
         self.assertNotIn(tp, consumer._fetcher._records)
         self.assertNotIn(tp2, consumer._fetcher._records)
-
-        yield from consumer.stop()
 
     @run_until_complete
     def test_rebalance_listener_with_coroutines(self):
@@ -1308,6 +1287,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         listener = SimpleRebalanceListener(consumer)
         consumer.subscribe([self.topic], listener=listener)
         yield from consumer.start()
+        self.add_cleanup(consumer.stop)
         committed, position, position2 = yield from listener.seek_task
         self.assertIsNone(committed)
         self.assertIsNotNone(position)
