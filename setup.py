@@ -77,9 +77,12 @@ install_requires = ['kafka-python==1.3.3']
 
 PY_VER = sys.version_info
 
-if PY_VER >= (3, 4):
+if PY_VER >= (3, 5):
     pass
+elif PY_VER >= (3, 4):
+    install_requires.append('typing')
 elif PY_VER >= (3, 3):
+    install_requires.append('typing')
     install_requires.append('asyncio')
 else:
     raise RuntimeError("aiokafka doesn't suppport Python earlier than 3.3")

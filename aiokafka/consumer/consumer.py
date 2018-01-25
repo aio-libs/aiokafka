@@ -3,21 +3,22 @@ import logging
 import re
 
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
-from kafka.consumer.subscription_state import SubscriptionState
-from kafka.protocol.offset import OffsetResetStrategy
 
+from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
-    KafkaError, TopicAuthorizationFailedError, OffsetOutOfRangeError,
+    TopicAuthorizationFailedError, OffsetOutOfRangeError,
     ConsumerStoppedError, IllegalOperation, UnsupportedVersionError,
-    IllegalStateError
+    IllegalStateError, NoOffsetForPartitionError, RecordTooLargeError,
+    CorruptRecordException
 )
 from aiokafka.structs import TopicPartition, OffsetAndMetadata
-from aiokafka.util import ensure_future, PY_35
+from aiokafka.util import PY_35
 from aiokafka import __version__
 
-from .fetcher import Fetcher
+from .fetcher import Fetcher, OffsetResetStrategy
 from .group_coordinator import GroupCoordinator, NoGroupCoordinator
+from .subscription_state import SubscriptionState
 
 log = logging.getLogger(__name__)
 
@@ -179,10 +180,15 @@ class AIOKafkaConsumer(object):
             security_protocol=security_protocol,
             connections_max_idle_ms=connections_max_idle_ms)
 
+        if max_poll_records is not None and (
+                not isinstance(max_poll_records, int) or max_poll_records < 1):
+            raise ValueError("`max_poll_records` should be positive Integer")
+
         self._group_id = group_id
         self._heartbeat_interval_ms = heartbeat_interval_ms
         self._session_timeout_ms = session_timeout_ms
         self._retry_backoff_ms = retry_backoff_ms
+        self._auto_offset_reset = auto_offset_reset
         self._request_timeout_ms = request_timeout_ms
         self._enable_auto_commit = enable_auto_commit
         self._auto_commit_interval_ms = auto_commit_interval_ms
@@ -193,23 +199,17 @@ class AIOKafkaConsumer(object):
         self._fetch_max_wait_ms = fetch_max_wait_ms
         self._max_partition_fetch_bytes = max_partition_fetch_bytes
         self._exclude_internal_topics = exclude_internal_topics
-        if max_poll_records is not None and (
-                not isinstance(max_poll_records, int) or max_poll_records < 1):
-            raise ValueError("`max_poll_records` should be positive Integer")
         self._max_poll_records = max_poll_records
         self._consumer_timeout = consumer_timeout_ms / 1000
         self._check_crcs = check_crcs
-        self._subscription = SubscriptionState(auto_offset_reset)
+        self._subscription = SubscriptionState(loop=loop)
         self._fetcher = None
         self._coordinator = None
         self._closed = False
         self._loop = loop
 
-        # Set for background updates, so we'll finalize them properly. Only
-        # active tasks are in this set, as done ones are discarded by callback.
-        self._pending_position_fetches = set([])
-
         if topics:
+            topics = self._validate_topics(topics)
             self._client.set_topics(topics)
             self._subscription.subscribe(topics=topics)
 
@@ -237,7 +237,8 @@ class AIOKafkaConsumer(object):
             max_partition_fetch_bytes=self._max_partition_fetch_bytes,
             check_crcs=self._check_crcs,
             fetcher_timeout=self._consumer_timeout,
-            retry_backoff_ms=self._retry_backoff_ms)
+            retry_backoff_ms=self._retry_backoff_ms,
+            auto_offset_reset=self._auto_offset_reset)
 
         if self._group_id is not None:
             # using group coordinator for automatic partitions assignment
@@ -250,29 +251,33 @@ class AIOKafkaConsumer(object):
                 enable_auto_commit=self._enable_auto_commit,
                 auto_commit_interval_ms=self._auto_commit_interval_ms,
                 assignors=self._partition_assignment_strategy,
-                exclude_internal_topics=self._exclude_internal_topics,
-                assignment_changed_cb=self._on_change_subscription)
-
-            yield from self._coordinator.ensure_active_group()
+                exclude_internal_topics=self._exclude_internal_topics)
+            # In case we provided topics to constructor we better wait for
+            # initial group join
+            if self._subscription.subscription is not None:
+                yield from self._subscription.wait_for_assignment()
         else:
             # Using a simple assignment coordinator for reassignment on
             # metadata changes
             self._coordinator = NoGroupCoordinator(
                 self._client, self._subscription, loop=self._loop,
-                exclude_internal_topics=self._exclude_internal_topics,
-                assignment_changed_cb=self._on_change_subscription)
+                exclude_internal_topics=self._exclude_internal_topics)
 
             # If we passed `topics` to constructor.
-            if self._subscription.needs_partition_assignment:
+            if self._subscription.subscription is not None:
                 yield from self._client.force_metadata_update()
                 self._coordinator.assign_all_partitions(check_unknown=True)
 
     @asyncio.coroutine
     def _wait_topics(self):
-        if not self._subscription.subscription:
-            return
-        for topic in self._subscription.subscription:
-            yield from self._client._wait_on_metadata(topic)
+        if self._subscription.subscription is not None:
+            for topic in self._subscription.subscription.topics:
+                yield from self._client._wait_on_metadata(topic)
+
+    def _validate_topics(self, topics):
+        if not isinstance(topics, (tuple, set, list)):
+            raise ValueError("Topics should be list of strings")
+        return set(topics)
 
     def assign(self, partitions):
         """ Manually assign a list of TopicPartitions to this consumer.
@@ -298,7 +303,10 @@ class AIOKafkaConsumer(object):
         """
         self._subscription.assign_from_user(partitions)
         self._client.set_topics([tp.topic for tp in partitions])
-        self._on_change_subscription()
+        if self._group_id is not None:
+            # refresh commit positions for all assigned partitions
+            assignment = self._subscription.subscription.assignment
+            self._coordinator.start_commit_offsets_refresh_task(assignment)
 
     def assignment(self):
         """ Get the set of partitions currently assigned to this consumer.
@@ -327,12 +335,6 @@ class AIOKafkaConsumer(object):
             return
         log.debug("Closing the KafkaConsumer.")
         self._closed = True
-        for task in list(self._pending_position_fetches):
-            task.cancel()
-            try:
-                yield from task
-            except asyncio.CancelledError:
-                pass
         if self._coordinator:
             yield from self._coordinator.close()
         if self._fetcher:
@@ -372,16 +374,35 @@ class AIOKafkaConsumer(object):
                 to commit with the configured ``group_id``. Defaults to current
                 consumed offsets for all subscribed partitions.
         Raises:
-            IllegalOperation: If used with ``group_id == None``
-            ValueError: If offsets is of wrong format
+            IllegalOperation: If used with ``group_id == None``.
+            IllegalStateError: If partitions not assigned.
+            ValueError: If offsets is of wrong format.
+            CommitFailedError: If membership already changed on broker.
             KafkaError: If commit failed on broker side. This could be due to
                 invalid offset, too long metadata, authorization failure, etc.
+
+        .. versionchanged:: 0.4.0
+
+            Changed ``AssertionError`` to ``IllegalStateError`` in case of
+            unassigned partition.
+
+        .. versionchanged:: 0.4.0
+
+            Will now raise ``CommitFailedError`` in case membership changed,
+            as (posibly) this partition is handled by another consumer.
         """
         if self._group_id is None:
             raise IllegalOperation("Requires group_id")
 
+        subscription = self._subscription.subscription
+        if subscription is None:
+            raise IllegalStateError("Not subscribed to any topics")
+        assignment = subscription.assignment
+        if assignment is None:
+            raise IllegalStateError("No partitions assigned")
+
         if offsets is None:
-            offsets = self._subscription.all_consumed_offsets()
+            offsets = assignment.all_consumed_offsets()
         else:
             # validate `offsets` structure
             if not offsets or not isinstance(offsets, dict):
@@ -391,6 +412,10 @@ class AIOKafkaConsumer(object):
             for tp, offset_and_metadata in offsets.items():
                 if not isinstance(tp, TopicPartition):
                     raise ValueError("Key should be TopicPartition instance")
+
+                if tp not in assignment.tps:
+                    raise IllegalStateError(
+                        "Partition {} is not assigned".format(tp))
 
                 if isinstance(offset_and_metadata, int):
                     offset, metadata = offset_and_metadata, ""
@@ -407,7 +432,7 @@ class AIOKafkaConsumer(object):
 
             offsets = formatted_offsets
 
-        yield from self._coordinator.commit_offsets(offsets)
+        yield from self._coordinator.commit_offsets(assignment, offsets)
 
     @asyncio.coroutine
     def committed(self, partition):
@@ -434,10 +459,12 @@ class AIOKafkaConsumer(object):
             raise IllegalOperation("Requires group_id")
 
         if self._subscription.is_assigned(partition):
-            committed = self._subscription.assignment[partition].committed
-            if committed is None:
-                yield from self._coordinator.refresh_committed_offsets()
-                committed = self._subscription.assignment[partition].committed
+            assignment = self._subscription.subscription.assignment
+            tp_state = assignment.state_value(partition)
+            if tp_state.committed is None:
+                yield from tp_state.wait_for_committed()
+            committed = tp_state.committed.offset
+
         else:
             commit_map = yield from self._coordinator.fetch_committed_offsets(
                 [partition])
@@ -445,6 +472,8 @@ class AIOKafkaConsumer(object):
                 committed = commit_map[partition].offset
             else:
                 committed = None
+        if committed == -1:
+            return None
         return committed
 
     @asyncio.coroutine
@@ -481,14 +510,35 @@ class AIOKafkaConsumer(object):
 
         Returns:
             int: offset
+
+        Raises:
+            IllegalStateError: partition is not assigned
+
+        .. versionchanged:: 0.4.0
+
+            Changed ``AssertionError`` to ``IllegalStateError`` in case of
+            unassigned partition
         """
-        assert self._subscription.is_assigned(partition), \
-            'Partition is not assigned'
-        offset = self._subscription.assignment[partition].position
-        if offset is None:
-            yield from self._update_fetch_positions([partition])
-            offset = self._subscription.assignment[partition].position
-        return offset
+        while True:
+            if not self._subscription.is_assigned(partition):
+                raise IllegalStateError(
+                    'Partition {} is not assigned'.format(partition))
+            assignment = self._subscription.subscription.assignment
+            tp_state = assignment.state_value(partition)
+            if not tp_state.has_valid_position:
+                yield from asyncio.wait(
+                    [tp_state.wait_for_position(),
+                     assignment.unassign_future],
+                    return_when=asyncio.FIRST_COMPLETED, loop=self._loop,
+                )
+                if not tp_state.has_valid_position:
+                    if self._subscription.subscription is None:
+                        raise IllegalStateError(
+                            'Partition {} is not assigned'.format(partition))
+                    if self._subscription.subscription.assignment is None:
+                        yield from self._subscription.wait_for_assignment()
+                    continue
+            return tp_state.position
 
     def highwater(self, partition):
         """ Last known highwater offset for a partition.
@@ -510,7 +560,8 @@ class AIOKafkaConsumer(object):
         """
         assert self._subscription.is_assigned(partition), \
             'Partition is not assigned'
-        return self._subscription.assignment[partition].highwater
+        assignment = self._subscription.subscription.assignment
+        return assignment.state_value(partition).highwater
 
     def seek(self, partition, offset):
         """ Manually specify the fetch offset for a TopicPartition.
@@ -530,14 +581,18 @@ class AIOKafkaConsumer(object):
             offset (int): message offset in partition
 
         Raises:
-            AssertionError: if offset is not an int >= 0;
-                            or if partition is not currently assigned.
+            ValueError: if offset is not a positive integer
+            IllegalStateError: partition is not currently assigned
+
+        .. versionchanged:: 0.4.0
+
+            Changed ``AssertionError`` to ``IllegalStateError`` and
+            ``ValueError`` in respective cases.
         """
-        assert isinstance(offset, int) and offset >= 0, 'Offset must be >= 0'
-        assert partition in self._subscription.assigned_partitions(), \
-            'Unassigned partition'
+        if not isinstance(offset, int) or offset < 0:
+            raise ValueError("Offset must be a positive integer")
         log.debug("Seeking to offset %s for partition %s", offset, partition)
-        self._subscription.assignment[partition].seek(offset)
+        self._fetcher.seek_to(partition, offset)
 
     @asyncio.coroutine
     def seek_to_beginning(self, *partitions):
@@ -557,8 +612,6 @@ class AIOKafkaConsumer(object):
         if not all([isinstance(p, TopicPartition) for p in partitions]):
             raise TypeError('partitions must be TopicPartition instances')
 
-        yield from self._coordinator.ensure_partitions_assigned()
-
         if not partitions:
             partitions = self._subscription.assigned_partitions()
             assert partitions, 'No partitions are currently assigned'
@@ -572,9 +625,8 @@ class AIOKafkaConsumer(object):
 
         for tp in partitions:
             log.debug("Seeking to beginning of partition %s", tp)
-            self._subscription.need_offset_reset(
-                tp, OffsetResetStrategy.EARLIEST)
-        yield from self._fetcher.update_fetch_positions(partitions)
+        yield from self._fetcher.request_offset_reset(
+            partitions, OffsetResetStrategy.EARLIEST)
 
     @asyncio.coroutine
     def seek_to_end(self, *partitions):
@@ -594,8 +646,6 @@ class AIOKafkaConsumer(object):
         if not all([isinstance(p, TopicPartition) for p in partitions]):
             raise TypeError('partitions must be TopicPartition instances')
 
-        yield from self._coordinator.ensure_partitions_assigned()
-
         if not partitions:
             partitions = self._subscription.assigned_partitions()
             assert partitions, 'No partitions are currently assigned'
@@ -609,9 +659,8 @@ class AIOKafkaConsumer(object):
 
         for tp in partitions:
             log.debug("Seeking to end of partition %s", tp)
-            self._subscription.need_offset_reset(
-                tp, OffsetResetStrategy.LATEST)
-        yield from self._fetcher.update_fetch_positions(partitions)
+        yield from self._fetcher.request_offset_reset(
+            partitions, OffsetResetStrategy.LATEST)
 
     @asyncio.coroutine
     def seek_to_committed(self, *partitions):
@@ -633,8 +682,6 @@ class AIOKafkaConsumer(object):
         if not all([isinstance(p, TopicPartition) for p in partitions]):
             raise TypeError('partitions must be TopicPartition instances')
 
-        yield from self._coordinator.ensure_partitions_assigned()
-
         if not partitions:
             partitions = self._subscription.assigned_partitions()
             assert partitions, 'No partitions are currently assigned'
@@ -647,10 +694,10 @@ class AIOKafkaConsumer(object):
                     "Partitions {} are not assigned".format(not_assigned))
 
         for tp in partitions:
-            log.debug("Seeking to committed of partition %s", tp)
             offset = yield from self.committed(tp)
+            log.debug("Seeking to committed of partition %s %s", tp, offset)
             if offset and offset > 0:
-                self.seek(tp, offset)
+                self._fetcher.seek_to(tp, offset)
 
     @asyncio.coroutine
     def offsets_for_times(self, timestamps):
@@ -818,89 +865,46 @@ class AIOKafkaConsumer(object):
         if topics and pattern:
             raise ValueError(
                 "You can't provide both `topics` and `pattern`")
-        if pattern:
+        if listener is not None and \
+                not isinstance(listener, ConsumerRebalanceListener):
+            raise TypeError(
+                "listener should be an instance of ConsumerRebalanceListener")
+        if pattern is not None:
             try:
-                re.compile(pattern)
+                pattern = re.compile(pattern)
             except re.error as err:
                 raise ValueError(
                     "{!r} is not a valid pattern: {}".format(pattern, err))
-
-        # SubscriptionState handles error checking
-        self._subscription.subscribe(topics=topics,
-                                     pattern=pattern,
-                                     listener=listener)
-        # There's a bug in subscription, that pattern is not unset if we change
-        # from pattern to simple topic subscription
-        if not pattern:
-            self._subscription.subscribed_pattern = None
-
-        # regex will need all topic metadata
-        if pattern is not None:
+            self._subscription.subscribe_pattern(
+                pattern=pattern, listener=listener)
+            # NOTE: set_topics will trigger a rebalance, so the coordinator
+            # will get the initial subscription shortly by ``metadata_changed``
+            # handler.
             self._client.set_topics([])
-            log.debug("Subscribed to topic pattern: %s", pattern)
-        else:
-            self._client.set_topics(self._subscription.group_subscription())
-            log.debug("Subscribed to topic(s): %s", topics)
+            log.info("Subscribed to topic pattern: %s", pattern)
+        elif topics:
+            topics = self._validate_topics(topics)
+            self._subscription.subscribe(
+                topics=topics, listener=listener)
+            self._client.set_topics(self._subscription.subscription.topics)
+            log.info("Subscribed to topic(s): %s", topics)
 
     def subscription(self):
         """ Get the current topic subscription.
 
         Returns:
-            set: {topic, ...}
+            frozenset: {topic, ...}
         """
-        return frozenset(self._subscription.subscription or [])
+        return self._subscription.subscription.topics
 
     def unsubscribe(self):
         """ Unsubscribe from all topics and clear all assigned partitions. """
         self._subscription.unsubscribe()
-        self._client.set_topics([])
-        log.debug(
-            "Unsubscribed all topics or patterns and assigned partitions")
-
-    @asyncio.coroutine
-    def _update_fetch_positions(self, partitions):
-        """
-        Set the fetch position to the committed position (if there is one)
-        or reset it using the offset reset policy the user has configured.
-
-        Arguments:
-            partitions (List[TopicPartition]): The partitions that need
-                updating fetch positions
-
-        Raises:
-            NoOffsetForPartitionError: If no offset is stored for a given
-                partition and no offset reset policy is defined
-        """
         if self._group_id is not None:
-            # refresh commits for all assigned partitions
-            yield from self._coordinator.refresh_committed_offsets()
-
-        # then do any offset lookups in case some positions are not known
-        yield from self._fetcher.update_fetch_positions(partitions)
-
-    def _on_change_subscription(self):
-        """ This is `group rebalanced` signal handler used to update fetch
-            positions of assigned partitions
-        """
-        if self._closed:  # pragma: no cover
-            return
-        # fetch positions if we have partitions we're subscribed
-        # to that we don't know the offset for
-        if not self._subscription.has_all_fetch_positions():
-            task = ensure_future(
-                self._update_fetch_positions(
-                    self._subscription.missing_fetch_positions()),
-                loop=self._loop
-            )
-            self._pending_position_fetches.add(task)
-
-            def on_done(fut, tasks=self._pending_position_fetches):
-                tasks.discard(fut)
-                try:
-                    fut.result()
-                except Exception as err:  # pragma: no cover
-                    log.error("Failed to update fetch positions: %r", err)
-            task.add_done_callback(on_done)
+            self._coordinator.maybe_leave_group()
+        self._client.set_topics([])
+        log.info(
+            "Unsubscribed all topics or patterns and assigned partitions")
 
     @asyncio.coroutine
     def getone(self, *partitions):
@@ -1014,7 +1018,9 @@ class AIOKafkaConsumer(object):
                 except ConsumerStoppedError:
                     raise StopAsyncIteration  # noqa: F821
                 except (TopicAuthorizationFailedError,
-                        OffsetOutOfRangeError) as err:
+                        OffsetOutOfRangeError,
+                        NoOffsetForPartitionError) as err:
                     raise err
-                except KafkaError as err:
-                    log.error("error in consumer iterator: %s", err)
+                except (RecordTooLargeError,
+                        CorruptRecordException):
+                    log.exception("error in consumer iterator: %s")

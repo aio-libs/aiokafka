@@ -4,7 +4,7 @@ import logging
 import random
 from itertools import chain
 
-from kafka.protocol.offset import OffsetRequest, OffsetResetStrategy
+from kafka.protocol.offset import OffsetRequest
 
 from aiokafka.consumer.fetch import FetchRequest
 import aiokafka.errors as Errors
@@ -19,16 +19,54 @@ log = logging.getLogger(__name__)
 UNKNOWN_OFFSET = -1
 
 
+class OffsetResetStrategy:
+    LATEST = -1
+    EARLIEST = -2
+    NONE = 0
+
+    @classmethod
+    def from_str(cls, name):
+        name = name.lower()
+        if name == "latest":
+            return cls.LATEST
+        if name == "earliest":
+            return cls.EARLIEST
+        if name == "none":
+            return cls.NONE
+        else:
+            log.warning(
+                'Unrecognized ``auto_offset_reset`` config, using NONE')
+            return cls.NONE
+
+    @classmethod
+    def to_str(cls, value):
+        if value == cls.LATEST:
+            return "latest"
+        if value == cls.EARLIEST:
+            return "earliest"
+        if value == cls.NONE:
+            return "none"
+        else:
+            return "timestamp({})".format(value)
+
+
 class FetchResult:
     def __init__(
-            self, tp, *, subscriptions, loop, records, backoff):
+            self, tp, *, assignment, loop, message_iterator, backoff,
+            fetch_offset):
         self._topic_partition = tp
-        self._subscriptions = subscriptions
-        self._message_iter = records
+        self._message_iter = message_iterator
 
         self._created = loop.time()
         self._backoff = backoff
         self._loop = loop
+
+        self._assignment = assignment
+        # There are cases where the returned offset from broker differs from
+        # what was requested. This would not be much of an issue if the user
+        # could not seek to a different position between yielding results,
+        # so we can't reliably say witch case it is without a new veriable.
+        self._expected_position = fetch_offset
 
     def calculate_backoff(self):
         lifetime = self._loop.time() - self._created
@@ -37,8 +75,17 @@ class FetchResult:
         return 0
 
     def check_assignment(self, tp):
-        if self._subscriptions.needs_partition_assignment or \
-                not self._subscriptions.is_fetchable(tp):
+        assignment = self._assignment
+        return_result = True
+        if assignment.active:
+            tp = self._topic_partition
+            position = assignment.state_value(tp).position
+            if position != self._expected_position:
+                return_result = False
+        else:
+            return_result = False
+
+        if not return_result:
             # this can happen when a rebalance happened before
             # fetched records are returned
             log.debug("Not returning fetched records for partition %s"
@@ -47,12 +94,16 @@ class FetchResult:
             return False
         return True
 
+    def _consume_offset(self, offset):
+        position = self._expected_position = offset + 1
+        state = self._assignment.state_value(self._topic_partition)
+        state.consumed_to(position)
+
     def getone(self):
         tp = self._topic_partition
         if not self.check_assignment(tp) or not self.has_more():
             return
 
-        tp_assignment = self._subscriptions.assignment[tp]
         next_batch_iter = self._message_iter
         while True:
             try:
@@ -61,17 +112,15 @@ class FetchResult:
                 self._message_iter = None
                 return
 
-            if msg.offset < tp_assignment.position:
+            if msg.offset < self._expected_position:
                 # Probably just a compressed messageset, it's ok to skip.
                 continue
-            elif (msg.offset > tp_assignment.position and
-                    tp_assignment.drop_pending_message_set):
-                # We seeked to a different position between `get*` calls,
-                # so we can't verify if the message is correct.
-                self._message_iter = None
-                return
 
-            tp_assignment.position = msg.offset + 1
+            # It's not a problem if the offset is larger than expected
+            # position. It may happen in compacted topics, some messages were
+            # just removed.
+
+            self._consume_offset(msg.offset)
             return msg
 
     def getall(self, max_records=None):
@@ -79,36 +128,30 @@ class FetchResult:
         if not self.check_assignment(tp) or not self.has_more():
             return []
 
-        tp_assignment = self._subscriptions.assignment[tp]
         next_batch_iter = self._message_iter
-        try:
-            first_msg = next(next_batch_iter)
-        except StopIteration:
-            self._message_iter = None
-            return []
-
-        # In getall() we do this check only for the first message, other ones
-        # were fetched in the same call, so should be valid as well.
-        if first_msg.offset > tp_assignment.position:
-            if tp_assignment.drop_pending_message_set:
-                # We seeked to a different position between `get*` calls,
-                # so we can't verify if the message is correct.
-                self._message_iter = None
-                return []
-
         ret_list = []
-        for msg in chain([first_msg], next_batch_iter):
-            if msg.offset < tp_assignment.position:
+        for msg in next_batch_iter:
+            if msg.offset < self._expected_position:
                 # Probably just a compressed messageset, it's ok.
                 continue
+            # As in the `getone` case it's ok if offset is larger than expected
+
             ret_list.append(msg)
             if max_records is not None and len(ret_list) >= max_records:
                 break
-        tp_assignment.position = ret_list[-1].offset + 1
+        else:
+            self._message_iter = None
+
+        if ret_list:
+            self._consume_offset(ret_list[-1].offset)
+
         return ret_list
 
     def has_more(self):
         return self._message_iter is not None
+
+    def __repr__(self):
+        return "<FetchResult position={!r}>".format(self._expected_position)
 
 
 class FetchError:
@@ -128,6 +171,9 @@ class FetchError:
         # TODO: Do we need to raise error if partition not assigned anymore
         raise self._error
 
+    def __repr__(self):
+        return "<FetchError error={!r}>".format(self._error)
+
 
 class Fetcher:
     def __init__(self, client, subscriptions, *, loop,
@@ -139,7 +185,8 @@ class Fetcher:
                  check_crcs=True,
                  fetcher_timeout=0.2,
                  prefetch_backoff=0.1,
-                 retry_backoff_ms=100):
+                 retry_backoff_ms=100,
+                 auto_offset_reset='latest'):
         """Initialize a Kafka Message Fetcher.
 
         Parameters:
@@ -175,6 +222,10 @@ class Fetcher:
                 consumption of partition is paused. Paused partitions will not
                 request new data from Kafka server (will not be included in
                 next poll request).
+            auto_offset_reset (str): A policy for resetting offsets on
+                OffsetOutOfRange errors: 'earliest' will move to the oldest
+                available message, 'latest' will move to the most recent. Any
+                ofther value will raise the exception. Default: 'latest'.
         """
         self._client = client
         self._loop = loop
@@ -188,10 +239,12 @@ class Fetcher:
         self._prefetch_backoff = prefetch_backoff
         self._retry_backoff = retry_backoff_ms / 1000
         self._subscriptions = subscriptions
+        self._default_reset_strategy = OffsetResetStrategy.from_str(
+            auto_offset_reset)
 
         self._records = collections.OrderedDict()
         self._in_flight = set()
-        self._fetch_tasks = set()
+        self._pending_tasks = set()
 
         self._wait_consume_future = None
         self._wait_empty_future = None
@@ -215,167 +268,198 @@ class Fetcher:
                 not self._wait_empty_future.done():
             self._wait_empty_future.set_exception(ConsumerStoppedError())
 
-        for x in self._fetch_tasks:
+        for x in self._pending_tasks:
             x.cancel()
-            try:
-                yield from x
-            except asyncio.CancelledError:
-                pass
-
-    @asyncio.coroutine
-    def _fetch_requests_routine(self):
-        """ Background task, that always prefetches next result page.
-
-        The algorithm:
-        * Group partitions per node, which is the leader for it.
-        * If all partitions for this node need prefetch - do it right away
-        * If any partition has some data (in `self._records`) wait up till
-          `prefetch_backoff` so application can consume data from it.
-        * If data in `self._records` is not consumed up to
-          `prefetch_backoff` just request data for other partitions from this
-          node.
-
-        We request data in such manner cause Kafka blocks the connection if
-        we perform a FetchRequest and we don't have enough data. This means
-        we must perform a FetchRequest to as many partitions as we can in a
-        node.
-
-        Original Java Kafka client processes data differently, as it only
-        prefetches data if all messages were given to application (i.e. if
-        `self._records` are empty). We don't use this method, cause we allow
-        to process partitions separately (by passing `partitions` list to
-        `getall()` call of the consumer), which can end up in a long wait
-        if some partitions (or topics) are processed slower, than others.
-
-        """
-        try:
-            while True:
-                # Reset consuming signal future.
-                self._wait_consume_future = create_future(loop=self._loop)
-                # Create and send fetch requests
-                requests, timeout = self._create_fetch_requests()
-                for node_id, request in requests:
-                    node_ready = yield from self._client.ready(node_id)
-                    if not node_ready:
-                        # We will request it on next routine
-                        continue
-                    log.debug("Sending FetchRequest to node %s", node_id)
-                    task = ensure_future(
-                        self._proc_fetch_request(node_id, request),
-                        loop=self._loop)
-                    self._fetch_tasks.add(task)
-                    self._in_flight.add(node_id)
-
-                done_set, _ = yield from asyncio.wait(
-                    chain(self._fetch_tasks, [self._wait_consume_future]),
-                    loop=self._loop,
-                    timeout=timeout,
-                    return_when=asyncio.FIRST_COMPLETED)
-
-                # Process fetch tasks results if any
-                done_fetches = self._fetch_tasks.intersection(done_set)
-                if done_fetches:
-                    has_new_data = any(fut.result() for fut in done_fetches)
-                    if has_new_data:
-                        # we added some messages to self._records,
-                        # wake up getters
-                        self._notify(self._wait_empty_future)
-                    self._fetch_tasks -= done_fetches
-        except asyncio.CancelledError:
-            pass
-        except Exception:  # pragma: no cover
-            log.error("Unexpected error in fetcher routine", exc_info=True)
+            yield from x
 
     def _notify(self, future):
         if future is not None and not future.done():
             future.set_result(None)
 
-    def _create_fetch_requests(self):
-        """Create fetch requests for all assigned partitions, grouped by node.
+    @asyncio.coroutine
+    def _fetch_requests_routine(self):
+        """ Implements a background task to populate internal fetch queue
+        ``self._records`` with prefetched messages. This helps isolate the
+        ``getall/getone`` calls from actual calls to broker. This way we don't
+        need to think of what happens if user calls get in 2 tasks, etc.
 
-        FetchRequests skipped if:
-        * no leader, or node has already fetches in flight
-        * we have data for this partition
-        * we have data for other partitions on this node
+            The loop is quite complicated due to a large set of events that
+        can allow new fetches to be send. Those include previous fetches,
+        offset resets, metadata updates to discover new leaders for partitions,
+        data consumed for partition.
 
-        Returns:
-            dict: {node_id: FetchRequest, ...}
+            Previously the offset reset was performed separately, but it did
+        not perform too reliably. In ``kafka-python`` and Java client the reset
+        is perform in ``poll()`` before each fetch, which works good for sync
+        systems. But with ``aiokafka`` the user can actually break such
+        behaviour quite easily by performing actions from different tasks.
         """
-        if self._subscriptions.needs_partition_assignment:
-            return {}, self._fetcher_timeout
+        try:
+            assignment = None
 
+            def start_pending_task(coro, node_id, self=self):
+                task = ensure_future(coro, loop=self._loop)
+                self._pending_tasks.add(task)
+                self._in_flight.add(node_id)
+
+                def on_done(fut, self=self):
+                    self._in_flight.discard(node_id)
+                task.add_done_callback(on_done)
+
+            while True:
+                # If we lose assignment we just cancel all current tasks,
+                # wait for new assignment and restart the loop
+                if assignment is None or not assignment.active:
+                    for task in self._pending_tasks:
+                        # Those tasks should have proper handling for
+                        # cancellation
+                        if not task.done():
+                            task.cancel()
+                        yield from task
+                    self._pending_tasks.clear()
+                    self._records.clear()
+
+                    subscription = self._subscriptions.subscription
+                    if subscription is None or \
+                            subscription.assignment is None:
+                        yield from self._subscriptions.wait_for_assignment()
+                    assignment = self._subscriptions.subscription.assignment
+                assert assignment is not None and assignment.active
+
+                # Reset consuming signal future.
+                self._wait_consume_future = create_future(loop=self._loop)
+                # Determine what action to take per node
+                fetch_requests, reset_requests, timeout, invalid_metadata = \
+                    self._get_actions_per_node(assignment)
+                # Start fetch tasks
+                for node_id, request in fetch_requests:
+                    start_pending_task(
+                        self._proc_fetch_request(assignment, node_id, request),
+                        node_id=node_id)
+                # Start update position tasks
+                for node_id, tps in reset_requests.items():
+                    start_pending_task(
+                        self._update_fetch_positions(assignment, node_id, tps),
+                        node_id=node_id)
+                # Apart from pending requests we also need to react to other
+                # events to send new fetches as soon as possible
+                other_futs = [self._wait_consume_future,
+                              assignment.unassign_future]
+                if invalid_metadata:
+                    fut = self._client.force_metadata_update()
+                    other_futs.append(fut)
+
+                done_set, _ = yield from asyncio.wait(
+                    chain(self._pending_tasks, other_futs),
+                    loop=self._loop,
+                    timeout=timeout,
+                    return_when=asyncio.FIRST_COMPLETED)
+
+                # Process fetch tasks results if any
+                done_pending = self._pending_tasks.intersection(done_set)
+                if done_pending:
+                    has_new_data = any(fut.result() for fut in done_pending)
+                    if has_new_data:
+                        # we added some messages to self._records,
+                        # wake up getters
+                        self._notify(self._wait_empty_future)
+                    self._pending_tasks -= done_pending
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # pragma: no cover
+            log.error("Unexpected error in fetcher routine", exc_info=True)
+
+    def _get_actions_per_node(self, assignment):
+        """ For each assigned partition determine the action needed to be
+        performed and group those by leader node id.
+        """
         # create the fetch info as a dict of lists of partition info tuples
         # which can be passed to FetchRequest() via .items()
-        fetchable = collections.defaultdict(
-            lambda: collections.defaultdict(list))
+        fetchable = collections.defaultdict(list)
+        awaiting_reset = collections.defaultdict(list)
         backoff_by_nodes = collections.defaultdict(list)
+        invalid_metadata = False
 
-        fetchable_partitions = self._subscriptions.fetchable_partitions()
-        for tp in fetchable_partitions:
+        for tp in assignment.tps:
+            tp_state = assignment.state_value(tp)
             node_id = self._client.cluster.leader_for_partition(tp)
+            backoff = 0
             if tp in self._records:
+                # We have data still not consumed by user. In this case we
+                # usually wait for the user to finish consumption, but to avoid
+                # blocking other partitions we have a timeout here.
                 record = self._records[tp]
-                # Calculate backoff for this node if data is only recently
-                # fetched. If data is consumed before backoff we will
-                # include this partition in this fetch request
                 backoff = record.calculate_backoff()
                 if backoff:
                     backoff_by_nodes[node_id].append(backoff)
-                # We have some prefetched data for this partition already
-                continue
-            if node_id in self._in_flight:
+            elif node_id in self._in_flight:
                 # We have in-flight fetches to this node
                 continue
-            if node_id is None or node_id == -1:
+            elif node_id is None or node_id == -1:
                 log.debug("No leader found for partition %s."
                           " Waiting metadata update", tp)
+                invalid_metadata = True
+            elif not tp_state.has_valid_position:
+                awaiting_reset[node_id].append(tp)
             else:
-                # fetch if there is a leader and no in-flight requests
-                position = self._subscriptions.assignment[tp].position
-                partition_info = (
-                    tp.partition,
-                    position,
-                    self._max_partition_fetch_bytes)
-                fetchable[node_id][tp.topic].append(partition_info)
+                position = tp_state.position
+                fetchable[node_id].append((tp, position))
                 log.debug(
                     "Adding fetch request for partition %s at offset %d",
                     tp, position)
 
-        requests = []
+        fetch_requests = []
         for node_id, partition_data in fetchable.items():
-            # Shuffle partition data to help get more equal consumption
-            partition_data = list(partition_data.items())
-            random.shuffle(partition_data)  # shuffle topics
-            for _, partition in partition_data:
-                random.shuffle(partition)  # shuffle partitions
             if node_id in backoff_by_nodes:
                 # At least one partition is still waiting to be consumed
                 continue
+            if node_id in awaiting_reset:
+                # First we need to reset offset for some partitions, then we
+                # will fetch next page of results
+                continue
+
+            # Shuffle partition data to help get more equal consumption
+            random.shuffle(partition_data)  # shuffle topics
+            # Create fetch request
+            by_topics = collections.defaultdict(list)
+            for tp, position in partition_data:
+                by_topics[tp.topic].append((
+                    tp.partition,
+                    position,
+                    self._max_partition_fetch_bytes))
             req = self._fetch_request_class(
                 -1,  # replica_id
                 self._fetch_max_wait_ms,
                 self._fetch_min_bytes,
-                partition_data)
-            requests.append((node_id, req))
+                list(by_topics.items()))
+            fetch_requests.append((node_id, req))
+
         if backoff_by_nodes:
-            # Return min time til any node will be ready to send event
+            # Return min time till any node will be ready to send event
             # (max of it's backoffs)
             backoff = min(map(max, backoff_by_nodes.values()))
         else:
             backoff = self._fetcher_timeout
-        return requests, backoff
+        return fetch_requests, awaiting_reset, backoff, invalid_metadata
 
     @asyncio.coroutine
-    def _proc_fetch_request(self, node_id, request):
+    def _proc_fetch_request(self, assignment, node_id, request):
         needs_wakeup = False
-        needs_position_update = []
         try:
             response = yield from self._client.send(node_id, request)
         except Errors.KafkaError as err:
             log.error("Failed fetch messages from %s: %s", node_id, err)
             return False
-        finally:
-            self._in_flight.remove(node_id)
+        except asyncio.CancelledError:
+            # Either `close()` or partition unassigned. Either way the result
+            # is no longer of interest.
+            return False
+
+        if not assignment.active:
+            log.debug(
+                "Discarding fetch response since the assignment changed during"
+                " fetch")
+            return False
 
         fetch_offsets = {}
         for topic, partitions in request.topics:
@@ -386,21 +470,18 @@ class Fetcher:
             for partition, error_code, highwater, raw_batch in partitions:
                 tp = TopicPartition(topic, partition)
                 error_type = Errors.for_code(error_code)
-                if not self._subscriptions.is_fetchable(tp):
-                    # this can happen when a rebalance happened
-                    log.debug("Ignoring fetched records for partition %s"
-                              " since it is no longer fetchable", tp)
+                fetch_offset = fetch_offsets[tp]
+                tp_state = assignment.state_value(tp)
+                if not tp_state.has_valid_position or \
+                        tp_state.position != fetch_offset:
+                    log.debug(
+                        "Discarding fetch response for partition %s "
+                        "since its offset %s does not match the current "
+                        "position", tp, fetch_offset)
+                    continue
 
-                elif error_type is Errors.NoError:
-                    tp_assignment = self._subscriptions.assignment[tp]
-                    tp_assignment.highwater = highwater
-
-                    # `drop_pending_message_set` is set after a seek to another
-                    # position. If we request the *new* position we have to
-                    # drop this flag, so we catch future seek's.
-                    fetch_offset = fetch_offsets[tp]
-                    if fetch_offset == tp_assignment.position:
-                        tp_assignment.drop_pending_message_set = False
+                if error_type is Errors.NoError:
+                    tp_state.highwater = highwater
 
                     records = MemoryRecords(raw_batch)
                     if records.has_next():
@@ -411,9 +492,10 @@ class Fetcher:
 
                         message_iterator = self._unpack_records(tp, records)
                         self._records[tp] = FetchResult(
-                            tp, records=message_iterator,
-                            subscriptions=self._subscriptions,
+                            tp, message_iterator=message_iterator,
+                            assignment=assignment,
                             backoff=self._prefetch_backoff,
+                            fetch_offset=fetch_offset,
                             loop=self._loop)
 
                         # We added at least 1 successful record
@@ -430,17 +512,16 @@ class Fetcher:
                             "message size the broker will allow.",
                             tp, fetch_offset, self._max_partition_fetch_bytes)
                         self._set_error(tp, err)
+                        tp_state.consumed_to(tp_state.position + 1)
                         needs_wakeup = True
-                        self._subscriptions.assignment[tp].position += 1
 
                 elif error_type in (Errors.NotLeaderForPartitionError,
                                     Errors.UnknownTopicOrPartitionError):
                     self._client.force_metadata_update()
                 elif error_type is Errors.OffsetOutOfRangeError:
-                    fetch_offset = fetch_offsets[tp]
-                    if self._subscriptions.has_default_offset_reset_policy():
-                        self._subscriptions.need_offset_reset(tp)
-                        needs_position_update.append(tp)
+                    if self._default_reset_strategy != \
+                            OffsetResetStrategy.NONE:
+                        tp_state.await_reset(self._default_reset_strategy)
                     else:
                         err = Errors.OffsetOutOfRangeError({tp: fetch_offset})
                         self._set_error(tp, err)
@@ -456,125 +537,94 @@ class Fetcher:
                 else:
                     log.warn('Unexpected error while fetching data: %s',
                              error_type.__name__)
-
-        if needs_position_update:
-            try:
-                yield from self.update_fetch_positions(needs_position_update)
-            except Exception:  # pragma: no cover
-                log.error(
-                    "Unexpected error updating fetch positions", exc_info=True)
-
         return needs_wakeup
 
     def _set_error(self, tp, error):
-        assert tp not in self._records
+        assert tp not in self._records, self._records[tp]
         self._records[tp] = FetchError(
             error=error, backoff=self._prefetch_backoff, loop=self._loop)
 
     @asyncio.coroutine
-    def update_fetch_positions(self, partitions):
-        """Update the fetch positions for the provided partitions.
-
-        Arguments:
-            partitions (list of TopicPartitions): partitions to update
-
-        Raises:
-            NoOffsetForPartitionError: if no offset is stored for a given
-                partition and no reset policy is available
+    def _update_fetch_positions(self, assignment, node_id, tps):
+        """ This task will be called if there is no valid position for
+        partition. It may be right after assignment, on seek_to_* calls of
+        Consumer or if current position went out of range.
         """
-        futures = []
-        # reset the fetch position to the committed position
-        for tp in partitions:
-            if not self._subscriptions.is_assigned(tp):
-                log.warning("partition %s is not assigned - skipping offset"
-                            " update", tp)
-                continue
-            elif self._subscriptions.is_fetchable(tp):
-                log.warning(
-                    "partition %s is still fetchable -- skipping offset"
-                    " update", tp)
+        log.debug("Updating fetch positions for partitions %s", tps)
+        needs_wakeup = False
+        # The list of partitions provided can consist of paritions that are
+        # awaiting reset already and freshly assigned partitions. The second
+        # ones can yet have no commit point fetched, so we will check that.
+        for tp in tps:
+            tp_state = assignment.state_value(tp)
+            if tp_state.has_valid_position or tp_state.awaiting_reset:
                 continue
 
-            assignment = self._subscriptions.assignment[tp]
-            if self._subscriptions.is_offset_reset_needed(tp):
-                log.debug("partition %s needs offset reset", tp)
-                futures.append(self._reset_offset(tp, assignment))
-            elif self._subscriptions.assignment[tp].committed is None:
-                # there's no committed position, so we need to reset with the
-                # default strategy
-                log.debug(
-                    "partition %s has no committed position, resetting with"
-                    " default strategy", tp)
-                self._subscriptions.need_offset_reset(tp)
-                futures.append(self._reset_offset(tp, assignment))
-            else:
-                committed = self._subscriptions.assignment[tp].committed
-                log.debug("Resetting offset for partition %s to the committed"
-                          " offset %s", tp, committed)
-                self._subscriptions.seek(tp, committed)
+            committed = tp_state.committed
+            # None means the Coordinator has yet to update the offset
+            if committed is None:
+                try:
+                    yield from tp_state.wait_for_committed()
+                except asyncio.CancelledError:
+                    return needs_wakeup
+                committed = tp_state.committed
+            assert committed is not None
 
-        if futures:
-            yield from asyncio.gather(*futures, loop=self._loop)
+            # There could have been a seek() call of some sort while
+            # waiting for committed point
+            if tp_state.has_valid_position or tp_state.awaiting_reset:
+                continue
 
-    @asyncio.coroutine
-    def get_offsets_by_times(self, timestamps, timeout_ms):
-        offsets = yield from self._retrieve_offsets(timestamps, timeout_ms)
-        for tp in timestamps:
-            if tp not in offsets:
-                offsets[tp] = None
-            else:
-                offset, timestamp = offsets[tp]
-                if offset == UNKNOWN_OFFSET:
-                    offsets[tp] = None
+            if committed.offset == UNKNOWN_OFFSET:
+                # No offset stored in Kafka, need to reset
+                if self._default_reset_strategy != OffsetResetStrategy.NONE:
+                    tp_state.await_reset(self._default_reset_strategy)
                 else:
-                    offsets[tp] = OffsetAndTimestamp(offset, timestamp)
-        return offsets
+                    err = Errors.NoOffsetForPartitionError(tp)
+                    self._set_error(tp, err)
+                    needs_wakeup = True
+                log.debug(
+                    "No committed offset found for %s", tp)
+            else:
+                log.debug("Resetting offset for partition %s to the "
+                          "committed offset %s", tp, committed)
+                tp_state.reset_to(committed.offset)
 
-    @asyncio.coroutine
-    def beginning_offsets(self, partitions, timeout_ms):
-        timestamps = {tp: OffsetResetStrategy.EARLIEST for tp in partitions}
-        offsets = yield from self._retrieve_offsets(timestamps, timeout_ms)
-        return {
-            tp: offset for (tp, (offset, ts)) in offsets.items()
-        }
+        topic_data = collections.defaultdict(list)
+        needs_reset = []
+        for tp in tps:
+            tp_state = assignment.state_value(tp)
+            if not tp_state.awaiting_reset:
+                continue
+            needs_reset.append(tp)
 
-    @asyncio.coroutine
-    def end_offsets(self, partitions, timeout_ms):
-        timestamps = {tp: OffsetResetStrategy.LATEST for tp in partitions}
-        offsets = yield from self._retrieve_offsets(timestamps, timeout_ms)
-        return {
-            tp: offset for (tp, (offset, ts)) in offsets.items()
-        }
+            strategy = tp_state.reset_strategy
+            assert strategy is not None
+            log.debug("Resetting offset for partition %s using %s strategy.",
+                      tp, OffsetResetStrategy.to_str(strategy))
+            topic_data[tp.topic].append((tp.partition, strategy))
 
-    @asyncio.coroutine
-    def _reset_offset(self, partition, assignment):
-        """Reset offsets for the given partition using
-        the offset reset strategy.
+        if not topic_data:
+            return needs_wakeup
 
-        Arguments:
-            partition (TopicPartition): the partition that needs reset offset
+        try:
+            try:
+                offsets = yield from self._proc_offset_request(
+                    node_id, topic_data)
+            except Errors.KafkaError as err:
+                log.error("Failed fetch offsets from %s: %s", node_id, err)
+                yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+                return needs_wakeup
+        except asyncio.CancelledError:
+            return needs_wakeup
 
-        Raises:
-            NoOffsetForPartitionError: if no offset reset strategy is defined
-        """
-        timestamp = assignment.reset_strategy
-        assert timestamp is not None
-        if timestamp is OffsetResetStrategy.EARLIEST:
-            strategy = 'earliest'
-        else:
-            strategy = 'latest'
-
-        log.debug("Resetting offset for partition %s to %s offset.",
-                  partition, strategy)
-        offsets = yield from self._retrieve_offsets({partition: timestamp})
-        assert partition in offsets
-        offset = offsets[partition][0]
-
-        # we might lose the assignment while fetching the offset,
-        # so check it is still active
-        if self._subscriptions.is_assigned(partition) and \
-                self._subscriptions.assignment[partition] is assignment:
-            self._subscriptions.seek(partition, offset)
+        for tp in needs_reset:
+            offset = offsets[tp][0]
+            tp_state = assignment.state_value(tp)
+            # There could have been some `seek` call while fetching offset
+            if tp_state.awaiting_reset:
+                tp_state.reset_to(offset)
+        return needs_wakeup
 
     @asyncio.coroutine
     def _retrieve_offsets(self, timestamps, timeout_ms=float("inf")):
@@ -683,9 +733,6 @@ class Fetcher:
             version = 1
         request = OffsetRequest[version](-1, list(topic_data.items()))
 
-        if not (yield from self._client.ready(node_id)):
-            raise Errors.NodeNotReadyError(node_id)
-
         response = yield from self._client.send(node_id, request)
 
         res_offsets = {}
@@ -750,6 +797,12 @@ class Fetcher:
 
         """
         while True:
+            # While the background routine will fetch new records up till new
+            # assignment is finished, we don't want to return records, that may
+            # not belong to this instance after rebalance.
+            if self._subscriptions.reassignment_in_progress:
+                yield from self._subscriptions.wait_for_assignment()
+
             for tp in list(self._records.keys()):
                 if partitions and tp not in partitions:
                     # Cleanup results for unassigned partitons
@@ -782,6 +835,12 @@ class Fetcher:
         """ Returns previously fetched records and updates consumed offsets.
         """
         while True:
+            # While the background routine will fetch new records up till new
+            # assignment is finished, we don't want to return records, that may
+            # not belong to this instance after rebalance.
+            if self._subscriptions.reassignment_in_progress:
+                yield from self._subscriptions.wait_for_assignment()
+
             start_time = self._loop.time()
             drained = {}
             for tp in list(self._records.keys()):
@@ -836,6 +895,75 @@ class Fetcher:
             # Decrease timeout accordingly
             timeout = timeout - (self._loop.time() - start_time)
             timeout = max(0, timeout)
+
+    @asyncio.coroutine
+    def get_offsets_by_times(self, timestamps, timeout_ms):
+        offsets = yield from self._retrieve_offsets(timestamps, timeout_ms)
+        for tp in timestamps:
+            if tp not in offsets:
+                offsets[tp] = None
+            else:
+                offset, timestamp = offsets[tp]
+                if offset == UNKNOWN_OFFSET:
+                    offsets[tp] = None
+                else:
+                    offsets[tp] = OffsetAndTimestamp(offset, timestamp)
+        return offsets
+
+    @asyncio.coroutine
+    def beginning_offsets(self, partitions, timeout_ms):
+        timestamps = {tp: OffsetResetStrategy.EARLIEST for tp in partitions}
+        offsets = yield from self._retrieve_offsets(timestamps, timeout_ms)
+        return {
+            tp: offset for (tp, (offset, ts)) in offsets.items()
+        }
+
+    @asyncio.coroutine
+    def end_offsets(self, partitions, timeout_ms):
+        timestamps = {tp: OffsetResetStrategy.LATEST for tp in partitions}
+        offsets = yield from self._retrieve_offsets(timestamps, timeout_ms)
+        return {
+            tp: offset for (tp, (offset, ts)) in offsets.items()
+        }
+
+    @asyncio.coroutine
+    def request_offset_reset(self, tps, strategy):
+        """ Force a position reset. Called from Consumer of `seek_to_*` API's.
+        """
+        assignment = self._subscriptions.subscription.assignment
+        assert assignment is not None
+
+        waiters = []
+        for tp in tps:
+            tp_state = assignment.state_value(tp)
+            tp_state.await_reset(strategy)
+            waiters.append(tp_state.wait_for_position())
+            # Invalidate previous fetch result
+            if tp in self._records:
+                del self._records[tp]
+
+        # XXX: Maybe we should use a different future or rename? Not really
+        # describing the purpose.
+        self._notify(self._wait_consume_future)
+
+        yield from asyncio.wait(
+            [asyncio.gather(*waiters, loop=self._loop),
+             assignment.unassign_future],
+            loop=self._loop, return_when=asyncio.FIRST_COMPLETED
+        )
+        return assignment.active
+
+    def seek_to(self, tp, offset):
+        """ Force a position change to specific offset. Called from
+        `Consumer.seek()` API.
+        """
+        self._subscriptions.seek(tp, offset)
+        if tp in self._records:
+            del self._records[tp]
+
+        # XXX: Maybe we should use a different future or rename? Not really
+        # describing the purpose.
+        self._notify(self._wait_consume_future)
 
     def _unpack_records(self, tp, records):
         # NOTE: if the batch is not compressed it's equal to 1 record in

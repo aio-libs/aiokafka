@@ -1,7 +1,6 @@
 import asyncio
 import collections
 import logging
-from copy import copy
 
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.coordinator.protocol import ConsumerProtocol
@@ -22,21 +21,19 @@ from aiokafka.util import ensure_future, create_future
 
 log = logging.getLogger(__name__)
 
+UNKNOWN_OFFSET = -1
+
 
 class BaseCoordinator(object):
 
     def __init__(self, client, subscription, *, loop,
-                 exclude_internal_topics=True,
-                 assignment_changed_cb=None
-                 ):
-        self.loop = loop
+                 exclude_internal_topics=True):
+        self._loop = loop
         self._client = client
         self._exclude_internal_topics = exclude_internal_topics
         self._subscription = subscription
-        self._assignment_changed_cb = assignment_changed_cb
 
         self._metadata_snapshot = {}  # Is updated by metadata listener
-        self._assignment_snapshot = None  # Is only present on Leader consumer
         self._cluster = client.cluster
 
         # update initial subscription state using currently known metadata
@@ -44,48 +41,34 @@ class BaseCoordinator(object):
         self._cluster.add_listener(self._handle_metadata_update)
 
     def _handle_metadata_update(self, cluster):
-        if self._subscription.subscribed_pattern:
+        subscription = self._subscription
+        if subscription.subscribed_pattern:
             topics = []
             for topic in cluster.topics(self._exclude_internal_topics):
-                if self._subscription.subscribed_pattern.match(topic):
+                if subscription.subscribed_pattern.match(topic):
                     topics.append(topic)
 
-            if set(topics) != self._subscription.subscription:
-                self._subscription.change_subscription(topics)
+            if subscription.subscription is None or \
+                    set(topics) != subscription.subscription.topics:
+                subscription.subscribe_from_pattern(topics)
 
-        if self._subscription.partitions_auto_assigned():
+        if subscription.partitions_auto_assigned() and \
+                self._group_subscription is not None:
             metadata_snapshot = self._get_metadata_snapshot()
             if self._metadata_snapshot != metadata_snapshot:
+                log.debug("Metadata for topic has changed from %s to %s. ",
+                          self._metadata_snapshot, metadata_snapshot)
                 self._metadata_snapshot = metadata_snapshot
-
-                if self._metadata_changed():
-                    log.debug("Metadata for topic has changed from %s to %s. ",
-                              self._assignment_snapshot, metadata_snapshot)
-
-    def _metadata_changed(self):
-        return (
-            self._assignment_snapshot is not None and
-            self._assignment_snapshot != self._metadata_snapshot)
+                self._on_metadata_change()
 
     def _get_metadata_snapshot(self):
         partitions_per_topic = {}
-        for topic in self._subscription.group_subscription():
+        for topic in self._group_subscription:
             partitions = self._cluster.partitions_for_topic(topic) or []
             # Partitions are always from 0 to N, so no reason to check each
             # partition separately, only length is enough
             partitions_per_topic[topic] = len(partitions)
         return partitions_per_topic
-
-    def _on_change_assignment(self):
-        if self._assignment_changed_cb is not None:
-            self._assignment_changed_cb()
-
-    @asyncio.coroutine
-    def ensure_partitions_assigned(self):
-        """ Will be called by consumer before any operation regarding
-            assignment
-        """
-        return
 
 
 class NoGroupCoordinator(BaseCoordinator):
@@ -102,14 +85,8 @@ class NoGroupCoordinator(BaseCoordinator):
           update and added to subscription.
     """
 
-    def __init__(self, *args, **kw):
-        super().__init__(*args, **kw)
-        self._assignment_snapshot = {}
-
-    def _handle_metadata_update(self, cluster):
-        super()._handle_metadata_update(cluster)
-        if self._metadata_changed():
-            self.assign_all_partitions()
+    def _on_metadata_change(self):
+        self.assign_all_partitions()
 
     def assign_all_partitions(self, check_unknown=False):
         """ Assign all partitions from subscribed topics to this consumer.
@@ -117,7 +94,7 @@ class NoGroupCoordinator(BaseCoordinator):
             subscribed topic is not found in metadata response.
         """
         partitions = []
-        for topic in self._subscription.subscription:
+        for topic in self._subscription.subscription.topics:
             p_ids = self._cluster.partitions_for_topic(topic)
             if not p_ids and check_unknown:
                 raise Errors.UnknownTopicOrPartitionError()
@@ -125,8 +102,16 @@ class NoGroupCoordinator(BaseCoordinator):
                 partitions.append(TopicPartition(topic, p_id))
         self._subscription.assign_from_subscribed(partitions)
 
-        self._assignment_snapshot = self._metadata_snapshot
-        self._on_change_assignment()
+        # Reset all committed points, as the GroupCoordinator would
+        assignment = self._subscription.subscription.assignment
+        for tp in partitions:
+            tp_state = assignment.state_value(tp)
+            tp_state.reset_committed(
+                OffsetAndMetadata(UNKNOWN_OFFSET, ""))
+
+    @property
+    def _group_subscription(self):
+        return self._subscription.subscription.topics
 
     @asyncio.coroutine
     def close(self):
@@ -173,8 +158,7 @@ class GroupCoordinator(BaseCoordinator):
                  retry_backoff_ms=100,
                  enable_auto_commit=True, auto_commit_interval_ms=5000,
                  assignors=(RoundRobinPartitionAssignor,),
-                 exclude_internal_topics=True,
-                 assignment_changed_cb=None
+                 exclude_internal_topics=True
                  ):
         """Initialize the coordination manager.
 
@@ -206,12 +190,13 @@ class GroupCoordinator(BaseCoordinator):
             retry_backoff_ms (int): Milliseconds to backoff when retrying on
                 errors. Default: 100.
         """
+        # Leader node will keep track of the whole group's metadata.
+        self._group_subscription = None
+
         super().__init__(
             client, subscription, loop=loop,
-            exclude_internal_topics=exclude_internal_topics,
-            assignment_changed_cb=assignment_changed_cb)
+            exclude_internal_topics=exclude_internal_topics)
 
-        self._loop = loop
         self._session_timeout_ms = session_timeout_ms
         self._heartbeat_interval_ms = heartbeat_interval_ms
         self._retry_backoff_ms = retry_backoff_ms
@@ -223,75 +208,91 @@ class GroupCoordinator(BaseCoordinator):
         self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
         self.group_id = group_id
         self.coordinator_id = None
-        self.rejoin_needed = True
-        self.pending_rejoin_fut = None
-        # `ensure_active_group` can be called from several places
-        # (from consumer and from heartbeat task), so we need lock
-        self._rejoin_lock = asyncio.Lock(loop=loop)
-        self._auto_commit_task = None
 
-        # _closing future used as a signal to heartbeat task for finish ASAP
+        # Coordination flags and futures
+        self._rejoin_needed_fut = create_future(loop=loop)
+        self._coordinator_dead_fut = create_future(loop=loop)
+
+        self._coordination_task = ensure_future(
+            self._coordination_routine(), loop=loop)
+
+        def _on_coordination_done(fut):
+            try:
+                fut.result()
+            except Exception:  # pragma: no cover
+                log.error(
+                    "Unexpected error in coordinator routine", exc_info=True)
+        self._coordination_task.add_done_callback(_on_coordination_done)
+
+        # Will be started/stopped by coordination task
+        self._heartbeat_task = None
+        self._commit_refresh_task = None
+
+        self._coordinator_lookup_lock = asyncio.Lock(loop=loop)
+        # Will synchronize edits to TopicPartitionState.committed, as it may be
+        # changed from user code by calling ``commit()``.
+        self._commit_lock = asyncio.Lock(loop=loop)
+
+        self._next_autocommit_deadline = \
+            loop.time() + auto_commit_interval_ms / 1000
+
+        # Will be set on close
         self._closing = create_future(loop=loop)
 
-        self.heartbeat_task = ensure_future(
-            self._heartbeat_task_routine(), loop=loop)
-
-        if self._enable_auto_commit:
-            interval = self._auto_commit_interval_ms / 1000
-            self._auto_commit_task = ensure_future(
-                self.auto_commit_routine(interval), loop=loop)
+    def _on_metadata_change(self):
+        self.request_rejoin()
 
     @asyncio.coroutine
-    def close(self):
-        """Close the coordinator, leave the current group
-        and reset local generation/memberId."""
-        self._closing.set_result(None)
-        if self._auto_commit_task:
-            yield from self._auto_commit_task
-            self._auto_commit_task = None
-
-        if self.heartbeat_task:
-            self.heartbeat_task.cancel()
-            try:
-                yield from self.heartbeat_task
-            except asyncio.CancelledError:
-                pass
-            self.heartbeat_task = None
-
-        if not (yield from self.coordinator_unknown()) and self.generation > 0:
-            # this is a minimal effort attempt to leave the group. we do not
-            # attempt any resending if the request fails or times out.
-            request = LeaveGroupRequest(self.group_id, self.member_id)
-            try:
-                yield from self._send_req(
-                    self.coordinator_id, request,
-                    group=ConnectionGroup.COORDINATION)
-            except Errors.KafkaError as err:
-                log.error("LeaveGroup request failed: %s", err)
-            else:
-                log.info("LeaveGroup request succeeded")
-
-    @asyncio.coroutine
-    def _send_req(self, node_id, request, *, group):
-        """send request to Kafka node and mark coordinator as `dead`
-        in error case
+    def _send_req(self, request):
+        """ Send request to coordinator node. In case the coordinator is not
+        ready a respective error will be raised.
         """
+        node_id = self.coordinator_id
+        if node_id is None:
+            raise Errors.GroupCoordinatorNotAvailableError()
         try:
-            resp = yield from self._client.send(node_id, request, group=group)
+            resp = yield from self._client.send(
+                node_id, request, group=ConnectionGroup.COORDINATION)
         except Errors.KafkaError as err:
             log.error(
                 'Error sending %s to node %s [%s] -- marking coordinator dead',
                 request.__class__.__name__, node_id, err)
             self.coordinator_dead()
             raise err
-        else:
-            if not hasattr(resp, 'error_code'):
-                return resp
-            error_type = Errors.for_code(resp.error_code)
-            if error_type is Errors.NoError:
-                return resp
+        return resp
+
+    @asyncio.coroutine
+    def close(self):
+        """Close the coordinator, leave the current group
+        and reset local generation/memberId."""
+        if self._closing.done():
+            return
+
+        self._closing.set_result(None)
+        # We must let the coordination task properly finish all pending work
+        yield from self._coordination_task
+        yield from self._stop_heartbeat_task()
+        yield from self._stop_commit_offsets_refresh_task()
+
+        yield from self._maybe_leave_group()
+
+    def maybe_leave_group(self):
+        task = ensure_future(self._maybe_leave_group(), loop=self._loop)
+        return task
+
+    @asyncio.coroutine
+    def _maybe_leave_group(self):
+        if self.generation > 0:
+            # this is a minimal effort attempt to leave the group. we do not
+            # attempt any resending if the request fails or times out.
+            request = LeaveGroupRequest(self.group_id, self.member_id)
+            try:
+                yield from self._send_req(request)
+            except Errors.KafkaError as err:
+                log.error("LeaveGroup request failed: %s", err)
             else:
-                raise error_type()
+                log.info("LeaveGroup request succeeded")
+        self.reset_generation()
 
     def _lookup_assignor(self, name):
         for assignor in self._assignors:
@@ -300,22 +301,26 @@ class GroupCoordinator(BaseCoordinator):
         return None
 
     @asyncio.coroutine
-    def _on_join_prepare(self, generation, member_id):
-        self._subscription.mark_for_reassignment()
-        self._assignment_snapshot = None
+    def _on_join_prepare(self, previous_assignment):
+        self._subscription.begin_reassignment()
+        self._group_subscription = None
 
         # commit offsets prior to rebalance if auto-commit enabled
-        try:
-            yield from self._maybe_auto_commit_offsets_sync()
-        except Errors.KafkaError as err:
-            log.error("OffsetCommit failed before join, ignoring: %s", err)
+        if previous_assignment is not None:
+            try:
+                yield from self._maybe_do_last_autocommit(previous_assignment)
+            except Errors.KafkaError as err:
+                # We would retry any retriable commit already
+                log.error("OffsetCommit failed before join, ignoring: %s", err)
+            revoked = previous_assignment.tps
+        else:
+            revoked = set([])
 
         # execute the user's callback before rebalance
         log.info("Revoking previously assigned partitions %s for group %s",
-                 self._subscription.assigned_partitions(), self.group_id)
+                 revoked, self.group_id)
         if self._subscription.listener:
             try:
-                revoked = set(self._subscription.assigned_partitions())
                 res = self._subscription.listener.on_partitions_revoked(
                     revoked)
                 if asyncio.iscoroutine(res):
@@ -340,9 +345,9 @@ class GroupCoordinator(BaseCoordinator):
         # the leader will begin watching for changes to any of the topics
         # the group is interested in, which ensures that all metadata changes
         # will eventually be seen
-        self._subscription.group_subscribe(all_subscribed_topics)
+        self._group_subscription = all_subscribed_topics
         if not self._subscription.subscribed_pattern:
-            self._client.set_topics(self._subscription.group_subscription())
+            self._client.set_topics(self._group_subscription)
         # If somewhere we forced a metadata update (like in some `set_topics`
         # call) we should wait for it before performing assignment
         yield from self._client._maybe_wait_metadata()
@@ -355,12 +360,10 @@ class GroupCoordinator(BaseCoordinator):
         log.debug("Finished assignment for group %s: %s",
                   self.group_id, assignments)
 
-        # `group_subscribe()` will not trigger a metadata update if we only
-        # removed some topics (client has all needed metadata already).
-        # But in that case the snapshot could be outdated, so we update
-        # `_metadata_snapshot` too.
-        self._assignment_snapshot = self._metadata_snapshot = \
-            self._get_metadata_snapshot()
+        # `set_topics()` will not trigger a metadata update if we only
+        # removed some topics (client has all needed metadata already),
+        # so we force a snapshot update.
+        self._metadata_snapshot = self._get_metadata_snapshot()
 
         group_assignment = {}
         for member_id, assignment in assignments.items():
@@ -376,9 +379,6 @@ class GroupCoordinator(BaseCoordinator):
         assignment = ConsumerProtocol.ASSIGNMENT.decode(
             member_assignment_bytes)
 
-        # Will be used by Consumer.committed and Consumer.seek_to_commited API
-        self._subscription.needs_fetch_committed_offsets = True
-
         # update partition assignment
         self._subscription.assign_from_subscribed(assignment.partitions())
 
@@ -386,8 +386,13 @@ class GroupCoordinator(BaseCoordinator):
         # based on the received assignment
         assignor.on_assignment(assignment)
 
-        self.pending_rejoin_fut.set_result(None)
-        self.pending_rejoin_fut = None
+        # We need to start this task before callback to avoid deadlocks.
+        # Callback can rely on something like ``Consumer.position()`` that
+        # requires committed point to be refreshed.
+        yield from self._stop_commit_offsets_refresh_task()
+        self.start_commit_offsets_refresh_task(
+            self._subscription.subscription.assignment)
+
         assigned = set(self._subscription.assigned_partitions())
         log.info("Setting newly assigned partitions %s for group %s",
                  assigned, self.group_id)
@@ -405,124 +410,440 @@ class GroupCoordinator(BaseCoordinator):
                               self._subscription.listener, self.group_id,
                               assigned)
 
-        self._on_change_assignment()
+    def coordinator_dead(self):
+        """ Mark the current coordinator as dead.
+        NOTE: this will not force a group rejoin. If new coordinator is able to
+        recognize this member we will just continue with current generation.
+        """
+        if self.coordinator_id is not None:
+            log.warning(
+                "Marking the coordinator dead (node %s)for group %s.",
+                self.coordinator_id, self.group_id)
+            self.coordinator_id = None
+            self._coordinator_dead_fut.set_result(None)
 
-    @asyncio.coroutine
-    def refresh_committed_offsets(self):
-        """Fetch committed offsets for assigned partitions."""
-        if self._subscription.needs_fetch_committed_offsets:
-            offsets = yield from self.fetch_committed_offsets(
-                self._subscription.assigned_partitions())
+    def reset_generation(self):
+        """ Coordinator did not recognize either generation or member_id. Will
+        need to re-join the group.
+        """
+        self.generation = OffsetCommitRequest.DEFAULT_GENERATION_ID
+        self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
+        self.request_rejoin()
 
-            for partition, offset in offsets.items():
-                # verify assignment is still active
-                if self._subscription.is_assigned(partition):
-                    partition = self._subscription.assignment[partition]
-                    partition.committed = offset.offset
+    def request_rejoin(self):
+        if not self._rejoin_needed_fut.done():
+            self._rejoin_needed_fut.set_result(None)
 
-            self._subscription.needs_fetch_committed_offsets = False
-
-    @asyncio.coroutine
-    def fetch_committed_offsets(self, partitions):
-        """Fetch the current committed offsets for specified partitions
-
-        Arguments:
-            partitions (list of TopicPartition): partitions to fetch
+    def need_rejoin(self, subscription):
+        """Check whether the group should be rejoined
 
         Returns:
-            dict: {TopicPartition: OffsetAndMetadata}
+            bool: True if consumer should rejoin group, False otherwise
         """
-        if not partitions:
-            return {}
+        return (
+            subscription.assignment is None or self._rejoin_needed_fut.done()
+        )
+
+    @asyncio.coroutine
+    def ensure_coordinator_known(self):
+        """ Block until the coordinator for this group is known.
+        """
+        if self.coordinator_id is not None:
+            return
+
+        with (yield from self._coordinator_lookup_lock):
+            retry_backoff = self._retry_backoff_ms / 1000
+            while self.coordinator_id is None:
+                try:
+                    coordinator_id = yield from self._do_coordinator_lookup()
+                except Errors.KafkaError as err:
+                    log.error("Group Coordinator Request failed: %s", err)
+                    yield from self._client.force_metadata_update()
+                    yield from asyncio.sleep(retry_backoff, loop=self._loop)
+                    continue
+
+                # Try to connect to confirm that the connection can be
+                # established.
+                ready = yield from self._client.ready(
+                    coordinator_id, group=ConnectionGroup.COORDINATION)
+                if not ready:
+                    yield from asyncio.sleep(retry_backoff, loop=self._loop)
+                    continue
+
+                self.coordinator_id = coordinator_id
+                self._coordinator_dead_fut = create_future(loop=self._loop)
+                log.info("Discovered coordinator %s for group %s",
+                         self.coordinator_id, self.group_id)
+
+    @asyncio.coroutine
+    def _do_coordinator_lookup(self):
+        node_id = self._client.get_random_node()
+        assert node_id is not None, "Did we not perform bootstrap?"
+
+        log.debug(
+            "Sending group coordinator request for group %s to broker "
+            "%s", self.group_id, node_id)
+        request = GroupCoordinatorRequest(self.group_id)
+        resp = yield from self._client.send(
+            node_id, request, group=ConnectionGroup.DEFAULT)
+        log.debug("Received group coordinator response %s", resp)
+        error_type = Errors.for_code(resp.error_code)
+        if error_type is not Errors.NoError:
+            err = error_type()
+            raise err
+        return resp.coordinator_id
+
+    @asyncio.coroutine
+    def _coordination_routine(self):
+        """ Main background task, that keeps track of changes in group
+        coordination. This task will spawn/stop heartbeat task and perform
+        autocommit in times it's safe to do so.
+        """
+        subscription = self._subscription.subscription
+        assignment = None
+        performed_join_prepare = False
+        while not self._closing.done():
+            # Check if there was a change to subscription
+            if subscription is not None and not subscription.active:
+                # The subscription can change few times, so we can not rely on
+                # flags or topic lists. For example if user changes
+                # subscription from X to Y and back to X we still need to
+                # rejoin group.
+                self.request_rejoin()
+                subscription = self._subscription.subscription
+            if subscription is None:
+                yield from asyncio.wait(
+                    [self._subscription.wait_for_subscription(),
+                     self._closing],
+                    return_when=asyncio.FIRST_COMPLETED, loop=self._loop)
+                if self._closing.done():
+                    break
+                subscription = self._subscription.subscription
+            assert subscription is not None and subscription.active
+            auto_assigned = self._subscription.partitions_auto_assigned()
+
+            # Ensure active group
+            yield from self.ensure_coordinator_known()
+            if auto_assigned and self.need_rejoin(subscription):
+                # due to a race condition between the initial metadata
+                # fetch and the initial rebalance, we need to ensure that
+                # the metadata is fresh before joining initially. This
+                # ensures that we have matched the pattern against the
+                # cluster's topics at least once before joining.
+                # Also the rebalance can be issued by another node, that
+                # discovered a new topic, which is still unknown to this
+                # one.
+                if self._subscription.subscribed_pattern:
+                    yield from self._client.force_metadata_update()
+                    if not subscription.active:
+                        continue
+
+                if not performed_join_prepare:
+                    # NOTE: We pass the previously used assignment here.
+                    yield from self._on_join_prepare(assignment)
+                    performed_join_prepare = True
+
+                # NOTE: we did not stop heartbeat task before to keep the
+                # member alive during the callback, as it can commit offsets.
+                # See the ``RebalanceInProgressError`` case in heartbeat
+                # handling.
+                yield from self._stop_heartbeat_task()
+
+                # We will only try to perform the rejoin once. If it fails,
+                # we will spin this loop another time, checking for coordinator
+                # and subscription changes.
+                # NOTE: We do re-join in sync. The group rebalance will fail on
+                # subscription change and coordinator failure by itself and
+                # this way we don't need to worry about racing or cancellation
+                # issues that could occur if re-join were to be a task.
+                success = yield from self._do_rejoin_group(subscription)
+                if success:
+                    performed_join_prepare = False
+                    assignment = subscription.assignment
+                    self._start_heartbeat_task()
+                else:
+                    # Backoff is done in group rejoin
+                    continue
+            else:
+                assignment = subscription.assignment
+
+            assert assignment is not None and assignment.active
+
+            # We will only try to commit offsets once here. In error case the
+            # returned wait_timeout will be ``retry_backoff``. In success case
+            # time to next autocommit deadline. If autocommit is disabled
+            # timeout will be ``None``, ie. no timeout.
+            wait_timeout = yield from self._maybe_do_autocommit(assignment)
+
+            futures = [
+                self._closing,  # Will exit fast if close() called
+                self._coordinator_dead_fut,
+                subscription.unsubscribe_future]
+            # In case of manual assignment this future will be always set and
+            # we don't want a heavy loop here.
+            # NOTE: metadata changes are for partition count and pattern
+            # subscription, which is irrelevant in case of user assignment.
+            if auto_assigned:
+                futures.append(self._rejoin_needed_fut)
+
+            done, _ = yield from asyncio.wait(
+                futures, timeout=wait_timeout, loop=self._loop,
+                return_when=asyncio.FIRST_COMPLETED)
+
+        # Closing finallization
+        if assignment is not None:
+            try:
+                yield from self._maybe_do_last_autocommit(assignment)
+            except Errors.KafkaError as err:
+                # We did all we could, all we can is show this to user
+                log.error("Failed to commit on finallization: %s", err)
+
+    def _start_heartbeat_task(self):
+        if self._heartbeat_task is None:
+            self._heartbeat_task = ensure_future(
+                self._heartbeat_routine(), loop=self._loop)
+
+    @asyncio.coroutine
+    def _stop_heartbeat_task(self):
+        if self._heartbeat_task is not None:
+            if not self._heartbeat_task.done():
+                self._heartbeat_task.cancel()
+            yield from self._heartbeat_task
+            self._heartbeat_task = None
+
+    @asyncio.coroutine
+    def _heartbeat_routine(self):
+        last_ok_heartbeat = self._loop.time()
+        hb_interval = self._heartbeat_interval_ms / 1000
+        session_timeout = self._session_timeout_ms / 1000
+        retry_backoff = self._retry_backoff_ms / 1000
+        sleep_time = hb_interval
 
         while True:
-            yield from self.ensure_coordinator_known()
-            node_id = self.coordinator_id
-
-            log.debug(
-                "Fetching committed offsets for partitions: %s", partitions)
-            # construct the request
-            topic_partitions = collections.defaultdict(set)
-            for tp in partitions:
-                topic_partitions[tp.topic].add(tp.partition)
-
-            request = OffsetFetchRequest(
-                self.group_id,
-                list(topic_partitions.items())
-            )
-
             try:
-                offsets = yield from self._proc_offsets_fetch_request(
-                    node_id, request)
+                yield from asyncio.sleep(sleep_time, loop=self._loop)
+                yield from self.ensure_coordinator_known()
+
+                t0 = self._loop.time()
+                success = yield from self._do_heartbeat()
+            except asyncio.CancelledError:
+                return
+
+            if success:
+                last_ok_heartbeat = self._loop.time()
+                sleep_time = max((0, hb_interval - self._loop.time() + t0))
+            else:
+                sleep_time = retry_backoff
+
+            session_time = self._loop.time() - last_ok_heartbeat
+            if session_time > session_timeout:
+                # the session timeout has expired without seeing a successful
+                # heartbeat, so we should probably make sure the coordinator
+                # is still healthy.
+                log.error(
+                    "Heartbeat session expired - marking coordinator dead")
+                self.coordinator_dead()
+
+    @asyncio.coroutine
+    def _do_heartbeat(self):
+        request = HeartbeatRequest(
+            self.group_id, self.generation, self.member_id)
+        log.debug("Heartbeat: %s[%s] %s",
+                  self.group_id, self.generation, self.member_id)
+
+        resp = yield from self._send_req(request)
+        error_type = Errors.for_code(resp.error_code)
+        if error_type is Errors.NoError:
+            log.debug(
+                "Received successful heartbeat response for group %s",
+                self.group_id)
+            return True
+        if error_type in (Errors.GroupCoordinatorNotAvailableError,
+                          Errors.NotCoordinatorForGroupError):
+            log.warning(
+                "Heartbeat failed for group %s: coordinator (node %s)"
+                " is either not started or not valid",
+                self.group_id, self.coordinator_id)
+            self.coordinator_dead()
+        elif error_type is Errors.RebalanceInProgressError:
+            log.warning(
+                "Heartbeat failed for group %s because it is rebalancing",
+                self.group_id)
+            self.request_rejoin()
+            # it is valid to continue heartbeating while the group is
+            # rebalancing. This ensures that the coordinator keeps the
+            # member in the group for as long as the duration of the
+            # rebalance timeout. If we stop sending heartbeats,
+            # however, then the session timeout may expire before we
+            # can rejoin.
+            return True
+        elif error_type is Errors.IllegalGenerationError:
+            log.warning(
+                "Heartbeat failed for group %s: generation id is not "
+                " current.", self.group_id)
+            self.reset_generation()
+        elif error_type is Errors.UnknownMemberIdError:
+            log.warning(
+                "Heartbeat failed: local member_id was not recognized;"
+                " resetting and re-joining group")
+            self.reset_generation()
+        else:
+            err = error_type()
+            log.error("Heartbeat failed: %r", err)
+        return False
+
+    def start_commit_offsets_refresh_task(self, assignment):
+        if self._commit_refresh_task is not None:
+            self._commit_refresh_task.cancel()
+        self._commit_refresh_task = ensure_future(
+            self._commit_refresh_routine(assignment), loop=self._loop)
+
+    @asyncio.coroutine
+    def _stop_commit_offsets_refresh_task(self):
+        # The previous task should end after assinment changed
+        if self._commit_refresh_task is not None:
+            self._commit_refresh_task.cancel()
+            yield from self._commit_refresh_task
+            self._commit_refresh_task = None
+
+    @asyncio.coroutine
+    def _commit_refresh_routine(self, assignment):
+        """ Task that will do a commit cache refresh if someone is waiting for
+        it.
+        """
+        retry_backoff_ms = self._retry_backoff_ms / 1000
+        commit_refresh_needed = assignment.commit_refresh_needed
+        event_waiter = None
+        try:
+            while assignment.active:
+                commit_refresh_needed.clear()
+                success = yield from self._maybe_refresh_commit_offsets(
+                    assignment)
+
+                wait_futures = [assignment.unassign_future]
+                if not success:
+                    timeout = retry_backoff_ms
+                else:
+                    timeout = None
+                    event_waiter = ensure_future(
+                        commit_refresh_needed.wait(), loop=self._loop)
+                    wait_futures.append(event_waiter)
+
+                yield from asyncio.wait(
+                    wait_futures,
+                    timeout=timeout,
+                    return_when=asyncio.FIRST_COMPLETED,
+                    loop=self._loop)
+        except asyncio.CancelledError:
+            pass
+
+        # Just to make sure we properly close started tasks we cancel
+        # event.wait() task
+        if event_waiter is not None and not event_waiter.done():
+            event_waiter.cancel()
+            event_waiter = None
+
+    @asyncio.coroutine
+    def _do_rejoin_group(self, subscription):
+        rebalance = CoordinatorGroupRebalance(
+            self, self.group_id, self.coordinator_id,
+            subscription, self._assignors, self._session_timeout_ms,
+            self._retry_backoff_ms, loop=self._loop)
+        assignment = yield from rebalance.perform_group_join()
+
+        if not subscription.active:
+            log.debug("Subscription changed during rebalance from %s to %s. "
+                      "Rejoining group.",
+                      subscription.topics,
+                      self._subscription.subscription.topics)
+            return False
+        if assignment is None:
+            return False
+
+        protocol, member_assignment_bytes = assignment
+        yield from self._on_join_complete(
+            self.generation, self.member_id,
+            protocol, member_assignment_bytes)
+        return True
+
+    @asyncio.coroutine
+    def _maybe_do_autocommit(self, assignment):
+        if not self._enable_auto_commit:
+            return None
+        now = self._loop.time()
+        interval = self._auto_commit_interval_ms / 1000
+        backoff = self._retry_backoff_ms / 1000
+        if now > self._next_autocommit_deadline:
+            try:
+                with (yield from self._commit_lock):
+                    yield from self._do_commit_offsets(
+                        assignment, assignment.all_consumed_offsets())
+            except Errors.KafkaError as error:
+                log.warning("Auto offset commit failed: %s", error)
+                if error.retriable:
+                    # Retry after backoff.
+                    self._next_autocommit_deadline = \
+                        self._loop.time() + backoff
+                    return backoff
+            except Exception as error:  # pragma: no cover
+                log.exception("Auto offset commit errored: %s", error)
+            # If we had an unrecoverable error we expect the user to handle it
+            # from another source (say Fetcher, like authorization errors).
+            self._next_autocommit_deadline = now + interval
+
+        return max(0, self._next_autocommit_deadline - self._loop.time())
+
+    @asyncio.coroutine
+    def _maybe_do_last_autocommit(self, assignment):
+        if not self._enable_auto_commit:
+            return
+        yield from self.commit_offsets(
+            assignment, assignment.all_consumed_offsets())
+
+    @asyncio.coroutine
+    def commit_offsets(self, assignment, offsets):
+        """Commit specific offsets
+
+        Arguments:
+            offsets (dict {TopicPartition: OffsetAndMetadata}): what to commit
+
+        Raises KafkaError on failure
+        """
+        while True:
+            yield from self.ensure_coordinator_known()
+            try:
+                with (yield from self._commit_lock):
+                    yield from asyncio.shield(
+                        self._do_commit_offsets(assignment, offsets),
+                        loop=self._loop)
+            except (Errors.UnknownMemberIdError,
+                    Errors.IllegalGenerationError,
+                    Errors.RebalanceInProgressError) as err:
+                raise Errors.CommitFailedError(
+                    "Commit cannot be completed since the group has already "
+                    "rebalanced and may have assigned the partitions "
+                    "to another member")
             except Errors.KafkaError as err:
                 if not err.retriable:
                     raise err
                 else:
                     # wait backoff and try again
                     yield from asyncio.sleep(
-                        self._retry_backoff_ms / 1000, loop=self.loop)
+                        self._retry_backoff_ms / 1000, loop=self._loop)
             else:
-                return offsets
+                break
 
     @asyncio.coroutine
-    def _proc_offsets_fetch_request(self, node_id, request):
-        response = yield from self._send_req(
-            node_id, request, group=ConnectionGroup.COORDINATION)
-        offsets = {}
-        for topic, partitions in response.topics:
-            for partition, offset, metadata, error_code in partitions:
-                tp = TopicPartition(topic, partition)
-                error_type = Errors.for_code(error_code)
-                if error_type is not Errors.NoError:
-                    error = error_type()
-                    log.debug("Error fetching offset for %s: %s", tp, error)
-                    if error_type is Errors.GroupLoadInProgressError:
-                        # just retry
-                        raise error
-                    elif error_type is Errors.NotCoordinatorForGroupError:
-                        # re-discover the coordinator and retry
-                        self.coordinator_dead()
-                        raise error
-                    elif error_type in (Errors.UnknownMemberIdError,
-                                        Errors.IllegalGenerationError):
-                        # need to re-join group
-                        self._subscription.mark_for_reassignment()
-                        raise error
-                    elif error_type is Errors.UnknownTopicOrPartitionError:
-                        log.warning(
-                            "OffsetFetchRequest -- unknown topic %s", topic)
-                        continue
-                    else:
-                        log.error("Unknown error fetching offsets for %s: %s",
-                                  tp, error)
-                        raise error
-                elif offset >= 0:
-                    # record the position with the offset
-                    # (-1 indicates no committed offset to fetch)
-                    offsets[tp] = OffsetAndMetadata(offset, metadata)
-                else:
-                    log.debug(
-                        "No committed offset for partition %s", tp)
-
-        return offsets
-
-    @asyncio.coroutine
-    def commit_offsets(self, offsets):
-        """Commit specific offsets asynchronously.
-
-        Arguments:
-            offsets (dict {TopicPartition: OffsetAndMetadata}): what to commit
-
-        Raises error on failure
-        """
-        self._subscription.needs_fetch_committed_offsets = True
+    def _do_commit_offsets(self, assignment, offsets):
+        # Fast return if nothing to commit
         if not offsets:
-            log.debug('No offsets to commit')
-            return True
+            return
 
-        if (yield from self.coordinator_unknown()):
-            raise Errors.GroupCoordinatorNotAvailableError()
-        node_id = self.coordinator_id
+        # Signal all topics that we are starting commit
+        for tp in offsets:
+            assert tp in assignment.tps
+            tp_state = assignment.state_value(tp)
+            tp_state.begin_commit()
 
         # create the offset commit request
         offset_data = collections.defaultdict(list)
@@ -541,28 +862,26 @@ class GroupCoordinator(BaseCoordinator):
         )
 
         log.debug("Sending offset-commit request with %s for group %s to %s",
-                  offsets, self.group_id, node_id)
+                  offsets, self.group_id, self.coordinator_id)
 
-        response = yield from self._send_req(
-            node_id, request, group=ConnectionGroup.COORDINATION)
+        response = yield from self._send_req(request)
 
+        errored = collections.OrderedDict()
         unauthorized_topics = set()
         for topic, partitions in response.topics:
             for partition, error_code in partitions:
                 tp = TopicPartition(topic, partition)
-                offset = offsets[tp]
-
                 error_type = Errors.for_code(error_code)
                 if error_type is Errors.NoError:
                     log.debug(
                         "Committed offset %s for partition %s", offset, tp)
-                    if self._subscription.is_assigned(tp):
-                        partition = self._subscription.assignment[tp]
-                        partition.committed = offset.offset
+                    offset = offsets[tp]
+                    tp_state = assignment.state_value(tp)
+                    tp_state.update_committed(offset)
                 elif error_type is Errors.GroupAuthorizationFailedError:
                     log.error("OffsetCommit failed for group %s - %s",
                               self.group_id, error_type.__name__)
-                    raise error_type()
+                    errored[tp] = error_type()
                 elif error_type is Errors.TopicAuthorizationFailedError:
                     unauthorized_topics.add(topic)
                 elif error_type in (Errors.OffsetMetadataTooLargeError,
@@ -572,23 +891,22 @@ class GroupCoordinator(BaseCoordinator):
                         "OffsetCommit failed for group %s on partition %s"
                         " due to %s, will retry", self.group_id, tp,
                         error_type.__name__)
-                    raise error_type()
+                    errored[tp] = error_type()
                 elif error_type is Errors.GroupLoadInProgressError:
                     # just retry
                     log.info(
                         "OffsetCommit failed for group %s because group is"
                         " initializing (%s), will retry", self.group_id,
                         error_type.__name__)
-                    raise error_type()
+                    errored[tp] = error_type()
                 elif error_type in (Errors.GroupCoordinatorNotAvailableError,
-                                    Errors.NotCoordinatorForGroupError,
-                                    Errors.RequestTimedOutError):
+                                    Errors.NotCoordinatorForGroupError):
                     log.info(
                         "OffsetCommit failed for group %s due to a"
                         " coordinator error (%s), will find new coordinator"
                         " and retry", self.group_id, error_type.__name__)
                     self.coordinator_dead()
-                    raise error_type()
+                    errored[tp] = error_type()
                 elif error_type in (Errors.UnknownMemberIdError,
                                     Errors.IllegalGenerationError,
                                     Errors.RebalanceInProgressError):
@@ -597,243 +915,125 @@ class GroupCoordinator(BaseCoordinator):
                     log.error(
                         "OffsetCommit failed for group %s due to group"
                         " error (%s), will rejoin", self.group_id, error)
-                    self._subscription.mark_for_reassignment()
-                    raise error
+                    if error_type is Errors.RebalanceInProgressError:
+                        self.request_rejoin()
+                    else:
+                        self.reset_generation()
+                    # need to re-join group
+                    error = error_type(self.group_id)
+                    log.error(
+                        "OffsetCommit failed for group %s due to group"
+                        " error (%s), will rejoin", self.group_id, error)
+                    errored[tp] = error
+
                 else:
                     log.error(
                         "OffsetCommit failed for group %s on partition %s"
                         " with offset %s: %s", self.group_id, tp, offset,
                         error_type.__name__)
-                    raise error_type()
+                    errored[tp] = error_type()
 
+        if errored:
+            first_error = list(errored.values())[0]
+            raise first_error
         if unauthorized_topics:
             log.error("OffsetCommit failed for unauthorized topics %s",
                       unauthorized_topics)
             raise Errors.TopicAuthorizationFailedError(unauthorized_topics)
 
     @asyncio.coroutine
-    def _maybe_auto_commit_offsets_sync(self):
-        if not self._enable_auto_commit:
-            return
-
-        yield from self.ensure_coordinator_known()
-        yield from self.commit_offsets(
-            self._subscription.all_consumed_offsets())
-
-    @asyncio.coroutine
-    def auto_commit_routine(self, interval):
-        while not self._closing.done():
-            if (yield from self.coordinator_unknown()):
-                log.debug(
-                    "Cannot auto-commit offsets because the coordinator is"
-                    " unknown, will retry after backoff")
-                yield from asyncio.sleep(
-                    self._retry_backoff_ms / 1000, loop=self.loop)
-                continue
-
-            yield from asyncio.wait(
-                [self._closing], timeout=interval, loop=self.loop)
-
-            # select offsets that should be committed
-            offsets = {}
-            for partition in self._subscription.assigned_partitions():
-                tp = self._subscription.assignment[partition]
-                if tp.position != tp.committed and tp.has_valid_position:
-                    offsets[partition] = OffsetAndMetadata(tp.position, '')
-
-            try:
-                yield from self.commit_offsets(offsets)
-            except Errors.KafkaError as error:
-                if error.retriable and not self._closing.done():
-                    log.debug("Failed to auto-commit offsets: %s, will retry"
-                              " immediately", error)
-                else:
-                    log.warning("Auto offset commit failed: %s", error)
+    def _maybe_refresh_commit_offsets(self, assignment):
+        with (yield from self._commit_lock):
+            need_update = assignment.missing_commit_cache()
+            if need_update:
+                try:
+                    offsets = yield from self._do_fetch_commit_offsets(
+                        need_update)
+                except Errors.KafkaError as err:
+                    if not err.retriable:
+                        log.exception("Failed to fetch committed offsets")
+                    else:
+                        log.debug("Failed to fetch committed offsets: %r", err)
+                    return False
+                for tp in need_update:
+                    tp_state = assignment.state_value(tp)
+                    if tp in offsets:
+                        tp_state.reset_committed(offsets[tp])
+                    else:
+                        tp_state.reset_committed(
+                            OffsetAndMetadata(UNKNOWN_OFFSET, ""))
+        return True
 
     @asyncio.coroutine
-    def coordinator_unknown(self):
-        """Check if we know who the coordinator is
-        and have an active connection
+    def fetch_committed_offsets(self, partitions):
+        """Fetch the current committed offsets for specified partitions
+
+        Arguments:
+            partitions (list of TopicPartition): partitions to fetch
 
         Returns:
-            bool: True if the coordinator is unknown
+            dict: {TopicPartition: OffsetAndMetadata}
         """
-        if self.coordinator_id is None:
-            return True
-
-        ready = yield from self._client.ready(self.coordinator_id)
-        return not ready
-
-    @asyncio.coroutine
-    def ensure_coordinator_known(self):
-        """Block until the coordinator for this group is known
-        (and we have an active connection -- Java client uses unsent queue).
-        """
-        while (yield from self.coordinator_unknown()):
-            node_id = self._client.get_random_node()
-            if node_id is None or not (yield from self._client.ready(node_id)):
-                raise Errors.NoBrokersAvailable()
-
-            log.debug(
-                "Sending group coordinator request for group %s to broker %s",
-                self.group_id, node_id)
-            request = GroupCoordinatorRequest(self.group_id)
-            try:
-                resp = yield from self._send_req(
-                    node_id, request, group=ConnectionGroup.DEFAULT)
-            except Errors.KafkaError as err:
-                log.error("Group Coordinator Request failed: %s", err)
-                yield from asyncio.sleep(
-                    self._retry_backoff_ms / 1000, loop=self.loop)
-                if err.retriable is True:
-                    yield from self._client.force_metadata_update()
-            else:
-                log.debug("Received group coordinator response %s", resp)
-                if not (yield from self.coordinator_unknown()):
-                    # We already found the coordinator, so ignore the response
-                    log.debug("Coordinator already known, ignoring response")
-                    break
-                self.coordinator_id = resp.coordinator_id
-                log.info("Discovered coordinator %s for group %s",
-                         self.coordinator_id, self.group_id)
-
-    def need_rejoin(self):
-        """Check whether the group should be rejoined
-
-        Returns:
-            bool: True if consumer should rejoin group, False otherwise
-        """
-        return (self._subscription.partitions_auto_assigned() and
-                (self.rejoin_needed or
-                 self._subscription.needs_partition_assignment or
-                 self._metadata_changed()))
-
-    @asyncio.coroutine
-    def ensure_active_group(self):
-        """Ensure that the group is active (i.e. joined and synced)"""
-        with (yield from self._rejoin_lock):
-            if not self.need_rejoin():
-                return
-
-            if self.pending_rejoin_fut is None:
-                yield from self._on_join_prepare(
-                    self.generation, self.member_id)
-                self.pending_rejoin_fut = create_future(loop=self._loop)
-
-            while self.need_rejoin():
-                yield from self.ensure_coordinator_known()
-                # Here we create a copy of subscription so we can check if it
-                # changed during rebalance.
-                subscription = copy(self._subscription.subscription)
-                rebalance = CoordinatorGroupRebalance(
-                    self, self.group_id, self.coordinator_id,
-                    subscription, self._assignors, self._session_timeout_ms,
-                    self._retry_backoff_ms, loop=self.loop)
-                assignment = yield from rebalance.perform_group_join()
-
-                if (subscription != self._subscription.subscription):
-                    log.debug("Subscription changed during rebalance "
-                              "from %s to %s. Rejoining group.",
-                              subscription, self._subscription.subscription)
-                    continue
-                if assignment is not None:
-                    protocol, member_assignment_bytes = assignment
-                    yield from self._on_join_complete(
-                        self.generation, self.member_id,
-                        protocol, member_assignment_bytes)
-                    return
-
-    @asyncio.coroutine
-    def ensure_partitions_assigned(self):
-        if self.pending_rejoin_fut is not None:
-            yield from asyncio.shield(self.pending_rejoin_fut, loop=self._loop)
-
-    def coordinator_dead(self, error=None):
-        """Mark the current coordinator as dead."""
-        if self.coordinator_id is not None:
-            log.warning(
-                "Marking the coordinator dead (node %s)for group %s: %s.",
-                self.coordinator_id, self.group_id, error)
-            self.coordinator_id = None
-        # TODO: Coordinator's state is stored in Zookeeper. Even if it goes
-        #       down the group might not break if a new one is elected fast
-        self.rejoin_needed = True
-
-    @asyncio.coroutine
-    def _heartbeat_task_routine(self):
-        last_ok_heartbeat = self.loop.time()
-        hb_interval = self._heartbeat_interval_ms / 1000
-        session_timeout = self._session_timeout_ms / 1000
-        retry_backoff_time = self._retry_backoff_ms / 1000
-        sleep_time = hb_interval
+        if not partitions:
+            return {}
 
         while True:
-            yield from asyncio.sleep(sleep_time, loop=self.loop)
-            if not self._subscription.partitions_auto_assigned():
-                # no partitions assigned yet, just wait
-                sleep_time = retry_backoff_time
-                continue
-
+            yield from self.ensure_coordinator_known()
             try:
-                yield from self.ensure_active_group()
+                offsets = yield from self._do_fetch_commit_offsets(partitions)
             except Errors.KafkaError as err:
-                log.error("Skipping heartbeat: no active group: %r", err)
-                last_ok_heartbeat = self.loop.time()
-                sleep_time = retry_backoff_time
-                continue
-
-            t0 = self.loop.time()
-            request = HeartbeatRequest(
-                self.group_id, self.generation, self.member_id)
-            log.debug("Heartbeat: %s[%s] %s",
-                      self.group_id, self.generation, self.member_id)
-            try:
-                yield from self._send_req(
-                    self.coordinator_id, request,
-                    group=ConnectionGroup.COORDINATION)
-            except (Errors.GroupCoordinatorNotAvailableError,
-                    Errors.NotCoordinatorForGroupError):
-                log.warning(
-                    "Heartbeat failed for group %s: coordinator (node %s)"
-                    " is either not started or not valid",
-                    self.group_id, self.coordinator_id)
-                self.coordinator_dead()
-            except Errors.RebalanceInProgressError:
-                log.warning(
-                    "Heartbeat failed for group %s because it is rebalancing",
-                    self.group_id)
-                self.rejoin_needed = True
-            except Errors.IllegalGenerationError:
-                log.warning(
-                    "Heartbeat failed for group %s: generation id is not "
-                    " current.", self.group_id)
-                self.rejoin_needed = True
-            except Errors.UnknownMemberIdError:
-                log.warning(
-                    "Heartbeat failed: local member_id was not recognized;"
-                    " resetting and re-joining group")
-                self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
-                self.rejoin_needed = True
-            except Errors.KafkaError as err:
-                log.error("Heartbeat failed: %s", err)
+                if not err.retriable:
+                    raise err
+                else:
+                    # wait backoff and try again
+                    yield from asyncio.sleep(
+                        self._retry_backoff_ms / 1000, loop=self._loop)
             else:
-                log.debug(
-                    "Received successful heartbeat response for group %s",
-                    self.group_id)
-                last_ok_heartbeat = self.loop.time()
+                return offsets
 
-            if self.rejoin_needed:
-                sleep_time = retry_backoff_time
-            else:
-                sleep_time = max((0, hb_interval - self.loop.time() + t0))
-            session_time = self.loop.time() - last_ok_heartbeat
-            if session_time > session_timeout:
-                # we haven't received a successful heartbeat in one session
-                # interval so mark the coordinator dead
-                log.error(
-                    "Heartbeat session expired - marking coordinator dead")
-                self.coordinator_dead()
-                continue
+    @asyncio.coroutine
+    def _do_fetch_commit_offsets(self, partitions):
+        log.debug("Fetching committed offsets for partitions: %s", partitions)
+        # construct the request
+        topic_partitions = collections.defaultdict(list)
+        for tp in partitions:
+            topic_partitions[tp.topic].append(tp.partition)
+
+        request = OffsetFetchRequest(
+            self.group_id,
+            list(topic_partitions.items())
+        )
+        response = yield from self._send_req(request)
+        offsets = {}
+        for topic, partitions in response.topics:
+            for partition, offset, metadata, error_code in partitions:
+                tp = TopicPartition(topic, partition)
+                error_type = Errors.for_code(error_code)
+                if error_type is not Errors.NoError:
+                    error = error_type()
+                    log.debug("Error fetching offset for %s: %s", tp, error)
+                    if error_type is Errors.GroupLoadInProgressError:
+                        # just retry
+                        raise error
+                    elif error_type is Errors.NotCoordinatorForGroupError:
+                        # re-discover the coordinator and retry
+                        self.coordinator_dead()
+                        raise error
+                    elif error_type is Errors.UnknownTopicOrPartitionError:
+                        log.warning(
+                            "OffsetFetchRequest -- unknown topic %s", topic)
+                        continue
+                    else:
+                        log.error("Unknown error fetching offsets for %s: %s",
+                                  tp, error)
+                        raise Errors.KafkaError(repr(error))
+                # record the position with the offset
+                # (-1 indicates no committed offset to fetch)
+                if offset == UNKNOWN_OFFSET:
+                    log.debug("No committed offset for partition %s", tp)
+                else:
+                    offsets[tp] = OffsetAndMetadata(offset, metadata)
+        return offsets
 
 
 class CoordinatorGroupRebalance:
@@ -841,29 +1041,16 @@ class CoordinatorGroupRebalance:
         assigned topics, so we can detect assignment changes. This includes
         subscription pattern changes.
 
-        `coordinator` object will be used to modify:
-            * member_id
-            * generation
-            * rejoin_needed
-        and call methods:
-            * _perform_assignment
-            * coordinator_dead
-            * coordinator_unknown
-
         On how to handle cases read in https://cwiki.apache.org/confluence/\
             display/KAFKA/Kafka+Client-side+Assignment+Proposal
     """
-
-    __slots__ = ("_coordinator", "group_id", "coordinator_id", "_subscription",
-                 "_assignors", "_session_timeout_ms", "_retry_backoff_ms",
-                 "loop")
 
     def __init__(self, coordinator, group_id, coordinator_id, subscription,
                  assignors, session_timeout_ms, retry_backoff_ms, *, loop):
         self._coordinator = coordinator
         self.group_id = group_id
         self.coordinator_id = coordinator_id
-        self.loop = loop
+        self._loop = loop
 
         self._subscription = subscription
         self._assignors = assignors
@@ -882,8 +1069,7 @@ class CoordinatorGroupRebalance:
         # send a join group request to the coordinator
         log.info("(Re-)joining group %s", self.group_id)
 
-        topics = self._subscription
-        assert topics is not None, 'Consumer has not subscribed to topics'
+        topics = self._subscription.topics
         metadata_list = []
         for assignor in self._assignors:
             metadata = assignor.metadata(topics)
@@ -903,37 +1089,21 @@ class CoordinatorGroupRebalance:
         log.debug("Sending JoinGroup (%s) to coordinator %s",
                   request, self.coordinator_id)
         try:
-            response = yield from self._coordinator._send_req(
-                self.coordinator_id, request,
-                group=ConnectionGroup.COORDINATION)
-        except Errors.GroupLoadInProgressError:
-            log.debug("Attempt to join group %s rejected since coordinator %s"
-                      " is loading the group.", self.group_id,
-                      self.coordinator_id)
-        except Errors.UnknownMemberIdError:
-            # reset the member id and retry immediately
-            self._coordinator.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
-            log.debug(
-                "Attempt to join group %s failed due to unknown member id",
-                self.group_id)
-            return
-        except (Errors.GroupCoordinatorNotAvailableError,
-                Errors.NotCoordinatorForGroupError) as err:
-            # re-discover the coordinator and retry with backoff
-            self._coordinator.coordinator_dead()
-            log.debug("Attempt to join group %s failed due to obsolete "
-                      "coordinator information: %s", self.group_id,
-                      err)
-        except Errors.KafkaError as err:
-            log.error(
-                "Error in join group '%s' response: %s", self.group_id, err)
-            if not err.retriable:
-                raise
-        else:
+            response = yield from self._coordinator._send_req(request)
+        except Errors.KafkaError:
+            # Return right away. It's a connection error, so backoff will be
+            # handled by coordinator lookup
+            return None
+
+        if not self._subscription.active:
+            # Subscription changed. Ignore response and restart group join
+            return None
+
+        error_type = Errors.for_code(response.error_code)
+        if error_type is Errors.NoError:
             log.debug("Join group response %s", response)
             self._coordinator.member_id = response.member_id
             self._coordinator.generation = response.generation_id
-            self._coordinator.rejoin_needed = False
             protocol = response.group_protocol
             log.info("Joined group '%s' (generation %s) with member_id %s",
                      self.group_id, response.generation_id, response.member_id)
@@ -941,27 +1111,48 @@ class CoordinatorGroupRebalance:
             if response.leader_id == response.member_id:
                 log.info("Elected group leader -- performing partition"
                          " assignments using %s", protocol)
-                cor = self._on_join_leader(response)
+                assignment_bytes = yield from self._on_join_leader(response)
             else:
-                cor = self._on_join_follower()
+                assignment_bytes = yield from self._on_join_follower()
 
-            try:
-                member_assignment_bytes = yield from cor
-            except (Errors.UnknownMemberIdError,
-                    Errors.RebalanceInProgressError,
-                    Errors.IllegalGenerationError):
-                # The current group is already not correct, maybe we were too
-                # slow and timeouted or a new rebalance is required.
-                pass
-            except Errors.KafkaError as err:
-                if not err.retriable:
-                    raise
-            else:
-                return (protocol, member_assignment_bytes)
-
-        # backoff wait - failure case
-        yield from asyncio.sleep(
-            self._retry_backoff_ms / 1000, loop=self.loop)
+            if assignment_bytes is None:
+                return None
+            return (protocol, assignment_bytes)
+        elif error_type is Errors.GroupLoadInProgressError:
+            # Backoff and retry
+            log.debug("Attempt to join group %s rejected since coordinator %s"
+                      " is loading the group.", self.group_id,
+                      self.coordinator_id)
+            yield from asyncio.sleep(
+                self._retry_backoff_ms / 1000, loop=self._loop)
+        elif error_type is Errors.UnknownMemberIdError:
+            # reset the member id and retry immediately
+            self._coordinator.reset_generation()
+            log.debug(
+                "Attempt to join group %s failed due to unknown member id",
+                self.group_id)
+        elif error_type in (Errors.GroupCoordinatorNotAvailableError,
+                            Errors.NotCoordinatorForGroupError):
+            # Coordinator changed we should be able to find it immediately
+            err = error_type()
+            self._coordinator.coordinator_dead()
+            log.debug("Attempt to join group %s failed due to obsolete "
+                      "coordinator information: %s", self.group_id,
+                      err)
+        elif error_type in (Errors.InconsistentGroupProtocolError,
+                            Errors.InvalidSessionTimeoutError,
+                            Errors.InvalidGroupIdError):
+            err = error_type()
+            log.error(
+                "Attempt to join group failed due to fatal error: %s", err)
+            raise err
+        else:
+            err = error_type()
+            log.error(
+                "Unexpected error in join group '%s' response: %s",
+                self.group_id, err)
+            raise Errors.KafkaError(repr(err))
+        return None
 
     @asyncio.coroutine
     def _on_join_follower(self):
@@ -1016,37 +1207,45 @@ class CoordinatorGroupRebalance:
 
     @asyncio.coroutine
     def _send_sync_group_request(self, request):
-        if (yield from self._coordinator.coordinator_unknown()):
-            raise Errors.GroupCoordinatorNotAvailableError()
-
-        response = None
+        # We need to reset the rejoin future right after the assignment to
+        # capture metadata changes after join group was performed. We do not
+        # set it directly after JoinGroup to avoid a false rejoin in case
+        # ``_perform_assignment()`` does a metadata update.
+        self._coordinator._rejoin_needed_fut = create_future(loop=self._loop)
         try:
-            response = yield from self._coordinator._send_req(
-                self.coordinator_id, request,
-                group=ConnectionGroup.COORDINATION)
+            response = yield from self._coordinator._send_req(request)
+        except Errors.KafkaError:
+            # We lost connection to coordinator. No need to try and finish this
+            # group join, just rejoin again.
+            self._coordinator.request_rejoin()
+            return None
+
+        error_type = Errors.for_code(response.error_code)
+        if error_type is Errors.NoError:
             log.info("Successfully synced group %s with generation %s",
                      self.group_id, self._coordinator.generation)
             return response.member_assignment
-        except Errors.RebalanceInProgressError as err:
-            log.debug("SyncGroup for group %s failed due to coordinator"
+
+        # Error case
+        self._coordinator.request_rejoin()
+        if error_type is Errors.RebalanceInProgressError:
+            log.debug("SyncGroup for group %s failed due to group"
                       " rebalance", self.group_id)
-            raise err
-        except (Errors.UnknownMemberIdError,
-                Errors.IllegalGenerationError) as err:
+        elif error_type in (Errors.UnknownMemberIdError,
+                            Errors.IllegalGenerationError):
+            err = error_type()
             log.debug("SyncGroup for group %s failed due to %s,",
                       self.group_id, err)
-            self._coordinator.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
-            raise err
-        except (Errors.GroupCoordinatorNotAvailableError,
-                Errors.NotCoordinatorForGroupError) as err:
+            self._coordinator.reset_generation()
+        elif error_type in (Errors.GroupCoordinatorNotAvailableError,
+                            Errors.NotCoordinatorForGroupError):
+            err = error_type()
             log.debug("SyncGroup for group %s failed due to %s",
                       self.group_id, err)
             self._coordinator.coordinator_dead()
-            raise err
-        except Errors.KafkaError as err:
+        else:
+            err = error_type()
             log.error("Unexpected error from SyncGroup: %s", err)
-            raise err
-        finally:
-            if response is None:
-                # Always rejoin on error
-                self._coordinator.rejoin_needed = True
+            raise Errors.KafkaError(repr(err))
+
+        return None

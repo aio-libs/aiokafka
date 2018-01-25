@@ -1,7 +1,6 @@
 import asyncio
 from aiokafka.consumer import AIOKafkaConsumer
-from aiokafka.errors import ConsumerStoppedError
-from kafka.common import OffsetOutOfRangeError
+from aiokafka.errors import ConsumerStoppedError, NoOffsetForPartitionError
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, random_string)
 
@@ -17,6 +16,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             auto_offset_reset='earliest')
         await consumer.start()
+        self.add_cleanup(consumer.stop)
 
         messages = []
         async for m in consumer:
@@ -28,7 +28,6 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
                 break  # noqa
 
         self.assert_message_count(messages, 20)
-        await consumer.stop()
 
     @run_until_complete
     async def test_exception_ignored_with_aiter(self):
@@ -43,6 +42,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
             auto_offset_reset='earliest',
             max_partition_fetch_bytes=4000)
         await consumer.start()
+        self.add_cleanup(consumer.stop)
 
         messages = []
         with self.assertLogs(
@@ -61,7 +61,6 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
                 in cm.output[0])
         self.assertEqual(messages[0].value, large_messages[0])
         self.assertEqual(messages[1].value, small_messages[0])
-        await consumer.stop()
 
     @run_until_complete
     async def test_exception_in_aiter(self):
@@ -70,10 +69,11 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             self.topic, loop=self.loop,
             bootstrap_servers=self.hosts,
-            auto_offset_reset=None)
+            auto_offset_reset="none")
         await consumer.start()
+        self.add_cleanup(consumer.stop)
 
-        with self.assertRaises(OffsetOutOfRangeError):
+        with self.assertRaises(NoOffsetForPartitionError):
             async for m in consumer:
                 m  # pragma: no cover
 
@@ -82,8 +82,9 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             self.topic, loop=self.loop,
             bootstrap_servers=self.hosts,
-            auto_offset_reset=None)
+            auto_offset_reset="earliest")
         await consumer.start()
+        self.add_cleanup(consumer.stop)
 
         async def iterator():
             async for msg in consumer:  # pragma: no cover
