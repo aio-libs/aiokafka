@@ -455,7 +455,11 @@ class Fetcher:
             # is no longer of interest.
             return False
 
-        assert assignment.active
+        if not assignment.active:
+            log.debug(
+                "Discarding fetch response since the assignment changed during"
+                " fetch")
+            return False
 
         fetch_offsets = {}
         for topic, partitions in request.topics:
