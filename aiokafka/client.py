@@ -255,6 +255,12 @@ class AIOKafkaClient:
                     node_id, err)
                 continue
 
+            # don't update the cluster if there are no valid nodes...the topic
+            # we want may still be in the process of being created which means
+            # we will get errors and no nodes until it exists
+            if not metadata.brokers:
+                return False
+
             cluster_metadata.update_metadata(metadata)
 
             # We only keep bootstrap connection to update metadata until
