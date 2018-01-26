@@ -288,7 +288,7 @@ class AIOKafkaClient:
                 self._md_update_waiter.set_result(None)
             self._md_update_fut = create_future(loop=self._loop)
         # Metadata will be updated in the background by syncronizer
-        return self._md_update_fut
+        return asyncio.shield(self._md_update_fut, loop=self._loop)
 
     @asyncio.coroutine
     def fetch_all_metadata(self):
@@ -549,4 +549,5 @@ class AIOKafkaClient:
     @asyncio.coroutine
     def _maybe_wait_metadata(self):
         if self._md_update_fut is not None:
-            yield from self._md_update_fut
+            yield from asyncio.shield(
+                self._md_update_fut, loop=self._loop)
