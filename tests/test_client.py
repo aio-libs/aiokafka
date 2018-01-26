@@ -172,6 +172,37 @@ class TestAIOKafkaClient(unittest.TestCase):
         self.assertEqual(response, correct_response)
         self.assertNotEqual(conn, client._conns[(node_id, 0)])
 
+    @run_until_complete
+    def test_client_receive_zero_brokers(self):
+        brokers = [
+            (0, 'broker_1', 4567),
+            (1, 'broker_2', 5678)
+        ]
+        correct_meta = MetadataResponse(brokers, [])
+        bad_response = MetadataResponse([], [])
+
+        @asyncio.coroutine
+        def send(*args, **kwargs):
+            return bad_response
+
+        client = AIOKafkaClient(loop=self.loop,
+                                bootstrap_servers=['broker_1:4567'],
+                                api_version=(0, 10))
+        conn = mock.Mock()
+        client._conns = [mock.Mock()]
+        client._get_conn = mock.Mock()
+        client._get_conn.side_effect = asyncio.coroutine(lambda x: conn)
+        conn.send = mock.Mock()
+        conn.send.side_effect = send
+        client.cluster.update_metadata(correct_meta)
+        brokers_before = client.cluster.brokers()
+
+        yield from client._metadata_update(client.cluster, [])
+
+        # There broker list should not be purged
+        self.assertNotEqual(client.cluster.brokers(), set([]))
+        self.assertEqual(client.cluster.brokers(), brokers_before)
+
 
 class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
