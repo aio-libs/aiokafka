@@ -365,7 +365,8 @@ class AIOKafkaClient:
                     request_timeout_ms=self._request_timeout_ms,
                     ssl_context=self._ssl_context,
                     security_protocol=self._security_protocol,
-                    on_close=self._on_connection_closed)
+                    on_close=self._on_connection_closed,
+                    max_idle_ms=self._connections_max_idle_ms)
         except (OSError, asyncio.TimeoutError) as err:
             log.error('Unable connect to node with id %s: %s', node_id, err)
             # Connection failures imply that our metadata is stale, so let's

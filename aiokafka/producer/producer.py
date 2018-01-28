@@ -129,6 +129,9 @@ class AIOKafkaProducer(object):
             socket connections. Directly passed into asyncio's
             `create_connection`_. For more information see :ref:`ssl_auth`.
             Default: None.
+        connections_max_idle_ms (int): Close idle connections after the number
+            of milliseconds specified by this config. Specifying `None` will
+            disable idle checks. Default: 540000 (9hours).
 
     Note:
         Many configuration parameters are taken from the Java client:
@@ -151,7 +154,7 @@ class AIOKafkaProducer(object):
                  partitioner=DefaultPartitioner(), max_request_size=1048576,
                  linger_ms=0, send_backoff_ms=100,
                  retry_backoff_ms=100, security_protocol="PLAINTEXT",
-                 ssl_context=None):
+                 ssl_context=None, connections_max_idle_ms=540000):
         if acks not in (0, 1, -1, 'all'):
             raise ValueError("Invalid ACKS parameter")
         if compression_type not in ('gzip', 'snappy', 'lz4', None):
@@ -189,7 +192,8 @@ class AIOKafkaProducer(object):
             request_timeout_ms=request_timeout_ms,
             retry_backoff_ms=retry_backoff_ms,
             api_version=api_version, security_protocol=security_protocol,
-            ssl_context=ssl_context)
+            ssl_context=ssl_context,
+            connections_max_idle_ms=connections_max_idle_ms)
         self._metadata = self.client.cluster
         self._message_accumulator = MessageAccumulator(
             self._metadata, max_batch_size, compression_attrs,
