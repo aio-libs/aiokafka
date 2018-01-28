@@ -255,6 +255,12 @@ class AIOKafkaClient:
                     node_id, err)
                 continue
 
+            # don't update the cluster if there are no valid nodes...the topic
+            # we want may still be in the process of being created which means
+            # we will get errors and no nodes until it exists
+            if not metadata.brokers:
+                return False
+
             cluster_metadata.update_metadata(metadata)
 
             # We only keep bootstrap connection to update metadata until
@@ -282,7 +288,7 @@ class AIOKafkaClient:
                 self._md_update_waiter.set_result(None)
             self._md_update_fut = create_future(loop=self._loop)
         # Metadata will be updated in the background by syncronizer
-        return self._md_update_fut
+        return asyncio.shield(self._md_update_fut, loop=self._loop)
 
     @asyncio.coroutine
     def fetch_all_metadata(self):
@@ -543,4 +549,5 @@ class AIOKafkaClient:
     @asyncio.coroutine
     def _maybe_wait_metadata(self):
         if self._md_update_fut is not None:
-            yield from self._md_update_fut
+            yield from asyncio.shield(
+                self._md_update_fut, loop=self._loop)
