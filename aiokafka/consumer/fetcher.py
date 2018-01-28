@@ -247,7 +247,7 @@ class Fetcher:
         self._pending_tasks = set()
 
         self._wait_consume_future = None
-        self._wait_empty_future = None
+        self._fetch_waiters = set()
 
         req_version = 2 if client.api_version >= (0, 10) else 1
         self._fetch_request_class = FetchRequest[req_version]
@@ -255,8 +255,12 @@ class Fetcher:
         self._fetch_task = ensure_future(
             self._fetch_requests_routine(), loop=loop)
 
+        self._closed = False
+
     @asyncio.coroutine
     def close(self):
+        self._closed = True
+
         self._fetch_task.cancel()
         try:
             yield from self._fetch_task
@@ -264,9 +268,8 @@ class Fetcher:
             pass
 
         # Fail all pending fetchone/fetchall calls
-        if self._wait_empty_future is not None and \
-                not self._wait_empty_future.done():
-            self._wait_empty_future.set_exception(ConsumerStoppedError())
+        for waiter in self._fetch_waiters:
+            self._notify(waiter)
 
         for x in self._pending_tasks:
             x.cancel()
@@ -275,6 +278,13 @@ class Fetcher:
     def _notify(self, future):
         if future is not None and not future.done():
             future.set_result(None)
+
+    def _create_fetch_waiter(self):
+        fut = create_future(loop=self._loop)
+        self._fetch_waiters.add(fut)
+        fut.add_done_callback(
+            lambda f, waiters=self._fetch_waiters: waiters.remove(f))
+        return fut
 
     @asyncio.coroutine
     def _fetch_requests_routine(self):
@@ -360,9 +370,10 @@ class Fetcher:
                 if done_pending:
                     has_new_data = any(fut.result() for fut in done_pending)
                     if has_new_data:
-                        # we added some messages to self._records,
-                        # wake up getters
-                        self._notify(self._wait_empty_future)
+                        for waiter in self._fetch_waiters:
+                            # we added some messages to self._records,
+                            # wake up waiters
+                            self._notify(waiter)
                     self._pending_tasks -= done_pending
         except asyncio.CancelledError:
             pass
@@ -797,6 +808,9 @@ class Fetcher:
 
         """
         while True:
+            if self._closed:
+                raise ConsumerStoppedError()
+
             # While the background routine will fetch new records up till new
             # assignment is finished, we don't want to return records, that may
             # not belong to this instance after rebalance.
@@ -825,10 +839,8 @@ class Fetcher:
                     res_or_error.check_raise()
 
             # No messages ready. Wait for some to arrive
-            if self._wait_empty_future is None \
-                    or self._wait_empty_future.done():
-                self._wait_empty_future = create_future(loop=self._loop)
-            yield from asyncio.shield(self._wait_empty_future, loop=self._loop)
+            waiter = self._create_fetch_waiter()
+            yield from waiter
 
     @asyncio.coroutine
     def fetched_records(self, partitions, timeout=0, max_records=None):
@@ -878,18 +890,11 @@ class Fetcher:
             if drained or not timeout:
                 return drained
 
-            if self._wait_empty_future is None \
-                    or self._wait_empty_future.done():
-                self._wait_empty_future = create_future(loop=self._loop)
-
-            wait_empty_future = self._wait_empty_future
-
+            waiter = self._create_fetch_waiter()
             done, _ = yield from asyncio.wait(
-                [wait_empty_future], timeout=timeout, loop=self._loop)
+                [waiter], timeout=timeout, loop=self._loop)
 
-            # _wait_empty_future can be set an exception in `close()` call
-            # to stop all long running tasks
-            if not done or wait_empty_future.exception() is not None:
+            if not done or self._closed:
                 return {}
 
             # Decrease timeout accordingly
