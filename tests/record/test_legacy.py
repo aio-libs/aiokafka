@@ -1,4 +1,5 @@
 import struct
+from unittest import mock
 
 import pytest
 from aiokafka.record.legacy_records import (
@@ -11,12 +12,14 @@ from aiokafka.errors import CorruptRecordException
 @pytest.mark.parametrize("key,value,checksum", [
     (b"test", b"Super", [278251978, -2095076219]),
     (b"test", None, [580701536, 164492157]),
-    (None, b"Super", [2797021502, 3315209433])])
+    (None, b"Super", [2797021502, 3315209433]),
+    (b"", b"Super", [1446809667, 890351012]),
+    (b"test", b"", [4230475139, 3614888862]),
+])
 def test_read_write_serde_v0_v1_no_compression(magic, key, value, checksum):
     builder = LegacyRecordBatchBuilder(
         magic=magic, compression_type=0, batch_size=1024 * 1024)
-    builder.append(
-        0, timestamp=9999999, key=key, value=value)
+    builder.append(0, timestamp=9999999, key=key, value=value)
     buffer = builder.build()
 
     batch = LegacyRecordBatch(buffer, magic)
@@ -90,7 +93,7 @@ def test_legacy_batch_builder_validates_arguments(magic):
         builder.append(
             0, timestamp=9999999, key=None, value="some string")
 
-    # Timestamp should be of proper type
+    # Timestamp should be of proper type (timestamp is ignored for magic == 0)
     if magic != 0:
         with pytest.raises(TypeError):
             builder.append(
@@ -100,6 +103,19 @@ def test_legacy_batch_builder_validates_arguments(magic):
     with pytest.raises(TypeError):
         builder.append(
             "0", timestamp=9999999, key=None, value=b"some string")
+
+    # Unknown struct errors are passed through. These are theoretical and
+    # indicate a bug in the implementation. The C implementation locates
+    # _encode_msg elsewhere and is less vulnerable to such bugs since it's
+    # statically typed, so we skip the test there.
+    if hasattr(builder, "_encode_msg"):
+        with mock.patch.object(builder, "_encode_msg") as mocked:
+            err = struct.error("test error")
+            mocked.side_effect = err
+            with pytest.raises(struct.error) as excinfo:
+                builder.append(
+                    0, timestamp=None, key=None, value=b"some string")
+            assert excinfo.value == err
 
     # Ok to pass value as None
     builder.append(
@@ -226,3 +242,15 @@ def test_reader_corrupt_record_v0_v1(magic):
             match="Value of compressed message is None"):
         batch = LegacyRecordBatch(new_buffer, magic)
         list(batch)
+
+
+def test_record_overhead():
+    known = {
+        0: 14,
+        1: 22,
+    }
+    for magic, size in known.items():
+        assert LegacyRecordBatchBuilder.record_overhead(magic) == size
+
+    with pytest.raises(ValueError):
+        LegacyRecordBatchBuilder.record_overhead(9)

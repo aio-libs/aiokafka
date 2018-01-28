@@ -1,7 +1,7 @@
 import struct
 import time
 
-from .util import calc_crc32
+from binascii import crc32
 
 from aiokafka.errors import CorruptRecordException
 from aiokafka.util import NO_EXTENSIONS
@@ -9,6 +9,9 @@ from kafka.codec import (
     gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
     gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka
 )
+
+
+NoneType = type(None)
 
 
 class LegacyRecordBase:
@@ -52,6 +55,10 @@ class LegacyRecordBase:
         "i"   # Key length
         "i"   # Value length
     )
+    RECORD_OVERHEAD = {
+        0: RECORD_OVERHEAD_V0,
+        1: RECORD_OVERHEAD_V1,
+    }
 
     KEY_OFFSET_V0 = HEADER_STRUCT_V0.size
     KEY_OFFSET_V1 = HEADER_STRUCT_V1.size
@@ -102,7 +109,7 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
         return self._attributes & self.CODEC_MASK
 
     def validate_crc(self):
-        crc = calc_crc32(self._buffer[self.MAGIC_OFFSET:])
+        crc = crc32(self._buffer[self.MAGIC_OFFSET:])
         return self._crc == crc
 
     def _decompress(self, key_offset):
@@ -277,156 +284,163 @@ class _LegacyRecordPy:
 
 class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
 
-    def __init__(self, magic, compression_type, batch_size):
+    def __init__(self, magic, compression_type, batch_size,
+                 buffer_chunk_size=256*1024):
+        assert magic in [0, 1]
         self._magic = magic
         self._compression_type = compression_type
         self._batch_size = batch_size
-        self._buffer = bytearray()
+        self._chunk_size = min(batch_size, buffer_chunk_size)
+        self._buffer = bytearray(self._chunk_size)
+        self._pos = 0
 
     def append(self, offset, timestamp, key, value):
         """ Append message to batch.
         """
-        # Check types
-        if type(offset) != int:
-            raise TypeError(offset)
         if self._magic == 0:
             timestamp = -1
         elif timestamp is None:
             timestamp = int(time.time() * 1000)
-        elif type(timestamp) != int:
-            raise TypeError(timestamp)
-        if not (key is None or
-                isinstance(key, (bytes, bytearray, memoryview))):
-            raise TypeError(
-                "Not supported type for key: {}".format(type(key)))
-        if not (value is None or
-                isinstance(value, (bytes, bytearray, memoryview))):
-            raise TypeError(
-                "Not supported type for value: {}".format(type(value)))
 
-        # Check if we have room for another message
-        pos = len(self._buffer)
-        size = self.size_in_bytes(offset, timestamp, key, value)
-        # We always allow at least one record to be appended
+        # calculating length is not cheap; only do it once
+        key_size = len(key) if key is not None else 0
+        value_size = len(value) if value is not None else 0
+
+        pos = self._pos
+        size = self._size_in_bytes(key_size, value_size)
+        free = len(self._buffer) - pos
+
+        # always allow at least one record to be appended
         if offset != 0 and pos + size >= self._batch_size:
             return None
+        elif size > free:
+            self._buffer.extend(bytearray(max(self._chunk_size, size - free)))
 
-        # Allocate proper buffer length
-        self._buffer.extend(bytearray(size))
+        try:
+            crc = self._encode_msg(
+                pos, size, offset, timestamp, key_size, key, value_size, value)
+            self._pos += size
+            return LegacyRecordMetadata(offset, crc, size, timestamp)
 
-        # Encode message
-        crc = self._encode_msg(pos, offset, timestamp, key, value)
+        except struct.error:
+            # perform expensive type checking only to translate struct errors
+            # to human-readable messages
+            if type(offset) != int:
+                raise TypeError(offset)
+            if type(timestamp) != int:
+                raise TypeError(timestamp)
+            if not isinstance(key, (bytes, bytearray, memoryview, NoneType)):
+                raise TypeError("Unsupported type for key: %s" % type(key))
+            if not isinstance(value, (bytes, bytearray, memoryview, NoneType)):
+                raise TypeError("Unsupported type for value: %s" % type(value))
+            raise
 
-        return LegacyRecordMetadata(offset, crc, size, timestamp)
-
-    def _encode_msg(self, start_pos, offset, timestamp, key, value,
-                    attributes=0):
+    def _encode_msg(self, start_pos, size, offset, timestamp, key_size, key,
+                    value_size, value, attributes=0):
         """ Encode msg data into the `msg_buffer`, which should be allocated
             to at least the size of this message.
         """
         magic = self._magic
-        buf = self._buffer
-        pos = start_pos
+        buf = memoryview(self._buffer)[start_pos:]
 
-        # Write key and value
-        pos += self.KEY_OFFSET_V0 if magic == 0 else self.KEY_OFFSET_V1
+        length = (self.KEY_LENGTH + key_size
+                  + self.VALUE_LENGTH + value_size
+                  - self.LOG_OVERHEAD)
 
-        if key is None:
-            struct.pack_into(">i", buf, pos, -1)
-            pos += self.KEY_LENGTH
-        else:
-            key_size = len(key)
-            struct.pack_into(">i", buf, pos, key_size)
-            pos += self.KEY_LENGTH
-            buf[pos: pos + key_size] = key
-            pos += key_size
-
-        if value is None:
-            struct.pack_into(">i", buf, pos, -1)
-            pos += self.VALUE_LENGTH
-        else:
-            value_size = len(value)
-            struct.pack_into(">i", buf, pos, value_size)
-            pos += self.VALUE_LENGTH
-            buf[pos: pos + value_size] = value
-            pos += value_size
-        length = (pos - start_pos) - self.LOG_OVERHEAD
-
-        # Write msg header. Note, that Crc will be updated later
         if magic == 0:
-            self.HEADER_STRUCT_V0.pack_into(
-                buf, start_pos,
-                offset, length, 0, magic, attributes)
+            length += self.KEY_OFFSET_V0
+            struct.pack_into(
+                ">q"   # BaseOffset => Int64
+                "i"    # Length => Int32
+                "I"    # CRC => Int32
+                "b"    # Magic => Int8
+                "b"    # Attributes => Int8
+                "i"    # key length => Int32
+                "%ds"  # key => bytes
+                "i"    # value length => Int32
+                "%ds"  # value => bytes
+                % (key_size, value_size),
+                buf, 0, offset, length, 0, magic, attributes,
+                key_size if key is not None else -1, key or b"",
+                value_size if value is not None else -1, value or b"")
         else:
-            self.HEADER_STRUCT_V1.pack_into(
-                buf, start_pos,
-                offset, length, 0, magic, attributes, timestamp)
+            length += self.KEY_OFFSET_V1
+            struct.pack_into(
+                ">q"   # BaseOffset => Int64
+                "i"    # Length => Int32
+                "I"    # CRC => Int32
+                "b"    # Magic => Int8
+                "b"    # Attributes => Int8
+                "q"    # timestamp => Int64
+                "i"    # key length => Int32
+                "%ds"  # key => bytes
+                "i"    # value length => Int32
+                "%ds"  # value => bytes
+                % (key_size, value_size),
+                buf, 0, offset, length, 0, magic, attributes, timestamp,
+                key_size if key is not None else -1, key or b"",
+                value_size if value is not None else -1, value or b"")
 
-        # Calculate CRC for msg
-        crc_data = memoryview(buf)[start_pos + self.MAGIC_OFFSET:]
-        crc = calc_crc32(crc_data)
-        struct.pack_into(">I", buf, start_pos + self.CRC_OFFSET, crc)
+        crc = crc32(buf[self.MAGIC_OFFSET:size])
+        struct.pack_into(">I", buf, self.CRC_OFFSET, crc)
         return crc
 
     def _maybe_compress(self):
         if self._compression_type:
+            buf = memoryview(self._buffer)[:self._pos]
             if self._compression_type == self.CODEC_GZIP:
-                compressed = gzip_encode(self._buffer)
+                compressed = gzip_encode(buf)
             elif self._compression_type == self.CODEC_SNAPPY:
-                compressed = snappy_encode(self._buffer)
+                compressed = snappy_encode(buf)
             elif self._compression_type == self.CODEC_LZ4:
                 if self._magic == 0:
-                    compressed = lz4_encode_old_kafka(bytes(self._buffer))
+                    compressed = lz4_encode_old_kafka(bytes(buf))
                 else:
-                    compressed = lz4_encode(bytes(self._buffer))
-            size = self.size_in_bytes(
-                0, timestamp=0, key=None, value=compressed)
+                    compressed = lz4_encode(bytes(buf))
+            compressed_size = len(compressed)
+            size = self._size_in_bytes(key_size=0, value_size=compressed_size)
             if size > len(self._buffer):
                 self._buffer = bytearray(size)
-            else:
-                del self._buffer[size:]
             self._encode_msg(
-                start_pos=0,
-                offset=0, timestamp=0, key=None, value=compressed,
+                start_pos=0, size=size,
+                offset=0, timestamp=0, key_size=0, key=None,
+                value_size=compressed_size, value=compressed,
                 attributes=self._compression_type)
+            self._pos = size
             return True
         return False
 
     def build(self):
         """Compress batch to be ready for send"""
         self._maybe_compress()
+        del self._buffer[self._pos:]
         return self._buffer
 
     def size(self):
         """ Return current size of data written to buffer
         """
-        return len(self._buffer)
-
-    # Size calculations. Just copied Java's implementation
+        return self._pos
 
     def size_in_bytes(self, offset, timestamp, key, value, headers=None):
         """ Actual size of message to add
         """
         assert not headers, "Headers not supported in v0/v1"
-        magic = self._magic
-        return self.LOG_OVERHEAD + self.record_size(magic, key, value)
+        key_size = len(key) if key is not None else 0
+        value_size = len(value) if value is not None else 0
+        return self._size_in_bytes(key_size, value_size)
 
-    @classmethod
-    def record_size(cls, magic, key, value):
-        message_size = cls.record_overhead(magic)
-        if key is not None:
-            message_size += len(key)
-        if value is not None:
-            message_size += len(value)
-        return message_size
+    def _size_in_bytes(self, key_size, value_size):
+        return (self.LOG_OVERHEAD
+                + self.RECORD_OVERHEAD[self._magic]
+                + key_size
+                + value_size)
 
     @classmethod
     def record_overhead(cls, magic):
-        assert magic in [0, 1], "Not supported magic"
-        if magic == 0:
-            return cls.RECORD_OVERHEAD_V0
-        else:
-            return cls.RECORD_OVERHEAD_V1
+        try:
+            return cls.RECORD_OVERHEAD[magic]
+        except KeyError:
+            raise ValueError("Unsupported magic: %d" % magic)
 
 
 class _LegacyRecordMetadataPy:

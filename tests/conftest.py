@@ -17,7 +17,7 @@ from aiokafka.util import NO_EXTENSIONS
 if not NO_EXTENSIONS:
     assert LegacyRecordBatchBuilder is not _LegacyRecordBatchBuilderPy, \
         "Expected to run tests with C extension, but it was not imported. "\
-        "To run tests without a C extensions set NO_EXTENSIONS=1 env veriable"
+        "To run tests without a C extensions set env AIOKAFKA_NO_EXTENSIONS=1"
     print("Running tests with C extension")
 else:
     print("Running tests without C extension")
