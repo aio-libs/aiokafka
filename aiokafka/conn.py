@@ -106,10 +106,23 @@ class AIOKafkaConnection:
         self._reader, self._writer, self._protocol = reader, writer, protocol
         # Start reader task.
         self._read_task = ensure_future(self._read(), loop=loop)
+        self._read_task.add_done_callback(self._on_read_task_error)
         # Start idle checker
         if self._max_idle_ms is not None:
             self._idle_handle = self._loop.call_soon(self._idle_check)
         return reader, writer
+
+    def _on_read_task_error(self, read_task):
+        try:
+            read_task.result()
+        except Exception as exc:
+            conn_exc = Errors.ConnectionError(
+                "Connection at {0}:{1} broken".format(self._host, self._port))
+            conn_exc.__cause__ = exc
+            conn_exc.__context__ = exc
+            for _, _, fut in self._requests:
+                fut.set_exception(conn_exc)
+            self.close(reason=CloseReason.CONNECTION_BROKEN)
 
     def _idle_check(self):
         idle_for = self._loop.time() - self._last_action
