@@ -348,12 +348,11 @@ cdef class _LegacyRecordBatchBuilderCython:
     CODEC_LZ4 = ATTR_CODEC_LZ4
 
     def __cinit__(self, char magic, char compression_type,
-                  Py_ssize_t batch_size, Py_ssize_t buffer_chunk_size=0):
+                  Py_ssize_t batch_size):
         self._magic = magic
         self._compression_type = compression_type
         self._batch_size = batch_size
         self._buffer = bytearray()
-        # ignore buffer_chunk_size
 
     def append(self, int64_t offset, timestamp, key, value):
         """ Append message to batch.
@@ -361,8 +360,6 @@ cdef class _LegacyRecordBatchBuilderCython:
         cdef:
             Py_ssize_t pos
             Py_ssize_t size
-            Py_ssize_t key_size
-            Py_ssize_t value_size
             char *buf
             int64_t ts
             LegacyRecordMetadata metadata
@@ -375,12 +372,9 @@ cdef class _LegacyRecordBatchBuilderCython:
         else:
             ts = timestamp
 
-        key_size = _size_of_bytearray(key)
-        value_size = _size_of_bytearray(value)
-
         # Check if we have room for another message
         pos = PyByteArray_GET_SIZE(self._buffer)
-        size = _size_in_bytes(self._magic, key_size, value_size)
+        size = _size_in_bytes(self._magic, key, value)
         # We always allow at least one record to be appended
         if offset != 0 and pos + size >= self._batch_size:
             return None
@@ -407,25 +401,20 @@ cdef class _LegacyRecordBatchBuilderCython:
     def size_in_bytes(self, offset, timestamp, key, value):
         """ Actual size of message to add
         """
-        key_size = _size_of_bytearray(key)
-        value_size = _size_of_bytearray(value)
-        return _size_in_bytes(self._magic, key_size, value_size)
+        return _size_in_bytes(self._magic, key, value)
 
     @staticmethod
     def record_overhead(char magic):
         if magic == 0:
             return RECORD_OVERHEAD_V0_DEF
-        elif magic == 1:
-            return RECORD_OVERHEAD_V1_DEF
         else:
-            raise ValueError("Unsupported magic: %d" % magic)
+            return RECORD_OVERHEAD_V1_DEF
 
     cdef int _maybe_compress(self) except -1:
         cdef:
             object compressed
             char *buf
             Py_ssize_t size
-            Py_ssize_t value_size
             uint32_t crc
 
         if self._compression_type != 0:
@@ -440,9 +429,7 @@ cdef class _LegacyRecordBatchBuilderCython:
                     compressed = lz4_encode(bytes(self._buffer))
             else:
                 return 0
-            value_size = _size_of_bytearray(compressed)
-            size = _size_in_bytes(
-                self._magic, key_size=0, value_size=value_size)
+            size = _size_in_bytes(self._magic, key=None, value=compressed)
             # We will just write the result into the same memory space.
             PyByteArray_Resize(self._buffer, size)
 
@@ -460,28 +447,32 @@ cdef class _LegacyRecordBatchBuilderCython:
         return self._buffer
 
 
-cdef Py_ssize_t _size_in_bytes(char magic, Py_ssize_t key_size, Py_ssize_t value_size) except -1:
+cdef Py_ssize_t _size_in_bytes(char magic, object key, object value) except -1:
     """ Actual size of message to add
-    """
-    if magic == 0:
-        return LOG_OVERHEAD + RECORD_OVERHEAD_V0_DEF + key_size + value_size
-    else:
-        return LOG_OVERHEAD + RECORD_OVERHEAD_V1_DEF + key_size + value_size
-
-
-cdef Py_ssize_t _size_of_bytearray(object obj) except -1:
-    """ Properly return size of bytearray object
     """
     cdef:
         Py_buffer buf
+        Py_ssize_t key_len
+        Py_ssize_t value_len
 
-    if obj is None:
-        return 0
+    if key is None:
+        key_len = 0
     else:
-        PyObject_GetBuffer(obj, &buf, PyBUF_SIMPLE)
-        obj_size = buf.len
+        PyObject_GetBuffer(key, &buf, PyBUF_SIMPLE)
+        key_len = buf.len
         PyBuffer_Release(&buf)
-        return obj_size
+
+    if value is None:
+        value_len = 0
+    else:
+        PyObject_GetBuffer(value, &buf, PyBUF_SIMPLE)
+        value_len = buf.len
+        PyBuffer_Release(&buf)
+
+    if magic == 0:
+        return LOG_OVERHEAD + RECORD_OVERHEAD_V0_DEF + key_len + value_len
+    else:
+        return LOG_OVERHEAD + RECORD_OVERHEAD_V1_DEF + key_len + value_len
 
 
 cdef int _encode_msg(
