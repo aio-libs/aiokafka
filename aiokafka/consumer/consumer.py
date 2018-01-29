@@ -136,7 +136,8 @@ class AIOKafkaConsumer(object):
             the only way to receive records from an internal topic is
             subscribing to it. Requires 0.10+ Default: True
         connections_max_idle_ms (int): Close idle connections after the number
-            of milliseconds specified by this config. Default: 540000 (9hours).
+            of milliseconds specified by this config. Specifying `None` will
+            disable idle checks. Default: 540000 (9hours).
 
     Note:
         Many configuration parameters are taken from Java Client:

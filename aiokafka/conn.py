@@ -182,6 +182,7 @@ class AIOKafkaConnection:
         return bool(self._reader is not None and not self._reader.at_eof())
 
     def close(self, reason=None):
+        self.log.debug("Closing connection at %s:%s", self._host, self._port)
         if self._reader is not None:
             self._writer.close()
             self._writer = self._reader = None
