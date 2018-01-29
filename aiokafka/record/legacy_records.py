@@ -284,14 +284,12 @@ class _LegacyRecordPy:
 
 class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
 
-    def __init__(self, magic, compression_type, batch_size,
-                 buffer_chunk_size=256*1024):
+    def __init__(self, magic, compression_type, batch_size):
         assert magic in [0, 1]
         self._magic = magic
         self._compression_type = compression_type
         self._batch_size = batch_size
-        self._chunk_size = min(batch_size, buffer_chunk_size)
-        self._buffer = bytearray(self._chunk_size)
+        self._msg_buffers = []
         self._pos = 0
 
     def append(self, offset, timestamp, key, value):
@@ -308,17 +306,16 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
 
         pos = self._pos
         size = self._size_in_bytes(key_size, value_size)
-        free = len(self._buffer) - pos
 
         # always allow at least one record to be appended
         if offset != 0 and pos + size >= self._batch_size:
             return None
-        elif size > free:
-            self._buffer.extend(bytearray(max(self._chunk_size, size - free)))
 
+        msg_buf = bytearray(size)
         try:
             crc = self._encode_msg(
-                pos, size, offset, timestamp, key_size, key, value_size, value)
+                msg_buf, offset, timestamp, key_size, key, value_size, value)
+            self._msg_buffers.append(msg_buf)
             self._pos += size
             return LegacyRecordMetadata(offset, crc, size, timestamp)
 
@@ -335,17 +332,15 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
                 raise TypeError("Unsupported type for value: %s" % type(value))
             raise
 
-    def _encode_msg(self, start_pos, size, offset, timestamp, key_size, key,
+    def _encode_msg(self, buf, offset, timestamp, key_size, key,
                     value_size, value, attributes=0):
         """ Encode msg data into the `msg_buffer`, which should be allocated
             to at least the size of this message.
         """
         magic = self._magic
-        buf = memoryview(self._buffer)[start_pos:]
-
-        length = (self.KEY_LENGTH + key_size
-                  + self.VALUE_LENGTH + value_size
-                  - self.LOG_OVERHEAD)
+        length = (self.KEY_LENGTH + key_size +
+                  self.VALUE_LENGTH + value_size -
+                  self.LOG_OVERHEAD)
 
         if magic == 0:
             length += self.KEY_OFFSET_V0
@@ -381,13 +376,13 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
                 key_size if key is not None else -1, key or b"",
                 value_size if value is not None else -1, value or b"")
 
-        crc = crc32(buf[self.MAGIC_OFFSET:size])
+        crc = crc32(memoryview(buf)[self.MAGIC_OFFSET:])
         struct.pack_into(">I", buf, self.CRC_OFFSET, crc)
         return crc
 
     def _maybe_compress(self):
         if self._compression_type:
-            buf = memoryview(self._buffer)[:self._pos]
+            buf = self._buffer
             if self._compression_type == self.CODEC_GZIP:
                 compressed = gzip_encode(buf)
             elif self._compression_type == self.CODEC_SNAPPY:
@@ -401,8 +396,10 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
             size = self._size_in_bytes(key_size=0, value_size=compressed_size)
             if size > len(self._buffer):
                 self._buffer = bytearray(size)
+            else:
+                del self._buffer[size:]
             self._encode_msg(
-                start_pos=0, size=size,
+                self._buffer,
                 offset=0, timestamp=0, key_size=0, key=None,
                 value_size=compressed_size, value=compressed,
                 attributes=self._compression_type)
@@ -412,8 +409,8 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
 
     def build(self):
         """Compress batch to be ready for send"""
+        self._buffer = bytearray().join(self._msg_buffers)
         self._maybe_compress()
-        del self._buffer[self._pos:]
         return self._buffer
 
     def size(self):
@@ -430,10 +427,10 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
         return self._size_in_bytes(key_size, value_size)
 
     def _size_in_bytes(self, key_size, value_size):
-        return (self.LOG_OVERHEAD
-                + self.RECORD_OVERHEAD[self._magic]
-                + key_size
-                + value_size)
+        return (self.LOG_OVERHEAD +
+                self.RECORD_OVERHEAD[self._magic] +
+                key_size +
+                value_size)
 
     @classmethod
     def record_overhead(cls, magic):
