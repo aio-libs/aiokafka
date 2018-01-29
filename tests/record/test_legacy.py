@@ -251,6 +251,3 @@ def test_record_overhead():
     }
     for magic, size in known.items():
         assert LegacyRecordBatchBuilder.record_overhead(magic) == size
-
-    with pytest.raises(ValueError):
-        LegacyRecordBatchBuilder.record_overhead(9)
