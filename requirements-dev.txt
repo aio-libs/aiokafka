@@ -7,7 +7,7 @@ coveralls==1.2.0
 Sphinx==1.6.5
 lz4==0.19.1
 xxhash==1.0.1
-python-snappy==0.5.1
+python-snappy==0.5.2
 
 sphinxcontrib-asyncio==0.2.0
 sphinxcontrib-spelling==4.0.1
