@@ -1,8 +1,49 @@
 CHANGES
 --------
 
-0.3.X (2017-XX-XX)
+0.4.0 (2018-XX-XX)
 ^^^^^^^^^^^^^^^^^^
+
+Major changes:
+
+* Full refactor of the internals of AIOKafkaConsumer. Needed to avoid several
+  race conditions in code (PR #286, fixes #258, #264 and #261)
+* Rewrote Records parsing protocol to allow implementation of newer protocol
+  versions later
+* Added C extension for Records parsing protocol, boosting the speed of
+  produce/consume routines significantly
+* Added an experimental batch producer API for unique cases, where user want's
+  to control batching himself (by @shargan)
+
+
+Minor changes:
+
+* Add `timestamp` field to produced message's metadata. This is needed to find
+  LOG_APPEND_TIME configured timestamps.
+* `Consumer.seek()` and similar API's now raise proper ``ValueError``'s' on
+  validation failure instead of ``AssertionError``.
+
+
+Bug fixes:
+
+* Fix ``connections_max_idle_ms`` option, as earlier it was only applied to
+  bootstrap socket. (PR #299)
+* Fix ``consumer.stop()`` side effect of logging an exception
+  ConsumerStoppedError (issue #263)
+* Problem with Producer not able to recover from broker failure (issue #267)
+* Traceback containing duplicate entries due to exception sharing (PR #247
+  by @Artimi)
+* Concurrent record consumption rasing `InvalidStateError('Exception is not
+  set.')` (PR #249 by @aerkert)
+* Don't fail ``GroupCoordinator._on_join_prepare()`` if ``commit_offset()``
+  throws exception (PR #230 by @shargan)
+* Send session_timeout_ms to GroupCoordinator constructor (PR #229 by @shargan)
+
+Big thanks to:
+* @shargan for Producer speed enhancements and the batch produce API
+  proposal/implementation.
+* @vineet-rh and other contributors for constant feedback on Consumer
+  problems, leading to the refactor mentioned above.
 
 
 0.3.1 (2017-09-19)
