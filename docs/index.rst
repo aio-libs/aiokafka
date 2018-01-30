@@ -16,8 +16,10 @@ Welcome to aiokafka's documentation!
 It is based on the kafka-python_ library and reuses its internals for protocol parsing, errors, etc.
 The client is designed to function much like the official Java client, with a sprinkling of Pythonic interfaces.
 
-**aiokafka** is used with 0.9/0.10 Kafka brokers and supports fully coordinated consumer groups -- i.e., dynamic
-partition assignment to multiple consumers in the same group.
+**aiokafka** can be used with 0.9+ Kafka brokers and supports fully coordinated
+consumer groups -- i.e., dynamic partition assignment to multiple consumers in
+the same group. For now new features of Kafka 11+ are yet to be implemented,
+including Transactional Producer.
 
 
 Getting started

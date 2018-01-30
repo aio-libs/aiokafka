@@ -1,7 +1,7 @@
 CHANGES
 --------
 
-0.4.0 (2018-XX-XX)
+0.4.0 (2018-01-30)
 ^^^^^^^^^^^^^^^^^^
 
 Major changes:
@@ -20,7 +20,7 @@ Minor changes:
 
 * Add `timestamp` field to produced message's metadata. This is needed to find
   LOG_APPEND_TIME configured timestamps.
-* `Consumer.seek()` and similar API's now raise proper ``ValueError``'s' on
+* `Consumer.seek()` and similar API's now raise proper ``ValueError``'s on
   validation failure instead of ``AssertionError``.
 
 
@@ -40,6 +40,7 @@ Bug fixes:
 * Send session_timeout_ms to GroupCoordinator constructor (PR #229 by @shargan)
 
 Big thanks to:
+
 * @shargan for Producer speed enhancements and the batch produce API
   proposal/implementation.
 * @vineet-rh and other contributors for constant feedback on Consumer

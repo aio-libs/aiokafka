@@ -61,6 +61,8 @@ before sending next batch if it's not yet full.
 
         await asyncio.wait_for(producer.send(...), timeout=timeout)
 
+If your use case requires direct batching control, see `Direct batch control`_.
+
 
 Retries and Message acknowledgement
 -----------------------------------
@@ -102,6 +104,11 @@ containing fields:
       more details on offsets.
     * ``topic`` - *string* topic name
     * ``partition`` - *int* partition number
+    * ``timestamp`` - *int* timestamp in epoch milliseconds (from Jan 1 1970
+      UTC)
+    * ``timestamp_type`` - *int* if broker respected the timestamp passed to
+      ``send()`` 0 will be returned (CreateTime). If Broker set it's own
+      timestamp 1 will be returned (LogAppendTime).
 
 
 Direct batch control

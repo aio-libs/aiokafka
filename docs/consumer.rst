@@ -26,9 +26,9 @@ from a Kafka cluster. Most simple usage would be::
 .. note:: ``msg.value`` and ``msg.key`` are raw bytes, use **key_deserializer**
   and **value_deserializer** configuration if you need to decode them. 
 
-.. note:: **Consumer** maintains TCP connections to the necessary brokers to
-  fetch data. Failure to call ``Consumer.stop()`` after consumer use `will 
-  leak these connections`.
+.. note:: **Consumer** maintains TCP connections as well as a few background
+  tasks to fetch data and coordinate assignments. Failure to call
+  ``Consumer.stop()`` after consumer use `will leave background tasks running`.
 
 **Consumer** transparently handles the failure of Kafka brokers and
 transparently adapts as topic partitions it fetches migrate within the
@@ -85,7 +85,7 @@ consumed. It is discussed in further detail below.
 Manual vs automatic committing
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-For most simple use cases auto commiting is probably the best choice::
+For most simple use cases auto committing is probably the best choice::
 
     consumer = AIOKafkaConsumer(
         "my_topic",
@@ -127,9 +127,11 @@ batch operations you should use *manual commit*::
 .. warning:: When using **manual commit** it is recommended to provide a
   :ref:`ConsumerRebalanceListener <consumer-rebalance-listener>` which will
   process pending messages in the batch and commit before allowing rejoin.
-  If you end up with different assignment after rejoin - commit will fail.
+  If your group will rebalance during processing commit will fail with
+  ``CommitFailedError``, as partitions may have been processed by other
+  consumer already.
 
-This examples will hold on to messages until we have enough to process in
+This example will hold on to messages until we have enough to process in
 bulk. The algorithm can be enhanced by taking advantage of:
 
   * ``await consumer.getmany()`` to avoid multiple calls to get a batch of 
