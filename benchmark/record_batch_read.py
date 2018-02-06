@@ -77,3 +77,4 @@ def func(loops: int, magic: int):
 runner = perf.Runner()
 runner.bench_time_func('batch_read_v0', func, 0)
 runner.bench_time_func('batch_read_v1', func, 1)
+runner.bench_time_func('batch_read_v1', func, 2)
