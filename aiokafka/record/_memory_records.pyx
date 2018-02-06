@@ -20,6 +20,7 @@
 # used to construct the correct class for Batch itself.
 
 from aiokafka.errors import CorruptRecordException
+from aiokafka.record.default_records import DefaultRecordBatch
 
 from ._legacy_records cimport _LegacyRecordBatchCython as LegacyRecordBatch
 from aiokafka.record cimport _hton as hton
@@ -50,7 +51,7 @@ cdef class _MemoryRecordsCython:
     def size_in_bytes(self):
         return PyBytes_GET_SIZE(self._buffer)
 
-    cdef LegacyRecordBatch _get_next(self):
+    cdef object _get_next(self):
         cdef:
             Py_ssize_t buffer_len
             char* buf
@@ -78,9 +79,13 @@ cdef class _MemoryRecordsCython:
             return None
 
         self._pos = slice_end
+
         magic = buf[MAGIC_OFFSET]
-        assert magic < 2
-        return LegacyRecordBatch.new(self._buffer, pos, slice_end, magic)
+        if magic < 2:
+            return LegacyRecordBatch.new(self._buffer, pos, slice_end, magic)
+        else:
+            membuf = memoryview(self._buffer)[pos: slice_end]
+            return DefaultRecordBatch(membuf)
 
     def has_next(self):
         cdef:
