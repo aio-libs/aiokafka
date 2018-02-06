@@ -64,6 +64,15 @@ class AIOKafkaConsumer(object):
         fetch_min_bytes (int): Minimum amount of data the server should
             return for a fetch request, otherwise wait up to
             fetch_max_wait_ms for more data to accumulate. Default: 1.
+        fetch_max_bytes (int): The maximum amount of data the server should
+            return for a fetch request. This is not an absolute maximum, if
+            the first message in the first non-empty partition of the fetch
+            is larger than this value, the message will still be returned
+            to ensure that the consumer can make progress. NOTE: consumer
+            performs fetches to multiple brokers in parallel so memory
+            usage will depend on the number of brokers containing
+            partitions for the topic.
+            Supported Kafka version >= 0.10.1.0. Default: 52428800 (50 Mb).
         fetch_max_wait_ms (int): The maximum amount of time in milliseconds
             the server will block before answering the fetch request if
             there isn't sufficient data to immediately satisfy the
@@ -150,6 +159,7 @@ class AIOKafkaConsumer(object):
                  group_id=None,
                  key_deserializer=None, value_deserializer=None,
                  fetch_max_wait_ms=500,
+                 fetch_max_bytes=52428800,
                  fetch_min_bytes=1,
                  max_partition_fetch_bytes=1 * 1024 * 1024,
                  request_timeout_ms=40 * 1000,
@@ -197,6 +207,7 @@ class AIOKafkaConsumer(object):
         self._key_deserializer = key_deserializer
         self._value_deserializer = value_deserializer
         self._fetch_min_bytes = fetch_min_bytes
+        self._fetch_max_bytes = fetch_max_bytes
         self._fetch_max_wait_ms = fetch_max_wait_ms
         self._max_partition_fetch_bytes = max_partition_fetch_bytes
         self._exclude_internal_topics = exclude_internal_topics
@@ -234,6 +245,7 @@ class AIOKafkaConsumer(object):
             key_deserializer=self._key_deserializer,
             value_deserializer=self._value_deserializer,
             fetch_min_bytes=self._fetch_min_bytes,
+            fetch_max_bytes=self._fetch_max_bytes,
             fetch_max_wait_ms=self._fetch_max_wait_ms,
             max_partition_fetch_bytes=self._max_partition_fetch_bytes,
             check_crcs=self._check_crcs,
