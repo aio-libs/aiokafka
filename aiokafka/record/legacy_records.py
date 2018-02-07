@@ -292,7 +292,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
         self._msg_buffers = []
         self._pos = 0
 
-    def append(self, offset, timestamp, key, value):
+    def append(self, offset, timestamp, key, value, headers=None):
         """ Append message to batch.
         """
         if self._magic == 0:

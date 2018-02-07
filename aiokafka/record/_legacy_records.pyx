@@ -354,7 +354,7 @@ cdef class _LegacyRecordBatchBuilderCython:
         self._batch_size = batch_size
         self._buffer = bytearray()
 
-    def append(self, int64_t offset, timestamp, key, value):
+    def append(self, int64_t offset, timestamp, key, value, headers=None):
         """ Append message to batch.
         """
         cdef:
