@@ -26,6 +26,7 @@ cdef extern from "Python.h":
 from . cimport hton
 from . cimport cutil
 
+include "consts.pxi"
 # Those are used for fast size calculations
 DEF RECORD_OVERHEAD_V0_DEF = 14
 DEF RECORD_OVERHEAD_V1_DEF = 22
@@ -42,34 +43,17 @@ DEF MAGIC_OFFSET = CRC_OFFSET + 4
 DEF ATTRIBUTES_OFFSET = MAGIC_OFFSET + 1
 DEF TIMESTAMP_OFFSET = ATTRIBUTES_OFFSET + 1
 
-# Attribute parsing flags
-DEF ATTR_CODEC_MASK = 0x07
-DEF ATTR_CODEC_GZIP = 0x01
-DEF ATTR_CODEC_SNAPPY = 0x02
-DEF ATTR_CODEC_LZ4 = 0x03
-
-DEF TIMESTAMP_TYPE_MASK = 0x08
-
-# NOTE: freelists are used based on the assumption, that those will only be
-#       temporary objects and actual structs from `aiokafka.structs` will be
-#       return to user.
-DEF LEGACY_RECORD_METADATA_FREELIST_SIZE = 20
-# Fetcher will only use 1 parser per partition, so this is based on how much
-# partitions can be used simultaniously.
-DEF LEGACY_RECORD_BATCH_FREELIST_SIZE = 100
-DEF LEGACY_RECORD_FREELIST_SIZE = 100
-
 
 @cython.no_gc_clear
 @cython.final
-@cython.freelist(LEGACY_RECORD_BATCH_FREELIST_SIZE)
+@cython.freelist(_LEGACY_RECORD_BATCH_FREELIST_SIZE)
 cdef class LegacyRecordBatch:
 
     RECORD_OVERHEAD_V0 = RECORD_OVERHEAD_V0_DEF
     RECORD_OVERHEAD_V1 = RECORD_OVERHEAD_V1_DEF
-    CODEC_GZIP = ATTR_CODEC_GZIP
-    CODEC_SNAPPY = ATTR_CODEC_SNAPPY
-    CODEC_LZ4 = ATTR_CODEC_LZ4
+    CODEC_GZIP = _ATTR_CODEC_GZIP
+    CODEC_SNAPPY = _ATTR_CODEC_SNAPPY
+    CODEC_LZ4 = _ATTR_CODEC_LZ4
 
     def __init__(self, object buffer, char magic):
         PyObject_GetBuffer(buffer, &self._buffer, PyBUF_SIMPLE)
@@ -125,11 +109,11 @@ cdef class LegacyRecordBatch:
             raise CorruptRecordException("Value of compressed message is None")
         value = self._main_record.value
 
-        if compression_type == ATTR_CODEC_GZIP:
+        if compression_type == _ATTR_CODEC_GZIP:
             uncompressed = gzip_decode(value)
-        elif compression_type == ATTR_CODEC_SNAPPY:
+        elif compression_type == _ATTR_CODEC_SNAPPY:
             uncompressed = snappy_decode(value)
-        elif compression_type == ATTR_CODEC_LZ4:
+        elif compression_type == _ATTR_CODEC_LZ4:
             if self._magic == 0:
                 uncompressed = lz4_decode_old_kafka(value)
             else:
@@ -231,7 +215,7 @@ cdef class LegacyRecordBatch:
             LegacyRecord next_record
             char timestamp_type
 
-        compression = self._main_record.attributes & ATTR_CODEC_MASK
+        compression = self._main_record.attributes & _ATTR_CODEC_MASK
         if compression:
             # In case we will call iter again
             if not self._decompressed:
@@ -246,12 +230,13 @@ cdef class LegacyRecordBatch:
                 )
             else:
                 absolute_base_offset = -1
-            timestamp_type = self._main_record.attributes & TIMESTAMP_TYPE_MASK
+            timestamp_type = \
+                self._main_record.attributes & _TIMESTAMP_TYPE_MASK
 
             while pos < self._buffer.len:
                 next_record = self._read_record(&pos)
                 # There should only ever be a single layer of compression
-                assert not next_record.attributes & ATTR_CODEC_MASK, (
+                assert not next_record.attributes & _ATTR_CODEC_MASK, (
                     'MessageSet at offset %d appears double-compressed. This '
                     'should not happen -- check your producers!'
                     % next_record.offset)
@@ -261,7 +246,7 @@ cdef class LegacyRecordBatch:
                 # typestamp type of the wrapper message:
                 if timestamp_type != 0:
                     next_record.timestamp = self._main_record.timestamp
-                    next_record.attributes |= TIMESTAMP_TYPE_MASK
+                    next_record.attributes |= _TIMESTAMP_TYPE_MASK
 
                 if absolute_base_offset >= 0:
                     next_record.offset += absolute_base_offset
@@ -273,7 +258,7 @@ cdef class LegacyRecordBatch:
 
 @cython.no_gc_clear
 @cython.final
-@cython.freelist(LEGACY_RECORD_FREELIST_SIZE)
+@cython.freelist(_LEGACY_RECORD_FREELIST_SIZE)
 cdef class LegacyRecord:
 
     def __init__(self, int64_t offset, int64_t timestamp, char attributes,
@@ -315,7 +300,7 @@ cdef class LegacyRecord:
     @property
     def timestamp_type(self):
         if self.timestamp != -1:
-            if self.attributes & TIMESTAMP_TYPE_MASK:
+            if self.attributes & _TIMESTAMP_TYPE_MASK:
                 return 1
             else:
                 return 0
@@ -343,9 +328,9 @@ cdef class LegacyRecordBatchBuilder:
         Py_ssize_t _batch_size
         bytearray _buffer
 
-    CODEC_GZIP = ATTR_CODEC_GZIP
-    CODEC_SNAPPY = ATTR_CODEC_SNAPPY
-    CODEC_LZ4 = ATTR_CODEC_LZ4
+    CODEC_GZIP = _ATTR_CODEC_GZIP
+    CODEC_SNAPPY = _ATTR_CODEC_SNAPPY
+    CODEC_LZ4 = _ATTR_CODEC_LZ4
 
     def __cinit__(self, char magic, char compression_type,
                   Py_ssize_t batch_size):
@@ -418,11 +403,11 @@ cdef class LegacyRecordBatchBuilder:
             uint32_t crc
 
         if self._compression_type != 0:
-            if self._compression_type == ATTR_CODEC_GZIP:
+            if self._compression_type == _ATTR_CODEC_GZIP:
                 compressed = gzip_encode(self._buffer)
-            elif self._compression_type == ATTR_CODEC_SNAPPY:
+            elif self._compression_type == _ATTR_CODEC_SNAPPY:
                 compressed = snappy_encode(self._buffer)
-            elif self._compression_type == ATTR_CODEC_LZ4:
+            elif self._compression_type == _ATTR_CODEC_LZ4:
                 if self._magic == 0:
                     compressed = lz4_encode_old_kafka(bytes(self._buffer))
                 else:
@@ -536,7 +521,7 @@ cdef int _encode_msg(
 
 @cython.no_gc_clear
 @cython.final
-@cython.freelist(LEGACY_RECORD_METADATA_FREELIST_SIZE)
+@cython.freelist(_LEGACY_RECORD_METADATA_FREELIST_SIZE)
 cdef class LegacyRecordMetadata:
 
     cdef:

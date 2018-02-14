@@ -67,6 +67,9 @@ from kafka.codec import (
     gzip_decode, snappy_decode, lz4_decode
 )
 
+cimport cython
+include "consts.pxi"
+
 
 class DefaultRecordBase:
 
@@ -278,62 +281,61 @@ class DefaultRecordBatch(DefaultRecordBase):
         return crc == verify_crc
 
 
-class DefaultRecord:
+@cython.no_gc_clear
+@cython.final
+@cython.freelist(_DEFAULT_RECORD_FREELIST_SIZE)
+cdef class DefaultRecord:
 
-    __slots__ = ("_offset", "_timestamp", "_timestamp_type", "_key", "_value",
-                 "_headers")
+    # V2 does not include a record checksum
+    checksum = None
 
-    def __init__(self, offset, timestamp, timestamp_type, key, value, headers):
-        self._offset = offset
-        self._timestamp = timestamp
-        self._timestamp_type = timestamp_type
-        self._key = key
-        self._value = value
-        self._headers = headers
+    def __init__(self, int64_t offset, int64_t timestamp, char timestamp_type,
+                 object key, object value, object headers):
+        self.offset = offset
+        self.timestamp = timestamp
+        self.timestamp_type = timestamp_type
+        self.key = key
+        self.value = value
+        self.headers = headers
 
-    @property
-    def offset(self):
-        return self._offset
+    @staticmethod
+    cdef inline DefaultRecord new(
+            int64_t offset, int64_t timestamp, char timestamp_type,
+            object key, object value, object headers):
+        """ Fast constructor to initialize from C.
+        """
+        cdef DefaultRecord record
+        record = DefaultRecord.__new__(DefaultRecord)
+        record.offset = offset
+        record.timestamp = timestamp
+        record.timestamp_type = timestamp_type
+        record.key = key
+        record.value = value
+        record.headers = headers
+        return record
 
     @property
     def timestamp(self):
-        """ Epoch milliseconds
-        """
-        return self._timestamp
+        if self.timestamp != -1:
+            return self.timestamp
+        else:
+            return None
 
     @property
     def timestamp_type(self):
-        """ CREATE_TIME(0) or APPEND_TIME(1)
-        """
-        return self._timestamp_type
-
-    @property
-    def key(self):
-        """ Bytes key or None
-        """
-        return self._key
-
-    @property
-    def value(self):
-        """ Bytes value or None
-        """
-        return self._value
-
-    @property
-    def headers(self):
-        return self._headers
-
-    @property
-    def checksum(self):
-        return None
+        if self.timestamp != -1:
+            return self.timestamp_type
+        else:
+            return None
 
     def __repr__(self):
         return (
             "DefaultRecord(offset={!r}, timestamp={!r}, timestamp_type={!r},"
             " key={!r}, value={!r}, headers={!r})".format(
-                self._offset, self._timestamp, self._timestamp_type,
-                self._key, self._value, self._headers)
+                self.offset, self.timestamp, self.timestamp_type,
+                self.key, self.value, self.headers)
         )
+
 
 
 class DefaultRecordBatchBuilder(DefaultRecordBase):
