@@ -1,9 +1,6 @@
 import asyncio
 import collections
-import io
 import copy
-
-from kafka.protocol.types import Int32
 
 from aiokafka.errors import (KafkaTimeoutError,
                              NotLeaderForPartitionError,
@@ -74,8 +71,7 @@ class BatchBuilder:
         if self._closed:
             return
         self._closed = True
-        data = self._builder.build()
-        self._buffer = io.BytesIO(Int32.encode(len(data)) + data)
+        self._buffer = self._builder.build()
         del self._builder
 
     def _build(self):
@@ -85,8 +81,8 @@ class BatchBuilder:
 
     def size(self):
         """Get the size of batch in bytes."""
-        if self._buffer:
-            return self._buffer.getbuffer().nbytes
+        if self._buffer is not None:
+            return len(self._buffer)
         else:
             return self._builder.size()
 
@@ -197,7 +193,6 @@ class MessageBatch:
             self._buffer = self._builder._build()
 
     def get_data_buffer(self):
-        self._buffer.seek(0)
         return self._buffer
 
 

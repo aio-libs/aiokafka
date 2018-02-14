@@ -219,9 +219,14 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         m = yield from consumer.getone()
         self.assertEqual(m.value, messages[0])
 
-        # Large request will just be skipped
-        with self.assertRaises(RecordTooLargeError):
-            yield from consumer.getone()
+        # Starting from 0.10.1 we should be able to handle any message size,
+        # as we use FetchRequest v3 or above
+        if consumer._client.api_version <= (0, 10, 0):
+            with self.assertRaises(RecordTooLargeError):
+                yield from consumer.getone()
+        else:
+            m = yield from consumer.getone()
+            self.assertEqual(m.value, messages[1])
 
         m = yield from consumer.getone()
         self.assertEqual(m.value, messages[2])
@@ -244,9 +249,15 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertTrue(m)
         self.assertEqual(m[tp][0].value, messages[0])
 
-        # Second will only get a large one, so will raise an error
-        with self.assertRaises(RecordTooLargeError):
-            yield from consumer.getmany(timeout_ms=1000)
+        # Starting from 0.10.1 we should be able to handle any message size,
+        # as we use FetchRequest v3 or above
+        if consumer._client.api_version <= (0, 10, 0):
+            with self.assertRaises(RecordTooLargeError):
+                yield from consumer.getmany(timeout_ms=1000)
+        else:
+            m = yield from consumer.getmany(timeout_ms=1000)
+            self.assertTrue(m)
+            self.assertEqual(m[tp][0].value, messages[1])
 
         m = yield from consumer.getmany(timeout_ms=1000)
         self.assertTrue(m)

@@ -3,8 +3,6 @@ import unittest
 import pytest
 import struct
 from unittest import mock
-from kafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
-from kafka.protocol.message import Message
 from kafka.protocol.metadata import (
     MetadataRequest_v0 as MetadataRequest,
     MetadataResponse_v0 as MetadataResponse)
@@ -15,6 +13,8 @@ from kafka.protocol.commit import (
 from aiokafka.conn import AIOKafkaConnection, create_conn
 from aiokafka.errors import ConnectionError, CorrelationIdError
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
+from aiokafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
+from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 
 
 @pytest.mark.usefixtures('setup_test_class')
@@ -92,10 +92,12 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         conn = yield from create_conn(host, port, loop=self.loop)
 
         # prepare message
-        msg = Message(b'foo')
+        builder = LegacyRecordBatchBuilder(
+            magic=1, compression_type=0, batch_size=99999999)
+        builder.append(offset=0, value=b"foo", key=None, timestamp=None)
         request = ProduceRequest(
             required_acks=0, timeout=10 * 1000,
-            topics=[(b'foo', [(0, [(0, msg.encode())])])])
+            topics=[(b'foo', [(0, bytes(builder.build()))])])
 
         # produce messages without acknowledge
         for i in range(100):

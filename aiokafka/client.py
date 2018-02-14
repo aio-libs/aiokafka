@@ -5,12 +5,12 @@ import random
 from kafka.conn import collect_hosts
 from kafka.cluster import ClusterMetadata
 from kafka.protocol.metadata import MetadataRequest
-from kafka.protocol.produce import ProduceRequest
 from kafka.protocol.commit import OffsetFetchRequest
 
 import aiokafka.errors as Errors
 from aiokafka import __version__
 from aiokafka.conn import create_conn, CloseReason
+from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.errors import (
     KafkaError,
     ConnectionError,
