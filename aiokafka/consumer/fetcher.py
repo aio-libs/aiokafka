@@ -6,7 +6,7 @@ from itertools import chain
 
 from kafka.protocol.offset import OffsetRequest
 
-from aiokafka.consumer.fetch import FetchRequest
+from aiokafka.protocol.fetch import FetchRequest
 import aiokafka.errors as Errors
 from aiokafka.errors import (
     ConsumerStoppedError, RecordTooLargeError, KafkaTimeoutError)

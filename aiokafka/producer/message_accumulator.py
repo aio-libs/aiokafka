@@ -81,7 +81,7 @@ class BatchBuilder:
 
     def size(self):
         """Get the size of batch in bytes."""
-        if self._buffer:
+        if self._buffer is not None:
             return len(self._buffer)
         else:
             return self._builder.size()
