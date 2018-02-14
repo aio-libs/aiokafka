@@ -1,7 +1,7 @@
 from libc.stdint cimport int64_t, uint32_t
 
 
-cdef class _LegacyRecordBatchCython:
+cdef class LegacyRecordBatch:
 
     cdef:
         Py_buffer _buffer
@@ -10,7 +10,7 @@ cdef class _LegacyRecordBatchCython:
         LegacyRecord _main_record
 
     @staticmethod
-    cdef inline _LegacyRecordBatchCython new(
+    cdef inline LegacyRecordBatch new(
         bytes buffer, Py_ssize_t pos, Py_ssize_t slice_end, char magic)
 
     cdef int _decompress(self, char compression_type) except -1

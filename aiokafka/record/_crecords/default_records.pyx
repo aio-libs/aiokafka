@@ -56,7 +56,9 @@
 
 import struct
 import time
-from .util import decode_varint, encode_varint, calc_crc32c, size_of_varint
+from aiokafka.record.util import (
+    decode_varint, encode_varint, calc_crc32c, size_of_varint
+)
 
 from aiokafka.errors import CorruptRecordException
 from aiokafka.util import NO_EXTENSIONS
@@ -334,7 +336,7 @@ class DefaultRecord:
         )
 
 
-class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
+class DefaultRecordBatchBuilder(DefaultRecordBase):
 
     # excluding key, value and headers:
     # 5 bytes length + 10 bytes timestamp + 5 bytes offset + 1 byte attributes
@@ -455,7 +457,7 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
         encode_varint(message_len, main_buffer.append)
         main_buffer.extend(message_buffer)
 
-        return _DefaultRecordMetadataPy(offset, required_size, timestamp)
+        return DefaultRecordMetadata(offset, required_size, timestamp)
 
     def write_header(self, use_compression_type=True):
         batch_len = len(self._buffer)
@@ -468,8 +470,8 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
             0,  # CRC will be set below, as we need a filled buffer for it
             self._get_attributes(use_compression_type),
             self._last_offset,
-            self._first_timestamp or 0,
-            self._max_timestamp or 0,
+            self._first_timestamp,
+            self._max_timestamp,
             self._producer_id,
             self._producer_epoch,
             self._base_sequence,
@@ -562,7 +564,7 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
         )
 
 
-class _DefaultRecordMetadataPy:
+class DefaultRecordMetadata:
 
     __slots__ = ("_size", "_timestamp", "_offset")
 
@@ -592,26 +594,3 @@ class _DefaultRecordMetadataPy:
             "DefaultRecordMetadata(offset={!r}, size={!r}, timestamp={!r})"
             .format(self._offset, self._size, self._timestamp)
         )
-
-
-if NO_EXTENSIONS:
-    DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderPy
-    DefaultRecordMetadata = _DefaultRecordMetadataPy
-    # LegacyRecordBatch = _LegacyRecordBatchPy
-    # LegacyRecord = _LegacyRecordPy
-else:
-    try:
-        from ._crecords import (
-            DefaultRecordBatchBuilder as _DefaultRecordBatchBuilderCython,
-            DefaultRecordMetadata as _DefaultRecordMetadataCython,
-        )
-        DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderCython
-        DefaultRecordMetadata = _DefaultRecordMetadataCython
-        # LegacyRecordBatch = _LegacyRecordBatchCython
-        # LegacyRecord = _LegacyRecordCython
-    except ImportError as err:  # pragma: no cover
-        DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderPy
-        DefaultRecordMetadata = _DefaultRecordMetadataPy
-        # LegacyRecordBatch = _LegacyRecordBatchPy
-        # LegacyRecord = _LegacyRecordPy
-        raise

@@ -23,8 +23,8 @@ cdef extern from "Python.h":
 
 # This should be before _cutil to generate include for `winsock2.h` before
 # `windows.h`
-from aiokafka.record cimport _hton as hton
-from aiokafka.record cimport _cutil as cutil
+from . cimport hton
+from . cimport cutil
 
 # Those are used for fast size calculations
 DEF RECORD_OVERHEAD_V0_DEF = 14
@@ -63,7 +63,7 @@ DEF LEGACY_RECORD_FREELIST_SIZE = 100
 @cython.no_gc_clear
 @cython.final
 @cython.freelist(LEGACY_RECORD_BATCH_FREELIST_SIZE)
-cdef class _LegacyRecordBatchCython:
+cdef class LegacyRecordBatch:
 
     RECORD_OVERHEAD_V0 = RECORD_OVERHEAD_V0_DEF
     RECORD_OVERHEAD_V1 = RECORD_OVERHEAD_V1_DEF
@@ -78,16 +78,16 @@ cdef class _LegacyRecordBatchCython:
         self._main_record = self._read_record(NULL)
 
     @staticmethod
-    cdef inline _LegacyRecordBatchCython new(
+    cdef inline LegacyRecordBatch new(
             bytes buffer, Py_ssize_t pos, Py_ssize_t slice_end, char magic):
         """ Fast constructor to initialize from C.
             NOTE: We take ownership of the Py_buffer object, so caller does not
                   need to call PyBuffer_Release.
         """
         cdef:
-            _LegacyRecordBatchCython batch
+            LegacyRecordBatch batch
             char* buf
-        batch = _LegacyRecordBatchCython.__new__(_LegacyRecordBatchCython)
+        batch = LegacyRecordBatch.__new__(LegacyRecordBatch)
         PyObject_GetBuffer(buffer, &batch._buffer, PyBUF_SIMPLE)
         buf = <char *>batch._buffer.buf
         # Change the buffer to include a proper slice
@@ -335,7 +335,7 @@ cdef class LegacyRecord:
         )
 
 
-cdef class _LegacyRecordBatchBuilderCython:
+cdef class LegacyRecordBatchBuilder:
 
     cdef:
         char _magic
