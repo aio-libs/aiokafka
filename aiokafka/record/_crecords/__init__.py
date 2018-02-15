@@ -1,3 +1,5 @@
+# util
+from .cutil import decode_varint  # noqa
 # abstract
 from .memory_records import (  # noqa
     MemoryRecords,
@@ -10,9 +12,9 @@ from .legacy_records import (  # noqa
     LegacyRecordMetadata,
 )
 # v2+
-from .default_records import (  # noqa
-    # DefaultRecordBatch,
-    # DefaultRecord,
-    DefaultRecordBatchBuilder,
-    DefaultRecordMetadata
-)
+# from .default_records import (  # noqa
+#     # DefaultRecordBatch,
+#     # DefaultRecord,
+#     DefaultRecordBatchBuilder,
+#     DefaultRecordMetadata
+# )

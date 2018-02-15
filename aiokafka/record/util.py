@@ -1,4 +1,5 @@
 from ._crc32c import crc as crc32c_py
+from aiokafka.util import NO_EXTENSIONS
 
 
 def encode_varint(value, write):
@@ -116,3 +117,10 @@ def calc_crc32c(memview):
     """
     crc = crc32c_py(memview)
     return crc
+
+
+if not NO_EXTENSIONS:
+    try:
+        from ._crecords import decode_varint  # noqa
+    except ImportError:  # pragma: no cover
+        raise

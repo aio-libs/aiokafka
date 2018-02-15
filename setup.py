@@ -52,6 +52,13 @@ extensions = [
         extra_compile_args=CFLAGS,
         extra_link_args=LDFLAGS
     ),
+    Extension(
+        'aiokafka.record._crecords.cutil',
+        ['aiokafka/record/_crecords/cutil' + ext],
+        libraries=LIBRARIES,
+        extra_compile_args=CFLAGS,
+        extra_link_args=LDFLAGS
+    ),
 ]
 
 

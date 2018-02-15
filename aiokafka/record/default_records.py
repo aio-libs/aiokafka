@@ -236,7 +236,7 @@ class DefaultRecordBatch(DefaultRecordBase):
 
         # validate whether we have read all header bytes in the current record
         if pos - start_pos != length:
-            CorruptRecordException(
+            raise CorruptRecordException(
                 "Invalid record size: expected to read {} bytes in record "
                 "payload, but instead read {}".format(length, pos - start_pos))
         self._pos = pos
@@ -614,4 +614,3 @@ else:
         DefaultRecordMetadata = _DefaultRecordMetadataPy
         # LegacyRecordBatch = _LegacyRecordBatchPy
         # LegacyRecord = _LegacyRecordPy
-        raise

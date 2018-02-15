@@ -21,7 +21,7 @@
 
 from aiokafka.errors import CorruptRecordException
 
-from .default_records import DefaultRecordBatch
+from .default_records cimport DefaultRecordBatch
 from .legacy_records cimport LegacyRecordBatch
 from . cimport hton
 from cpython cimport PyBytes_GET_SIZE, PyBytes_AS_STRING, Py_buffer,\
@@ -84,8 +84,7 @@ cdef class MemoryRecords:
         if magic < 2:
             return LegacyRecordBatch.new(self._buffer, pos, slice_end, magic)
         else:
-            membuf = memoryview(self._buffer)[pos: slice_end]
-            return DefaultRecordBatch(membuf)
+            return DefaultRecordBatch.new(self._buffer, pos, slice_end, magic)
 
     def has_next(self):
         cdef:

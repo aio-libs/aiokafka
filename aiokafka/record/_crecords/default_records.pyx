@@ -57,18 +57,50 @@
 import struct
 import time
 from aiokafka.record.util import (
-    decode_varint, encode_varint, calc_crc32c, size_of_varint
+    encode_varint, calc_crc32c, size_of_varint
 )
 
 from aiokafka.errors import CorruptRecordException
-from aiokafka.util import NO_EXTENSIONS
 from kafka.codec import (
     gzip_encode, snappy_encode, lz4_encode,
     gzip_decode, snappy_decode, lz4_decode
 )
 
+from cpython cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_WRITABLE, \
+                     PyBUF_SIMPLE, PyBUF_READ, Py_buffer, \
+                     PyBytes_FromStringAndSize
+from libc.stdint cimport int32_t, int64_t, uint32_t
+from libc.string cimport memcpy
 cimport cython
+cdef extern from "Python.h":
+    ssize_t PyByteArray_GET_SIZE(object)
+    char* PyByteArray_AS_STRING(bytearray ba)
+    int PyByteArray_Resize(object, ssize_t) except -1
+
+    object PyMemoryView_FromMemory(char *mem, ssize_t size, int flags)
+
+# This should be before _cutil to generate include for `winsock2.h` before
+# `windows.h`
+from . cimport hton
+from . cimport cutil
+
 include "consts.pxi"
+
+# Header structure offsets
+DEF BASE_OFFSET_OFFSET = 0
+DEF LENGTH_OFFSET = BASE_OFFSET_OFFSET + 8
+DEF PARTITION_LEADER_EPOCH_OFFSET = LENGTH_OFFSET + 4
+DEF MAGIC_OFFSET = PARTITION_LEADER_EPOCH_OFFSET + 4
+DEF CRC_OFFSET = MAGIC_OFFSET + 1
+DEF ATTRIBUTES_OFFSET = CRC_OFFSET + 4
+DEF LAST_OFFSET_DELTA_OFFSET = ATTRIBUTES_OFFSET + 2
+DEF FIRST_TIMESTAMP_OFFSET = LAST_OFFSET_DELTA_OFFSET + 4
+DEF MAX_TIMESTAMP_OFFSET = FIRST_TIMESTAMP_OFFSET + 8
+DEF PRODUCER_ID_OFFSET = MAX_TIMESTAMP_OFFSET + 8
+DEF PRODUCER_EPOCH_OFFSET = PRODUCER_ID_OFFSET + 8
+DEF BASE_SEQUENCE_OFFSET = PRODUCER_EPOCH_OFFSET + 2
+DEF RECORD_COUNT_OFFSET = BASE_SEQUENCE_OFFSET + 4
+DEF FIRST_RECORD_OFFSET = RECORD_COUNT_OFFSET + 4
 
 
 class DefaultRecordBase:
@@ -89,8 +121,8 @@ class DefaultRecordBase:
         "i"  # Records count => Int32
     )
     # Byte offset in HEADER_STRUCT of attributes field. Used to calculate CRC
-    ATTRIBUTES_OFFSET = struct.calcsize(">qiibI")
-    CRC_OFFSET = struct.calcsize(">qiib")
+    # ATTRIBUTES_OFFSET = struct.calcsize(">qiibI")
+    # CRC_OFFSET = struct.calcsize(">qiib")
     AFTER_LEN_OFFSET = struct.calcsize(">qi")
 
     CODEC_MASK = 0x07
@@ -106,74 +138,122 @@ class DefaultRecordBase:
     CREATE_TIME = 0
 
 
-class DefaultRecordBatch(DefaultRecordBase):
+@cython.no_gc_clear
+@cython.final
+@cython.freelist(_DEFAULT_RECORD_BATCH_FREELIST_SIZE)
+cdef class DefaultRecordBatch:
 
-    def __init__(self, buffer):
-        self._buffer = bytearray(buffer)
-        self._header_data = self.HEADER_STRUCT.unpack_from(self._buffer)
-        self._pos = self.HEADER_STRUCT.size
-        self._num_records = self._header_data[12]
+    CODEC_NONE = _ATTR_CODEC_NONE
+    CODEC_GZIP = _ATTR_CODEC_GZIP
+    CODEC_SNAPPY = _ATTR_CODEC_SNAPPY
+    CODEC_LZ4 = _ATTR_CODEC_LZ4
+
+    def __init__(self, object buffer):
+        PyObject_GetBuffer(buffer, &self._buffer, PyBUF_SIMPLE)
+        self._decompressed = 0
+        self._read_header()
+        self._pos = FIRST_RECORD_OFFSET
         self._next_record_index = 0
-        self._decompressed = False
 
-    @property
-    def base_offset(self):
-        return self._header_data[0]
+    @staticmethod
+    cdef inline DefaultRecordBatch new(
+            bytes buffer, Py_ssize_t pos, Py_ssize_t slice_end, char magic):
+        """ Fast constructor to initialize from C.
+            NOTE: We take ownership of the Py_buffer object, so caller does not
+                  need to call PyBuffer_Release.
+        """
+        cdef:
+            DefaultRecordBatch batch
+            char* buf
+        batch = DefaultRecordBatch.__new__(DefaultRecordBatch)
+        PyObject_GetBuffer(buffer, &batch._buffer, PyBUF_SIMPLE)
+        buf = <char *>batch._buffer.buf
+        # Change the buffer to include a proper slice
+        batch._buffer.buf = <void *> &buf[pos]
+        batch._buffer.len = slice_end - pos
 
-    @property
-    def magic(self):
-        return self._header_data[3]
+        batch._decompressed = 0
+        batch._read_header()
+        batch._pos = FIRST_RECORD_OFFSET
+        batch._next_record_index = 0
+        return batch
 
-    @property
-    def crc(self):
-        return self._header_data[4]
 
-    @property
-    def attributes(self):
-        return self._header_data[5]
+    def __dealloc__(self):
+        PyBuffer_Release(&self._buffer)
 
     @property
     def compression_type(self):
-        return self.attributes & self.CODEC_MASK
-
-    @property
-    def timestamp_type(self):
-        return int(bool(self.attributes & self.TIMESTAMP_TYPE_MASK))
+        return self.attributes & _ATTR_CODEC_MASK
 
     @property
     def is_transactional(self):
-        return bool(self.attributes & self.TRANSACTIONAL_MASK)
+        if self.attributes & _TRANSACTIONAL_MASK:
+            return True
+        else:
+            return False
 
     @property
     def is_control_batch(self):
-        return bool(self.attributes & self.CONTROL_MASK)
+        if self.attributes & _CONTROL_MASK:
+            return True
+        else:
+            return False
 
-    @property
-    def first_timestamp(self):
-        return self._header_data[7]
+    cdef inline _read_header(self):
+        # NOTE: We move the data to it's slot in the structure because we will
+        #       lose the header part after decompression.
 
-    @property
-    def max_timestamp(self):
-        return self._header_data[8]
+        cdef:
+            char* buf
+            Py_ssize_t pos = 0
 
-    def _maybe_uncompress(self):
+        buf = <char*> self._buffer.buf
+        self.base_offset = hton.unpack_int64(&buf[pos + BASE_OFFSET_OFFSET])
+        self.length = hton.unpack_int32(&buf[pos + LENGTH_OFFSET])
+        self.magic = buf[pos + MAGIC_OFFSET]
+        self.crc = <uint32_t> hton.unpack_int32(&buf[pos + CRC_OFFSET])
+        self.attributes = hton.unpack_int16(&buf[pos + ATTRIBUTES_OFFSET])
+        self.first_timestamp = \
+            hton.unpack_int64(&buf[pos + FIRST_TIMESTAMP_OFFSET])
+        self.max_timestamp = \
+            hton.unpack_int64(&buf[pos + MAX_TIMESTAMP_OFFSET])
+        self.num_records = hton.unpack_int32(&buf[pos + RECORD_COUNT_OFFSET])
+        if self.attributes & _TIMESTAMP_TYPE_MASK:
+            self.timestamp_type = 1
+        else:
+            self.timestamp_type = 0
+
+    cdef _maybe_uncompress(self):
+        cdef:
+            char compression_type
         if not self._decompressed:
-            compression_type = self.compression_type
-            if compression_type != self.CODEC_NONE:
-                data = memoryview(self._buffer)[self._pos:]
-                if compression_type == self.CODEC_GZIP:
+            compression_type = <char> self.attributes & _ATTR_CODEC_MASK
+            if compression_type != _ATTR_CODEC_NONE:
+                data = PyMemoryView_FromMemory(
+                    <char *>self._buffer.buf, <Py_ssize_t>self._buffer.len,
+                    PyBUF_READ)
+                if compression_type == _ATTR_CODEC_GZIP:
                     uncompressed = gzip_decode(data)
-                if compression_type == self.CODEC_SNAPPY:
+                if compression_type == _ATTR_CODEC_SNAPPY:
                     uncompressed = snappy_decode(data.tobytes())
-                if compression_type == self.CODEC_LZ4:
+                if compression_type == _ATTR_CODEC_LZ4:
                     uncompressed = lz4_decode(data.tobytes())
-                self._buffer = bytearray(uncompressed)
+        
+                PyBuffer_Release(&self._buffer)
+                PyObject_GetBuffer(uncompressed, &self._buffer, PyBUF_SIMPLE)
                 self._pos = 0
-        self._decompressed = True
+        self._decompressed = 1
 
-    def _read_msg(
-            self,
-            decode_varint=decode_varint):
+    cdef inline int _check_bounds(
+            self, Py_ssize_t pos, Py_ssize_t size) except -1:
+        """ Confirm that the slice is not outside buffer range
+        """
+        if pos + size > self._buffer.len:
+            raise CorruptRecordException(
+                "Can't read {} bytes from pos {}".format(size, pos))
+
+    cdef DefaultRecord _read_msg(self):
         # Record =>
         #   Length => Varint
         #   Attributes => Int8
@@ -185,98 +265,145 @@ class DefaultRecordBatch(DefaultRecordBase):
         #     HeaderKey => String
         #     HeaderValue => Bytes
 
-        buffer = self._buffer
-        pos = self._pos
-        length, pos = decode_varint(buffer, pos)
-        start_pos = pos
-        _, pos = decode_varint(buffer, pos)  # attrs can be skipped for now
+        cdef:
+            Py_ssize_t pos = self._pos
+            char* buf
 
-        ts_delta, pos = decode_varint(buffer, pos)
-        if self.timestamp_type == self.LOG_APPEND_TIME:
+            int64_t length
+            int64_t attrs
+            int64_t ts_delta
+            int64_t offset_delta
+            int64_t key_len
+            int64_t value_len
+            int64_t header_count
+            Py_ssize_t start_pos
+
+            int64_t offset
+            int64_t timestamp
+            object key
+            object value
+            list headers
+            bytes h_key
+            object h_value
+            # char attrs,
+            # uint32_t crc
+
+        # Minimum record size check
+
+        buf = <char*> self._buffer.buf
+        self._check_bounds(pos, 1)
+        cutil.decode_varint64(buf, &pos, &length)
+        start_pos = pos
+        self._check_bounds(pos, 1)
+        cutil.decode_varint64(buf, &pos, &attrs)
+
+        self._check_bounds(pos, 1)
+        cutil.decode_varint64(buf, &pos, &ts_delta)
+        if self.attributes & _TIMESTAMP_TYPE_MASK:  # LOG_APPEND_TIME
             timestamp = self.max_timestamp
         else:
             timestamp = self.first_timestamp + ts_delta
 
-        offset_delta, pos = decode_varint(buffer, pos)
+        self._check_bounds(pos, 1)
+        cutil.decode_varint64(buf, &pos, &offset_delta)
         offset = self.base_offset + offset_delta
 
-        key_len, pos = decode_varint(buffer, pos)
+        self._check_bounds(pos, 1)
+        cutil.decode_varint64(buf, &pos, &key_len)
         if key_len >= 0:
-            key = bytes(buffer[pos: pos + key_len])
-            pos += key_len
+            self._check_bounds(pos, <Py_ssize_t> key_len)
+            key = PyBytes_FromStringAndSize(
+                &buf[pos], <Py_ssize_t> key_len)
+            pos += <Py_ssize_t> key_len
         else:
             key = None
 
-        value_len, pos = decode_varint(buffer, pos)
+        self._check_bounds(pos, 1)
+        cutil.decode_varint64(buf, &pos, &value_len)
         if value_len >= 0:
-            value = bytes(buffer[pos: pos + value_len])
-            pos += value_len
+            self._check_bounds(pos, <Py_ssize_t> value_len)
+            value = PyBytes_FromStringAndSize(
+                &buf[pos], <Py_ssize_t> value_len)
+            pos += <Py_ssize_t> value_len
         else:
             value = None
 
-        header_count, pos = decode_varint(buffer, pos)
+        self._check_bounds(pos, 1)
+        cutil.decode_varint64(buf, &pos, &header_count)
         if header_count < 0:
             raise CorruptRecordException("Found invalid number of record "
                                          "headers {}".format(header_count))
         headers = []
-        while header_count:
+        while header_count > 0:
             # Header key is of type String, that can't be None
-            h_key_len, pos = decode_varint(buffer, pos)
-            if h_key_len < 0:
+            cutil.decode_varint64(buf, &pos, &key_len)
+            if key_len < 0:
                 raise CorruptRecordException(
-                    "Invalid negative header key size {}".format(h_key_len))
-            h_key = buffer[pos: pos + h_key_len].decode("utf-8")
-            pos += h_key_len
+                    "Invalid negative header key size %d" % (key_len, ))
+            self._check_bounds(pos, <Py_ssize_t> key_len)
+            h_key = PyBytes_FromStringAndSize(
+                &buf[pos], <Py_ssize_t> key_len)
+            pos += <Py_ssize_t> key_len
 
             # Value is of type NULLABLE_BYTES, so it can be None
-            h_value_len, pos = decode_varint(buffer, pos)
-            if h_value_len >= 0:
-                h_value = bytes(buffer[pos: pos + h_value_len])
-                pos += h_value_len
+            cutil.decode_varint64(buf, &pos, &value_len)
+            if value_len >= 0:
+                self._check_bounds(pos, <Py_ssize_t> value_len)
+                h_value = PyBytes_FromStringAndSize(
+                    &buf[pos], <Py_ssize_t> value_len)
+                pos += <Py_ssize_t> value_len
             else:
                 h_value = None
 
-            headers.append((h_key, h_value))
+            headers.append((h_key.decode("utf-8"), h_value))
             header_count -= 1
 
-        # validate whether we have read all header bytes in the current record
-        if pos - start_pos != length:
-            CorruptRecordException(
+        # validate whether we have read all bytes in the current record
+        if pos - start_pos != <Py_ssize_t> length:
+            raise CorruptRecordException(
                 "Invalid record size: expected to read {} bytes in record "
                 "payload, but instead read {}".format(length, pos - start_pos))
         self._pos = pos
 
-        return DefaultRecord(
+        return DefaultRecord.new(
             offset, timestamp, self.timestamp_type, key, value, headers)
 
     def __iter__(self):
+        assert self._next_record_index == 0
         self._maybe_uncompress()
         return self
 
     def __next__(self):
-        if self._next_record_index >= self._num_records:
-            if self._pos != len(self._buffer):
+        if self._next_record_index >= self.num_records:
+            if self._pos != self._buffer.len:
                 raise CorruptRecordException(
                     "{} unconsumed bytes after all records consumed".format(
-                        len(self._buffer) - self._pos))
+                        self._buffer.len - self._pos))
+            self._next_record_index = 0    
             raise StopIteration
-        try:
-            msg = self._read_msg()
-        except (ValueError, IndexError) as err:
-            raise CorruptRecordException(
-                "Found invalid record structure: {!r}".format(err))
-        else:
-            self._next_record_index += 1
+
+        msg = self._read_msg()
+        self._next_record_index += 1
         return msg
 
-    next = __next__
+    # NOTE from CYTHON docs:
+    # ```
+    #    Do NOT explicitly give your type a next() method, or bad things
+    #    could happen.
+    # ```
 
     def validate_crc(self):
-        assert self._decompressed is False, \
+        assert self._decompressed == 0, \
             "Validate should be called before iteration"
 
+        cdef:
+            uint32_t verify_crc
+
         crc = self.crc
-        data_view = memoryview(self._buffer)[self.ATTRIBUTES_OFFSET:]
+        data_view = PyMemoryView_FromMemory(
+            <char *>self._buffer.buf, <Py_ssize_t>self._buffer.len,
+            PyBUF_READ)
+        data_view = data_view[self.ATTRIBUTES_OFFSET:]
         verify_crc = calc_crc32c(data_view.tobytes())
         return crc == verify_crc
 
