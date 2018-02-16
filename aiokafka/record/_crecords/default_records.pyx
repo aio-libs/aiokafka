@@ -403,7 +403,7 @@ cdef class DefaultRecordBatch:
         data_view = PyMemoryView_FromMemory(
             <char *>self._buffer.buf, <Py_ssize_t>self._buffer.len,
             PyBUF_READ)
-        data_view = data_view[self.ATTRIBUTES_OFFSET:]
+        data_view = data_view[ATTRIBUTES_OFFSET:]
         verify_crc = calc_crc32c(data_view.tobytes())
         return crc == verify_crc
 
