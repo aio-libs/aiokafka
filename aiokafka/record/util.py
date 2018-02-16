@@ -80,7 +80,7 @@ def size_of_varint(value):
     return 10
 
 
-def decode_varint(buffer, pos=0):
+def decode_varint_py(buffer, pos=0):
     """ Decode an integer from a varint presentation. See
     https://developers.google.com/protocol-buffers/docs/encoding?csw=1#varints
     on how those can be produced.
@@ -112,15 +112,19 @@ def decode_varint(buffer, pos=0):
             raise ValueError("Out of int64 range")
 
 
-def calc_crc32c(memview):
+def calc_crc32c_py(memview):
     """ Calculate CRC-32C (Castagnoli) checksum over a memoryview of data
     """
     crc = crc32c_py(memview)
     return crc
 
 
-if not NO_EXTENSIONS:
+if NO_EXTENSIONS:
+    calc_crc32c = calc_crc32c_py
+    decode_varint = decode_varint_py
+else:
     try:
-        from ._crecords import decode_varint  # noqa
+        from ._crecords import decode_varint, crc32c_cython  # noqa
+        calc_crc32c = crc32c_cython
     except ImportError:  # pragma: no cover
         raise

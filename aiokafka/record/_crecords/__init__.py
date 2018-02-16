@@ -1,5 +1,5 @@
 # util
-from .cutil import decode_varint  # noqa
+from .cutil import decode_varint, crc32c_cython  # noqa
 # abstract
 from .memory_records import (  # noqa
     MemoryRecords,

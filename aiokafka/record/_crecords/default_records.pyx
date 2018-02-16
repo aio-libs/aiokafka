@@ -57,7 +57,7 @@
 import struct
 import time
 from aiokafka.record.util import (
-    encode_varint, calc_crc32c, size_of_varint
+    encode_varint, size_of_varint, calc_crc32c
 )
 
 from aiokafka.errors import CorruptRecordException
@@ -400,11 +400,13 @@ cdef class DefaultRecordBatch:
             uint32_t verify_crc
 
         crc = self.crc
-        data_view = PyMemoryView_FromMemory(
-            <char *>self._buffer.buf, <Py_ssize_t>self._buffer.len,
-            PyBUF_READ)
-        data_view = data_view[ATTRIBUTES_OFFSET:]
-        verify_crc = calc_crc32c(data_view.tobytes())
+        cutil.calc_crc32c(
+            0,
+            self._buffer.buf,
+            <size_t> self._buffer.len,
+            &verify_crc
+        )
+
         return crc == verify_crc
 
 

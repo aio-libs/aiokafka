@@ -54,7 +54,8 @@ extensions = [
     ),
     Extension(
         'aiokafka.record._crecords.cutil',
-        ['aiokafka/record/_crecords/cutil' + ext],
+        ['aiokafka/record/_crecords/crc32c.c',
+         'aiokafka/record/_crecords/cutil' + ext],
         libraries=LIBRARIES,
         extra_compile_args=CFLAGS,
         extra_link_args=LDFLAGS

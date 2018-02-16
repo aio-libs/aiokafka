@@ -60,7 +60,6 @@ def test_memory_records_v2():
     records = MemoryRecords(data_bytes)
 
     assert records.size_in_bytes() == 222
-    assert records.valid_bytes() == 218
 
     assert records.has_next() is True
     batch = records.next_batch()

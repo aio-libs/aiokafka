@@ -56,3 +56,32 @@ def decode_varint(buffer, pos=0):
     return out_value, read_pos
 
 # END: VarInt implementation
+
+
+# CRC32C C implementation
+
+# Init on import
+def _init_crc32c():
+    crc32c_global_init()
+
+_init_crc32c()
+
+
+def crc32c_cython(data):
+    cdef:
+        Py_buffer buf
+        uint32_t crc
+
+    PyObject_GetBuffer(data, &buf, PyBUF_SIMPLE)
+
+    calc_crc32c(
+        0,
+        buf.buf,
+        <size_t> buf.len,
+        &crc
+    )
+
+    PyBuffer_Release(&buf)
+    return crc
+
+# END: CRC32C C implementation
