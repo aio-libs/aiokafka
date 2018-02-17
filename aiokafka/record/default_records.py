@@ -101,7 +101,7 @@ class DefaultRecordBase:
     CREATE_TIME = 0
 
 
-class DefaultRecordBatch(DefaultRecordBase):
+class _DefaultRecordBatchPy(DefaultRecordBase):
 
     def __init__(self, buffer):
         self._buffer = bytearray(buffer)
@@ -276,7 +276,7 @@ class DefaultRecordBatch(DefaultRecordBase):
         return crc == verify_crc
 
 
-class DefaultRecord:
+class _DefaultRecordPy:
 
     __slots__ = ("_offset", "_timestamp", "_timestamp_type", "_key", "_value",
                  "_headers")
@@ -597,20 +597,22 @@ class _DefaultRecordMetadataPy:
 if NO_EXTENSIONS:
     DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderPy
     DefaultRecordMetadata = _DefaultRecordMetadataPy
-    # LegacyRecordBatch = _LegacyRecordBatchPy
-    # LegacyRecord = _LegacyRecordPy
+    DefaultRecordBatch = _DefaultRecordBatchPy
+    DefaultRecord = _DefaultRecordPy
 else:
     try:
         from ._crecords import (
             DefaultRecordBatchBuilder as _DefaultRecordBatchBuilderCython,
             DefaultRecordMetadata as _DefaultRecordMetadataCython,
+            DefaultRecordBatch as _DefaultRecordBatchCython,
+            DefaultRecord as _DefaultRecordCython,
         )
         DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderCython
         DefaultRecordMetadata = _DefaultRecordMetadataCython
-        # LegacyRecordBatch = _LegacyRecordBatchCython
-        # LegacyRecord = _LegacyRecordCython
+        DefaultRecordBatch = _DefaultRecordBatchCython
+        DefaultRecord = _DefaultRecordCython
     except ImportError as err:  # pragma: no cover
         DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderPy
         DefaultRecordMetadata = _DefaultRecordMetadataPy
-        # LegacyRecordBatch = _LegacyRecordBatchPy
-        # LegacyRecord = _LegacyRecordPy
+        DefaultRecordBatch = _DefaultRecordBatchPy
+        DefaultRecord = _DefaultRecordPy

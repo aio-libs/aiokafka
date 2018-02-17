@@ -56,9 +56,6 @@
 
 import struct
 import time
-from aiokafka.record.util import (
-    encode_varint, size_of_varint, calc_crc32c
-)
 
 from aiokafka.errors import CorruptRecordException
 from kafka.codec import (
@@ -69,7 +66,7 @@ from kafka.codec import (
 from cpython cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_WRITABLE, \
                      PyBUF_SIMPLE, PyBUF_READ, Py_buffer, \
                      PyBytes_FromStringAndSize
-from libc.stdint cimport int32_t, int64_t, uint32_t
+from libc.stdint cimport int32_t, int64_t, uint32_t, int16_t
 from libc.string cimport memcpy
 cimport cython
 cdef extern from "Python.h":
@@ -102,40 +99,9 @@ DEF BASE_SEQUENCE_OFFSET = PRODUCER_EPOCH_OFFSET + 2
 DEF RECORD_COUNT_OFFSET = BASE_SEQUENCE_OFFSET + 4
 DEF FIRST_RECORD_OFFSET = RECORD_COUNT_OFFSET + 4
 
-
-class DefaultRecordBase:
-
-    HEADER_STRUCT = struct.Struct(
-        ">q"  # BaseOffset => Int64
-        "i"  # Length => Int32
-        "i"  # PartitionLeaderEpoch => Int32
-        "b"  # Magic => Int8
-        "I"  # CRC => Uint32
-        "h"  # Attributes => Int16
-        "i"  # LastOffsetDelta => Int32 // also serves as LastSequenceDelta
-        "q"  # FirstTimestamp => Int64
-        "q"  # MaxTimestamp => Int64
-        "q"  # ProducerId => Int64
-        "h"  # ProducerEpoch => Int16
-        "i"  # BaseSequence => Int32
-        "i"  # Records count => Int32
-    )
-    # Byte offset in HEADER_STRUCT of attributes field. Used to calculate CRC
-    # ATTRIBUTES_OFFSET = struct.calcsize(">qiibI")
-    # CRC_OFFSET = struct.calcsize(">qiib")
-    AFTER_LEN_OFFSET = struct.calcsize(">qi")
-
-    CODEC_MASK = 0x07
-    CODEC_NONE = 0x00
-    CODEC_GZIP = 0x01
-    CODEC_SNAPPY = 0x02
-    CODEC_LZ4 = 0x03
-    TIMESTAMP_TYPE_MASK = 0x08
-    TRANSACTIONAL_MASK = 0x10
-    CONTROL_MASK = 0x20
-
-    LOG_APPEND_TIME = 1
-    CREATE_TIME = 0
+# excluding key, value and headers:
+# 5 bytes length + 10 bytes timestamp + 5 bytes offset + 1 byte attributes
+DEF MAX_RECORD_OVERHEAD = 21
 
 
 @cython.no_gc_clear
@@ -206,19 +172,18 @@ cdef class DefaultRecordBatch:
 
         cdef:
             char* buf
-            Py_ssize_t pos = 0
 
         buf = <char*> self._buffer.buf
-        self.base_offset = hton.unpack_int64(&buf[pos + BASE_OFFSET_OFFSET])
-        self.length = hton.unpack_int32(&buf[pos + LENGTH_OFFSET])
-        self.magic = buf[pos + MAGIC_OFFSET]
-        self.crc = <uint32_t> hton.unpack_int32(&buf[pos + CRC_OFFSET])
-        self.attributes = hton.unpack_int16(&buf[pos + ATTRIBUTES_OFFSET])
+        self.base_offset = hton.unpack_int64(&buf[BASE_OFFSET_OFFSET])
+        self.length = hton.unpack_int32(&buf[LENGTH_OFFSET])
+        self.magic = buf[MAGIC_OFFSET]
+        self.crc = <uint32_t> hton.unpack_int32(&buf[CRC_OFFSET])
+        self.attributes = hton.unpack_int16(&buf[ATTRIBUTES_OFFSET])
         self.first_timestamp = \
-            hton.unpack_int64(&buf[pos + FIRST_TIMESTAMP_OFFSET])
+            hton.unpack_int64(&buf[FIRST_TIMESTAMP_OFFSET])
         self.max_timestamp = \
-            hton.unpack_int64(&buf[pos + MAX_TIMESTAMP_OFFSET])
-        self.num_records = hton.unpack_int32(&buf[pos + RECORD_COUNT_OFFSET])
+            hton.unpack_int64(&buf[MAX_TIMESTAMP_OFFSET])
+        self.num_records = hton.unpack_int32(&buf[RECORD_COUNT_OFFSET])
         if self.attributes & _TIMESTAMP_TYPE_MASK:
             self.timestamp_type = 1
         else:
@@ -231,7 +196,8 @@ cdef class DefaultRecordBatch:
             compression_type = <char> self.attributes & _ATTR_CODEC_MASK
             if compression_type != _ATTR_CODEC_NONE:
                 data = PyMemoryView_FromMemory(
-                    <char *>self._buffer.buf, <Py_ssize_t>self._buffer.len,
+                    <char *> (&self._buffer.buf[self._pos]),
+                    self._buffer.len - self._pos,
                     PyBUF_READ)
                 if compression_type == _ATTR_CODEC_GZIP:
                     uncompressed = gzip_decode(data)
@@ -466,68 +432,110 @@ cdef class DefaultRecord:
         )
 
 
+cdef class DefaultRecordBatchBuilder:
 
-class DefaultRecordBatchBuilder(DefaultRecordBase):
+    cdef:
+        char _magic
+        char _compression_type
+        Py_ssize_t _batch_size
+        Py_ssize_t _pos
+        bytearray _buffer
 
-    # excluding key, value and headers:
-    # 5 bytes length + 10 bytes timestamp + 5 bytes offset + 1 byte attributes
-    MAX_RECORD_OVERHEAD = 21
+        char _is_transactional
+        int64_t _producer_id
+        int16_t _producer_epoch
+        int32_t _base_sequence
 
-    def __init__(
-            self, magic, compression_type, is_transactional,
-            producer_id, producer_epoch, base_sequence, batch_size):
+        int64_t _first_timestamp
+        int64_t _max_timestamp
+        int32_t _last_offset
+        int32_t _num_records
+
+
+
+    def __cinit__(
+            self, char magic, char compression_type, char is_transactional,
+            int64_t producer_id, int16_t producer_epoch,
+            int32_t base_sequence, Py_ssize_t batch_size):
         assert magic >= 2
         self._magic = magic
-        self._compression_type = compression_type & self.CODEC_MASK
+        self._compression_type = compression_type & _ATTR_CODEC_MASK
         self._batch_size = batch_size
-        self._is_transactional = bool(is_transactional)
+        self._is_transactional = is_transactional
         # KIP-98 fields for EOS
         self._producer_id = producer_id
         self._producer_epoch = producer_epoch
         self._base_sequence = base_sequence
 
-        self._first_timestamp = None
-        self._max_timestamp = None
+        self._first_timestamp = -1
+        self._max_timestamp = -1
         self._last_offset = 0
         self._num_records = 0
 
-        self._buffer = bytearray(self.HEADER_STRUCT.size)
+        self._buffer = bytearray(FIRST_RECORD_OFFSET)
+        self._pos = FIRST_RECORD_OFFSET
 
-    def _get_attributes(self, include_compression_type=True):
+    cdef int16_t _get_attributes(self, int include_compression_type):
+        cdef:
+            int16_t attrs
         attrs = 0
         if include_compression_type:
             attrs |= self._compression_type
         # Timestamp Type is set by Broker
         if self._is_transactional:
-            attrs |= self.TRANSACTIONAL_MASK
+            attrs |= _TRANSACTIONAL_MASK
         # Control batches are only created by Broker
         return attrs
 
-    def append(self, offset, timestamp, key, value, headers,
-               # Cache for LOAD_FAST opcodes
-               encode_varint=encode_varint, size_of_varint=size_of_varint,
-               get_type=type, type_int=int, time_time=time.time,
-               byte_like=(bytes, bytearray, memoryview),
-               bytearray_type=bytearray, len_func=len, zero_len_varint=1
-               ):
+    def append(self, int64_t offset, timestamp, key, value, list headers):
         """ Write message to messageset buffer with MsgVersion 2
         """
+        cdef:
+            Py_ssize_t pos
+            Py_ssize_t size
+            Py_ssize_t msg_size
+            char *buf
+            int64_t ts
+
         # Check types
-        if get_type(offset) != type_int:
-            raise TypeError(offset)
         if timestamp is None:
-            timestamp = type_int(time_time() * 1000)
-        elif get_type(timestamp) != type_int:
-            raise TypeError(timestamp)
-        if not (key is None or get_type(key) in byte_like):
-            raise TypeError(
-                "Not supported type for key: {}".format(type(key)))
-        if not (value is None or get_type(value) in byte_like):
-            raise TypeError(
-                "Not supported type for value: {}".format(type(value)))
+            ts = cutil.get_time_as_unix_ms()
+        else:
+            ts = timestamp
+
+        # Check if we have room for another message
+        pos = self._pos
+        msg_size = self._size_of_body(offset, ts, key, value, headers)
+        size = msg_size + cutil.size_of_varint(msg_size)
+        # We always allow at least one record to be appended
+        if offset != 0 and pos + size >= self._batch_size:
+            return None
+
+        # Allocate proper buffer length
+        PyByteArray_Resize(self._buffer, pos + size)
+
+        # Encode message
+        buf = PyByteArray_AS_STRING(self._buffer)
+        self._encode_msg(pos, buf, offset, ts, msg_size, key, value, headers)
+        self._pos = pos + size
+  
+        return DefaultRecordMetadata.new(offset, size, ts)
+
+    cdef int _encode_msg(
+            self, Py_ssize_t pos, char* buf, int64_t offset, int64_t timestamp,
+            Py_ssize_t msg_size, object key, object value, list headers
+            ) except -1:
+        cdef:
+            int64_t timestamp_delta
+            char first_message
+            Py_buffer tmp_buf
+            Py_ssize_t header_count
+            tuple header
+            str h_key
+            bytes h_value
 
         # We will always add the first message, so those will be set
-        if self._first_timestamp is None:
+        if self._first_timestamp == -1:
             self._first_timestamp = timestamp
             self._max_timestamp = timestamp
             timestamp_delta = 0
@@ -536,192 +544,259 @@ class DefaultRecordBatchBuilder(DefaultRecordBase):
             timestamp_delta = timestamp - self._first_timestamp
             first_message = 0
 
-        # We can't write record right away to out buffer, we need to
-        # precompute the length as first value...
-        message_buffer = bytearray_type(b"\x00")  # Attributes
-        write_byte = message_buffer.append
-        write = message_buffer.extend
+        cutil.encode_varint(buf, &pos, msg_size)  #   Length => Varint
 
-        encode_varint(timestamp_delta, write_byte)
+        buf[pos] = 0  #   Attributes => Int8
+        pos += 1
+        
+        cutil.encode_varint64(buf, &pos, timestamp_delta)
         # Base offset is always 0 on Produce
-        encode_varint(offset, write_byte)
+        cutil.encode_varint64(buf, &pos, offset)
 
-        if key is not None:
-            encode_varint(len_func(key), write_byte)
-            write(key)
+        if key is None:
+            cutil.encode_varint64(buf, &pos, -1)
         else:
-            write_byte(zero_len_varint)
+            PyObject_GetBuffer(key, &tmp_buf, PyBUF_SIMPLE)
+            cutil.encode_varint(buf, &pos, tmp_buf.len)
+            memcpy(&buf[pos], <char*>tmp_buf.buf, <size_t>tmp_buf.len)
+            pos += tmp_buf.len
+            PyBuffer_Release(&tmp_buf)
 
-        if value is not None:
-            encode_varint(len_func(value), write_byte)
-            write(value)
+        if value is None:
+            cutil.encode_varint64(buf, &pos, -1)
         else:
-            write_byte(zero_len_varint)
+            PyObject_GetBuffer(value, &tmp_buf, PyBUF_SIMPLE)
+            cutil.encode_varint(buf, &pos, tmp_buf.len)
+            memcpy(&buf[pos], <char*>tmp_buf.buf, <size_t>tmp_buf.len)
+            pos += tmp_buf.len
+            PyBuffer_Release(&tmp_buf)
 
-        encode_varint(len_func(headers), write_byte)
+        header_count = len(headers)
+        cutil.encode_varint(buf, &pos, header_count)
+        for i in range(header_count):
+            header = headers[i]
+            h_key, h_value = header
 
-        for h_key, h_value in headers:
-            h_key = h_key.encode("utf-8")
-            encode_varint(len_func(h_key), write_byte)
-            write(h_key)
-            if h_value is not None:
-                encode_varint(len_func(h_value), write_byte)
-                write(h_value)
+            PyObject_GetBuffer(h_key.encode("utf-8"), &tmp_buf, PyBUF_SIMPLE)
+            cutil.encode_varint(buf, &pos, tmp_buf.len)
+            memcpy(&buf[pos], <char*>tmp_buf.buf, <size_t>tmp_buf.len)
+            pos += tmp_buf.len
+            PyBuffer_Release(&tmp_buf)
+
+            if h_value is None:
+                cutil.encode_varint64(buf, &pos, -1)
             else:
-                write_byte(zero_len_varint)
-
-        message_len = len_func(message_buffer)
-        main_buffer = self._buffer
-
-        required_size = message_len + size_of_varint(message_len)
-        # Check if we can write this message
-        if (required_size + len_func(main_buffer) > self._batch_size and
-                not first_message):
-            return None
+                PyObject_GetBuffer(h_value, &tmp_buf, PyBUF_SIMPLE)
+                cutil.encode_varint(buf, &pos, tmp_buf.len)
+                memcpy(&buf[pos], <char*>tmp_buf.buf, <size_t>tmp_buf.len)
+                pos += tmp_buf.len
+                PyBuffer_Release(&tmp_buf)
 
         # Those should be updated after the length check
         if self._max_timestamp < timestamp:
             self._max_timestamp = timestamp
         self._num_records += 1
-        self._last_offset = offset
+        # Offset is counted from 0, so no loss should be here
+        self._last_offset = <int32_t> offset
+        return 0
 
-        encode_varint(message_len, main_buffer.append)
-        main_buffer.extend(message_buffer)
+    cdef _write_header(self, int use_compression_type):
+        cdef:
+            char *buf
+            uint32_t crc
 
-        return DefaultRecordMetadata(offset, required_size, timestamp)
+        buf = PyByteArray_AS_STRING(self._buffer)
+        # Proper BaseOffset will be set by broker
+        hton.pack_int64(&buf[BASE_OFFSET_OFFSET], 0)
+        # Size from here to end
+        hton.pack_int32(
+            &buf[LENGTH_OFFSET],
+            <int32_t> self._pos - PARTITION_LEADER_EPOCH_OFFSET)
+        # PartitionLeaderEpoch, set by broker
+        hton.pack_int32(&buf[PARTITION_LEADER_EPOCH_OFFSET], 0)
+        buf[MAGIC_OFFSET] = self._magic
+        # CRC will be set below
+        hton.pack_int16(
+            &buf[ATTRIBUTES_OFFSET],
+            self._get_attributes(use_compression_type))
+        hton.pack_int32(&buf[LAST_OFFSET_DELTA_OFFSET], self._last_offset)
+        hton.pack_int64(&buf[FIRST_TIMESTAMP_OFFSET], self._first_timestamp)
+        hton.pack_int64(&buf[MAX_TIMESTAMP_OFFSET], self._max_timestamp)
+        hton.pack_int64(&buf[PRODUCER_ID_OFFSET], self._producer_id)
+        hton.pack_int16(&buf[PRODUCER_EPOCH_OFFSET], self._producer_epoch)
+        hton.pack_int32(&buf[BASE_SEQUENCE_OFFSET], self._base_sequence)
+        hton.pack_int32(&buf[RECORD_COUNT_OFFSET], self._num_records)
 
-    def write_header(self, use_compression_type=True):
-        batch_len = len(self._buffer)
-        self.HEADER_STRUCT.pack_into(
-            self._buffer, 0,
-            0,  # BaseOffset, set by broker
-            batch_len - self.AFTER_LEN_OFFSET,  # Size from here to end
-            0,  # PartitionLeaderEpoch, set by broker
-            self._magic,
-            0,  # CRC will be set below, as we need a filled buffer for it
-            self._get_attributes(use_compression_type),
-            self._last_offset,
-            self._first_timestamp,
-            self._max_timestamp,
-            self._producer_id,
-            self._producer_epoch,
-            self._base_sequence,
-            self._num_records
+        cutil.calc_crc32c(
+            0,
+            <void *> &buf[ATTRIBUTES_OFFSET],
+            <size_t> self._pos - ATTRIBUTES_OFFSET,
+            &crc
         )
-        crc = calc_crc32c(self._buffer[self.ATTRIBUTES_OFFSET:])
-        struct.pack_into(">I", self._buffer, self.CRC_OFFSET, crc)
+        hton.pack_int32(&buf[CRC_OFFSET], <int32_t> crc)
 
-    def _maybe_compress(self):
-        if self._compression_type != self.CODEC_NONE:
-            header_size = self.HEADER_STRUCT.size
-            data = bytes(self._buffer[header_size:])
-            if self._compression_type == self.CODEC_GZIP:
+    cdef int _maybe_compress(self) except -1:
+        cdef:
+            object compressed
+            char *buf
+            Py_ssize_t size
+            Py_ssize_t header_size
+            bytes data
+
+
+        if self._compression_type != _ATTR_CODEC_NONE:
+            data = bytes(self._buffer[FIRST_RECORD_OFFSET:self._pos])
+            if self._compression_type == _ATTR_CODEC_GZIP:
                 compressed = gzip_encode(data)
-            elif self._compression_type == self.CODEC_SNAPPY:
+            elif self._compression_type == _ATTR_CODEC_SNAPPY:
                 compressed = snappy_encode(data)
-            elif self._compression_type == self.CODEC_LZ4:
+            elif self._compression_type == _ATTR_CODEC_LZ4:
                 compressed = lz4_encode(data)
-            compressed_size = len(compressed)
-            if len(data) <= compressed_size:
-                # We did not get any benefit from compression, lets send
-                # uncompressed
-                return False
-            else:
-                # Trim bytearray to the required size
-                needed_size = header_size + compressed_size
-                del self._buffer[needed_size:]
-                self._buffer[header_size:needed_size] = compressed
-                return True
-        return False
+            size = (<Py_ssize_t> len(compressed)) + FIRST_RECORD_OFFSET
+            # We will just write the result into the same memory space.
+            PyByteArray_Resize(self._buffer, size)
+
+            self._buffer[FIRST_RECORD_OFFSET:size] = compressed
+            self._pos = size
+            return 1
+        return 0
 
     def build(self):
+        cdef:
+            int send_compressed
         send_compressed = self._maybe_compress()
-        self.write_header(send_compressed)
+        self._write_header(send_compressed)
+        PyByteArray_Resize(self._buffer, self._pos)
         return self._buffer
 
     def size(self):
         """ Return current size of data written to buffer
         """
-        return len(self._buffer)
+        return self._pos
 
-    def size_in_bytes(self, offset, timestamp, key, value, headers):
-        if self._first_timestamp is not None:
+    cdef Py_ssize_t _size_of_body(
+            self, int64_t offset, int64_t timestamp, key, value, headers
+            ) except -1:
+        cdef:
+            Py_ssize_t size_of_body
+            int64_t timestamp_delta
+
+        if self._first_timestamp != -1:
             timestamp_delta = timestamp - self._first_timestamp
         else:
             timestamp_delta = 0
         size_of_body = (
             1 +  # Attrs
-            size_of_varint(offset) +
-            size_of_varint(timestamp_delta) +
-            self.size_of(key, value, headers)
+            cutil.size_of_varint64(offset) +
+            cutil.size_of_varint64(timestamp_delta) +
+            _size_of(key, value, headers)
         )
-        return size_of_body + size_of_varint(size_of_body)
+        return size_of_body
+
+    def size_in_bytes(self, offset, timestamp, key, value, headers):
+        cdef:
+            Py_ssize_t size
+        size = self._size_of_body(offset, timestamp, key, value, headers)
+        return size + cutil.size_of_varint(size)
 
     @classmethod
     def size_of(cls, key, value, headers):
-        size = 0
-        # Key size
-        if key is None:
-            size += 1
-        else:
-            key_len = len(key)
-            size += size_of_varint(key_len) + key_len
-        # Value size
-        if value is None:
-            size += 1
-        else:
-            value_len = len(value)
-            size += size_of_varint(value_len) + value_len
-        # Header size
-        size += size_of_varint(len(headers))
-        for h_key, h_value in headers:
-            h_key_len = len(h_key.encode("utf-8"))
-            size += size_of_varint(h_key_len) + h_key_len
-
-            if h_value is None:
-                size += 1
-            else:
-                h_value_len = len(h_value)
-                size += size_of_varint(h_value_len) + h_value_len
-        return size
+        return _size_of(key, value, headers)
 
     @classmethod
     def estimate_size_in_bytes(cls, key, value, headers):
         """ Get the upper bound estimate on the size of record
         """
         return (
-            cls.HEADER_STRUCT.size + cls.MAX_RECORD_OVERHEAD +
-            cls.size_of(key, value, headers)
+            FIRST_RECORD_OFFSET + MAX_RECORD_OVERHEAD +
+            _size_of(key, value, headers)
         )
 
 
-class DefaultRecordMetadata:
+cdef inline Py_ssize_t _bytelike_len(object obj) except -2:
+    cdef:
+        Py_buffer buf
+        Py_ssize_t obj_len
 
-    __slots__ = ("_size", "_timestamp", "_offset")
+    if obj is None:
+        return -1
+    else:
+        PyObject_GetBuffer(obj, &buf, PyBUF_SIMPLE)
+        obj_len = buf.len
+        PyBuffer_Release(&buf)  
+    return obj_len
 
-    def __init__(self, offset, size, timestamp):
-        self._offset = offset
-        self._size = size
-        self._timestamp = timestamp
 
-    @property
-    def offset(self):
-        return self._offset
+cdef Py_ssize_t _size_of(object key, object value, list headers) except -1:
+    cdef:
+        Py_ssize_t key_len
+        Py_ssize_t value_len
+        Py_ssize_t size = 0
+        Py_ssize_t header_count
+        Py_ssize_t i
+        tuple header
+        str h_key
+        bytes h_value
 
-    @property
-    def crc(self):
-        return None
+    if key is None:
+        size += 1
+    else:
+        key_len = _bytelike_len(key)
+        size += cutil.size_of_varint(key_len) + key_len
+    # Value size
+    if value is None:
+        size += 1
+    else:
+        value_len = _bytelike_len(value)
+        size += cutil.size_of_varint(value_len) + value_len
+    # Header size
+    header_count = len(headers)
+    size += cutil.size_of_varint(header_count)
+    for i in range(header_count):
+        header = headers[i]
+        h_key, h_value = header
+        key_len = _bytelike_len(h_key.encode("utf-8"))
+        size += cutil.size_of_varint(key_len) + key_len
 
-    @property
-    def size(self):
-        return self._size
+        if h_value is None:
+            size += 1
+        else:
+            value_len = _bytelike_len(h_value)
+            size += cutil.size_of_varint(value_len) + value_len
+    return size
 
-    @property
-    def timestamp(self):
-        return self._timestamp
+
+@cython.no_gc_clear
+@cython.final
+@cython.freelist(_DEFAULT_RECORD_METADATA_FREELIST_SIZE)
+cdef class DefaultRecordMetadata:
+
+    cdef:
+        readonly int64_t offset
+        readonly Py_ssize_t size
+        readonly int64_t timestamp
+
+    crc = None
+
+    def __init__(self, int64_t offset, Py_ssize_t size, int64_t timestamp):
+        self.offset = offset
+        self.size = size
+        self.timestamp = timestamp
+
+    @staticmethod
+    cdef inline DefaultRecordMetadata new(
+            int64_t offset, Py_ssize_t size, int64_t timestamp):
+        """ Fast constructor to initialize from C.
+        """
+        cdef DefaultRecordMetadata metadata
+        metadata = DefaultRecordMetadata.__new__(DefaultRecordMetadata)
+        metadata.offset = offset
+        metadata.size = size
+        metadata.timestamp = timestamp
+        return metadata
 
     def __repr__(self):
         return (
             "DefaultRecordMetadata(offset={!r}, size={!r}, timestamp={!r})"
-            .format(self._offset, self._size, self._timestamp)
+            .format(self.offset, self.size, self.timestamp)
         )

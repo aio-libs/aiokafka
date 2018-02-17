@@ -27,7 +27,46 @@ cdef inline int decode_varint64(
     return 0
 
 
-def decode_varint(buffer, pos=0):
+cdef inline Py_ssize_t size_of_varint64(int64_t value) except -1:
+    cdef:
+        Py_ssize_t bytes = 1
+        uint64_t v
+
+    v = <uint64_t> (value << 1) ^ <uint64_t> (value >> 63)
+    while ((v & <uint64_t> 0xffffffffffffff80) != 0):
+        bytes += 1
+        v = v >> 7
+    return bytes
+
+
+cdef inline Py_ssize_t size_of_varint(Py_ssize_t value) except -1:
+    return size_of_varint64(<int64_t> value)
+
+
+cdef inline int encode_varint64(
+        char* buf, Py_ssize_t* write_pos, int64_t value) except -1:
+    cdef:
+        uint64_t v
+        Py_ssize_t pos
+
+    pos = write_pos[0]
+    v = <uint64_t> (value << 1) ^ <uint64_t> (value >> 63)
+    while ((v & <uint64_t> 0xffffffffffffff80) != 0):
+        buf[pos] = <char> (v & 0x7f) | 0x80
+        pos += 1
+        v = v >> 7
+    buf[pos] = <char> (v & 0x7f)
+    write_pos[0] = pos + 1
+    return 0
+
+
+cdef inline int encode_varint(
+        char* buf, Py_ssize_t* write_pos, Py_ssize_t value) except -1:
+    encode_varint64(buf, write_pos, <int64_t> value)
+    return 0
+
+
+def decode_varint_cython(buffer, pos=0):
     """ Decode an integer from a varint presentation. See
     https://developers.google.com/protocol-buffers/docs/encoding?csw=1#varints
     on how those can be produced.
@@ -54,6 +93,38 @@ def decode_varint(buffer, pos=0):
     finally:
         PyBuffer_Release(&buf)
     return out_value, read_pos
+
+
+def encode_varint_cython(int64_t value, write):
+    """ Encode an integer to a varint presentation. See
+    https://developers.google.com/protocol-buffers/docs/encoding?csw=1#varints
+    on how those can be produced.
+
+        Arguments:
+            value (int): Value to encode
+            write (function): Called per byte that needs to be writen
+
+        Returns:
+            int: Number of bytes written
+    """
+    cdef:
+        Py_ssize_t pos = 0
+        bytes x
+        char* buf
+
+    x = bytes(10)  # Max for 64 bits is 10 bytes encoded
+    buf = PyBytes_AS_STRING(x)
+
+    encode_varint64(buf, &pos, value)
+
+    for i in range(pos):
+        write(x[i])
+
+
+def size_of_varint_cython(int64_t value):
+    """ Number of bytes needed to encode an integer in variable-length format.
+    """
+    return size_of_varint64(value)
 
 # END: VarInt implementation
 

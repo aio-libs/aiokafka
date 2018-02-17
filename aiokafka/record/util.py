@@ -2,7 +2,7 @@ from ._crc32c import crc as crc32c_py
 from aiokafka.util import NO_EXTENSIONS
 
 
-def encode_varint(value, write):
+def encode_varint_py(value, write):
     """ Encode an integer to a varint presentation. See
     https://developers.google.com/protocol-buffers/docs/encoding?csw=1#varints
     on how those can be produced.
@@ -55,7 +55,7 @@ def encode_varint(value, write):
     return i
 
 
-def size_of_varint(value):
+def size_of_varint_py(value):
     """ Number of bytes needed to encode an integer in variable-length format.
     """
     value = (value << 1) ^ (value >> 63)
@@ -122,9 +122,20 @@ def calc_crc32c_py(memview):
 if NO_EXTENSIONS:
     calc_crc32c = calc_crc32c_py
     decode_varint = decode_varint_py
+    size_of_varint = size_of_varint_py
+    encode_varint = encode_varint_py
 else:
     try:
-        from ._crecords import decode_varint, crc32c_cython  # noqa
+        from ._crecords import (  # noqa
+            decode_varint_cython, crc32c_cython, encode_varint_cython,
+            size_of_varint_cython
+        )
+        decode_varint = decode_varint_cython
+        encode_varint = encode_varint_cython
+        size_of_varint = size_of_varint_cython
         calc_crc32c = crc32c_cython
     except ImportError:  # pragma: no cover
-        raise
+        calc_crc32c = calc_crc32c_py
+        decode_varint = decode_varint_py
+        size_of_varint = size_of_varint_py
+        encode_varint = encode_varint_py

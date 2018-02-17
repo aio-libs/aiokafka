@@ -1,7 +1,8 @@
 from libc.stdint cimport int64_t, uint64_t, uint32_t
 from libc.limits cimport UINT_MAX
 from cpython cimport (
-    PyObject_GetBuffer, PyBuffer_Release, Py_buffer, PyBUF_READ, PyBUF_SIMPLE
+    PyObject_GetBuffer, PyBuffer_Release, Py_buffer, PyBUF_READ, PyBUF_SIMPLE,
+    PyBytes_AS_STRING
 )
 cdef extern from "Python.h":
     object PyMemoryView_FromMemory(char *mem, ssize_t size, int flags)
@@ -121,6 +122,14 @@ ELSE:
 
 cdef int decode_varint64(
         char* buf, Py_ssize_t* read_pos, int64_t* out_value) except -1
+
+cdef int encode_varint64(
+        char* buf, Py_ssize_t* write_pos, int64_t value) except -1
+cdef int encode_varint(
+        char* buf, Py_ssize_t* write_pos, Py_ssize_t value) except -1
+
+cdef Py_ssize_t size_of_varint(Py_ssize_t value) except -1
+cdef Py_ssize_t size_of_varint64(int64_t value) except -1
 
 # END: VarInt implementation
 

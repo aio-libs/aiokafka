@@ -1,5 +1,8 @@
 # util
-from .cutil import decode_varint, crc32c_cython  # noqa
+from .cutil import (  # noqa
+    decode_varint_cython, encode_varint_cython,
+    size_of_varint_cython, crc32c_cython
+)
 # abstract
 from .memory_records import (  # noqa
     MemoryRecords,
@@ -12,9 +15,9 @@ from .legacy_records import (  # noqa
     LegacyRecordMetadata,
 )
 # v2+
-# from .default_records import (  # noqa
-#     # DefaultRecordBatch,
-#     # DefaultRecord,
-#     DefaultRecordBatchBuilder,
-#     DefaultRecordMetadata
-# )
+from .default_records import (  # noqa
+    DefaultRecordBatch,
+    DefaultRecord,
+    DefaultRecordBatchBuilder,
+    DefaultRecordMetadata
+)
