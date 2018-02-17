@@ -40,7 +40,8 @@ extensions = [
     ),
     Extension(
         'aiokafka.record._crecords.default_records',
-        ['aiokafka/record/_crecords/default_records' + ext],
+        ['aiokafka/record/_crecords/crc32c.c',
+         'aiokafka/record/_crecords/default_records' + ext],
         libraries=LIBRARIES,
         extra_compile_args=CFLAGS,
         extra_link_args=LDFLAGS

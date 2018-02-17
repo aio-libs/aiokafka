@@ -5,7 +5,7 @@ from aiokafka.errors import CorruptRecordException
 cdef inline int decode_varint64(
         char* buf, Py_ssize_t* read_pos, int64_t* out_value) except -1:
     cdef:
-        char shift = 0
+        int shift = 0
         char byte
         Py_ssize_t pos = read_pos[0]
         uint64_t value = 0
@@ -52,7 +52,7 @@ cdef inline int encode_varint64(
     pos = write_pos[0]
     v = <uint64_t> (value << 1) ^ <uint64_t> (value >> 63)
     while ((v & <uint64_t> 0xffffffffffffff80) != 0):
-        buf[pos] = <char> (v & 0x7f) | 0x80
+        buf[pos] = <char> ((v & 0x7f) | 0x80)
         pos += 1
         v = v >> 7
     buf[pos] = <char> (v & 0x7f)
@@ -147,7 +147,7 @@ def crc32c_cython(data):
 
     calc_crc32c(
         0,
-        buf.buf,
+        <char*> buf.buf,
         <size_t> buf.len,
         &crc
     )

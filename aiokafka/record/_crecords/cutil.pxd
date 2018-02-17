@@ -143,10 +143,11 @@ cdef extern from "crc32c.h":
     void crc32c_global_init() nogil
 
 cdef inline int calc_crc32c(
-        uint32_t crc, void *buf, size_t len,
+        uint32_t crc, char *buf, size_t len,
         uint32_t *crc_out) except -1:
     cdef:
         uint32_t signed_val
+
 
     # Releasing the GIL for very small buffers is inefficient
     # and may lower performance

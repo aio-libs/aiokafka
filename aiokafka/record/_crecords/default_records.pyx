@@ -192,11 +192,13 @@ cdef class DefaultRecordBatch:
     cdef _maybe_uncompress(self):
         cdef:
             char compression_type
+            char* buf
         if not self._decompressed:
             compression_type = <char> self.attributes & _ATTR_CODEC_MASK
             if compression_type != _ATTR_CODEC_NONE:
+                buf = <char *> self._buffer.buf
                 data = PyMemoryView_FromMemory(
-                    <char *> (&self._buffer.buf[self._pos]),
+                    &buf[self._pos],
                     self._buffer.len - self._pos,
                     PyBUF_READ)
                 if compression_type == _ATTR_CODEC_GZIP:
@@ -363,16 +365,17 @@ cdef class DefaultRecordBatch:
             "Validate should be called before iteration"
 
         cdef:
-            uint32_t verify_crc
+            uint32_t verify_crc = 0
+            char* buf
 
         crc = self.crc
+        buf = <char*> self._buffer.buf
         cutil.calc_crc32c(
             0,
-            self._buffer.buf,
-            <size_t> self._buffer.len,
+            &buf[ATTRIBUTES_OFFSET],
+            <size_t> self._buffer.len - ATTRIBUTES_OFFSET,
             &verify_crc
         )
-
         return crc == verify_crc
 
 
@@ -480,7 +483,7 @@ cdef class DefaultRecordBatchBuilder:
             int16_t attrs
         attrs = 0
         if include_compression_type:
-            attrs |= self._compression_type
+            attrs = <int16_t> (attrs | <int16_t> self._compression_type)
         # Timestamp Type is set by Broker
         if self._is_transactional:
             attrs |= _TRANSACTIONAL_MASK
@@ -603,7 +606,7 @@ cdef class DefaultRecordBatchBuilder:
     cdef _write_header(self, int use_compression_type):
         cdef:
             char *buf
-            uint32_t crc
+            uint32_t crc = 0
 
         buf = PyByteArray_AS_STRING(self._buffer)
         # Proper BaseOffset will be set by broker
@@ -629,7 +632,7 @@ cdef class DefaultRecordBatchBuilder:
 
         cutil.calc_crc32c(
             0,
-            <void *> &buf[ATTRIBUTES_OFFSET],
+            &buf[ATTRIBUTES_OFFSET],
             <size_t> self._pos - ATTRIBUTES_OFFSET,
             &crc
         )
