@@ -165,3 +165,15 @@ def test_default_batch_size_limit():
         2, timestamp=None, key=None, value=b"M" * 700, headers=[])
     assert meta is None
     assert len(builder.build()) < 1000
+
+
+def test_build_without_append():
+    builder = DefaultRecordBatchBuilder(
+        magic=2, compression_type=0, is_transactional=1,
+        producer_id=123456, producer_epoch=123, base_sequence=9999,
+        batch_size=999999)
+    buffer = builder.build()
+
+    reader = DefaultRecordBatch(bytes(buffer))
+    msgs = list(reader)
+    assert not msgs
