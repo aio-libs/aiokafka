@@ -1,4 +1,3 @@
-import io
 import asyncio
 import pytest
 import unittest
@@ -153,7 +152,7 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertEqual(batches[0][tp0].expired(), False)
         self.assertEqual(batches[1][tp1].expired(), False)
         batch_data = batches[0][tp0].get_data_buffer()
-        self.assertEqual(type(batch_data), io.BytesIO)
+        self.assertEqual(type(batch_data), bytearray)
         batches[0][tp0].done(base_offset=10)
 
         class TestException(Exception):

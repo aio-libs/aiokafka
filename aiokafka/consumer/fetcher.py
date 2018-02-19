@@ -6,7 +6,7 @@ from itertools import chain
 
 from kafka.protocol.offset import OffsetRequest
 
-from aiokafka.consumer.fetch import FetchRequest
+from aiokafka.protocol.fetch import FetchRequest
 import aiokafka.errors as Errors
 from aiokafka.errors import (
     ConsumerStoppedError, RecordTooLargeError, KafkaTimeoutError)
@@ -17,6 +17,10 @@ from aiokafka.util import ensure_future, create_future
 log = logging.getLogger(__name__)
 
 UNKNOWN_OFFSET = -1
+
+# Isolation levels
+READ_UNCOMMITTED = 0
+READ_COMMITTED = 1
 
 
 class OffsetResetStrategy:
@@ -180,6 +184,7 @@ class Fetcher:
                  key_deserializer=None,
                  value_deserializer=None,
                  fetch_min_bytes=1,
+                 fetch_max_bytes=52428800,
                  fetch_max_wait_ms=500,
                  max_partition_fetch_bytes=1048576,
                  check_crcs=True,
@@ -200,6 +205,15 @@ class Fetcher:
             fetch_min_bytes (int): Minimum amount of data the server should
                 return for a fetch request, otherwise wait up to
                 fetch_max_wait_ms for more data to accumulate. Default: 1.
+            fetch_max_bytes (int): The maximum amount of data the server should
+                return for a fetch request. This is not an absolute maximum, if
+                the first message in the first non-empty partition of the fetch
+                is larger than this value, the message will still be returned
+                to ensure that the consumer can make progress. NOTE: consumer
+                performs fetches to multiple brokers in parallel so memory
+                usage will depend on the number of brokers containing
+                partitions for the topic.
+                Supported Kafka version >= 0.10.1.0. Default: 52428800 (50 Mb).
             fetch_max_wait_ms (int): The maximum amount of time in milliseconds
                 the server will block before answering the fetch request if
                 there isn't sufficient data to immediately satisfy the
@@ -232,6 +246,7 @@ class Fetcher:
         self._key_deserializer = key_deserializer
         self._value_deserializer = value_deserializer
         self._fetch_min_bytes = fetch_min_bytes
+        self._fetch_max_bytes = fetch_max_bytes
         self._fetch_max_wait_ms = fetch_max_wait_ms
         self._max_partition_fetch_bytes = max_partition_fetch_bytes
         self._check_crcs = check_crcs
@@ -241,6 +256,7 @@ class Fetcher:
         self._subscriptions = subscriptions
         self._default_reset_strategy = OffsetResetStrategy.from_str(
             auto_offset_reset)
+        self._isolation_level = READ_UNCOMMITTED
 
         self._records = collections.OrderedDict()
         self._in_flight = set()
@@ -249,7 +265,14 @@ class Fetcher:
         self._wait_consume_future = None
         self._fetch_waiters = set()
 
-        req_version = 2 if client.api_version >= (0, 10) else 1
+        if client.api_version >= (0, 11):
+            req_version = 4
+        elif client.api_version >= (0, 10, 1):
+            req_version = 3
+        elif client.api_version >= (0, 10):
+            req_version = 2
+        else:
+            req_version = 1
         self._fetch_request_class = FetchRequest[req_version]
 
         self._fetch_task = ensure_future(
@@ -438,11 +461,28 @@ class Fetcher:
                     tp.partition,
                     position,
                     self._max_partition_fetch_bytes))
-            req = self._fetch_request_class(
-                -1,  # replica_id
-                self._fetch_max_wait_ms,
-                self._fetch_min_bytes,
-                list(by_topics.items()))
+            klass = self._fetch_request_class
+            if klass.API_VERSION > 3:
+                req = klass(
+                    -1,  # replica_id
+                    self._fetch_max_wait_ms,
+                    self._fetch_min_bytes,
+                    self._fetch_max_bytes,
+                    self._isolation_level,
+                    list(by_topics.items()))
+            elif klass.API_VERSION == 3:
+                req = klass(
+                    -1,  # replica_id
+                    self._fetch_max_wait_ms,
+                    self._fetch_min_bytes,
+                    self._fetch_max_bytes,
+                    list(by_topics.items()))
+            else:
+                req = klass(
+                    -1,  # replica_id
+                    self._fetch_max_wait_ms,
+                    self._fetch_min_bytes,
+                    list(by_topics.items()))
             fetch_requests.append((node_id, req))
 
         if backoff_by_nodes:
@@ -478,7 +518,7 @@ class Fetcher:
                 fetch_offsets[TopicPartition(topic, partition)] = offset
 
         for topic, partitions in response.topics:
-            for partition, error_code, highwater, raw_batch in partitions:
+            for partition, error_code, highwater, *part_data in partitions:
                 tp = TopicPartition(topic, partition)
                 error_type = Errors.for_code(error_code)
                 fetch_offset = fetch_offsets[tp]
@@ -494,7 +534,9 @@ class Fetcher:
                 if error_type is Errors.NoError:
                     tp_state.highwater = highwater
 
-                    records = MemoryRecords(raw_batch)
+                    # part_data also contains lso, aborted_transactions.
+                    # message_set is last
+                    records = MemoryRecords(part_data[-1])
                     if records.has_next():
                         log.debug(
                             "Adding fetched record for partition %s with"

@@ -1,23 +1,27 @@
 import asyncio
 import collections
-import io
 import copy
-
-from kafka.protocol.types import Int32
 
 from aiokafka.errors import (KafkaTimeoutError,
                              NotLeaderForPartitionError,
                              LeaderNotAvailableError,
                              ProducerClosed)
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
+from aiokafka.record.default_records import DefaultRecordBatchBuilder
 from aiokafka.structs import RecordMetadata
 from aiokafka.util import create_future
 
 
 class BatchBuilder:
     def __init__(self, magic, batch_size, compression_type):
-        self._builder = LegacyRecordBatchBuilder(
-            magic, compression_type, batch_size)
+        if magic < 2:
+            self._builder = LegacyRecordBatchBuilder(
+                magic, compression_type, batch_size)
+        else:
+            self._builder = DefaultRecordBatchBuilder(
+                magic, compression_type, is_transactional=0,
+                producer_id=-1, producer_epoch=-1, base_sequence=0,
+                batch_size=batch_size)
         self._relative_offset = 0
         self._buffer = None
         self._closed = False
@@ -43,7 +47,7 @@ class BatchBuilder:
             return None
 
         metadata = self._builder.append(
-            self._relative_offset, timestamp, key, value)
+            self._relative_offset, timestamp, key, value, headers=[])
 
         # Check if we could add the message
         if metadata is None:
@@ -67,8 +71,7 @@ class BatchBuilder:
         if self._closed:
             return
         self._closed = True
-        data = self._builder.build()
-        self._buffer = io.BytesIO(Int32.encode(len(data)) + data)
+        self._buffer = self._builder.build()
         del self._builder
 
     def _build(self):
@@ -78,8 +81,8 @@ class BatchBuilder:
 
     def size(self):
         """Get the size of batch in bytes."""
-        if self._buffer:
-            return self._buffer.getbuffer().nbytes
+        if self._buffer is not None:
+            return len(self._buffer)
         else:
             return self._builder.size()
 
@@ -190,7 +193,6 @@ class MessageBatch:
             self._buffer = self._builder._build()
 
     def get_data_buffer(self):
-        self._buffer.seek(0)
         return self._buffer
 
 
@@ -308,7 +310,12 @@ class MessageAccumulator:
         return nodes, unknown_leaders_exist
 
     def create_builder(self):
-        magic = 0 if self._api_version < (0, 10) else 1
+        if self._api_version >= (0, 11):
+            magic = 2
+        elif self._api_version >= (0, 10):
+            magic = 1
+        else:
+            magic = 0
         return BatchBuilder(magic, self._batch_size, self._compression_type)
 
     def _append_batch(self, builder, tp):
