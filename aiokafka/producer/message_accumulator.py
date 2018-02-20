@@ -193,6 +193,9 @@ class MessageBatch:
         self._buffer.seek(0)
         return self._buffer
 
+    def is_empty(self):
+        return self._builder.record_count() == 0
+
 
 class MessageAccumulator:
     """Accumulator of messages batched by topic-partition
@@ -296,7 +299,14 @@ class MessageAccumulator:
                 continue
 
             batch = self._pop_batch(tp)
-            nodes[leader][tp] = batch
+            # We can get an empty batch here if all `append()` calls failed
+            # with validation...
+            if not batch.is_empty():
+                nodes[leader][tp] = batch
+            else:
+                # XXX: use something more graceful. We just want to trigger
+                # delivery future here, no message futures.
+                batch.done_noack()
 
         # all batches are drained from accumulator
         # so create "wait data" future again for waiting new data in send

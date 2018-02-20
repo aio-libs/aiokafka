@@ -393,3 +393,22 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 "XXXX", b'text1', partition=0)
             self.assertEqual(res.timestamp_type, LOG_APPEND_TIME)
             self.assertEqual(res.timestamp, expected_timestamp)
+
+    @run_until_complete
+    def test_producer_send_empty_batch(self):
+        # We trigger a unique case here, we don't send any messages, but the
+        # ProduceBatch will be created. It should be discarded as it contains
+        # 0 messages by sender routine.
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        yield from producer.start()
+
+        with self.assertRaises(TypeError):
+            yield from producer.send(self.topic, 'text1')
+
+        send_mock = mock.Mock()
+        send_mock.side_effect = producer._send_produce_req
+        producer._send_produce_req = send_mock
+
+        yield from producer.flush()
+        self.assertEqual(send_mock.call_count, 0)
