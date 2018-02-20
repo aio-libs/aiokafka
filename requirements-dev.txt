@@ -10,7 +10,7 @@ xxhash==1.0.1
 python-snappy==0.5.1
 
 sphinxcontrib-asyncio==0.2.0
-sphinxcontrib-spelling==4.0.1
+sphinxcontrib-spelling==4.1.0
 alabaster==0.7.10
 
 diff-cover==1.0.2
