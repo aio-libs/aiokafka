@@ -755,7 +755,7 @@ class GroupCoordinator(BaseCoordinator):
             log.debug("Subscription changed during rebalance from %s to %s. "
                       "Rejoining group.",
                       subscription.topics,
-                      self._subscription.subscription.topics)
+                      self._subscription.topics)
             return False
         if assignment is None:
             return False

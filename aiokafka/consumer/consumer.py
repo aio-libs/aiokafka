@@ -896,7 +896,7 @@ class AIOKafkaConsumer(object):
         Returns:
             frozenset: {topic, ...}
         """
-        return self._subscription.subscription.topics
+        return self._subscription.topics
 
     def unsubscribe(self):
         """ Unsubscribe from all topics and clear all assigned partitions. """
