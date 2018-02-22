@@ -1460,3 +1460,17 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             coordinator._exclude_internal_topics, exclude_internal_topics)
         self.assertEqual(
             coordinator._enable_auto_commit, enable_auto_commit)
+
+    @run_until_complete
+    def test_consumer_fast_unsubscribe(self):
+        # Unsubscribe before coordination finishes
+        consumer = AIOKafkaConsumer(
+            loop=self.loop, group_id="test_consumer_fast_unsubscribe",
+            bootstrap_servers=self.hosts)
+        tp = TopicPartition(self.topic, 0)
+
+        yield from consumer.start()
+        consumer.subscribe([tp])
+        yield from asyncio.sleep(0.01, loop=self.loop)
+        consumer.unsubscribe()
+        yield from consumer.stop()
