@@ -175,3 +175,11 @@ def test_assigned_state(subscription_state):
 
     assert repr(tp_state) == \
         "TopicPartitionState<Status=PartitionStatus.ASSIGNED position=None>"
+
+
+def test_begin_reassignment(subscription_state):
+    subscription_state.subscribe({"tp1", "tp2"})
+    subscription_state.unsubscribe()
+
+    # After unsubscribe we should not fail begin_reassignment, just ignore it
+    subscription_state.begin_reassignment()

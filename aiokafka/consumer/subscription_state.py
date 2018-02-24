@@ -54,6 +54,12 @@ class SubscriptionState:
     def listener(self) -> ConsumerRebalanceListener:
         return self._listener
 
+    @property
+    def topics(self):
+        if self._subscription is not None:
+            return self._subscription.topics
+        return set([])
+
     def assigned_partitions(self) -> Set[TopicPartition]:
         if self._subscription is None:
             return set([])
@@ -211,7 +217,8 @@ class SubscriptionState:
 
         Caller: Coordinator
         """
-        self._subscription._begin_reassignment()
+        if self._subscription is not None:
+            self._subscription._begin_reassignment()
 
     # Fetcher callable API:
 
