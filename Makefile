@@ -48,8 +48,11 @@ clean:
 	rm -rf docs/_build/
 	rm -rf cover
 	rm -rf dist
-	rm -f aiokafka/record/_*.c
-	rm -f aiokafka/record/_*.html
+	rm -f aiokafka/record/_crecords/cutil.c
+	rm -f aiokafka/record/_crecords/default_records.c
+	rm -f aiokafka/record/_crecords/legacy_records.c
+	rm -f aiokafka/record/_crecords/memory_records.c
+	rm -f aiokafka/record/_crecords/*.html
 
 doc:
 	make -C docs html

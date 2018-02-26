@@ -15,13 +15,14 @@ def test_read_write_serde_v2(compression_type):
         magic=2, compression_type=compression_type, is_transactional=1,
         producer_id=123456, producer_epoch=123, base_sequence=9999,
         batch_size=999999)
-    headers = []  # [("header1", b"aaa"), ("header2", b"bbb")]
+    headers = [("header1", b"aaa"), ("header2", b"bbb")]
     for offset in range(10):
         builder.append(
             offset, timestamp=9999999, key=b"test", value=b"Super",
             headers=headers)
     buffer = builder.build()
     reader = DefaultRecordBatch(bytes(buffer))
+    assert reader.validate_crc()
     msgs = list(reader)
 
     assert reader.is_transactional is True

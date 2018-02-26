@@ -59,6 +59,7 @@ import time
 from .util import decode_varint, encode_varint, calc_crc32c, size_of_varint
 
 from aiokafka.errors import CorruptRecordException
+from aiokafka.util import NO_EXTENSIONS
 from kafka.codec import (
     gzip_encode, snappy_encode, lz4_encode,
     gzip_decode, snappy_decode, lz4_decode
@@ -100,7 +101,7 @@ class DefaultRecordBase:
     CREATE_TIME = 0
 
 
-class DefaultRecordBatch(DefaultRecordBase):
+class _DefaultRecordBatchPy(DefaultRecordBase):
 
     def __init__(self, buffer):
         self._buffer = bytearray(buffer)
@@ -235,7 +236,7 @@ class DefaultRecordBatch(DefaultRecordBase):
 
         # validate whether we have read all header bytes in the current record
         if pos - start_pos != length:
-            CorruptRecordException(
+            raise CorruptRecordException(
                 "Invalid record size: expected to read {} bytes in record "
                 "payload, but instead read {}".format(length, pos - start_pos))
         self._pos = pos
@@ -275,7 +276,7 @@ class DefaultRecordBatch(DefaultRecordBase):
         return crc == verify_crc
 
 
-class DefaultRecord:
+class _DefaultRecordPy:
 
     __slots__ = ("_offset", "_timestamp", "_timestamp_type", "_key", "_value",
                  "_headers")
@@ -333,7 +334,7 @@ class DefaultRecord:
         )
 
 
-class DefaultRecordBatchBuilder(DefaultRecordBase):
+class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
 
     # excluding key, value and headers:
     # 5 bytes length + 10 bytes timestamp + 5 bytes offset + 1 byte attributes
@@ -454,7 +455,7 @@ class DefaultRecordBatchBuilder(DefaultRecordBase):
         encode_varint(message_len, main_buffer.append)
         main_buffer.extend(message_buffer)
 
-        return DefaultRecordMetadata(offset, required_size, timestamp)
+        return _DefaultRecordMetadataPy(offset, required_size, timestamp)
 
     def write_header(self, use_compression_type=True):
         batch_len = len(self._buffer)
@@ -561,7 +562,7 @@ class DefaultRecordBatchBuilder(DefaultRecordBase):
         )
 
 
-class DefaultRecordMetadata:
+class _DefaultRecordMetadataPy:
 
     __slots__ = ("_size", "_timestamp", "_offset")
 
@@ -591,3 +592,27 @@ class DefaultRecordMetadata:
             "DefaultRecordMetadata(offset={!r}, size={!r}, timestamp={!r})"
             .format(self._offset, self._size, self._timestamp)
         )
+
+
+if NO_EXTENSIONS:
+    DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderPy
+    DefaultRecordMetadata = _DefaultRecordMetadataPy
+    DefaultRecordBatch = _DefaultRecordBatchPy
+    DefaultRecord = _DefaultRecordPy
+else:
+    try:
+        from ._crecords import (
+            DefaultRecordBatchBuilder as _DefaultRecordBatchBuilderCython,
+            DefaultRecordMetadata as _DefaultRecordMetadataCython,
+            DefaultRecordBatch as _DefaultRecordBatchCython,
+            DefaultRecord as _DefaultRecordCython,
+        )
+        DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderCython
+        DefaultRecordMetadata = _DefaultRecordMetadataCython
+        DefaultRecordBatch = _DefaultRecordBatchCython
+        DefaultRecord = _DefaultRecordCython
+    except ImportError as err:  # pragma: no cover
+        DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderPy
+        DefaultRecordMetadata = _DefaultRecordMetadataPy
+        DefaultRecordBatch = _DefaultRecordBatchPy
+        DefaultRecord = _DefaultRecordPy

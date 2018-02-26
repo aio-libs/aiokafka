@@ -32,15 +32,31 @@ ext = '.pyx' if USE_CYTHON else '.c'
 
 extensions = [
     Extension(
-        'aiokafka.record._legacy_records',
-        ['aiokafka/record/_legacy_records' + ext],
+        'aiokafka.record._crecords.legacy_records',
+        ['aiokafka/record/_crecords/legacy_records' + ext],
         libraries=LIBRARIES,
         extra_compile_args=CFLAGS,
         extra_link_args=LDFLAGS
     ),
     Extension(
-        'aiokafka.record._memory_records',
-        ['aiokafka/record/_memory_records' + ext],
+        'aiokafka.record._crecords.default_records',
+        ['aiokafka/record/_crecords/crc32c.c',
+         'aiokafka/record/_crecords/default_records' + ext],
+        libraries=LIBRARIES,
+        extra_compile_args=CFLAGS,
+        extra_link_args=LDFLAGS
+    ),
+    Extension(
+        'aiokafka.record._crecords.memory_records',
+        ['aiokafka/record/_crecords/memory_records' + ext],
+        libraries=LIBRARIES,
+        extra_compile_args=CFLAGS,
+        extra_link_args=LDFLAGS
+    ),
+    Extension(
+        'aiokafka.record._crecords.cutil',
+        ['aiokafka/record/_crecords/crc32c.c',
+         'aiokafka/record/_crecords/cutil' + ext],
         libraries=LIBRARIES,
         extra_compile_args=CFLAGS,
         extra_link_args=LDFLAGS

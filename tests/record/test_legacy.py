@@ -23,6 +23,7 @@ def test_read_write_serde_v0_v1_no_compression(magic, key, value, checksum):
     buffer = builder.build()
 
     batch = LegacyRecordBatch(buffer, magic)
+    assert batch.validate_crc()
     msgs = list(batch)
     assert len(msgs) == 1
     msg = msgs[0]
@@ -50,6 +51,7 @@ def test_read_write_serde_v0_v1_with_compression(compression_type, magic):
     buffer = builder.build()
 
     batch = LegacyRecordBatch(buffer, magic)
+    assert batch.validate_crc()
     msgs = list(batch)
 
     for offset, msg in enumerate(msgs):
