@@ -15,10 +15,10 @@ flake:
 	flake8 aiokafka tests $$extra
 
 test: flake
-	py.test -s --no-print-logs --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	py.test -s --docker-image $(DOCKER_IMAGE) $(FLAGS) -Wdefault tests
 
 vtest: flake
-	py.test -s -v --no-print-logs --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	py.test -s -v --no-print-logs --docker-image $(DOCKER_IMAGE) $(FLAGS) -Wdefault tests
 
 cov cover coverage: flake
 	py.test -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests

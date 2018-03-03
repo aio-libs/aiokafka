@@ -330,13 +330,13 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         yield from consumer.stop()
 
     def test_producer_arguments(self):
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
                 ValueError, "`security_protocol` should be SSL or PLAINTEXT"):
             AIOKafkaProducer(
                 loop=self.loop,
                 bootstrap_servers=self.hosts,
                 security_protocol="SOME")
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
                 ValueError, "`ssl_context` is mandatory if "
                             "security_protocol=='SSL'"):
             AIOKafkaProducer(
@@ -349,6 +349,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
+        self.add_cleanup(producer.stop)
 
         fut1 = yield from producer.send("producer_flush_test", b'text1')
         fut2 = yield from producer.send("producer_flush_test", b'text2')
@@ -365,6 +366,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
+        self.add_cleanup(producer.stop)
 
         send_time = (time.time() * 1000)
         res = yield from producer.send_and_wait(
@@ -402,6 +404,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
+        self.add_cleanup(producer.stop)
 
         with self.assertRaises(TypeError):
             yield from producer.send(self.topic, 'text1')

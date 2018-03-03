@@ -14,6 +14,7 @@ from kafka.protocol.commit import (
 
 from aiokafka.conn import AIOKafkaConnection, create_conn
 from aiokafka.errors import ConnectionError, CorrelationIdError
+from aiokafka.util import ensure_future
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
@@ -141,7 +142,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         conn._reader = reader
         conn._writer = writer
         # invoke reader task
-        conn._read_task = asyncio.async(conn._read(), loop=self.loop)
+        conn._read_task = ensure_future(conn._read(), loop=self.loop)
 
         with self.assertRaises(CorrelationIdError):
             yield from conn.send(request)
@@ -171,7 +172,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         conn._reader = reader
         conn._writer = writer
         # invoke reader task
-        conn._read_task = asyncio.async(conn._read(), loop=self.loop)
+        conn._read_task = ensure_future(conn._read(), loop=self.loop)
 
         response = yield from conn.send(request)
         self.assertIsInstance(response, GroupCoordinatorResponse)
@@ -201,7 +202,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         conn._reader = reader
         conn._writer = writer
         # invoke reader task
-        conn._read_task = asyncio.async(conn._read(), loop=self.loop)
+        conn._read_task = ensure_future(conn._read(), loop=self.loop)
 
         with self.assertRaises(ConnectionError):
             yield from conn.send(request)

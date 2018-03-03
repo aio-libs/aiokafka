@@ -541,13 +541,14 @@ class Fetcher:
                         "Fetch offset %s is out of range for partition %s,"
                         " resetting offset", fetch_offset, tp)
                 elif error_type is Errors.TopicAuthorizationFailedError:
-                    log.warn("Not authorized to read from topic %s.", tp.topic)
+                    log.warning(
+                        "Not authorized to read from topic %s.", tp.topic)
                     err = Errors.TopicAuthorizationFailedError(tp.topic)
                     self._set_error(tp, err)
                     needs_wakeup = True
                 else:
-                    log.warn('Unexpected error while fetching data: %s',
-                             error_type.__name__)
+                    log.warning('Unexpected error while fetching data: %s',
+                                error_type.__name__)
         return needs_wakeup
 
     def _set_error(self, tp, error):
@@ -784,7 +785,7 @@ class Fetcher:
                         partition)
                     raise error_type(partition)
                 elif error_type is Errors.UnknownTopicOrPartitionError:
-                    log.warn(
+                    log.warning(
                         "Received unknown topic or partition error in "
                         "ListOffset request for partition %s. The "
                         "topic/partition may not exist or the user may not "
