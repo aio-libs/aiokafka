@@ -71,12 +71,18 @@ class BatchBuilder:
         if self._closed:
             return
         self._closed = True
-        self._buffer = self._builder.build()
-        del self._builder
+
+    def _set_producer_state(self, producer_id, producer_epoch, base_sequence):
+        assert type(self._builder) is DefaultRecordBatchBuilder
+        self._builder.set_producer_state(
+            producer_id, producer_epoch, base_sequence)
 
     def _build(self):
         if not self._closed:
             self.close()
+
+        self._buffer = self._builder.build()
+        del self._builder
         return self._buffer
 
     def size(self):
@@ -107,6 +113,14 @@ class MessageBatch:
         self._msg_futures = []
         # Set when sender takes this batch
         self._drain_waiter = create_future(loop=loop)
+
+    @property
+    def tp(self):
+        return self._tp
+
+    @property
+    def record_count(self):
+        return self._builder.record_count()
 
     def append(self, key, value, timestamp_ms, _create_future=create_future):
         """Append message (key and value) to batch
@@ -192,6 +206,11 @@ class MessageBatch:
             self._drain_waiter.set_result(None)
             self._buffer = self._builder._build()
 
+    def set_producer_state(self, producer_id, producer_epoch, base_sequence):
+        assert not self._drain_waiter.done()
+        self._builder._set_producer_state(
+            producer_id, producer_epoch, base_sequence)
+
     def get_data_buffer(self):
         return self._buffer
 
@@ -202,7 +221,9 @@ class MessageAccumulator:
     Producer adds messages to this accumulator and a background send task
     gets batches per nodes to process it.
     """
-    def __init__(self, cluster, batch_size, compression_type, batch_ttl, loop):
+    def __init__(
+            self, cluster, batch_size, compression_type, batch_ttl, *,
+            txn_manager=None, loop):
         self._batches = collections.defaultdict(collections.deque)
         self._cluster = cluster
         self._batch_size = batch_size
@@ -212,6 +233,7 @@ class MessageAccumulator:
         self._wait_data_future = create_future(loop=loop)
         self._closed = False
         self._api_version = (0, 9)
+        self._txn_manager = txn_manager
 
     def set_api_version(self, api_version):
         self._api_version = api_version
@@ -267,13 +289,23 @@ class MessageAccumulator:
 
     def _pop_batch(self, tp):
         batch = self._batches[tp].popleft()
+        if self._txn_manager is not None:
+            assert self._txn_manager.has_pid(), \
+                "We should have waited for it in sender routine"
+            seq = self._txn_manager.sequence_number(batch.tp)
+            self._txn_manager.increment_sequence_number(
+                batch.tp, batch.record_count)
+            batch.set_producer_state(
+                producer_id=self._txn_manager.producer_id,
+                producer_epoch=self._txn_manager.producer_epoch,
+                base_sequence=seq)
         batch.drain_ready()
         if len(self._batches[tp]) == 0:
             del self._batches[tp]
         return batch
 
     def reenqueue(self, batch):
-        tp = batch._tp
+        tp = batch.tp
         self._batches[tp].appendleft(batch)
 
     def drain_by_nodes(self, ignore_nodes):

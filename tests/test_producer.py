@@ -5,12 +5,6 @@ import time
 from unittest import mock
 
 from kafka.cluster import ClusterMetadata
-from kafka.common import (KafkaTimeoutError,
-                          UnknownTopicOrPartitionError,
-                          MessageSizeTooLargeError,
-                          NotLeaderForPartitionError,
-                          LeaderNotAvailableError,
-                          RequestTimedOutError)
 from kafka.protocol.produce import ProduceResponse
 
 from ._testutil import (
@@ -20,7 +14,11 @@ from ._testutil import (
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer
-from aiokafka.errors import ProducerClosed
+from aiokafka.errors import (
+    KafkaTimeoutError, UnknownTopicOrPartitionError,
+    MessageSizeTooLargeError, NotLeaderForPartitionError,
+    LeaderNotAvailableError, RequestTimedOutError,
+    UnsupportedVersionError, ProducerClosed)
 
 LOG_APPEND_TIME = 1
 
@@ -393,3 +391,49 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 "XXXX", b'text1', partition=0)
             self.assertEqual(res.timestamp_type, LOG_APPEND_TIME)
             self.assertEqual(res.timestamp, expected_timestamp)
+
+    def test_producer_indempotence_configuration(self):
+        with self.assertRaises(ValueError):
+            AIOKafkaProducer(
+                loop=self.loop, acks=1, enable_idempotence=True)
+        producer = AIOKafkaProducer(
+            loop=self.loop, enable_idempotence=True)
+        self.assertEqual(producer._acks, -1)  # -1 is set for `all` config
+        self.assertIsNotNone(producer._txn_manager)
+
+    @kafka_versions('<0.11.0')
+    @run_until_complete
+    def test_producer_indempotence_not_supported(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            enable_idempotence=True)
+        producer
+        with self.assertRaises(UnsupportedVersionError):
+            yield from producer.start()
+        yield from producer.stop()
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    def test_producer_indempotence(self):
+        # The test here will just check if we can do simple produce with
+        # enable_idempotence option, as no specific API changes is expected.
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            enable_idempotence=True)
+        yield from producer.start()
+        self.add_cleanup(producer.stop)
+
+        meta = yield from producer.send_and_wait(self.topic, b'hello, Kafka!')
+
+        consumer = AIOKafkaConsumer(
+            self.topic, loop=self.loop,
+            bootstrap_servers=self.hosts,
+            auto_offset_reset="earliest")
+        yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+        msg = yield from consumer.getone()
+        self.assertEqual(msg.offset, meta.offset)
+        self.assertEqual(msg.timestamp, meta.timestamp)
+        self.assertEqual(msg.value, b"hello, Kafka!")
+        self.assertEqual(msg.key, None)
