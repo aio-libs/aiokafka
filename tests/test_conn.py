@@ -1,7 +1,8 @@
 import asyncio
-import unittest
+import gc
 import pytest
 import struct
+import unittest
 from unittest import mock
 from kafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
 from kafka.protocol.message import Message
@@ -14,7 +15,7 @@ from kafka.protocol.commit import (
 
 from aiokafka.conn import AIOKafkaConnection, create_conn
 from aiokafka.errors import ConnectionError, CorrelationIdError
-from aiokafka.util import ensure_future
+from aiokafka.util import PY_341
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
@@ -36,13 +37,29 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
     @run_until_complete
     def test_global_loop_for_create_conn(self):
         asyncio.set_event_loop(self.loop)
+        try:
+            host, port = self.kafka_host, self.kafka_port
+            conn = yield from create_conn(host, port)
+            self.assertIs(conn._loop, self.loop)
+            conn.close()
+            # make sure second closing does nothing and we have full coverage
+            # of *if self._reader:* condition
+            conn.close()
+        finally:
+            asyncio.set_event_loop(None)
+
+    @pytest.mark.skipif(not PY_341, reason="Not supported on older Python's")
+    @run_until_complete
+    def test_conn_warn_unclosed(self):
         host, port = self.kafka_host, self.kafka_port
-        conn = yield from create_conn(host, port)
-        self.assertIs(conn._loop, self.loop)
-        conn.close()
-        # make sure second closing does nothing and we have full coverage
-        # of *if self._reader:* condition
-        conn.close()
+        conn = yield from create_conn(
+            host, port, loop=self.loop, max_idle_ms=100000)
+
+        with self.silence_loop_exception_handler():
+            with self.assertWarnsRegex(
+                    ResourceWarning, "Unclosed AIOKafkaConnection"):
+                del conn
+                gc.collect()
 
     @run_until_complete
     def test_basic_connection_load_meta(self):
@@ -142,7 +159,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         conn._reader = reader
         conn._writer = writer
         # invoke reader task
-        conn._read_task = ensure_future(conn._read(), loop=self.loop)
+        conn._read_task = conn._create_reader_task()
 
         with self.assertRaises(CorrelationIdError):
             yield from conn.send(request)
@@ -172,7 +189,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         conn._reader = reader
         conn._writer = writer
         # invoke reader task
-        conn._read_task = ensure_future(conn._read(), loop=self.loop)
+        conn._read_task = conn._create_reader_task()
 
         response = yield from conn.send(request)
         self.assertIsInstance(response, GroupCoordinatorResponse)
@@ -202,7 +219,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         conn._reader = reader
         conn._writer = writer
         # invoke reader task
-        conn._read_task = ensure_future(conn._read(), loop=self.loop)
+        conn._read_task = conn._create_reader_task()
 
         with self.assertRaises(ConnectionError):
             yield from conn.send(request)

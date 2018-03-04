@@ -18,6 +18,8 @@ def create_future(loop):
         return asyncio.Future(loop=loop)
 
 
+PY_341 = sys.version_info >= (3, 4, 1)
 PY_35 = sys.version_info >= (3, 5)
 PY_352 = sys.version_info >= (3, 5, 2)
+PY_36 = sys.version_info >= (3, 6)
 NO_EXTENSIONS = bool(os.environ.get('AIOKAFKA_NO_EXTENSIONS'))

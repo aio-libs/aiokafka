@@ -1,7 +1,9 @@
-import json
 import asyncio
+import gc
+import json
 import pytest
 import time
+import weakref
 from unittest import mock
 
 from kafka.cluster import ClusterMetadata
@@ -21,6 +23,7 @@ from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import ProducerClosed
+from aiokafka.util import PY_341
 
 LOG_APPEND_TIME = 1
 
@@ -45,6 +48,25 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(partitions, set([0, 1]))
         yield from producer.stop()
         self.assertEqual(producer._closed, True)
+
+    @pytest.mark.skipif(not PY_341, reason="Not supported on older Python's")
+    @run_until_complete
+    def test_producer_warn_unclosed(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        producer_ref = weakref.ref(producer)
+        yield from producer.start()
+
+        with self.silence_loop_exception_handler():
+            with self.assertWarnsRegex(
+                    ResourceWarning, "Unclosed AIOKafkaProducer"):
+                del producer
+                # _sender_routine will contain a reference and will only be
+                # freed after loop will spin once. Not sure why dou...
+                yield from asyncio.sleep(0, loop=self.loop)
+                gc.collect()
+                # Assure that the reference was properly collected
+                self.assertIsNone(producer_ref())
 
     @run_until_complete
     def test_producer_notopic(self):

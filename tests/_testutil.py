@@ -135,6 +135,16 @@ class KafkaIntegrationTestCase(unittest.TestCase):
             time.sleep(0.1)
         assert False, "Kafka server never started"
 
+    @contextmanager
+    def silence_loop_exception_handler(self):
+        if hasattr(self.loop, "get_exception_handler"):
+            orig_handler = self.loop.get_exception_handler()
+        else:
+            orig_handler = None  # Will set default handler
+        self.loop.set_exception_handler(lambda loop, ctx: None)
+        yield
+        self.loop.set_exception_handler(orig_handler)
+
     def setUp(self):
         super().setUp()
         self._messages = {}

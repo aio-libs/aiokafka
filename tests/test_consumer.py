@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import time
 from unittest import mock
 from contextlib import contextmanager
@@ -10,7 +11,7 @@ from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.consumer.fetcher import RecordTooLargeError
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
-from aiokafka.util import ensure_future
+from aiokafka.util import ensure_future, PY_341
 from aiokafka.structs import (
     OffsetAndTimestamp, TopicPartition, OffsetAndMetadata
 )
@@ -99,6 +100,21 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # will ignore, no exception expected
         yield from consumer.stop()
+
+    @pytest.mark.skipif(not PY_341, reason="Not supported on older Python's")
+    @run_until_complete
+    def test_consumer_warn_unclosed(self):
+        consumer = AIOKafkaConsumer(
+            loop=self.loop, group_id=None,
+            bootstrap_servers=self.hosts)
+        yield from consumer.start()
+
+        with self.silence_loop_exception_handler():
+            with self.assertWarnsRegex(
+                    ResourceWarning, "Unclosed AIOKafkaConsumer"):
+                del consumer
+                yield from asyncio.sleep(0, loop=self.loop)
+                gc.collect()
 
     @run_until_complete
     def test_get_by_partition(self):
