@@ -1,6 +1,9 @@
 import asyncio
 import logging
 import re
+import sys
+import traceback
+import warnings
 
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 
@@ -13,7 +16,7 @@ from aiokafka.errors import (
     CorruptRecordException
 )
 from aiokafka.structs import TopicPartition, OffsetAndMetadata
-from aiokafka.util import PY_35, PY_352
+from aiokafka.util import PY_341, PY_35, PY_352, PY_36
 from aiokafka import __version__
 
 from .fetcher import Fetcher, OffsetResetStrategy
@@ -144,6 +147,10 @@ class AIOKafkaConsumer(object):
         https://kafka.apache.org/documentation.html#newconsumerconfigs
 
     """
+
+    _closed = None  # Serves as an uninitialized flag for __del__
+    _source_traceback = None
+
     def __init__(self, *topics, loop,
                  bootstrap_servers='localhost',
                  client_id='aiokafka-' + __version__,
@@ -171,6 +178,11 @@ class AIOKafkaConsumer(object):
                  connections_max_idle_ms=540000):
         if api_version not in ('auto', '0.9', '0.10'):
             raise ValueError("Unsupported Kafka API version")
+
+        if max_poll_records is not None and (
+                not isinstance(max_poll_records, int) or max_poll_records < 1):
+            raise ValueError("`max_poll_records` should be positive Integer")
+
         self._client = AIOKafkaClient(
             loop=loop, bootstrap_servers=bootstrap_servers,
             client_id=client_id, metadata_max_age_ms=metadata_max_age_ms,
@@ -180,10 +192,6 @@ class AIOKafkaConsumer(object):
             ssl_context=ssl_context,
             security_protocol=security_protocol,
             connections_max_idle_ms=connections_max_idle_ms)
-
-        if max_poll_records is not None and (
-                not isinstance(max_poll_records, int) or max_poll_records < 1):
-            raise ValueError("`max_poll_records` should be positive Integer")
 
         self._group_id = group_id
         self._heartbeat_interval_ms = heartbeat_interval_ms
@@ -206,13 +214,34 @@ class AIOKafkaConsumer(object):
         self._subscription = SubscriptionState(loop=loop)
         self._fetcher = None
         self._coordinator = None
-        self._closed = False
         self._loop = loop
+
+        if loop.get_debug():
+            self._source_traceback = traceback.extract_stack(sys._getframe(1))
+        self._closed = False
 
         if topics:
             topics = self._validate_topics(topics)
             self._client.set_topics(topics)
             self._subscription.subscribe(topics=topics)
+
+    if PY_341:
+        # Warn if consumer was not closed properly
+        # We don't attempt to close the Consumer, as __del__ is synchronous
+        def __del__(self, _warnings=warnings):
+            if self._closed is False:
+                if PY_36:
+                    kwargs = {'source': self}
+                else:
+                    kwargs = {}
+                _warnings.warn("Unclosed AIOKafkaConsumer {!r}".format(self),
+                               ResourceWarning,
+                               **kwargs)
+                context = {'consumer': self,
+                           'message': 'Unclosed AIOKafkaConsumer'}
+                if self._source_traceback is not None:
+                    context['source_traceback'] = self._source_traceback
+                self._loop.call_exception_handler(context)
 
     @asyncio.coroutine
     def start(self):

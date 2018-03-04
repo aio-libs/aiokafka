@@ -1,6 +1,9 @@
 import asyncio
-import logging
 import collections
+import logging
+import sys
+import traceback
+import warnings
 
 from kafka.partitioner.default import DefaultPartitioner
 from kafka.protocol.produce import ProduceRequest
@@ -12,7 +15,7 @@ from aiokafka.errors import (
     MessageSizeTooLargeError, KafkaError, UnknownTopicOrPartitionError)
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import TopicPartition
-from aiokafka.util import ensure_future
+from aiokafka.util import ensure_future, PY_341, PY_36
 
 from .message_accumulator import MessageAccumulator
 
@@ -145,6 +148,9 @@ class AIOKafkaProducer(object):
         'lz4': (has_lz4, LegacyRecordBatchBuilder.CODEC_LZ4),
     }
 
+    _closed = None  # Serves as an uninitialized flag for __del__
+    _source_traceback = None
+
     def __init__(self, *, loop, bootstrap_servers='localhost',
                  client_id=None,
                  metadata_max_age_ms=300000, request_timeout_ms=40000,
@@ -200,11 +206,32 @@ class AIOKafkaProducer(object):
             self._request_timeout_ms / 1000, loop)
         self._sender_task = None
         self._in_flight = set()
-        self._closed = False
         self._loop = loop
         self._retry_backoff = retry_backoff_ms / 1000
         self._linger_time = linger_ms / 1000
         self._producer_magic = 0
+
+        if loop.get_debug():
+            self._source_traceback = traceback.extract_stack(sys._getframe(1))
+        self._closed = False
+
+    if PY_341:
+        # Warn if producer was not closed properly
+        # We don't attempt to close the Consumer, as __del__ is synchronous
+        def __del__(self, _warnings=warnings):
+            if self._closed is False:
+                if PY_36:
+                    kwargs = {'source': self}
+                else:
+                    kwargs = {}
+                _warnings.warn("Unclosed AIOKafkaProducer {!r}".format(self),
+                               ResourceWarning,
+                               **kwargs)
+                context = {'producer': self,
+                           'message': 'Unclosed AIOKafkaProducer'}
+                if self._source_traceback is not None:
+                    context['source_traceback'] = self._source_traceback
+                self._loop.call_exception_handler(context)
 
     @asyncio.coroutine
     def start(self):
