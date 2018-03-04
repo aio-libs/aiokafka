@@ -15,7 +15,7 @@ flake:
 	flake8 aiokafka tests $$extra
 
 test: flake
-	py.test -s --docker-image $(DOCKER_IMAGE) $(FLAGS) -Wdefault tests
+	py.test -s --no-print-logs --docker-image $(DOCKER_IMAGE) $(FLAGS) -Wdefault tests
 
 vtest: flake
 	py.test -s -v --no-print-logs --docker-image $(DOCKER_IMAGE) $(FLAGS) -Wdefault tests

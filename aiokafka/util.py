@@ -19,4 +19,5 @@ def create_future(loop):
 
 
 PY_35 = sys.version_info >= (3, 5)
+PY_352 = sys.version_info >= (3, 5, 2)
 NO_EXTENSIONS = bool(os.environ.get('AIOKAFKA_NO_EXTENSIONS'))

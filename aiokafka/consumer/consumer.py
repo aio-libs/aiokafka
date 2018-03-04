@@ -13,7 +13,7 @@ from aiokafka.errors import (
     CorruptRecordException
 )
 from aiokafka.structs import TopicPartition, OffsetAndMetadata
-from aiokafka.util import PY_35
+from aiokafka.util import PY_35, PY_352
 from aiokafka import __version__
 
 from .fetcher import Fetcher, OffsetResetStrategy
@@ -1002,6 +1002,10 @@ class AIOKafkaConsumer(object):
             if self._closed:
                 raise ConsumerStoppedError()
             return self
+
+        # Old 3.5 versions require a coroutine
+        if not PY_352:
+            __aiter__ = asyncio.coroutine(__aiter__)
 
         @asyncio.coroutine
         def __anext__(self):
