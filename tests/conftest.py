@@ -175,6 +175,14 @@ def loop(request):
     asyncio.set_event_loop(None)
 
 
+@pytest.yield_fixture(autouse=True)
+def collect_garbage():
+    # This is used to have a better report on ResourceWarnings. Without it
+    # all warnings will be filled in the end of last test-case.
+    yield
+    gc.collect()
+
+
 @pytest.fixture(scope='class')
 def setup_test_class_serverless(request, loop, ssl_folder):
     request.cls.loop = loop

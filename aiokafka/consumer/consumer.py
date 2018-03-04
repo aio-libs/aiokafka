@@ -998,7 +998,6 @@ class AIOKafkaConsumer(object):
         return records
 
     if PY_35:
-        @asyncio.coroutine
         def __aiter__(self):
             if self._closed:
                 raise ConsumerStoppedError()

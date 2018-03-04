@@ -14,6 +14,7 @@ from kafka.protocol.fetch import FetchRequest_v0
 
 from aiokafka.client import AIOKafkaClient, ConnectionGroup
 from aiokafka.conn import AIOKafkaConnection, CloseReason
+from aiokafka.util import ensure_future
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
@@ -87,7 +88,7 @@ class TestAIOKafkaClient(unittest.TestCase):
         mocked_conns[(0, 0)].send.side_effect = send
         client = AIOKafkaClient(loop=self.loop,
                                 bootstrap_servers=['broker_1:4567'])
-        task = asyncio.async(client._md_synchronizer(), loop=self.loop)
+        task = ensure_future(client._md_synchronizer(), loop=self.loop)
         client._conns = mocked_conns
         client.cluster.update_metadata(MetadataResponse(brokers[:1], []))
 
