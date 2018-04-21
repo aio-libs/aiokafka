@@ -872,10 +872,10 @@ class GroupCoordinator(BaseCoordinator):
             for partition, error_code in partitions:
                 tp = TopicPartition(topic, partition)
                 error_type = Errors.for_code(error_code)
+                offset = offsets[tp]
                 if error_type is Errors.NoError:
                     log.debug(
                         "Committed offset %s for partition %s", offset, tp)
-                    offset = offsets[tp]
                     tp_state = assignment.state_value(tp)
                     tp_state.update_committed(offset)
                 elif error_type is Errors.GroupAuthorizationFailedError:
