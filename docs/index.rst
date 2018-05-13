@@ -162,7 +162,7 @@ Please feel free to file an issue on `bug tracker
 <https://github.com/aio-libs/aiokafka/issues>`_ if you have found a bug
 or have some suggestion for library improvement.
 
-The library uses `Travis <https://travis-ci.org/aio-libs/aiokafka>`_ for
+The library uses `Travis <https://travis-ci.com/aio-libs/aiokafka>`_ for
 Continious Integration.
 
 
