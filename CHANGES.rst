@@ -1,6 +1,15 @@
 CHANGES
 --------
 
+0.4.1 (2018-05-13)
+^^^^^^^^^^^^^^^^^^
+
+* Fix issue when offset commit error reports wrong partition in log (issue #353)
+* Add ResourceWarning when Producer, Consumer or Connections are not closed
+  properly (issue #295)
+* Fix Subscription None in GroupCoordinator._do_group_rejoin (issue #306)
+
+
 0.4.0 (2018-01-30)
 ^^^^^^^^^^^^^^^^^^
 
