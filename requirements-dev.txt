@@ -1,5 +1,5 @@
 flake8==3.5.0
-pytest<3.3.0  # Python3.3 dropped in 3.3. And some problems with catchlog
+pytest==3.6.0  # Python3.3 dropped in 3.3. And some problems with catchlog
 pytest-cov==2.5.1
 pytest-catchlog==1.2.2
 docker-py==1.10.6
