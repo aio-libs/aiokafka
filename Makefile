@@ -21,8 +21,14 @@ vtest: flake
 	py.test -s -v --no-print-logs --docker-image $(DOCKER_IMAGE) $(FLAGS) -Wdefault tests
 
 cov cover coverage: flake
-	py.test -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	py.test -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) -Wdefault $(FLAGS) tests
 	@echo "open file://`pwd`/htmlcov/index.html"
+
+ci-test-unit:
+	py.test -s --cov aiokafka --cov-report html -Wdefault $(FLAGS) tests
+
+ci-test-all:
+	py.test -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) -Wdefault $(FLAGS) tests
 
 coverage.xml: .coverage
 	coverage xml
