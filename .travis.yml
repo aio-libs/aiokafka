@@ -8,7 +8,8 @@ branches:
   only:
     - master
     - v0.2
-    - /^v\d+\.\d+\.\d+$/
+    - /^v\d+\.\d+\.\d+$/  # Like v0.2.0
+    - /^v\d+\.\d+\.\d+\.dev\d*$/  # Like v0.2.0.dev0
 
 python:
     - 3.3
@@ -46,9 +47,9 @@ after_success:
 
 deploy:
   provider: pypi
-  user: andrew.svetlov
+  user: aio-libs-bot
   password:
-    secure: "o1Ws6S+Tc9880TEcDHMLEFbehGmQKvr7BTwoOuVMgZ4WCVt8CS96I2rjFzZIUIxeIwd/+Mgz37XEjbQy1slkOCh2aapCq361HM6L6c/3V6dvx0Kw2mRZzr/GwfgiuR6JersgSYnuu1WnwetQ2YPVhrXWFWDAA3oZs22R9CmWrvo="
+    secure: "bc6dxKmAECZpMgNsGyeDU3HeJqtwgwXl2vMtSZc/fv1ziSJyn3Fc4EH8obrrA4q88qUuuYRg63KSngZHIV33mxWk6wucp4qn7oVh67YUqNbHmmDTR/LihBcJ5F2YljW9/DvKTbQHlTqhpKbc6q7V7FzgQyVstNYZM4tZu1VZU5g="
   distributions: "sdist"
   on:
     tags: true
