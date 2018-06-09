@@ -1,59 +1,48 @@
 language: python
-
 sudo: required
 services:
-  - docker
-
+- docker
 branches:
   only:
-    - master
-    - v0.2
-    - /^v\d+\.\d+\.\d+$/  # Like v0.2.0
-    - /^v\d+\.\d+\.\d+\.dev\d*$/  # Like v0.2.0.dev0
-
+  - master
+  - v0.2
+  - "/^v\\d+\\.\\d+\\.\\d+$/"
+  - "/^v\\d+\\.\\d+\\.\\d+\\.dev\\d*$/"
 python:
-    - 3.3
-    - 3.4
-    - 3.6
+# - 3.3
+# - 3.4
+- 3.6
 env:
-    matrix:
-        - KAFKA_VERSION=0.9.0.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
-        - KAFKA_VERSION=0.9.0.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
-        - KAFKA_VERSION=0.10.2.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
-        - KAFKA_VERSION=0.10.2.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
-        - KAFKA_VERSION=0.11.0.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
-        - KAFKA_VERSION=0.11.0.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
-    global:
-        - secure: "JwsLVEJXvL7IdrrQZMJIr1B7rrKA5NhNayxZvYF0FNIZiCAHLWRipc9d+ZO0cByMRMOsnBybyTY3nP5s5R4X4LtWqMdPEUYFapl6SSM/giD2uo5zCYU6OF+z+AQg6T4+dRs1Q0n9Nfado635uaaGVh6olS9B8V9x7ofUxoOYLJbQs630s25kryBAwsLluM4DXEJSfOGIxghD0QbbWDc8YUsYYz49WxBSjWXBj9A2D2RLb9VwnY8GRJkouARwDkLgTjW9a0ESWTcsr++NvGD0i81nT2msH2ITLcClFEHKQZDDqpeWOrWDFAFnoUL6a4GMmwvck9Tszxu+OU/I2BE0npUt2tZlnbka2CAiJ4rTphXe3xRHBl6x9yGgbrldgn0Knufkx/rjeYosyMctZIiwIjpN+9+qAfmVKQTjqmqedzUQ7zzWV4IvUwDgpwlgF6ZD3G680N3r9mWIONfTs7u1F65W4+Y+0ltNtg6PYri4NhLAagljrShjH/pXxaugckLqj1dkwXa0DtpXx/va9Ag+5c51SJyaUsRVhVn1KppdBsWV13meHbebvBETNO+T8Q42/sAw/omwlZNMtJBoqVeflz4WenlnoRCsfeQW2tSHAX3bvC/GXLqC3VPv0x/T37OerousGuFT+DNB23jhPTfMEly36uP+odNZwIn/bgGSDSA="
-
+  matrix:
+  # - KAFKA_VERSION=0.9.0.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
+  # - KAFKA_VERSION=0.9.0.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
+  # - KAFKA_VERSION=0.10.2.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1
+  # - KAFKA_VERSION=0.10.2.1 SCALA_VERSION=2.11 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
+  - KAFKA_VERSION=0.11.0.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
+  # - KAFKA_VERSION=0.11.0.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
 before_install:
-    - echo $TEST
-    - sudo apt-get update
-    - sudo apt-get install -y libsnappy-dev
-
+- sudo apt-get update
+- sudo apt-get install -y libsnappy-dev
 install:
-    - pip install --upgrade pip setuptools wheel
-    - pip install flake8
-    - pip install "pytest<3.3.0" pytest-cov pytest-catchlog docker-py
-    - pip install codecov
-    - pip install cython
-    - pip install python-snappy
-    - pip install lz4 xxhash
-    - pip install pathlib
-    - pip install -vv -Ue .
-
+- pip install --upgrade pip setuptools wheel
+- pip install flake8
+- pip install "pytest<3.3.0" pytest-cov pytest-catchlog docker-py
+- pip install codecov
+- pip install cython
+- pip install python-snappy
+- pip install lz4 xxhash
+- pip install pathlib
+- pip install -vv -Ue .
 script:
-  - make cov FLAGS="-v"
-
+- make cov FLAGS="-v -k test_client"
 after_success:
-  - codecov
-
+- codecov
 deploy:
   provider: pypi
   user: aio-libs-bot
   password:
-    secure: "TANs/tSxdtMXjFS1Vgp1EuON2ZfvkR+26HOWDzLkITsaSQ7KxbJJ2TBr4f5OI6BTLZmGB+o3pXcphIkAWyfzEBqK8ZGoFDOOz4Lagmc/uA5Foaohw6+2uTDg6kRsCiJl0Io3zCEOwWNn+1ZfLtbkBKpkBXSR/e23YeXq6NuyEAzfEX+KnHexy4gYZv1SqQA06X8c0kJaKCH/ppwE0hW4z7+/jeHnrTxedM8kpLwaGTSsjaQs1tkqR+bJg7pi2iaL8DgB34uVT6lEWBvWd8X8HC3glZvbGYg6gZL5Hb5NdK+pMevlYX2tIA71fILL81Orx1UsbHCH6emnDtQoh8FfZ+FR8IutzaC2T5+dUdNITj9wb+1ALeN1IEAqHnGxve/V62VXsF7HHGV0s3JrdLzA9Ro3k38DKUo1ekinxqQKAULmJfY6qQHX3f61u+QGv6vAGFgrFfDo62ZfB7bixMjX72WkiK+PiDN7jioYsHyobqN8BA9UjzhcMrVk1LjzsPYg1HRRwX8dp+A605Tt3dxlb1hYfVqDoaJmkakUGb2DfSUov8LDI73ufb6/panMHm6LBVeo5MJ8MCVqvj9LZ2xQTubzXunPDY6XBvYgBKKSGkhwShzsI8nIU0oHHDuQAIMuL4v+lN9Pr9zVRx4Drxem05uTXoREFWT6usmPkimQl7I="
-  distributions: "sdist"
+    secure: DHY5vj7M2FUNGuFSTqaQ6npeZwonptj0VHffzOMMJIyp0jGi4Z7TSqysXk+iznPHa94W6iOUgryCSvKyIEWK74HzXs6UghI4iU9QTZFAX9S3AjLTki5spR3k4VAliWBeI5yIVnRiPlb+EhiYoH1oO3t9BT+fqf59L8nxSQo5H1VipzPQ7TLpQsdeMLFdvQt8QzTMfiaAL69BoWUxShI2psUwbRKaCV8c/wJTdjBRcI7z8FGz+t0Qqg3ZDQySBQZ5Tz6SIFAXO4CxGemQFNhL0UoK8d0iiV3eAQZmVtnDxM/mcLsEpd79iHowFF6gH/ytM4xJiX5o4JOGHtqk4HIXNtlMews6JwSzrrCDYRmv9elFVXE1oDJJq19D5zhSqM+keHTUA5Ta1B8/eChcR9wDYA2etEvjKUxaMfcImLYv5ZSNVjziz0pvgL8GbuLwws/OAyEGTZjrHi0LxURibIXCHzJu46F5XB06ozvsf+YrldFyr24q+ABNe/NsJ5YxvGosGCBJ0aDl+On9Wqe4TGOayIMpo9MeDrifBqfFcssVYSr1D+ZaEtzihZXFRWxVR/IL9OTuiCDNo+ozTM7mjjQyJpDDXHmfNJ5MIIYV2QJFSNTLfiWOnRZ9S3Z21x8CfOX485c7iCUlKnEvGWIEuJ1Tslb7a8LuoMpl7ohKO960dNo=
+  distributions: sdist
   on:
     tags: true
     all_branches: true
