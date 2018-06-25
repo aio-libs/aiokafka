@@ -13,6 +13,6 @@ sphinxcontrib-asyncio==0.2.0
 sphinxcontrib-spelling==4.1.0
 alabaster==0.7.11
 
-diff-cover==1.0.2
+diff-cover==1.0.3
 setuptools>=34.4.0
 pycodestyle>=2.3.0
