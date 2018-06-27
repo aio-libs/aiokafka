@@ -651,7 +651,13 @@ class GroupCoordinator(BaseCoordinator):
         log.debug("Heartbeat: %s[%s] %s",
                   self.group_id, self.generation, self.member_id)
 
-        resp = yield from self._send_req(request)
+        # _send_req may fail with error like `RequestTimedOutError`
+        # we need to catch it so coordinator_routine won't fail
+        try:
+            resp = yield from self._send_req(request)
+        except Errors.KafkaError as err:
+            log.error("Heartbeat send request failed: %s. Will retry.", err)
+            return False
         error_type = Errors.for_code(resp.error_code)
         if error_type is Errors.NoError:
             log.debug(

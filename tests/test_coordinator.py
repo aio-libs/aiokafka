@@ -936,9 +936,12 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         _orig_send_req = coordinator._send_req
         coordinator._send_req = mocked = mock.Mock()
         heartbeat_error = None
+        send_req_error = None
 
         @asyncio.coroutine
         def mock_send_req(request):
+            if send_req_error is not None:
+                raise send_req_error
             if request.API_KEY == HeartbeatRequest.API_KEY:
                 if isinstance(heartbeat_error, list):
                     error_code = heartbeat_error.pop(0).errno
@@ -980,7 +983,13 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         success = yield from coordinator._do_heartbeat()
         self.assertFalse(success)
 
+        heartbeat_error = None
+        send_req_error = Errors.RequestTimedOutError()
+        success = yield from coordinator._do_heartbeat()
+        self.assertFalse(success)
+
         heartbeat_error = Errors.NoError()
+        send_req_error = None
         success = yield from coordinator._do_heartbeat()
         self.assertTrue(success)
 
