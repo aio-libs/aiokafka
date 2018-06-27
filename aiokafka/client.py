@@ -4,7 +4,7 @@ import random
 
 from kafka.conn import collect_hosts
 from kafka.cluster import ClusterMetadata
-from kafka.protocol.metadata import MetadataRequest
+from kafka.protocol.metadata import MetadataRequest, SaslHandShakeRequest
 from kafka.protocol.produce import ProduceRequest
 from kafka.protocol.commit import OffsetFetchRequest
 
@@ -19,6 +19,15 @@ from aiokafka.errors import (
     UnknownTopicOrPartitionError,
     UnrecognizedBrokerVersion)
 from aiokafka.util import ensure_future, create_future
+
+# needed for SASL_GSSAPI authentication:
+try:
+    import gssapi
+    from gssapi.raw.misc import GSSError
+except ImportError:
+    # no gssapi available, will disable gssapi mechanism
+    gssapi = None
+    GSSError = None
 
 
 __all__ = ['AIOKafkaClient']
@@ -78,12 +87,24 @@ class AIOKafkaClient:
                  ssl_context=None,
                  security_protocol='PLAINTEXT',
                  api_version='auto',
-                 connections_max_idle_ms=540000):
-        if security_protocol not in ('SSL', 'PLAINTEXT'):
-            raise ValueError("`security_protocol` should be SSL or PLAINTEXT")
+                 connections_max_idle_ms=540000,
+                 sasl_mechanism=None,
+                 sasl_plain_username=None,
+                 sasl_plain_password=None):
+        if security_protocol not in ('SSL', 'PLAINTEXT', 'SASL_PLAINTEXT', 'SASL_SSL'):
+            raise ValueError("`security_protocol` should be SSL, PLAINTEXT, SASL_PLAINTEXT or SASL_SSL")
         if security_protocol == "SSL" and ssl_context is None:
             raise ValueError(
                 "`ssl_context` is mandatory if security_protocol=='SSL'")
+
+        if security_protocol in ('SASL_PLAINTEXT', 'SASL_SSL'):
+            assert sasl_mechanism in ('PLAIN', 'GSSAPI'), 'sasl_mechanism must be PLAIN or GSSAPI '
+            if sasl_mechanism == 'PLAIN':
+                assert sasl_plain_username is not None, 'sasl_plain_username required for PLAIN sasl'
+                assert sasl_plain_password is not None, 'sasl_plain_password required for PLAIN sasl'
+            if sasl_mechanism == 'GSSAPI':
+                assert gssapi is not None, 'GSSAPI lib not available'
+                raise NotImplementedError('GSSAPI is not implemented yet')
 
         self._bootstrap_servers = bootstrap_servers
         self._client_id = client_id
@@ -94,6 +115,9 @@ class AIOKafkaClient:
         self._ssl_context = ssl_context
         self._retry_backoff = retry_backoff_ms / 1000
         self._connections_max_idle_ms = connections_max_idle_ms
+        self._sasl_mechanism = sasl_mechanism
+        self._sasl_plain_username = sasl_plain_username
+        self._sasl_plain_password = sasl_plain_password
 
         self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
         self._topics = set()  # empty set will fetch all topic metadata
@@ -155,6 +179,11 @@ class AIOKafkaClient:
                 log.error('Unable connect to "%s:%s": %s', host, port, err)
                 continue
 
+            if self._security_protocol in ('SASL_PLAINTEXT', 'SASL_SSL'):
+                if not (yield from self._sasl_init(bootstrap_conn)):
+                    bootstrap_conn.close()
+                    continue
+
             try:
                 metadata = yield from bootstrap_conn.send(metadata_request)
             except KafkaError as err:
@@ -188,6 +217,62 @@ class AIOKafkaClient:
             # starting metadata synchronizer task
             self._sync_task = ensure_future(
                 self._md_synchronizer(), loop=self._loop)
+
+    @asyncio.coroutine
+    def _sasl_init(self, conn):
+        assert self._security_protocol in ('SASL_PLAINTEXT', 'SASL_SSL')
+
+        try:
+            sasl_handshake = SaslHandShakeRequest[0](self._sasl_mechanism)
+            response = yield from conn.send(sasl_handshake)
+
+            if self._sasl_mechanism not in response.enabled_mechanisms:
+                raise Errors.UnsupportedSaslMechanismError(
+                    'Kafka broker does not support %s sasl mechanism. Enabled mechanisms are: %s'
+                    % (self._sasl_mechanism, response.enabled_mechanisms))
+            elif self._sasl_mechanism == 'PLAIN':
+                if self._security_protocol == 'SASL_PLAINTEXT':
+                    log.warning('%s: Sending username and password in the clear', self)
+
+                # Send PLAIN credentials per RFC-4616
+                msg = bytes('\0'.join([self._sasl_plain_username,
+                                       self._sasl_plain_username,
+                                       self._sasl_plain_password]).encode('utf-8'))
+                # size = Int32.encode(len(msg))
+                import struct
+                size = struct.pack(">i", len(msg))
+                try:
+                    conn._writer.write(size + msg)
+                except OSError as err:
+                    yield from self.close()
+                    raise Errors.ConnectionError(
+                        "Connection at {0}:{1} broken: {2}".format(conn._host, conn._port, err))
+
+                try:
+                    # The server will send a zero sized message (that is Int32(0)) on success.
+                    # The connection is closed on failure
+                    correlation_id = conn._next_correlation_id()
+                    fut = create_future(loop=self._loop)
+                    conn._requests.append((correlation_id, None, fut))
+                    yield from asyncio.wait_for(fut, self._request_timeout_ms, loop=self._loop)
+                except ConnectionError as err:
+                    log.exception("%s: Error receiving reply from server, %s", self, err)
+                    raise Errors.KafkaConnectionError("%s: %s" % (self, err))
+
+                if fut.exception():
+                    raise Errors.AuthenticationFailedError('Unrecognized response during authentication')
+
+                log.info('%s: Authenticated as %s via PLAIN', self, self._sasl_plain_username)
+            elif self._sasl_mechanism == 'GSSAPI':
+                raise KafkaError('GSSAPI sasl mechanism is not yet supported by aiokafka')
+            else:
+                raise Errors.UnsupportedSaslMechanismError(
+                    'aiokafka does not support SASL mechanism %s' %
+                    self._sasl_mechanism)
+            return True
+        except KafkaError as err:
+            log.warning('Unable to do sasl authentication from "%s:%s": %s', conn._host, conn._port, err)
+            return False
 
     @asyncio.coroutine
     def _md_synchronizer(self):
@@ -244,9 +329,14 @@ class AIOKafkaClient:
 
             if conn is None:
                 continue
+
+            if self._security_protocol in ('SASL_PLAINTEXT', 'SASL_SSL'):
+                if not (yield from self._sasl_init(conn)):
+                    conn.close()
+                    continue
+
             log.debug("Sending metadata request %s to node %s",
                       metadata_request, node_id)
-
             try:
                 metadata = yield from conn.send(metadata_request)
             except KafkaError as err:
@@ -340,7 +430,8 @@ class AIOKafkaClient:
 
     @asyncio.coroutine
     def _get_conn(self, node_id, *, group=ConnectionGroup.DEFAULT):
-        "Get or create a connection to a broker using host and port"
+        """ Get or create a connection to a broker using host and port
+        """
         conn_id = (node_id, group)
         if conn_id in self._conns:
             conn = self._conns[conn_id]

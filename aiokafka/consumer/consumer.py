@@ -175,7 +175,10 @@ class AIOKafkaConsumer(object):
                  security_protocol='PLAINTEXT',
                  api_version='auto',
                  exclude_internal_topics=True,
-                 connections_max_idle_ms=540000):
+                 connections_max_idle_ms=540000,
+                 sasl_mechanism=None,
+                 sasl_plain_username=None,
+                 sasl_plain_password=None):
         if api_version not in ('auto', '0.9', '0.10'):
             raise ValueError("Unsupported Kafka API version")
 
@@ -191,7 +194,10 @@ class AIOKafkaConsumer(object):
             api_version=api_version,
             ssl_context=ssl_context,
             security_protocol=security_protocol,
-            connections_max_idle_ms=connections_max_idle_ms)
+            connections_max_idle_ms=connections_max_idle_ms,
+            sasl_mechanism=sasl_mechanism,
+            sasl_plain_username=sasl_plain_username,
+            sasl_plain_password=sasl_plain_password)
 
         self._group_id = group_id
         self._heartbeat_interval_ms = heartbeat_interval_ms
