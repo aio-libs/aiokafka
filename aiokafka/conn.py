@@ -127,7 +127,7 @@ class AIOKafkaConnection:
         if self._secutity_protocol == "PLAINTEXT":
             ssl = None
         else:
-            assert self._secutity_protocol == "SSL"
+            assert self._secutity_protocol in ("SSL", "SASL_SSL")
             assert self._ssl_context is not None
             ssl = self._ssl_context
         # Create streams same as `open_connection`, but using custom protocol
@@ -269,10 +269,23 @@ class AIOKafkaConnection:
             resp = yield from reader.readexactly(4)
             size, = struct.unpack(">i", resp)
 
-            resp = yield from reader.readexactly(size)
+            resp = None
+            if size:
+                resp = yield from reader.readexactly(size)
             self_ref()._handle_frame(resp)
 
     def _handle_frame(self, resp):
+        if resp is None:
+            correlation_id, _, fut = self._requests.pop(0)
+            if not fut.done():
+                response = True
+                self.log.debug(
+                    '%s Response %d: %s', self, correlation_id, response)
+                fut.set_result(response)
+            # Update idle timer.
+            self._last_action = self._loop.time()
+            return
+
         recv_correlation_id, = struct.unpack_from(">i", resp, 0)
 
         correlation_id, resp_type, fut = self._requests.pop(0)

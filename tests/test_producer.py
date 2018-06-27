@@ -353,7 +353,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     def test_producer_arguments(self):
         with self.assertRaisesRegex(
-                ValueError, "`security_protocol` should be SSL or PLAINTEXT"):
+                ValueError, "`security_protocol` should be "
+                            "SSL, PLAINTEXT, SASL_PLAINTEXT or SASL_SSL"):
             AIOKafkaProducer(
                 loop=self.loop,
                 bootstrap_servers=self.hosts,

@@ -691,7 +691,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     def test_consumer_arguments(self):
         with self.assertRaisesRegex(
-                ValueError, "`security_protocol` should be SSL or PLAINTEXT"):
+                ValueError, "`security_protocol` should be "
+                            "SSL, PLAINTEXT, SASL_PLAINTEXT or SASL_SSL"):
             AIOKafkaConsumer(
                 self.topic, loop=self.loop,
                 bootstrap_servers=self.hosts,
