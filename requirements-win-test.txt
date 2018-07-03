@@ -5,6 +5,6 @@ pytest-catchlog==1.2.2
 docker-py==1.10.6
 lz4==2.0.1
 xxhash==1.0.1
-python-snappy==0.5.1
+python-snappy==0.5.3
 # pypiwin32==219
 cython==0.28.3
