@@ -5,7 +5,6 @@ import time
 import unittest
 import pytest
 import operator
-import sys
 
 from contextlib import contextmanager
 from functools import wraps
@@ -217,10 +216,6 @@ class KafkaIntegrationTestCase(unittest.TestCase):
             certfile=str(self.ssl_folder / "cl_client.pem"),
             keyfile=str(self.ssl_folder / "cl_client.key"),
             password="abcdefgh")
-
-    @contextmanager
-    def _assert_logs_noop(self):
-        yield
 
 
 def random_string(length):
