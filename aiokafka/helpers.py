@@ -1,43 +1,7 @@
 import logging
-import ssl
+from ssl import create_default_context, Purpose
 
 log = logging.getLogger(__name__)
-
-try:
-    from ssl import create_default_context, Purpose
-except ImportError:
-    # Backport for Python3.3, it's not as good and you probably should consider
-    # upgrading to a higher version.
-
-    def _create_ssl_context(*, cafile=None, capath=None, cadata=None):
-        """Create a SSLContext object with default settings."""
-        log.warn("You are using")
-        if cadata is not None:
-            raise ValueError("`cadata` not supported by Python3.3")
-        context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
-        # SSLv2 considered harmful.
-        context.options |= ssl.OP_NO_SSLv2
-        # SSLv3 has problematic security and is only required for really old
-        # clients such as IE6 on Windows XP
-        context.options |= ssl.OP_NO_SSLv3
-        # disable compression to prevent CRIME attacks (OpenSSL 1.0+)
-        # And we don't really need it in Kafka, as we have client compression
-        context.options |= getattr(ssl, "OP_NO_COMPRESSION", 0)
-
-        context.verify_mode = ssl.CERT_REQUIRED
-
-        if cafile or capath:
-            context.load_verify_locations(cafile, capath)
-        else:
-            # This may fail silently.
-            context.set_default_verify_paths()
-        return context
-else:
-
-    def _create_ssl_context(*, cafile=None, capath=None, cadata=None):
-        """Create a SSLContext object with default settings."""
-        return create_default_context(
-            Purpose.SERVER_AUTH, cafile=cafile, capath=capath, cadata=cadata)
 
 
 def create_ssl_context(*, cafile=None, capath=None, cadata=None,
@@ -85,7 +49,8 @@ def create_ssl_context(*, cafile=None, capath=None, cadata=None,
         log.info('Loading SSL CA from data provided in `cadata`')
         log.debug('`cadata`: %r', cadata)
     # Creating context with default params for client sockets.
-    context = _create_ssl_context(cafile=cafile, capath=capath, cadata=cadata)
+    context = create_default_context(
+        Purpose.SERVER_AUTH, cafile=cafile, capath=capath, cadata=cadata)
     # Load certificate if one is specified.
     if certfile is not None:
         log.info('Loading SSL Cert from %s', certfile)

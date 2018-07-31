@@ -81,11 +81,8 @@ if PY_VER >= (3, 5):
     pass
 elif PY_VER >= (3, 4):
     install_requires.append('typing')
-elif PY_VER >= (3, 3):
-    install_requires.append('typing')
-    install_requires.append('asyncio')
 else:
-    raise RuntimeError("aiokafka doesn't suppport Python earlier than 3.3")
+    raise RuntimeError("aiokafka doesn't suppport Python earlier than 3.4")
 
 
 def read(f):
@@ -110,7 +107,6 @@ classifiers = [
     'License :: OSI Approved :: Apache Software License',
     'Intended Audience :: Developers',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.3',
     'Programming Language :: Python :: 3.4',
     'Programming Language :: Python :: 3.5',
     'Programming Language :: Python :: 3.6',

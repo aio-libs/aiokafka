@@ -21,37 +21,9 @@ class TestHelpers(unittest.TestCase):
         self.assertTrue(keyfile.exists(), str(keyfile))
         return cafile, certfile, keyfile
 
-    @pytest.mark.skipif(sys.version_info >= (3, 4),
-                        reason="requires python3.4")
-    def test_create_ssl_context(self):
-        # TODO: I would realy want to check that proper certificates load, but
-        #       the API is fuzzy, and 3.3 misses a lot of functions, so
-        #       for now this test only checks that no error are raised during
-        #       context creation...
-        cafile, certfile, keyfile = self._check_ssl_dir()
-
-        context = create_ssl_context()
-        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
-
-        context = create_ssl_context(cafile=str(cafile))
-        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
-
-        context = create_ssl_context(
-            cafile=str(cafile),
-            certfile=str(certfile),
-            keyfile=str(keyfile),
-            password="abcdefgh")
-        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
-
-        with self.assertRaisesRegexp(
-                ValueError, "`cadata` not supported by Python3.3"):
-            with cafile.open("rb") as f:
-                data = f.read()
-            create_ssl_context(cadata=data.decode("ascii"))
-
     @pytest.mark.skipif(sys.version_info < (3, 4),
                         reason="requires python3.4")
-    def test_create_ssl_context_py34(self):
+    def test_create_ssl_context(self):
         cafile, certfile, keyfile = self._check_ssl_dir()
 
         context = create_ssl_context()

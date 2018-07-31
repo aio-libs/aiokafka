@@ -1,8 +1,6 @@
 import asyncio
 import pytest
 import unittest
-import sys
-from contextlib import contextmanager
 from unittest import mock
 
 from kafka.protocol.offset import OffsetResponse
@@ -58,17 +56,6 @@ def test_fetch_result_and_error(loop):
 
 @pytest.mark.usefixtures('setup_test_class_serverless')
 class TestFetcher(unittest.TestCase):
-
-    def assertLogs(self, *args, **kw):  # noqa
-        if sys.version_info >= (3, 4, 0):
-            return super().assertLogs(*args, **kw)
-        else:
-            # On Python3.3 just do no-op for now
-            return self._assert_logs_noop()
-
-    @contextmanager
-    def _assert_logs_noop(self):
-        yield
 
     def setUp(self):
         super().setUp()
