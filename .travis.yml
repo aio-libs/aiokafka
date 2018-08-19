@@ -100,6 +100,7 @@ addons:
 install:
 - pip install --upgrade pip setuptools wheel
 - pip install -r requirements-ci.txt
+- pip install сodecov
 - pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
 
 after_success:
