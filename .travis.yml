@@ -10,7 +10,7 @@ branches:
   - "/^v\\d+\\.\\d+\\.\\d+\\.dev\\d*$/"
 
 stages:
-- &stage_sanity_test Unit tests on container workers
+- &stage_sanity_test Flake and unit test
 - &stage_functional Run main functional tests
 - name: &stage_deploy Optionally run deploy to PyPi
   # This will prevent deploy unless it's a tagged commit:
@@ -20,23 +20,17 @@ matrix:
   include:
     - stage: *stage_sanity_test
       sudo: false
-      python: 3.5
-      script:
-      - make ci-test-unit
-    - sudo: false
       python: &mainstream_python 3.6
       script:
       - make ci-test-unit
     - sudo: false
-      python: 3.5
-      env: PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
+      python: *mainstream_python
       script:
-      - make ci-test-unit
+      - make flake
     - sudo: false
-      python: 3.6
-      env: PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
+      python: *mainstream_python
       script:
-      - make ci-test-unit
+      - make check-readme
 
     # All Package build combinations for newest Kafka
     - stage: *stage_functional
@@ -100,7 +94,7 @@ matrix:
 
 addons:
   apt:
-    sources:
+    packages:
     - libsnappy-dev
 
 install:
