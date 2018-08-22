@@ -20,7 +20,7 @@ matrix:
   include:
     - stage: *stage_sanity_test
       sudo: false
-      python: &mainstream_python 3.7
+      python: &mainstream_python 3.6
       script:
       - make ci-test-unit
     - sudo: false
@@ -64,6 +64,7 @@ matrix:
       - make ci-test-all
     - sudo: true
       python: 3.7
+      dist: xenial
       services:
       - docker
       env: KAFKA_VERSION=1.0.2 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
@@ -71,6 +72,7 @@ matrix:
       - make ci-test-all
     - sudo: true
       python: 3.7
+      dist: xenial
       services:
       - docker
       env: KAFKA_VERSION=1.0.2 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
