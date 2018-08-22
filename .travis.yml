@@ -17,6 +17,7 @@ stages:
   if: tag IS present
 
 matrix:
+  fast_finish: true
   include:
     - stage: *stage_sanity_test
       sudo: false
