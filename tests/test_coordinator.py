@@ -1201,6 +1201,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(coordinator.close)
 
         def start_coordination():
+            if coordinator._coordination_task:
+                coordinator._coordination_task.cancel()
             coordinator._coordination_task = task = ensure_future(
                 coordinator._coordination_routine(), loop=self.loop)
             return task
@@ -1212,7 +1214,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 yield from coordinator._coordination_task
             except asyncio.CancelledError:
                 pass
-            coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+            coordinator._coordination_task = self.loop.create_task(
+                asyncio.sleep(0.1, loop=self.loop))
 
         yield from stop_coordination()
 

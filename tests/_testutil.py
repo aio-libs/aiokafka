@@ -211,11 +211,13 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         self.assertEqual(len(set(messages)), num_messages)
 
     def create_ssl_context(self):
-        return create_ssl_context(
+        context = create_ssl_context(
             cafile=str(self.ssl_folder / "ca-cert"),
             certfile=str(self.ssl_folder / "cl_client.pem"),
             keyfile=str(self.ssl_folder / "cl_client.key"),
             password="abcdefgh")
+        context.check_hostname = False
+        return context
 
 
 def random_string(length):

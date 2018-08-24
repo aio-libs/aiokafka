@@ -64,7 +64,7 @@ elif [[ $OP == "server" && ! -z "$CA_CERT" && ! -z "$PFX" && ! -z "$CN" ]]; then
 
     #Step 1
     echo "############ Generating key"
-    keytool -storepass "$PASS" -keypass "$PASS" -keystore ${PFX}server.keystore.jks -alias localhost -validity $VALIDITY -genkey <<EOF
+    keytool -storepass "$PASS" -keypass "$PASS" -keystore ${PFX}server.keystore.jks -alias localhost -validity $VALIDITY -keyalg RSA -genkey <<EOF
 $CN
 $OU
 $O
@@ -108,7 +108,7 @@ yes
 EOF
 
 	echo "############ Generating key"
-	keytool -storepass "$PASS" -keypass "$PASS" -keystore ${PFX}client.keystore.jks -alias localhost -validity $VALIDITY -genkey <<EOF
+	keytool -storepass "$PASS" -keypass "$PASS" -keystore ${PFX}client.keystore.jks -alias localhost -validity $VALIDITY -keyalg RSA -genkey <<EOF
 $CN
 $OU
 $O

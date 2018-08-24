@@ -51,7 +51,7 @@ def test_fetch_result_and_error(loop):
     assert repr(result) == "<FetchResult position=0>"
     error = FetchError(
         loop=loop, error=OffsetOutOfRangeError({}), backoff=0)
-    assert repr(error) == "<FetchError error=OffsetOutOfRangeError({},)>"
+    assert repr(error) == "<FetchError error=OffsetOutOfRangeError({})>"
 
 
 @pytest.mark.usefixtures('setup_test_class_serverless')
