@@ -1,5 +1,5 @@
 flake8==3.5.0
-pytest==3.7.3
+pytest==3.7.4
 pytest-cov==2.5.1
 docker-py==1.10.6
 lz4==2.1.0
