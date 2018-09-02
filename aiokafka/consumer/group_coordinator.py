@@ -106,8 +106,9 @@ class NoGroupCoordinator(BaseCoordinator):
         assignment = self._subscription.subscription.assignment
         for tp in partitions:
             tp_state = assignment.state_value(tp)
-            tp_state.reset_committed(
-                OffsetAndMetadata(UNKNOWN_OFFSET, ""))
+            if tp_state:
+                tp_state.reset_committed(
+                    OffsetAndMetadata(UNKNOWN_OFFSET, ""))
 
     @property
     def _group_subscription(self):

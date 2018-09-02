@@ -205,7 +205,8 @@ class SubscriptionState:
         Affects: SubscriptionState.subscription.assignment
         """
         assert self._subscription_type in [
-            SubscriptionType.AUTO_PATTERN, SubscriptionType.AUTO_TOPICS]
+            SubscriptionType.AUTO_PATTERN, SubscriptionType.AUTO_TOPICS,
+            SubscriptionType.USER_ASSIGNED]
 
         self._subscription._assign(assignment)
         self._notify_assignment_waiters()
