@@ -450,8 +450,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(producer.stop)
 
         # 1st step is to force an error in produce sequense and force a
-        # reenqueue on 2 batches. That way we will end up with 2 broken
-        # batches in queue and only 1 can be sent at a time.
+        # reenqueue on 1 batch.
         with mock.patch.object(producer.client, 'send') as mocked:
             send_fut = create_future(self.loop)
 
@@ -465,12 +464,15 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             fut = yield from producer.send(
                 self.topic, b'Some MSG', partition=0)
             yield from send_fut
-            yield from asyncio.sleep(0.1, loop=self.loop)
+            # 100ms backoff time
+            yield from asyncio.sleep(0.11, loop=self.loop)
         self.assertFalse(fut.done())
         self.assertTrue(producer._message_accumulator._batches)
 
-        # Then we add another msg right after the send failed. The system still
-        # has backoff before reenqueue, so no race.
+        # Then we add another msg right after the reenqueue. As we use
+        # linger_ms `_sender_routine` will be locked for some time after we
+        # reenqueue batch, so this add will be forced to wait a longer time.
+        # If drain_waiter is broken it will end up with a RecursionError.
         fut2 = yield from producer.send(self.topic, b'Some MSG 2', partition=0)
 
         yield from fut2
