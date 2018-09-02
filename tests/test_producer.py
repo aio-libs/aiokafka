@@ -23,7 +23,8 @@ from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import ProducerClosed
-from aiokafka.util import PY_341
+from aiokafka.util import PY_341, create_future
+
 
 LOG_APPEND_TIME = 1
 
@@ -437,3 +438,46 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         yield from producer.flush()
         self.assertEqual(send_mock.call_count, 0)
+
+    @run_until_complete
+    def test_producer_send_reenque_resets_waiters(self):
+        # See issue #409. If reenqueue method does not reset the waiter
+        # properly new batches will raise RecursionError.
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts, linger_ms=1000)
+        yield from producer.start()
+        self.add_cleanup(producer.stop)
+
+        # 1st step is to force an error in produce sequense and force a
+        # reenqueue on 2 batches. That way we will end up with 2 broken
+        # batches in queue and only 1 can be sent at a time.
+        with mock.patch.object(producer.client, 'send') as mocked:
+            send_fut = create_future(self.loop)
+
+            @asyncio.coroutine
+            def mocked_func(node_id, request):
+                if not send_fut.done():
+                    send_fut.set_result(None)
+                raise UnknownTopicOrPartitionError()
+            mocked.side_effect = mocked_func
+
+            fut = yield from producer.send(
+                self.topic, b'Some MSG', partition=0)
+            yield from send_fut
+            yield from asyncio.sleep(0.1, loop=self.loop)
+        self.assertFalse(fut.done())
+        self.assertTrue(producer._message_accumulator._batches)
+
+        # Then we add another msg right after the send failed. The system still
+        # has backoff before reenqueue, so no race.
+        fut2 = yield from producer.send(self.topic, b'Some MSG 2', partition=0)
+
+        yield from fut2
+        self.assertTrue(fut.done())
+        self.assertTrue(fut2.done())
+        msg1 = yield from fut
+        msg2 = yield from fut2
+
+        # The order should be preserved
+        self.assertLess(msg1.offset, msg2.offset)
