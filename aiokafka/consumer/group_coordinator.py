@@ -103,8 +103,15 @@ class NoGroupCoordinator(BaseCoordinator):
         self._subscription.assign_from_subscribed(partitions)
 
         # Reset all committed points, as the GroupCoordinator would
+        self.reset_committed()
+
+    def reset_committed(self):
+        """ Group coordinator will reset committed points to UNKNOWN_OFFSET
+        if no commit is found for group. In the NoGroup mode we need to force
+        it after each assignment
+        """
         assignment = self._subscription.subscription.assignment
-        for tp in partitions:
+        for tp in assignment.tps:
             tp_state = assignment.state_value(tp)
             tp_state.reset_committed(
                 OffsetAndMetadata(UNKNOWN_OFFSET, ""))

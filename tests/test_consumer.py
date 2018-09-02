@@ -1483,10 +1483,90 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             loop=self.loop, group_id="test_consumer_fast_unsubscribe",
             bootstrap_servers=self.hosts)
-        tp = TopicPartition(self.topic, 0)
-
         yield from consumer.start()
-        consumer.subscribe([tp])
+        consumer.subscribe([self.topic])
         yield from asyncio.sleep(0.01, loop=self.loop)
         consumer.unsubscribe()
         yield from consumer.stop()
+
+    @run_until_complete
+    def test_consumer_manual_assignment_with_group(self):
+        # Following issue #394 we seemed to mix subscription with manual
+        # assignment. The main test above probably missed this scenario cause
+        # it was initialized for subscription.
+        yield from self.send_messages(0, list(range(0, 10)))
+
+        consumer = AIOKafkaConsumer(
+            loop=self.loop,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+            group_id='group-%s' % self.id(), bootstrap_servers=self.hosts)
+        tp = TopicPartition(self.topic, 0)
+        consumer.assign([tp])
+        yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        for i in range(5):
+            msg = yield from consumer.getone()
+            self.assertEqual(msg.value, str(i).encode())
+
+        yield from consumer.commit()
+        yield from consumer.stop()
+
+        # Start the next consumer after closing this one. It should have
+        # committed the offset to the group
+        consumer = AIOKafkaConsumer(
+            loop=self.loop,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+            group_id='group-%s' % self.id(), bootstrap_servers=self.hosts)
+        tp = TopicPartition(self.topic, 0)
+        consumer.assign([tp])
+        yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        for i in range(5, 10):
+            msg = yield from consumer.getone()
+            self.assertEqual(msg.value, str(i).encode())
+
+    @run_until_complete
+    def test_consumer_manual_assignment_no_group_before_start(self):
+        # Following issue #394 we seemed to mix subscription with manual
+        # assignment. The main test above probably missed this scenario cause
+        # it was initialized for subscription.
+        yield from self.send_messages(0, list(range(0, 10)))
+
+        consumer = AIOKafkaConsumer(
+            loop=self.loop,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+            group_id=None, bootstrap_servers=self.hosts)
+        tp = TopicPartition(self.topic, 0)
+        consumer.assign([tp])
+        yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        for i in range(10):
+            msg = yield from consumer.getone()
+            self.assertEqual(msg.value, str(i).encode())
+
+    @run_until_complete
+    def test_consumer_manual_assignment_no_group_after_start(self):
+        # Following issue #394 we seemed to mix subscription with manual
+        # assignment. The main test above probably missed this scenario cause
+        # it was initialized for subscription.
+        yield from self.send_messages(0, list(range(0, 10)))
+
+        consumer = AIOKafkaConsumer(
+            loop=self.loop,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+            group_id=None, bootstrap_servers=self.hosts)
+        tp = TopicPartition(self.topic, 0)
+        yield from consumer.start()
+        consumer.assign([tp])
+        self.add_cleanup(consumer.stop)
+
+        for i in range(10):
+            msg = yield from consumer.getone()
+            self.assertEqual(msg.value, str(i).encode())

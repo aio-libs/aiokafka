@@ -251,6 +251,7 @@ class AIOKafkaConsumer(object):
             * Wait for possible topic autocreation
             * Join group if ``group_id`` provided
         """
+        assert self._fetcher is None, "Did you call `start` twice?"
         yield from self._client.bootstrap()
         yield from self._wait_topics()
 
@@ -282,10 +283,17 @@ class AIOKafkaConsumer(object):
                 auto_commit_interval_ms=self._auto_commit_interval_ms,
                 assignors=self._partition_assignment_strategy,
                 exclude_internal_topics=self._exclude_internal_topics)
-            # In case we provided topics to constructor we better wait for
-            # initial group join
             if self._subscription.subscription is not None:
-                yield from self._subscription.wait_for_assignment()
+                if self._subscription.partitions_auto_assigned():
+                    # Either we passed `topics` to constructor or `subscribe`
+                    # was called before `start`
+                    yield from self._subscription.wait_for_assignment()
+                else:
+                    # `assign` was called before `start`. We did not start
+                    # this task on that call, as coordinator was yet to be
+                    # created
+                    self._coordinator.start_commit_offsets_refresh_task(
+                        self._subscription.subscription.assignment)
         else:
             # Using a simple assignment coordinator for reassignment on
             # metadata changes
@@ -293,10 +301,14 @@ class AIOKafkaConsumer(object):
                 self._client, self._subscription, loop=self._loop,
                 exclude_internal_topics=self._exclude_internal_topics)
 
-            # If we passed `topics` to constructor.
             if self._subscription.subscription is not None:
-                yield from self._client.force_metadata_update()
-                self._coordinator.assign_all_partitions(check_unknown=True)
+                if self._subscription.partitions_auto_assigned():
+                    # Either we passed `topics` to constructor or `subscribe`
+                    # was called before `start`
+                    yield from self._client.force_metadata_update()
+                    self._coordinator.assign_all_partitions(check_unknown=True)
+                else:
+                    self._coordinator.reset_committed()
 
     @asyncio.coroutine
     def _wait_topics(self):
@@ -333,10 +345,15 @@ class AIOKafkaConsumer(object):
         """
         self._subscription.assign_from_user(partitions)
         self._client.set_topics([tp.topic for tp in partitions])
-        if self._group_id is not None:
-            # refresh commit positions for all assigned partitions
-            assignment = self._subscription.subscription.assignment
-            self._coordinator.start_commit_offsets_refresh_task(assignment)
+
+        # If called before `start` we will delegate this to `start` call
+        if self._coordinator is not None:
+            if self._group_id is not None:
+                # refresh commit positions for all assigned partitions
+                assignment = self._subscription.subscription.assignment
+                self._coordinator.start_commit_offsets_refresh_task(assignment)
+            else:
+                self._coordinator.reset_committed()
 
     def assignment(self):
         """ Get the set of partitions currently assigned to this consumer.
