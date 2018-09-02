@@ -183,10 +183,14 @@ class MessageBatch:
         """Compress batch to be ready for send"""
         if not self._drain_waiter.done():
             self._drain_waiter.set_result(None)
-            self._buffer = self._builder._build()
+
+    def reset_drain(self):
+        """Reset drain waiter, until we will do another retry"""
+        assert self._drain_waiter.done()
+        self._drain_waiter = create_future(self._loop)
 
     def get_data_buffer(self):
-        return self._buffer
+        return self._builder._build()
 
     def is_empty(self):
         return self._builder.record_count() == 0
@@ -271,6 +275,7 @@ class MessageAccumulator:
     def reenqueue(self, batch):
         tp = batch._tp
         self._batches[tp].appendleft(batch)
+        batch.reset_drain()
 
     def drain_by_nodes(self, ignore_nodes):
         """ Group batches by leader to partiton nodes. """
