@@ -253,7 +253,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         yield from client.bootstrap()
         ver = yield from client.check_version()
-        self.assertEqual(kafka_version[:len(ver)], ver)
+        self.assertEqual(kafka_version[:2], ver[:2])
         yield from self.wait_topic(client, 'some_test_topic')
         ver2 = yield from client.check_version()
         self.assertEqual(ver, ver2)
