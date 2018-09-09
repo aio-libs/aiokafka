@@ -1577,20 +1577,32 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # more cases, where aiokafka just does not handle correctly in
         # coordination (like ConnectionError in said issue).
         # Original issue #294
-        yield from self.send_messages(0, list(range(0, 10)))
 
-        consumer = yield from self.consumer_factory()
+        consumer = AIOKafkaConsumer(
+            loop=self.loop,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+            group_id="group-" + self.id(),
+            bootstrap_servers=self.hosts)
+        yield from consumer.start()
 
-        msg = yield from consumer.getone()
-        self.assertEqual(msg.value, b"0")
-        return
         with self.assertRaises(KafkaError):
-            with mock.patch.object(consumer._coordinator, "_send_req"):
+            with mock.patch.object(consumer._coordinator, "_send_req") as m:
                 @asyncio.coroutine
                 def mock_send_req(request):
-                    raise UnknownError()
+                    res = mock.Mock()
+                    res.error_code = UnknownError.errno
+                    return res
+                m.side_effect = mock_send_req
 
-                msg = yield from consumer.getone()
+                consumer.subscribe([self.topic])  # Force join
+                yield from consumer.getone()
+
+            # We still need proper cleanup if this succeeds
+            self.add_cleanup(consumer.stop)
+
+        with self.assertRaises(KafkaError):
+            yield from consumer.stop()
 
     @run_until_complete
     def test_consumer_invalid_session_timeout(self):

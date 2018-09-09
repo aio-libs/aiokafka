@@ -779,6 +779,9 @@ class GroupCoordinator(BaseCoordinator):
                       self._subscription.topics)
             return False
         if assignment is None:
+            # wait backoff and try again
+            yield from asyncio.sleep(
+                self._retry_backoff_ms / 1000, loop=self._loop)
             return False
 
         protocol, member_assignment_bytes = assignment
