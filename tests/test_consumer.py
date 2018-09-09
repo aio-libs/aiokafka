@@ -49,9 +49,17 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         orig = consumer._fetcher._proc_fetch_request
         with mock.patch.object(
                 consumer._fetcher, "_proc_fetch_request") as mocked:
-            mocked.side_effect = orig
+            call_count = [0]
+
+            @asyncio.coroutine
+            def coro(*args, **kw):
+                res = yield from orig(*args, **kw)
+                call_count[0] += 1
+                return res
+
+            mocked.side_effect = coro
             yield
-            self.assertEqual(mocked.call_count, count)
+            self.assertEqual(call_count[0], count)
 
     @run_until_complete
     def test_simple_consumer(self):
