@@ -18,7 +18,7 @@ from aiokafka.structs import (
 from aiokafka.errors import (
     IllegalStateError, OffsetOutOfRangeError, UnsupportedVersionError,
     KafkaTimeoutError, NoOffsetForPartitionError, ConsumerStoppedError,
-    IllegalOperation
+    IllegalOperation, UnknownError, KafkaError, InvalidSessionTimeoutError
 )
 
 from ._testutil import (
@@ -1570,3 +1570,49 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         for i in range(10):
             msg = yield from consumer.getone()
             self.assertEqual(msg.value, str(i).encode())
+
+    @run_until_complete
+    def test_consumer_propagates_coordinator_errors(self):
+        # Following issue #344 it seems more critical. There may be
+        # more cases, where aiokafka just does not handle correctly in
+        # coordination (like ConnectionError in said issue).
+        # Original issue #294
+        yield from self.send_messages(0, list(range(0, 10)))
+
+        consumer = yield from self.consumer_factory()
+
+        msg = yield from consumer.getone()
+        self.assertEqual(msg.value, b"0")
+        return
+        with self.assertRaises(KafkaError):
+            with mock.patch.object(consumer._coordinator, "_send_req"):
+                @asyncio.coroutine
+                def mock_send_req(request):
+                    raise UnknownError()
+
+                msg = yield from consumer.getone()
+
+    @run_until_complete
+    def test_consumer_invalid_session_timeout(self):
+        # Following issue #344 it seems more critical. There may be
+        # more cases, where aiokafka just does not handle correctly in
+        # coordination (like ConnectionError is said issue).
+        # Original issue #294
+        yield from self.send_messages(0, list(range(0, 10)))
+
+        consumer = AIOKafkaConsumer(
+            self.topic,
+            loop=self.loop,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+            group_id="group-" + self.id(), bootstrap_servers=self.hosts,
+            session_timeout_ms=200, heartbeat_interval_ms=100)
+        with self.assertRaises(InvalidSessionTimeoutError):
+            yield from consumer.start()
+
+            # We still need proper cleanup if this succeeds
+            self.add_cleanup(consumer.stop)
+
+        # In case of success it will need to raise error again on stop
+        with self.assertRaises(InvalidSessionTimeoutError):
+            yield from consumer.stop()

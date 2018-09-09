@@ -16,7 +16,7 @@ from aiokafka.errors import (
     CorruptRecordException
 )
 from aiokafka.structs import TopicPartition, OffsetAndMetadata
-from aiokafka.util import PY_341, PY_35, PY_352, PY_36
+from aiokafka.util import PY_341, PY_35, PY_352, PY_36, ensure_future
 from aiokafka import __version__
 
 from .fetcher import Fetcher, OffsetResetStrategy
@@ -287,7 +287,8 @@ class AIOKafkaConsumer(object):
                 if self._subscription.partitions_auto_assigned():
                     # Either we passed `topics` to constructor or `subscribe`
                     # was called before `start`
-                    yield from self._subscription.wait_for_assignment()
+                    yield from self._wait_for_data_or_error(
+                        self._subscription.wait_for_assignment())
                 else:
                     # `assign` was called before `start`. We did not start
                     # this task on that call, as coordinator was yet to be
@@ -954,6 +955,23 @@ class AIOKafkaConsumer(object):
             "Unsubscribed all topics or patterns and assigned partitions")
 
     @asyncio.coroutine
+    def _wait_for_data_or_error(self, coro):
+        if self._group_id is None:
+            return (yield from coro)
+        else:
+            coordination_error_fut = self._coordinator.error_future
+            data_task = ensure_future(coro, loop=self._loop)
+            yield from asyncio.wait(
+                [data_task, coordination_error_fut],
+                return_when=asyncio.FIRST_COMPLETED)
+
+            # Check for errors in coordination and raise if any
+            if coordination_error_fut.done():
+                coordination_error_fut.result()  # Raises set exception if any
+
+            return (yield from data_task)
+
+    @asyncio.coroutine
     def getone(self, *partitions):
         """
         Get one message from Kafka.
@@ -992,7 +1010,8 @@ class AIOKafkaConsumer(object):
         if self._closed:
             raise ConsumerStoppedError()
 
-        msg = yield from self._fetcher.next_record(partitions)
+        msg = yield from self._wait_for_data_or_error(
+            self._fetcher.next_record(partitions))
         return msg
 
     @asyncio.coroutine
@@ -1038,9 +1057,11 @@ class AIOKafkaConsumer(object):
             raise ValueError("`max_records` must be a positive Integer")
 
         timeout = timeout_ms / 1000
-        records = yield from self._fetcher.fetched_records(
-            partitions, timeout,
-            max_records=max_records or self._max_poll_records)
+        records = yield from self._wait_for_data_or_error(
+            self._fetcher.fetched_records(
+                partitions, timeout,
+                max_records=max_records or self._max_poll_records)
+        )
         return records
 
     if PY_35:
