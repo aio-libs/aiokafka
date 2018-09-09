@@ -18,7 +18,7 @@ from aiokafka.structs import (
 from aiokafka.errors import (
     IllegalStateError, OffsetOutOfRangeError, UnsupportedVersionError,
     KafkaTimeoutError, NoOffsetForPartitionError, ConsumerStoppedError,
-    IllegalOperation
+    IllegalOperation, UnknownError, KafkaError, InvalidSessionTimeoutError
 )
 
 from ._testutil import (
@@ -49,9 +49,17 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         orig = consumer._fetcher._proc_fetch_request
         with mock.patch.object(
                 consumer._fetcher, "_proc_fetch_request") as mocked:
-            mocked.side_effect = orig
+            call_count = [0]
+
+            @asyncio.coroutine
+            def coro(*args, **kw):
+                res = yield from orig(*args, **kw)
+                call_count[0] += 1
+                return res
+
+            mocked.side_effect = coro
             yield
-            self.assertEqual(mocked.call_count, count)
+            self.assertEqual(call_count[0], count)
 
     @run_until_complete
     def test_simple_consumer(self):
@@ -1570,3 +1578,61 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         for i in range(10):
             msg = yield from consumer.getone()
             self.assertEqual(msg.value, str(i).encode())
+
+    @run_until_complete
+    def test_consumer_propagates_coordinator_errors(self):
+        # Following issue #344 it seems more critical. There may be
+        # more cases, where aiokafka just does not handle correctly in
+        # coordination (like ConnectionError in said issue).
+        # Original issue #294
+
+        consumer = AIOKafkaConsumer(
+            loop=self.loop,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+            group_id="group-" + self.id(),
+            bootstrap_servers=self.hosts)
+        yield from consumer.start()
+
+        with self.assertRaises(KafkaError):
+            with mock.patch.object(consumer._coordinator, "_send_req") as m:
+                @asyncio.coroutine
+                def mock_send_req(request):
+                    res = mock.Mock()
+                    res.error_code = UnknownError.errno
+                    return res
+                m.side_effect = mock_send_req
+
+                consumer.subscribe([self.topic])  # Force join
+                yield from consumer.getone()
+
+            # We still need proper cleanup if this succeeds
+            self.add_cleanup(consumer.stop)
+
+        with self.assertRaises(KafkaError):
+            yield from consumer.stop()
+
+    @run_until_complete
+    def test_consumer_invalid_session_timeout(self):
+        # Following issue #344 it seems more critical. There may be
+        # more cases, where aiokafka just does not handle correctly in
+        # coordination (like ConnectionError is said issue).
+        # Original issue #294
+        yield from self.send_messages(0, list(range(0, 10)))
+
+        consumer = AIOKafkaConsumer(
+            self.topic,
+            loop=self.loop,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+            group_id="group-" + self.id(), bootstrap_servers=self.hosts,
+            session_timeout_ms=200, heartbeat_interval_ms=100)
+        with self.assertRaises(InvalidSessionTimeoutError):
+            yield from consumer.start()
+
+            # We still need proper cleanup if this succeeds
+            self.add_cleanup(consumer.stop)
+
+        # In case of success it will need to raise error again on stop
+        with self.assertRaises(InvalidSessionTimeoutError):
+            yield from consumer.stop()
