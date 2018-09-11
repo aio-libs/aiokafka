@@ -20,7 +20,10 @@ def create_future(loop):
 
 
 def parse_kafka_version(api_version):
-    return StrictVersion(api_version).version
+    version = StrictVersion(api_version).version
+    if not (0, 9) <= version < (3, 0):
+        raise ValueError(api_version)
+    return version
 
 
 PY_341 = sys.version_info >= (3, 4, 1)
