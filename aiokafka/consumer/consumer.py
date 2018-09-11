@@ -176,9 +176,6 @@ class AIOKafkaConsumer(object):
                  api_version='auto',
                  exclude_internal_topics=True,
                  connections_max_idle_ms=540000):
-        if api_version not in ('auto', '0.9', '0.10'):
-            raise ValueError("Unsupported Kafka API version")
-
         if max_poll_records is not None and (
                 not isinstance(max_poll_records, int) or max_poll_records < 1):
             raise ValueError("`max_poll_records` should be positive Integer")

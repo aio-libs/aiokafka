@@ -189,7 +189,7 @@ class TestAIOKafkaClient(unittest.TestCase):
 
         client = AIOKafkaClient(loop=self.loop,
                                 bootstrap_servers=['broker_1:4567'],
-                                api_version=(0, 10))
+                                api_version="0.10")
         conn = mock.Mock()
         client._conns = [mock.Mock()]
         client._get_conn = mock.Mock()

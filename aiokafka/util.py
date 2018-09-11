@@ -1,6 +1,7 @@
 import os
 import sys
 import asyncio
+from distutils.version import StrictVersion
 
 __all__ = ["ensure_future", "create_future", "PY_35"]
 
@@ -16,6 +17,13 @@ def create_future(loop):
         return loop.create_future()
     except AttributeError:
         return asyncio.Future(loop=loop)
+
+
+def parse_kafka_version(api_version):
+    version = StrictVersion(api_version).version
+    if not (0, 9) <= version < (3, 0):
+        raise ValueError(api_version)
+    return version
 
 
 PY_341 = sys.version_info >= (3, 4, 1)
