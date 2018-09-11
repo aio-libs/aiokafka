@@ -173,10 +173,6 @@ class AIOKafkaProducer(object):
         else:
             compression_attrs = 0
 
-        if api_version not in (
-                'auto', '0.10', '0.9', '0.8.2', '0.8.1', '0.8.0'):
-            raise ValueError("Unsupported Kafka version")
-
         self._PRODUCER_CLIENT_ID_SEQUENCE += 1
         if client_id is None:
             client_id = 'aiokafka-producer-%s' % \

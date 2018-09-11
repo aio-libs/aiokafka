@@ -18,7 +18,7 @@ from aiokafka.errors import (
     RequestTimedOutError,
     UnknownTopicOrPartitionError,
     UnrecognizedBrokerVersion)
-from aiokafka.util import ensure_future, create_future
+from aiokafka.util import ensure_future, create_future, parse_kafka_version
 
 
 __all__ = ['AIOKafkaClient']
@@ -89,6 +89,8 @@ class AIOKafkaClient:
         self._client_id = client_id
         self._metadata_max_age_ms = metadata_max_age_ms
         self._request_timeout_ms = request_timeout_ms
+        if api_version != "auto":
+            api_version = parse_kafka_version(api_version)
         self._api_version = api_version
         self._security_protocol = security_protocol
         self._ssl_context = ssl_context
@@ -113,7 +115,7 @@ class AIOKafkaClient:
         if type(self._api_version) is tuple:
             return self._api_version
         # unknown api version, return minimal supported version
-        return (0, 9)
+        return (0, 9, 0)
 
     @property
     def hosts(self):
