@@ -1,10 +1,22 @@
 CHANGES
 --------
 
-0.4.X (XXXX-XX-XX)
+0.4.2 (2018-09-12)
 ^^^^^^^^^^^^^^^^^^
 
-* 
+Bugfix:
+
+* Added error propagation from coordinator to main consumer. Before consumer
+  just stopped with error logged. (issue #294)
+* Fix manual partition assignment, broken in 0.4.0 (issue #394)
+* Fixed RecursionError in MessageAccumulator.add_message (issue #409)
+* Update kafka-python to latest 1.4.3 and added support for Python3.7
+* Dropped support for Python3.3 and Python3.4
+
+Infrastructure:
+
+* Added Kafka 1.0.2 broker for CI test runner
+* Refactored travis CI build pipeline
 
 0.4.1 (2018-05-13)
 ^^^^^^^^^^^^^^^^^^
