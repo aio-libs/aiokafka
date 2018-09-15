@@ -4,7 +4,6 @@ import pytest
 import struct
 import unittest
 from unittest import mock
-from kafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
 from kafka.protocol.metadata import (
     MetadataRequest_v0 as MetadataRequest,
     MetadataResponse_v0 as MetadataResponse)
@@ -17,6 +16,7 @@ from aiokafka.errors import ConnectionError, CorrelationIdError
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.util import PY_341
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
+from aiokafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
 
 
 @pytest.mark.usefixtures('setup_test_class')

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import perf
-from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
+from aiokafka.producer.message_accumulator import BatchBuilder
 from aiokafka.record.memory_records import MemoryRecords
 import itertools
 import random
@@ -28,16 +28,15 @@ def random_bytes(length):
 def prepare(magic: int):
     samples = []
     for _ in range(BATCH_SAMPLES):
-        batch = LegacyRecordBatchBuilder(
+        batch = BatchBuilder(
             magic, batch_size=DEFAULT_BATCH_SIZE, compression_type=0)
         for offset in range(MESSAGES_PER_BATCH):
             size = batch.append(
-                offset,
-                None,  # random.randint(*TIMESTAMP_RANGE)
-                random_bytes(KEY_SIZE),
-                random_bytes(VALUE_SIZE))
+                timestamp=None,  # random.randint(*TIMESTAMP_RANGE)
+                key=random_bytes(KEY_SIZE),
+                value=random_bytes(VALUE_SIZE))
             assert size
-        samples.append(bytes(batch.build()))
+        samples.append(bytes(batch._builder.build()))
 
     return iter(itertools.cycle(samples))
 
@@ -77,3 +76,4 @@ def func(loops: int, magic: int):
 runner = perf.Runner()
 runner.bench_time_func('batch_read_v0', func, 0)
 runner.bench_time_func('batch_read_v1', func, 1)
+runner.bench_time_func('batch_read_v2', func, 2)

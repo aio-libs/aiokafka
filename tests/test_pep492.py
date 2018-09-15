@@ -31,6 +31,9 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_exception_ignored_with_aiter(self):
+        # Test relies on MessageTooLarge error, which is no more in
+        # Kafka 0.10.1+. So we pin the API version here to 0.9
+
         l_msgs = [random_string(10), random_string(50000)]
         large_messages = await self.send_messages(0, l_msgs)
         r_msgs = [random_string(50)]
@@ -40,7 +43,8 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
             self.topic, loop=self.loop,
             bootstrap_servers=self.hosts,
             auto_offset_reset='earliest',
-            max_partition_fetch_bytes=4000)
+            max_partition_fetch_bytes=4000,
+            api_version="0.9")
         await consumer.start()
         self.add_cleanup(consumer.stop)
 

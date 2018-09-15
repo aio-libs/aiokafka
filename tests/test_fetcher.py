@@ -6,7 +6,7 @@ from unittest import mock
 from kafka.protocol.offset import OffsetResponse
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 
-from aiokafka.consumer.fetch import (
+from aiokafka.protocol.fetch import (
     FetchRequest_v0 as FetchRequest, FetchResponse_v0 as FetchResponse)
 from aiokafka.errors import (
     TopicAuthorizationFailedError, UnknownError, UnknownTopicOrPartitionError,
