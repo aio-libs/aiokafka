@@ -214,12 +214,12 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
                     offset += absolute_base_offset
 
                 key, value = self._read_key_value(msg_pos + key_offset)
-                yield LegacyRecord(
+                yield _LegacyRecordPy(
                     offset, timestamp, timestamp_type,
                     key, value, crc)
         else:
             key, value = self._read_key_value(key_offset)
-            yield LegacyRecord(
+            yield _LegacyRecordPy(
                 self._offset, self._timestamp, timestamp_type,
                 key, value, self._crc)
 
@@ -317,7 +317,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
                 msg_buf, offset, timestamp, key_size, key, value_size, value)
             self._msg_buffers.append(msg_buf)
             self._pos += size
-            return LegacyRecordMetadata(offset, crc, size, timestamp)
+            return _LegacyRecordMetadataPy(offset, crc, size, timestamp)
 
         except struct.error:
             # perform expensive type checking only to translate struct errors
@@ -481,10 +481,10 @@ if NO_EXTENSIONS:
     LegacyRecord = _LegacyRecordPy
 else:
     try:
-        from ._legacy_records import (
-            _LegacyRecordBatchBuilderCython,
+        from ._crecords import (
+            LegacyRecordBatchBuilder as _LegacyRecordBatchBuilderCython,
             LegacyRecordMetadata as _LegacyRecordMetadataCython,
-            _LegacyRecordBatchCython,
+            LegacyRecordBatch as _LegacyRecordBatchCython,
             LegacyRecord as _LegacyRecordCython
         )
         LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderCython

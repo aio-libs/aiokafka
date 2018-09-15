@@ -20,10 +20,10 @@
 # used to construct the correct class for Batch itself.
 
 from aiokafka.errors import CorruptRecordException
-from aiokafka.record.default_records import DefaultRecordBatch
 
-from ._legacy_records cimport _LegacyRecordBatchCython as LegacyRecordBatch
-from aiokafka.record cimport _hton as hton
+from .default_records cimport DefaultRecordBatch
+from .legacy_records cimport LegacyRecordBatch
+from . cimport hton
 from cpython cimport PyBytes_GET_SIZE, PyBytes_AS_STRING, Py_buffer,\
     PyObject_GetBuffer, PyBuffer_Release, PyBUF_SIMPLE
 
@@ -38,7 +38,7 @@ DEF MAGIC_OFFSET = 16
 DEF RECORD_OVERHEAD_V0 = 14
 
 
-cdef class _MemoryRecordsCython:
+cdef class MemoryRecords:
 
     cdef:
         bytes _buffer
@@ -84,8 +84,7 @@ cdef class _MemoryRecordsCython:
         if magic < 2:
             return LegacyRecordBatch.new(self._buffer, pos, slice_end, magic)
         else:
-            membuf = memoryview(self._buffer)[pos: slice_end]
-            return DefaultRecordBatch(membuf)
+            return DefaultRecordBatch.new(self._buffer, pos, slice_end, magic)
 
     def has_next(self):
         cdef:
