@@ -4,13 +4,13 @@ from aiokafka.record.default_records import (
 )
 
 
-@pytest.mark.parametrize("compression_type", [
-    DefaultRecordBatch.CODEC_NONE,
-    DefaultRecordBatch.CODEC_GZIP,
-    DefaultRecordBatch.CODEC_SNAPPY,
-    DefaultRecordBatch.CODEC_LZ4
+@pytest.mark.parametrize("compression_type,crc", [
+    (DefaultRecordBatch.CODEC_NONE, 3561259852),
+    (DefaultRecordBatch.CODEC_GZIP, None),  # No idea why, but crc changes here
+    (DefaultRecordBatch.CODEC_SNAPPY, 575732511),
+    (DefaultRecordBatch.CODEC_LZ4, 2182428004)
 ])
-def test_read_write_serde_v2(compression_type):
+def test_read_write_serde_v2(compression_type, crc):
     builder = DefaultRecordBatchBuilder(
         magic=2, compression_type=compression_type, is_transactional=1,
         producer_id=123456, producer_epoch=123, base_sequence=9999,
@@ -30,6 +30,8 @@ def test_read_write_serde_v2(compression_type):
     assert reader.magic == 2
     assert reader.timestamp_type == 0
     assert reader.base_offset == 0
+    if crc is not None:
+        assert reader.crc == crc
     for offset, msg in enumerate(msgs):
         assert msg.offset == offset
         assert msg.timestamp == 9999999

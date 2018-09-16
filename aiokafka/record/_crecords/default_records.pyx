@@ -54,9 +54,6 @@
 # * Timestamp Type (3)
 # * Compression Type (0-2)
 
-import struct
-import time
-
 from aiokafka.errors import CorruptRecordException
 from kafka.codec import (
     gzip_encode, snappy_encode, lz4_encode,
@@ -102,6 +99,10 @@ DEF FIRST_RECORD_OFFSET = RECORD_COUNT_OFFSET + 4
 # excluding key, value and headers:
 # 5 bytes length + 10 bytes timestamp + 5 bytes offset + 1 byte attributes
 DEF MAX_RECORD_OVERHEAD = 21
+
+
+# Initialize CRC32 on import
+cutil.crc32c_global_init()
 
 
 @cython.no_gc_clear
@@ -253,8 +254,6 @@ cdef class DefaultRecordBatch:
             list headers
             bytes h_key
             object h_value
-            # char attrs,
-            # uint32_t crc
 
         # Minimum record size check
 
@@ -632,8 +631,8 @@ cdef class DefaultRecordBatchBuilder:
 
         cutil.calc_crc32c(
             0,
-            &buf[ATTRIBUTES_OFFSET],
-            <size_t> self._pos - ATTRIBUTES_OFFSET,
+            <char *> &buf[ATTRIBUTES_OFFSET],
+            <size_t> (self._pos - ATTRIBUTES_OFFSET),
             &crc
         )
         hton.pack_int32(&buf[CRC_OFFSET], <int32_t> crc)
