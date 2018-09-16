@@ -1,6 +1,9 @@
-from libc.stdint cimport int64_t
+from libc.stdint cimport int64_t, uint64_t, uint32_t
 from libc.limits cimport UINT_MAX
-from cpython cimport PyBUF_READ
+from cpython cimport (
+    PyObject_GetBuffer, PyBuffer_Release, Py_buffer, PyBUF_READ, PyBUF_SIMPLE,
+    PyBytes_AS_STRING
+)
 cdef extern from "Python.h":
     object PyMemoryView_FromMemory(char *mem, ssize_t size, int flags)
 
@@ -114,3 +117,54 @@ ELSE:
 
 # END: CRC32 function
 
+
+# VarInt implementation
+
+cdef int decode_varint64(
+        char* buf, Py_ssize_t* read_pos, int64_t* out_value) except -1
+
+cdef int encode_varint64(
+        char* buf, Py_ssize_t* write_pos, int64_t value) except -1
+cdef int encode_varint(
+        char* buf, Py_ssize_t* write_pos, Py_ssize_t value) except -1
+
+cdef Py_ssize_t size_of_varint(Py_ssize_t value) except -1
+cdef Py_ssize_t size_of_varint64(int64_t value) except -1
+
+# END: VarInt implementation
+
+
+# CRC32C C implementation
+
+cdef extern from "crc32c.h":
+
+    uint32_t crc32c(uint32_t crc, const void *buf, size_t len) nogil
+
+    void crc32c_global_init() nogil
+
+cdef inline int calc_crc32c(
+        uint32_t crc, char *buf, size_t len,
+        uint32_t *crc_out) except -1:
+    cdef:
+        uint32_t signed_val
+
+
+    # Releasing the GIL for very small buffers is inefficient
+    # and may lower performance
+    if len > 1024*5:
+        with nogil:
+            # Avoid truncation of length for very large buffers. crc32()
+            # takes length as an unsigned int, which may be narrower than
+            # Py_ssize_t.
+            while (len > <size_t> UINT_MAX):
+                crc = crc32c(crc, buf, UINT_MAX)
+                buf += <size_t> UINT_MAX
+                len -= <size_t> UINT_MAX
+            signed_val = crc32c(crc, buf, len)
+    else:
+        signed_val = crc32c(crc, buf, len)
+
+    crc_out[0] = signed_val & 0xffffffff
+    return 0
+
+# END: CRC32C C implementation

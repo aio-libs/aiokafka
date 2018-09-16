@@ -98,7 +98,7 @@ if NO_EXTENSIONS:
     MemoryRecords = _MemoryRecordsPy
 else:
     try:
-        from ._memory_records import _MemoryRecordsCython
+        from ._crecords import MemoryRecords as _MemoryRecordsCython
         MemoryRecords = _MemoryRecordsCython
     except ImportError as err:  # pragma: no cover
         MemoryRecords = _MemoryRecordsPy
