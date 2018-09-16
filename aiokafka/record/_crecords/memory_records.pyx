@@ -20,6 +20,7 @@
 # used to construct the correct class for Batch itself.
 
 from aiokafka.errors import CorruptRecordException
+from aiokafka.record.default_records import DefaultRecordBatch
 
 from .default_records cimport DefaultRecordBatch
 from .legacy_records cimport LegacyRecordBatch

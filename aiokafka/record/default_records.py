@@ -151,6 +151,18 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
     def max_timestamp(self):
         return self._header_data[8]
 
+    @property
+    def producer_id(self):
+        return self._header_data[9]
+
+    @property
+    def producer_epoch(self):
+        return self._header_data[10]
+
+    @property
+    def base_sequence(self):
+        return self._header_data[11]
+
     def _maybe_uncompress(self):
         if not self._decompressed:
             compression_type = self.compression_type
@@ -560,6 +572,23 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
             cls.HEADER_STRUCT.size + cls.MAX_RECORD_OVERHEAD +
             cls.size_of(key, value, headers)
         )
+
+    def set_producer_state(self, producer_id, producer_epoch, base_sequence):
+        self._producer_id = producer_id
+        self._producer_epoch = producer_epoch
+        self._base_sequence = base_sequence
+
+    @property
+    def producer_id(self):
+        return self._producer_id
+
+    @property
+    def producer_epoch(self):
+        return self._producer_epoch
+
+    @property
+    def base_sequence(self):
+        return self._base_sequence
 
 
 class _DefaultRecordMetadataPy:
