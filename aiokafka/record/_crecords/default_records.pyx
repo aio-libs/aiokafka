@@ -185,6 +185,11 @@ cdef class DefaultRecordBatch:
         self.max_timestamp = \
             hton.unpack_int64(&buf[MAX_TIMESTAMP_OFFSET])
         self.num_records = hton.unpack_int32(&buf[RECORD_COUNT_OFFSET])
+
+        self.producer_id = hton.unpack_int64(&buf[PRODUCER_ID_OFFSET])
+        self.producer_epoch = hton.unpack_int16(&buf[PRODUCER_EPOCH_OFFSET])
+        self.base_sequence = hton.unpack_int32(&buf[BASE_SEQUENCE_OFFSET])
+
         if self.attributes & _TIMESTAMP_TYPE_MASK:
             self.timestamp_type = 1
         else:
@@ -444,9 +449,9 @@ cdef class DefaultRecordBatchBuilder:
         bytearray _buffer
 
         char _is_transactional
-        int64_t _producer_id
-        int16_t _producer_epoch
-        int32_t _base_sequence
+        readonly int64_t producer_id
+        readonly int16_t producer_epoch
+        readonly int32_t base_sequence
 
         int64_t _first_timestamp
         int64_t _max_timestamp
@@ -465,9 +470,9 @@ cdef class DefaultRecordBatchBuilder:
         self._batch_size = batch_size
         self._is_transactional = is_transactional
         # KIP-98 fields for EOS
-        self._producer_id = producer_id
-        self._producer_epoch = producer_epoch
-        self._base_sequence = base_sequence
+        self.producer_id = producer_id
+        self.producer_epoch = producer_epoch
+        self.base_sequence = base_sequence
 
         self._first_timestamp = -1
         self._max_timestamp = -1
@@ -476,6 +481,13 @@ cdef class DefaultRecordBatchBuilder:
 
         self._buffer = bytearray(FIRST_RECORD_OFFSET)
         self._pos = FIRST_RECORD_OFFSET
+
+    def set_producer_state(
+            self, int64_t producer_id, int16_t producer_epoch,
+            int32_t base_sequence):
+        self.producer_id = producer_id
+        self.producer_epoch = producer_epoch
+        self.base_sequence = base_sequence
 
     cdef int16_t _get_attributes(self, int include_compression_type):
         cdef:
@@ -624,9 +636,9 @@ cdef class DefaultRecordBatchBuilder:
         hton.pack_int32(&buf[LAST_OFFSET_DELTA_OFFSET], self._last_offset)
         hton.pack_int64(&buf[FIRST_TIMESTAMP_OFFSET], self._first_timestamp)
         hton.pack_int64(&buf[MAX_TIMESTAMP_OFFSET], self._max_timestamp)
-        hton.pack_int64(&buf[PRODUCER_ID_OFFSET], self._producer_id)
-        hton.pack_int16(&buf[PRODUCER_EPOCH_OFFSET], self._producer_epoch)
-        hton.pack_int32(&buf[BASE_SEQUENCE_OFFSET], self._base_sequence)
+        hton.pack_int64(&buf[PRODUCER_ID_OFFSET], self.producer_id)
+        hton.pack_int16(&buf[PRODUCER_EPOCH_OFFSET], self.producer_epoch)
+        hton.pack_int32(&buf[BASE_SEQUENCE_OFFSET], self.base_sequence)
         hton.pack_int32(&buf[RECORD_COUNT_OFFSET], self._num_records)
 
         cutil.calc_crc32c(
