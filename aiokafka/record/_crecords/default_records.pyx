@@ -587,8 +587,7 @@ cdef class DefaultRecordBatchBuilder:
 
         header_count = len(headers)
         cutil.encode_varint(buf, &pos, header_count)
-        for i in range(header_count):
-            header = headers[i]
+        for header in headers:
             h_key, h_value = header
 
             PyObject_GetBuffer(h_key.encode("utf-8"), &tmp_buf, PyBUF_SIMPLE)
@@ -689,7 +688,8 @@ cdef class DefaultRecordBatchBuilder:
         return self._pos
 
     cdef Py_ssize_t _size_of_body(
-            self, int64_t offset, int64_t timestamp, key, value, headers
+            self, int64_t offset, int64_t timestamp, object key, object value,
+            list headers
             ) except -1:
         cdef:
             Py_ssize_t size_of_body
@@ -766,8 +766,7 @@ cdef Py_ssize_t _size_of(object key, object value, list headers) except -1:
     # Header size
     header_count = len(headers)
     size += cutil.size_of_varint(header_count)
-    for i in range(header_count):
-        header = headers[i]
+    for header in headers:
         h_key, h_value = header
         key_len = _bytelike_len(h_key.encode("utf-8"))
         size += cutil.size_of_varint(key_len) + key_len

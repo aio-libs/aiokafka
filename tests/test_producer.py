@@ -116,8 +116,9 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
         with self.assertRaises(TypeError):
-            yield from producer.send(self.topic, 'hello, Kafka!')
-        future = yield from producer.send(self.topic, b'hello, Kafka!')
+            yield from producer.send(self.topic, 'hello, Kafka!', partition=0)
+        future = yield from producer.send(
+            self.topic, b'hello, Kafka!', partition=0)
         resp = yield from future
         self.assertEqual(resp.topic, self.topic)
         self.assertTrue(resp.partition in (0, 1))

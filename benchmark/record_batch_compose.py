@@ -38,7 +38,7 @@ def finalize(results):
     # properly
     hash_val = hashlib.md5()
     for buf in results:
-        hash_val.update(buf.getvalue())
+        hash_val.update(buf)
     print(hash_val, file=open(os.devnull, "w"))
 
 
