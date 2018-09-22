@@ -1,6 +1,23 @@
 CHANGES
 --------
 
+0.5.0 (XXXX-XX-XX)
+^^^^^^^^^^^^^^^^^^
+
+New features:
+
+* Add full support for V2 format messages with a Cython extension. Those are
+  used for Kafka >= 0.11.0.0
+* Added support for indempotent producing with `enable_idempotence` parameter
+* Added support for `fetch_max_bytes` in AIOKafkaConsumer. This can help limit
+  the amount of data transferred in a single roundtrip to broker, which is
+  essential for consumers with large amount of partitions
+* 
+
+Bugfixes:
+
+* 
+
 0.4.2 (2018-09-12)
 ^^^^^^^^^^^^^^^^^^
 
