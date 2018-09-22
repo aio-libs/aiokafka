@@ -28,7 +28,6 @@ LOG_APPEND_TIME = 1
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
-    topic = 'test_produce_topic'
 
     @run_until_complete
     def test_producer_start(self):
@@ -115,6 +114,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         yield from producer.start()
+        self.add_cleanup(producer.stop)
         with self.assertRaises(TypeError):
             yield from producer.send(self.topic, 'hello, Kafka!', partition=0)
         future = yield from producer.send(
@@ -516,6 +516,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 loop=self.loop, acks=1, enable_idempotence=True)
         producer = AIOKafkaProducer(
             loop=self.loop, enable_idempotence=True)
+        self.add_cleanup(producer.stop)
         self.assertEqual(producer._acks, -1)  # -1 is set for `all` config
         self.assertIsNotNone(producer._txn_manager)
 
