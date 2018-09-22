@@ -112,6 +112,7 @@ class MessageBatch:
         self._msg_futures = []
         # Set when sender takes this batch
         self._drain_waiter = create_future(loop=loop)
+        self._retry_count = 0
 
     @property
     def tp(self):
@@ -203,6 +204,7 @@ class MessageBatch:
         """Compress batch to be ready for send"""
         if not self._drain_waiter.done():
             self._drain_waiter.set_result(None)
+        self._retry_count += 1
 
     def reset_drain(self):
         """Reset drain waiter, until we will do another retry"""
@@ -219,6 +221,10 @@ class MessageBatch:
 
     def is_empty(self):
         return self._builder.record_count() == 0
+
+    @property
+    def retry_count(self):
+        return self._retry_count
 
 
 class MessageAccumulator:
@@ -295,7 +301,7 @@ class MessageAccumulator:
 
     def _pop_batch(self, tp):
         batch = self._batches[tp].popleft()
-        if self._txn_manager is not None:
+        if self._txn_manager is not None and batch.retry_count == 0:
             assert self._txn_manager.has_pid(), \
                 "We should have waited for it in sender routine"
             seq = self._txn_manager.sequence_number(batch.tp)

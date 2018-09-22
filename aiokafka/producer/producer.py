@@ -148,6 +148,7 @@ class AIOKafkaProducer(object):
             Note that enabling idempotence acks to set to 'all'. If it is not
             explicitly set by the user it will be chosen. If incompatible
             values are set, a ``ValueError`` will be thrown.
+            New in version 0.5.0.
 
     Note:
         Many configuration parameters are taken from the Java client:

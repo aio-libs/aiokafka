@@ -563,11 +563,27 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # Indempotent producer should retry produce in case of timeout error
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts,
-            enable_idempotence=True)
+            enable_idempotence=True,
+            request_timeout_ms=2000)
         yield from producer.start()
         self.add_cleanup(producer.stop)
 
-        meta = yield from producer.send_and_wait(self.topic, b'hello, Kafka!')
+        original_send = producer.client.send
+        retry = [0]
+
+        @asyncio.coroutine
+        def mocked_send(*args, **kw):
+            result = yield from original_send(*args, **kw)
+            if result.API_KEY == ProduceResponse[0].API_KEY and retry[0] < 2:
+                retry[0] += 1
+                raise RequestTimedOutError
+            return result
+
+        with mock.patch.object(producer.client, 'send') as mocked:
+            mocked.side_effect = mocked_send
+
+            meta = yield from producer.send_and_wait(
+                self.topic, b'hello, Kafka!')
 
         consumer = AIOKafkaConsumer(
             self.topic, loop=self.loop,
@@ -580,3 +596,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.timestamp, meta.timestamp)
         self.assertEqual(msg.value, b"hello, Kafka!")
         self.assertEqual(msg.key, None)
+
+        with self.assertRaises(asyncio.TimeoutError):
+            yield from asyncio.wait_for(consumer.getone(), timeout=0.5)
