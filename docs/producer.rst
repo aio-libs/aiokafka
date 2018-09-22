@@ -93,6 +93,34 @@ The least safe is ``ack=0`` when there will be no acknowledgement from Broker,
 meaning client will never retry, as it will never see any errors.
 
 
+Indempotent produce
+-------------------
+
+As of Kafka 0.11 the Brokers support indempotent producing, that will prevent
+the Producer from creating duplicates on retries. *aiokafka* supports this mode
+by passing the parameter ``enable_idempotence=True`` to ``AIOKafkaProducer``::
+
+    producer = aiokafka.AIOKafkaProducer(
+        loop=loop, bootstrap_servers='localhost:9092',
+        enable_idempotence=True)
+    await producer.start()
+    try:
+        await producer.send_and_wait("my_topic", b"Super message")
+    finally:
+        await producer.stop()
+
+This option will change a bit the logic on message delivery:
+
+    * The above mentioned ``ack="all"`` will be forced. If any other value is
+      explicitly passed with ``enable_idempotence=True`` a ``ValueError`` will
+      be raised.
+    * I contrast to general mode, will not raise ``RequestTimedOutError``
+      errors and will not expire batch delivery after ``request_timeout_ms``
+      passed.
+
+.. versionadded:: 0.5.0
+
+
 Returned RecordMetadata object
 ------------------------------
 

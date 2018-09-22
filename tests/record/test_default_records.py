@@ -180,3 +180,21 @@ def test_build_without_append():
     reader = DefaultRecordBatch(bytes(buffer))
     msgs = list(reader)
     assert not msgs
+
+
+def test_set_producer_state():
+    builder = DefaultRecordBatchBuilder(
+        magic=2, compression_type=0, is_transactional=0,
+        producer_id=-1, producer_epoch=-1, base_sequence=-1,
+        batch_size=999999)
+    builder.set_producer_state(
+        producer_id=700,
+        producer_epoch=5,
+        base_sequence=17)
+    assert builder.producer_id == 700
+    buffer = builder.build()
+
+    reader = DefaultRecordBatch(bytes(buffer))
+    assert reader.producer_id == 700
+    assert reader.producer_epoch == 5
+    assert reader.base_sequence == 17

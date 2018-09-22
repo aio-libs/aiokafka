@@ -17,6 +17,11 @@ cdef class DefaultRecordBatch:
         readonly int16_t attributes
         readonly int64_t first_timestamp
         readonly int64_t max_timestamp
+
+        readonly int64_t producer_id
+        readonly int16_t producer_epoch
+        readonly int32_t base_sequence
+
         readonly char timestamp_type
         int32_t num_records
 
