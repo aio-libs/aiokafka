@@ -234,6 +234,7 @@ class AIOKafkaProducer(object):
             loop=loop)
         self._sender_task = None
         self._in_flight = set()
+        self._muted_partitions = set()
         self._loop = loop
         self._retry_backoff = retry_backoff_ms / 1000
         self._linger_time = linger_ms / 1000
@@ -405,7 +406,8 @@ class AIOKafkaProducer(object):
 
                 batches, unknown_leaders_exist = \
                     self._message_accumulator.drain_by_nodes(
-                        ignore_nodes=self._in_flight)
+                        ignore_nodes=self._in_flight,
+                        muted_partitions=self._muted_partitions)
 
                 # create produce task for every batch
                 for node_id, batches in batches.items():
@@ -413,6 +415,8 @@ class AIOKafkaProducer(object):
                         self._send_produce_req(node_id, batches),
                         loop=self._loop)
                     self._in_flight.add(node_id)
+                    for tp in batches:
+                        self._muted_partitions.add(tp)
                     tasks.add(task)
 
                 if unknown_leaders_exist:
@@ -552,7 +556,7 @@ class AIOKafkaProducer(object):
                                 partition_info
                         tp = TopicPartition(topic, partition)
                         error = Errors.for_code(error_code)
-                        batch = batches.pop(tp, None)
+                        batch = batches.get(tp)
                         if batch is None:
                             continue
 
@@ -586,6 +590,8 @@ class AIOKafkaProducer(object):
             yield from asyncio.sleep(sleep_time, loop=self._loop)
 
         self._in_flight.remove(node_id)
+        for tp in batches:
+            self._muted_partitions.remove(tp)
 
     def _can_retry(self, error, batch):
         # If indempotence is enabled we never expire batches, but retry until
@@ -660,7 +666,11 @@ class AIOKafkaProducer(object):
             asyncio.Future: object that will be set when the batch is
                 delivered.
         """
+        # first make sure the metadata for the topic is available
+        yield from self.client._wait_on_metadata(topic)
+        # We only validate we have the partition in the metadata here
         partition = self._partition(topic, partition, None, None, None, None)
+
         tp = TopicPartition(topic, partition)
         log.debug("Sending batch to %s", tp)
         future = yield from self._message_accumulator.add_batch(

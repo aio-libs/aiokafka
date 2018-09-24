@@ -81,19 +81,21 @@ Running tests
 
 Docker is required to run tests. See https://docs.docker.com/engine/installation for installation notes. Also note, that `lz4` compression libraries for python will require `python-dev` package,
 or python source header files for compilation on Linux.
+NOTE: You will also need a valid java installation. It's required for the ``keytool`` utility, used to
+generate ssh keys for some tests.
 
 Setting up tests requirements (assuming you're within virtualenv on ubuntu 14.04+)::
 
     sudo apt-get install -y libsnappy-dev
     make setup
 
-Running tests::
+Running tests with coverage::
 
     make cov
 
-To run tests with a specific version of Kafka (default one is 0.10.1.0) use KAFKA_VERSION variable::
+To run tests with a specific version of Kafka (default one is 1.0.2) use KAFKA_VERSION variable::
 
-    make cov KAFKA_VERSION=0.10.0.0
+    make cov KAFKA_VERSION=0.10.2.1
 
 Test running cheatsheat:
 

@@ -17,7 +17,8 @@ from aiokafka.errors import (
     NodeNotReadyError,
     RequestTimedOutError,
     UnknownTopicOrPartitionError,
-    UnrecognizedBrokerVersion)
+    UnrecognizedBrokerVersion,
+    StaleMetadata)
 from aiokafka.util import ensure_future, create_future, parse_kafka_version
 
 
@@ -353,7 +354,13 @@ class AIOKafkaClient:
 
         try:
             broker = self.cluster.broker_metadata(node_id)
-            assert broker, 'Broker id %s not in current metadata' % node_id
+            # XXX: earlier we only did an assert here, but it seems it's
+            # possible to get a leader that is for some reason not in metadata.
+            # I think requerying metadata should solve this problem
+            if broker is None:
+                raise StaleMetadata(
+                    'Broker id %s not in current metadata' % node_id)
+
             log.debug("Initiating connection to node %s at %s:%s",
                       node_id, broker.host, broker.port)
 
