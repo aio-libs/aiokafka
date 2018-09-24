@@ -972,7 +972,8 @@ class AIOKafkaConsumer(object):
             data_task = ensure_future(coro, loop=self._loop)
             yield from asyncio.wait(
                 [data_task, coordination_error_fut],
-                return_when=asyncio.FIRST_COMPLETED)
+                return_when=asyncio.FIRST_COMPLETED,
+                loop=self._loop)
 
             # Check for errors in coordination and raise if any
             if coordination_error_fut.done():

@@ -693,3 +693,24 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg2.timestamp, meta2.timestamp)
         self.assertEqual(msg2.value, b"2")
         self.assertEqual(msg2.key, b"key")
+
+    @run_until_complete
+    def test_producer_sender_errors_propagate_to_producer(self):
+        # Following on #362 there may be other unexpected errors in sender
+        # routine that we wan't the user to see, rather than just get stuck.
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts, linger_ms=1000)
+        yield from producer.start()
+        self.add_cleanup(producer.stop)
+
+        with mock.patch.object(producer, '_send_produce_req') as mocked:
+            mocked.side_effect = KeyError
+
+            with self.assertRaises(KeyError):
+                yield from producer.send_and_wait(
+                    self.topic, b'hello, Kafka!')
+
+        with self.assertRaises(KeyError):
+            yield from producer.send_and_wait(
+                self.topic, b'hello, Kafka!')
