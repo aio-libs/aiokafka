@@ -161,8 +161,6 @@ class AIOKafkaProducer(object):
         'snappy': (has_snappy, LegacyRecordBatchBuilder.CODEC_SNAPPY),
         'lz4': (has_lz4, LegacyRecordBatchBuilder.CODEC_LZ4),
     }
-    _transactional_id = None  # XXX: For now no transactions available
-    _transaction_timeout_ms = INTEGER_MAX_VALUE
 
     _closed = None  # Serves as an uninitialized flag for __del__
     _source_traceback = None
@@ -177,7 +175,8 @@ class AIOKafkaProducer(object):
                  linger_ms=0, send_backoff_ms=100,
                  retry_backoff_ms=100, security_protocol="PLAINTEXT",
                  ssl_context=None, connections_max_idle_ms=540000,
-                 enable_idempotence=False):
+                 enable_idempotence=False, transactional_id=None,
+                 transaction_timeout_ms=60000):
         if acks not in (0, 1, -1, 'all', _missing):
             raise ValueError("Invalid ACKS parameter")
         if compression_type not in ('gzip', 'snappy', 'lz4', None):
@@ -189,6 +188,15 @@ class AIOKafkaProducer(object):
                                    .format(compression_type))
         else:
             compression_attrs = 0
+
+        if transactional_id is not None:
+            enable_idempotence = True
+            # FIXME: Can we assume it's only ascii symbols? Check KIP
+            self._transactional_id = str(transactional_id).encode()
+            self._transaction_timeout_ms = transaction_timeout_ms
+        else:
+            self._transactional_id = None
+            self._transaction_timeout_ms = INTEGER_MAX_VALUE
 
         if enable_idempotence:
             if acks is _missing:
