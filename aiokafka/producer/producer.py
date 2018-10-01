@@ -9,7 +9,7 @@ from kafka.partitioner.default import DefaultPartitioner
 from kafka.codec import has_gzip, has_snappy, has_lz4
 
 import aiokafka.errors as Errors
-from aiokafka.client import AIOKafkaClient
+from aiokafka.client import AIOKafkaClient, ConnectionGroup, CoordinationType
 from aiokafka.errors import (
     MessageSizeTooLargeError, KafkaError, UnknownTopicOrPartitionError,
     UnsupportedVersionError)
@@ -189,14 +189,11 @@ class AIOKafkaProducer(object):
         else:
             compression_attrs = 0
 
+        self._coordinators = {}
         if transactional_id is not None:
             enable_idempotence = True
-            # FIXME: Can we assume it's only ascii symbols? Check KIP
-            self._transactional_id = str(transactional_id).encode()
-            self._transaction_timeout_ms = transaction_timeout_ms
         else:
-            self._transactional_id = None
-            self._transaction_timeout_ms = INTEGER_MAX_VALUE
+            transaction_timeout_ms = INTEGER_MAX_VALUE
 
         if enable_idempotence:
             if acks is _missing:
@@ -205,7 +202,8 @@ class AIOKafkaProducer(object):
                 raise ValueError(
                     "acks={} not supported if enable_idempotence=True"
                     .format(acks))
-            self._txn_manager = TransactionManager()
+            self._txn_manager = TransactionManager(
+                transactional_id, transaction_timeout_ms)
         else:
             self._txn_manager = None
 
@@ -474,7 +472,15 @@ class AIOKafkaProducer(object):
             return
 
         while True:
-            success = yield from self._do_init_pid()
+            # If transactions are used we can't just send to a random node, but
+            # need to find a suitable coordination node
+            if self._txn_manager.transactional_id is not None:
+                node_id = yield from self._find_coordinator(
+                    CoordinationType.TRANSACTION,
+                    self._txn_manager.transactional_id)
+            else:
+                node_id = self.client.get_random_node()
+            success = yield from self._do_init_pid(node_id)
             if not success:
                 yield from self.force_metadata_update()
                 yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
@@ -482,12 +488,50 @@ class AIOKafkaProducer(object):
                 break
 
     @asyncio.coroutine
-    def _do_init_pid(self):
-        init_pid_req = InitProducerIdRequest[0](
-            transactional_id=self._transactional_id,
-            transaction_timeout_ms=self._transaction_timeout_ms)
+    def _find_coordinator(self, coordinator_type, coordinator_key):
+        assert self._txn_manager is not None
+        if coordinator_type in self._coordinators:
+            return self._coordinators[coordinator_type]
+        while True:
+            try:
+                coordinator_id = yield from self.client.coordinator_lookup(
+                    coordinator_type, coordinator_key)
+            except Errors.KafkaError as err:
+                log.error("FindCoordinator Request failed: %s", err)
+                yield from self.client.force_metadata_update()
+                yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+                continue
 
-        node_id = self.client.get_random_node()
+            # Try to connect to confirm that the connection can be
+            # established.
+            ready = yield from self.client.ready(
+                coordinator_id, group=ConnectionGroup.COORDINATION)
+            if not ready:
+                yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+                continue
+
+            self._coordinators[coordinator_type] = coordinator_id
+
+            if coordinator_type == CoordinationType.GROUP:
+                log.info(
+                    "Discovered coordinator %s for group id %s",
+                    coordinator_id,
+                    coordinator_key
+                )
+            else:
+                log.info(
+                    "Discovered coordinator %s for transactional id %s",
+                    coordinator_id,
+                    coordinator_key
+                )
+            return coordinator_id
+
+    @asyncio.coroutine
+    def _do_init_pid(self, node_id):
+        init_pid_req = InitProducerIdRequest[0](
+            transactional_id=self._txn_manager.transactional_id,
+            transaction_timeout_ms=self._txn_manager.transaction_timeout_ms)
+
         try:
             resp = yield from self.client.send(node_id, init_pid_req)
         except KafkaError as err:
@@ -534,7 +578,7 @@ class AIOKafkaProducer(object):
 
         kwargs = {}
         if version >= 3:
-            kwargs['transactional_id'] = self._transactional_id
+            kwargs['transactional_id'] = self._txn_manager.transactional_id
 
         request = ProduceRequest[version](
             required_acks=self._acks,

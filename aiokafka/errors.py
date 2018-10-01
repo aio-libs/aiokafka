@@ -45,3 +45,8 @@ class RecordTooLargeError(KafkaError):
 
 class ProducerClosed(KafkaError):
     pass
+
+
+class ProducerFenced(KafkaError):
+    """ Another producer with the same tranactional ID went online
+    """

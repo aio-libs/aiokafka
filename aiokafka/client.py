@@ -3,13 +3,14 @@ import logging
 import random
 
 from kafka.conn import collect_hosts
-from kafka.cluster import ClusterMetadata
 from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.commit import OffsetFetchRequest
 
 import aiokafka.errors as Errors
 from aiokafka import __version__
 from aiokafka.conn import create_conn, CloseReason
+from aiokafka.cluster import ClusterMetadata
+from aiokafka.protocol.coordination import FindCoordinatorRequest
 from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.errors import (
     KafkaError,
@@ -32,6 +33,12 @@ class ConnectionGroup:
 
     DEFAULT = 0
     COORDINATION = 1
+
+
+class CoordinationType:
+
+    GROUP = 0
+    TRANSACTION = 1
 
 
 class AIOKafkaClient:
@@ -99,6 +106,7 @@ class AIOKafkaClient:
         self._connections_max_idle_ms = connections_max_idle_ms
 
         self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
+
         self._topics = set()  # empty set will fetch all topic metadata
         self._conns = {}
         self._loop = loop
@@ -353,13 +361,18 @@ class AIOKafkaClient:
                 return conn
 
         try:
-            broker = self.cluster.broker_metadata(node_id)
-            # XXX: earlier we only did an assert here, but it seems it's
-            # possible to get a leader that is for some reason not in metadata.
-            # I think requerying metadata should solve this problem
-            if broker is None:
-                raise StaleMetadata(
-                    'Broker id %s not in current metadata' % node_id)
+            if group == ConnectionGroup.DEFAULT:
+                broker = self.cluster.broker_metadata(node_id)
+                # XXX: earlier we only did an assert here, but it seems it's
+                # possible to get a leader that is for some reason not in
+                # metadata.
+                # I think requerying metadata should solve this problem
+                if broker is None:
+                    raise StaleMetadata(
+                        'Broker id %s not in current metadata' % node_id)
+            else:
+                broker = self.cluster.coordinator_metadata(node_id)
+                assert broker is not None
 
             log.debug("Initiating connection to node %s at %s:%s",
                       node_id, broker.host, broker.port)
@@ -378,9 +391,10 @@ class AIOKafkaClient:
                     max_idle_ms=self._connections_max_idle_ms)
         except (OSError, asyncio.TimeoutError) as err:
             log.error('Unable connect to node with id %s: %s', node_id, err)
-            # Connection failures imply that our metadata is stale, so let's
-            # refresh
-            self.force_metadata_update()
+            if group == ConnectionGroup.DEFAULT:
+                # Connection failures imply that our metadata is stale, so
+                # let's refresh
+                self.force_metadata_update()
             return None
         else:
             return self._conns[conn_id]
@@ -562,3 +576,38 @@ class AIOKafkaClient:
         if self._md_update_fut is not None:
             yield from asyncio.shield(
                 self._md_update_fut, loop=self._loop)
+
+    @asyncio.coroutine
+    def coordinator_lookup(self, coordinator_type, coordinator_key):
+        """ Lookup which node in the cluster is the coordinator for a certain
+        role (Transaction coordinator or Group coordinator atm.)
+        NOTE: Client keeps track of all coordination nodes separately, as they
+        all have different sockets and ids.
+        """
+
+        node_id = self.get_random_node()
+        assert node_id is not None, "Did we not perform bootstrap?"
+
+        log.debug(
+            "Sending FindCoordinator request for key %s to broker %s",
+            coordinator_key, node_id)
+
+        if self.api_version > (0, 11):
+            request = FindCoordinatorRequest[1](
+                coordinator_key, coordinator_type)
+        else:
+            # Group coordination only
+            assert coordinator_type == CoordinationType.GROUP, \
+                "No transactions for older brokers"
+            request = FindCoordinatorRequest[0](coordinator_key)
+
+        resp = yield from self.send(node_id, request)
+        log.debug("Received group coordinator response %s", resp)
+        error_type = Errors.for_code(resp.error_code)
+        if error_type is not Errors.NoError:
+            err = error_type()
+            raise err
+        self.cluster.add_coordinator(
+            resp.coordinator_id, resp.host, resp.port, rack=None,
+            purpose=(coordinator_type, coordinator_key))
+        return resp.coordinator_id
