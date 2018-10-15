@@ -5,6 +5,6 @@ docker-py==1.10.6
 lz4==2.1.1
 xxhash==1.2.0
 python-snappy==0.5.3
-Cython==0.28.5
+Cython==0.29
 docutils==0.14
 Pygments==2.2.0
