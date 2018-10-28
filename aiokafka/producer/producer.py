@@ -291,6 +291,9 @@ class AIOKafkaProducer(object):
                 "Indempotent producer available only for Broker vesion 0.11"
                 " and above")
 
+        # If producer is indempotent we need to assure we have PID found
+        yield from self._maybe_wait_for_pid()
+
         self._sender_task = ensure_future(
             self._sender_routine(), loop=self._loop)
         self._message_accumulator.set_api_version(self.client.api_version)
@@ -436,15 +439,24 @@ class AIOKafkaProducer(object):
                 # with produce requests.
                 # We will only have 1 task at a time and will try to spawn
                 # another once that is done.
-                if txn_task is None or txn_task.done():
-                    txn_task = self._maybe_do_transactional_request()
-                    if txn_task is not None:
-                        tasks.add(txn_task)
-
+                txn_manager = self._txn_manager
+                muted_partitions = self._muted_partitions
+                if txn_manager is not None and \
+                        txn_manager.transactional_id is not None:
+                    if txn_task is None or txn_task.done():
+                        txn_task = self._maybe_do_transactional_request()
+                        if txn_task is not None:
+                            tasks.add(txn_task)
+                    # We can't have a race condition between
+                    # AddPartitionsToTxnRequest and a ProduceRequest, so we
+                    # mute the partition until added.
+                    muted_partitions = (
+                        muted_partitions | txn_manager.partitions_to_add()
+                    )
                 batches, unknown_leaders_exist = \
                     self._message_accumulator.drain_by_nodes(
                         ignore_nodes=self._in_flight,
-                        muted_partitions=self._muted_partitions)
+                        muted_partitions=muted_partitions)
 
                 # create produce task for every batch
                 for node_id, batches in batches.items():
@@ -512,8 +524,6 @@ class AIOKafkaProducer(object):
 
     def _maybe_do_transactional_request(self):
         txn_manager = self._txn_manager
-        if txn_manager is None or txn_manager.transactional_id is None:
-            return
 
         # If we have any new partitions, still not added to the transaction
         # we need to do that before committing
@@ -578,8 +588,9 @@ class AIOKafkaProducer(object):
         elif error_type is InvalidTxnState:
             raise
         else:
-            log.exception(
-                "Could not end transaction due to unexpected error")
+            log.error(
+                "Could not end transaction due to unexpected error: %s",
+                error_type)
             raise
 
         # Backoff on error
@@ -640,9 +651,9 @@ class AIOKafkaProducer(object):
                         error_type is InvalidTxnState):
                     raise
                 else:
-                    log.exception(
-                        "Could not add partition %s due to unexpected error",
-                        partition)
+                    log.error(
+                        "Could not add partition %s due to unexpected error:"
+                        " %s", partition, error_type)
                     raise
 
         # Backoff on error
@@ -700,10 +711,11 @@ class AIOKafkaProducer(object):
             resp = yield from self.client.send(node_id, init_pid_req)
         except KafkaError as err:
             log.warning("Could not send InitProducerIdRequest: %r", err)
+            # Backoff will be done on calling function
             return False
 
-        error = Errors.for_code(resp.error_code)
-        if error is Errors.NoError:
+        error_type = Errors.for_code(resp.error_code)
+        if error_type is Errors.NoError:
             log.debug(
                 "Successfully found PID={} EPOCH={} for Producer {}".format(
                     resp.producer_id, resp.producer_epoch,
@@ -712,10 +724,19 @@ class AIOKafkaProducer(object):
                 resp.producer_id, resp.producer_epoch)
             # Just in case we got bad values from broker
             return self._txn_manager.has_pid()
-        else:
-            log.warning("Got an error for InitProducerIdRequest: %r %s",
-                        error, self.client._client_id)
+        elif (error_type is CoordinatorNotAvailableError or
+                error_type is NotCoordinatorError):
+            self._coordinator_dead(CoordinationType.TRANSACTION)
             return False
+        elif (error_type is CoordinatorLoadInProgressError or
+                error_type is ConcurrentTransactions):
+            # Backoff will be done on calling function
+            return False
+        else:
+            log.error(
+                "Unexpected error during InitProducerIdRequest: %s",
+                error_type)
+            raise
 
     @asyncio.coroutine
     def _send_produce_req(self, node_id, batches):

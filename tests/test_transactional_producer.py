@@ -92,3 +92,23 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(ProducerFenced):
             async with producer.transaction():
                 await producer.send_and_wait(self.topic, b'hello, Kafka!')
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_producer_transactional_restart_reaquire_pid(self):
+        # While it's documented that PID may change we need to be sure we
+        # are sending proper InitPIDRequest, not an indempotent one
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer", client_id="p1")
+        await producer.start()
+        pid = producer._txn_manager.producer_id
+        await producer.stop()
+
+        producer2 = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer", client_id="p2")
+        await producer2.start()
+        self.add_cleanup(producer2.stop)
+        self.assertEqual(pid, producer2._txn_manager.producer_id)
