@@ -32,36 +32,38 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @kafka_versions('<0.11.0')
     @run_until_complete
-    def test_producer_transactions_not_supported(self):
+    async def test_producer_transactions_not_supported(self):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer")
         producer
         with self.assertRaises(UnsupportedVersionError):
-            yield from producer.start()
-        yield from producer.stop()
+            await producer.start()
+        await producer.stop()
 
     @kafka_versions('>=0.11.0')
     @run_until_complete
-    def test_producer_transactional_simple(self):
+    async def test_producer_transactional_simple(self):
         # The test here will just check if we can do simple produce with
-        # transactional_id option, as no specific API changes is expected.
+        # transactional_id option and minimal setup.
 
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer")
-        yield from producer.start()
+        await producer.start()
         self.add_cleanup(producer.stop)
 
-        meta = yield from producer.send_and_wait(self.topic, b'hello, Kafka!')
+        async with producer.transaction():
+            meta = await producer.send_and_wait(
+                self.topic, b'hello, Kafka!')
 
         consumer = AIOKafkaConsumer(
             self.topic, loop=self.loop,
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest")
-        yield from consumer.start()
+        await consumer.start()
         self.add_cleanup(consumer.stop)
-        msg = yield from consumer.getone()
+        msg = await consumer.getone()
         self.assertEqual(msg.offset, meta.offset)
         self.assertEqual(msg.timestamp, meta.timestamp)
         self.assertEqual(msg.value, b"hello, Kafka!")
@@ -69,23 +71,24 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @kafka_versions('>=0.11.0')
     @run_until_complete
-    def test_producer_transactional_fences_off_previous(self):
+    async def test_producer_transactional_fences_off_previous(self):
         # Test 2 producers fencing one another by using the same
         # transactional_id
 
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer")
-        yield from producer.start()
+            transactional_id="sobaka_producer", client_id="p1")
+        await producer.start()
         self.add_cleanup(producer.stop)
-
-        yield from producer.send_and_wait(self.topic, b'hello, Kafka!')
 
         producer2 = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer")
-        yield from producer2.start()
+            transactional_id="sobaka_producer", client_id="p2")
+        await producer2.start()
         self.add_cleanup(producer2.stop)
+        async with producer2.transaction():
+            await producer2.send_and_wait(self.topic, b'hello, Kafka! 2')
 
         with self.assertRaises(ProducerFenced):
-            yield from producer.send_and_wait(self.topic, b'hello, Kafka! 2')
+            async with producer.transaction():
+                await producer.send_and_wait(self.topic, b'hello, Kafka!')

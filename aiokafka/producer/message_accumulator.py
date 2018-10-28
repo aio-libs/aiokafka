@@ -13,13 +13,15 @@ from aiokafka.util import create_future
 
 
 class BatchBuilder:
-    def __init__(self, magic, batch_size, compression_type):
+    def __init__(self, magic, batch_size, compression_type,
+                 *, is_transactional):
         if magic < 2:
+            assert not is_transactional
             self._builder = LegacyRecordBatchBuilder(
                 magic, compression_type, batch_size)
         else:
             self._builder = DefaultRecordBatchBuilder(
-                magic, compression_type, is_transactional=0,
+                magic, compression_type, is_transactional=is_transactional,
                 producer_id=-1, producer_epoch=-1, base_sequence=0,
                 batch_size=batch_size)
         self._relative_offset = 0
@@ -258,6 +260,20 @@ class MessageAccumulator:
                 yield from batch.wait_deliver()
 
     @asyncio.coroutine
+    def flush_for_commit(self):
+        waiters = []
+        for batches in self._batches.values():
+            for batch in batches:
+                # We force all buffers to close to finalyze the transaction
+                # scope. We should not add anything to this transaction.
+                batch.get_data_buffer()  # To close the buffer
+                waiters.append(batch.wait_deliver())
+        # Wait for all waiters to finish. We only wait for the scope we defined
+        # above, other batches should not be delivered as this transaction
+        if waiters:
+            yield from asyncio.wait(waiters, loop=self._loop)
+
+    @asyncio.coroutine
     def close(self):
         self._closed = True
         yield from self.flush()
@@ -372,9 +388,20 @@ class MessageAccumulator:
             magic = 1
         else:
             magic = 0
-        return BatchBuilder(magic, self._batch_size, self._compression_type)
+
+        is_transactional = False
+        if self._txn_manager is not None and \
+                self._txn_manager.transactional_id is not None:
+            is_transactional = True
+        return BatchBuilder(
+            magic, self._batch_size, self._compression_type,
+            is_transactional=is_transactional)
 
     def _append_batch(self, builder, tp):
+        # We must do this before actual add takes place to check for errors.
+        if self._txn_manager is not None:
+            self._txn_manager.maybe_add_partition_to_txn(tp)
+
         batch = MessageBatch(tp, builder, self._batch_ttl, self._loop)
         self._batches[tp].append(batch)
         if not self._wait_data_future.done():

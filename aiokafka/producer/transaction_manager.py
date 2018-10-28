@@ -1,7 +1,10 @@
+import asyncio
+from copy import copy
 from enum import Enum
 from collections import namedtuple, defaultdict
 
 from aiokafka.structs import TopicPartition
+from aiokafka.util import create_future
 
 
 PidAndEpoch = namedtuple("PidAndEpoch", ["pid", "epoch"])
@@ -17,6 +20,12 @@ class SubscriptionType(Enum):
     USER_ASSIGNED = 4
 
 
+class TransactionResult(Enum):
+
+    ABORT = 0
+    COMMIT = 1
+
+
 class TransactionState(Enum):
 
     UNINITIALIZED = 1
@@ -25,25 +34,25 @@ class TransactionState(Enum):
     IN_TRANSACTION = 4
     COMMITTING_TRANSACTION = 5
     ABORTING_TRANSACTION = 6
-    FENCED = 7
-    ERROR = 8
+    ERROR = 7
 
     @classmethod
     def is_transition_valid(cls, source, target):
         if target == cls.INITIALIZING:
-            return source == cls.UNINITIALIZED or source == cls.ERROR
+            return source == cls.UNINITIALIZED
         elif target == cls.READY:
             return source == cls.INITIALIZING or \
                 source == cls.COMMITTING_TRANSACTION or \
-                source == cls.ABORTING_TRANSACTION
+                source == cls.ABORTING_TRANSACTION or \
+                source == cls.UNINITIALIZED  # XXX REMOVE ME
         elif target == cls.IN_TRANSACTION:
             return source == cls.READY
         elif target == cls.COMMITTING_TRANSACTION:
             return source == cls.IN_TRANSACTION
         elif target == cls.ABORTING_TRANSACTION:
             return source == cls.IN_TRANSACTION or source == cls.ERROR
-        # We can transition to FENCED or ERROR unconditionally.
-        # FENCED is never a valid starting state for any transition. So the
+        # We can transition to ERROR unconditionally.
+        # ERROR is never a valid starting state for any transition. So the
         # only option is to close the producer or do purely non transactional
         # requests.
         else:
@@ -52,13 +61,21 @@ class TransactionState(Enum):
 
 class TransactionManager:
 
-    def __init__(self, transactional_id, transaction_timeout_ms):
+    def __init__(self, transactional_id, transaction_timeout_ms, *, loop):
         self.transactional_id = transactional_id
         self.transaction_timeout_ms = transaction_timeout_ms
         self.state = TransactionState.UNINITIALIZED
+        self._exception = None
 
         self._pid_and_epoch = PidAndEpoch(NO_PRODUCER_ID, NO_PRODUCER_EPOCH)
+        self._pid_waiter = create_future(loop)
         self._sequence_numbers = defaultdict(lambda: 0)
+        self._transaction_waiter = None
+
+        self._txn_partitions = set()
+        self._pending_txn_partitions = set()
+
+        self._loop = loop
 
     # INDEMPOTANCE PART
 
@@ -66,9 +83,17 @@ class TransactionManager:
         self._pid_and_epoch = PidAndEpoch(pid, epoch)
         if self.transactional_id:
             self._transition_to(TransactionState.READY)
+            self._pid_waiter.set_result(None)
 
     def has_pid(self):
         return self._pid_and_epoch.pid != NO_PRODUCER_ID
+
+    @asyncio.coroutine
+    def wait_for_pid(self):
+        if self.has_pid():
+            return
+        else:
+            yield from self._pid_waiter
 
     def reset_producer_id(self):
         """ This method is used when the producer needs to reset it's internal
@@ -104,15 +129,22 @@ class TransactionManager:
     # TRANSACTION PART
 
     def _transition_to(self, target):
+        if self.state == TransactionState.ERROR:
+            raise copy(self._exception)
+
         assert TransactionState.is_transition_valid(self.state, target), \
             "Invalid state transition {} -> {}".format(self.state, target)
         self.state = target
+
+    def is_fenced(self):
+        return self.state == TransactionState.FENCED
 
     def init_transactions(self):
         self._transition_to(TransactionState.INITIALIZING)
 
     def begin_transaction(self):
         self._transition_to(TransactionState.IN_TRANSACTION)
+        self._transaction_waiter = create_future(loop=self._loop)
 
     def committing_transaction(self):
         self._transition_to(TransactionState.COMMITTING_TRANSACTION)
@@ -121,4 +153,43 @@ class TransactionManager:
         self._transition_to(TransactionState.ABORTING_TRANSACTION)
 
     def complete_transaction(self):
+        assert not self._pending_txn_partitions
         self._transition_to(TransactionState.READY)
+        self._txn_partitions.clear()
+        self._transaction_waiter.set_result(None)
+
+    def transition_to_error(self, exc):
+        self._transition_to(TransactionState.ERROR)
+        self._exception = exc
+
+    def maybe_add_partition_to_txn(self, tp: TopicPartition):
+        if self.transactional_id is None:
+            return
+        assert self.state == TransactionState.IN_TRANSACTION
+        if tp not in self._txn_partitions:
+            self._pending_txn_partitions.add(tp)
+
+    def partitions_to_add(self):
+        return self._pending_txn_partitions
+
+    def partition_added(self, tp: TopicPartition):
+        self._pending_txn_partitions.remove(tp)
+        self._txn_partitions.add(tp)
+
+    @property
+    def txn_partitions(self):
+        return self._txn_partitions
+
+    def needs_transaction_commit(self):
+        if self.state == TransactionState.COMMITTING_TRANSACTION:
+            return TransactionResult.COMMIT
+        elif self.state == TransactionState.ABORTING_TRANSACTION:
+            return TransactionResult.ABORT
+        else:
+            return
+
+    def needs_transaction_abort(self):
+        return
+
+    def wait_for_transaction_end(self):
+        return self._transaction_waiter

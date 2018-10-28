@@ -12,9 +12,15 @@ import aiokafka.errors as Errors
 from aiokafka.client import AIOKafkaClient, ConnectionGroup, CoordinationType
 from aiokafka.errors import (
     MessageSizeTooLargeError, KafkaError, UnknownTopicOrPartitionError,
-    UnsupportedVersionError)
+    UnsupportedVersionError, IllegalOperation,
+    CoordinatorNotAvailableError, NotCoordinatorError,
+    CoordinatorLoadInProgressError, InvalidProducerEpoch,
+    ProducerFenced, InvalidProducerIdMapping, InvalidTxnState,
+    ConcurrentTransactions, DuplicateSequenceNumber)
 from aiokafka.protocol.produce import ProduceRequest
-from aiokafka.protocol.transaction import InitProducerIdRequest
+from aiokafka.protocol.transaction import (
+    InitProducerIdRequest, AddPartitionsToTxnRequest, EndTxnRequest
+)
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import TopicPartition
 from aiokafka.util import ensure_future, INTEGER_MAX_VALUE, PY_341, PY_36
@@ -25,6 +31,7 @@ from .transaction_manager import TransactionManager
 log = logging.getLogger(__name__)
 
 _missing = object()
+BACKOFF_OVERRIDE = 20  # 20ms wait between transactions is better than 100ms.
 
 
 class AIOKafkaProducer(object):
@@ -203,7 +210,7 @@ class AIOKafkaProducer(object):
                     "acks={} not supported if enable_idempotence=True"
                     .format(acks))
             self._txn_manager = TransactionManager(
-                transactional_id, transaction_timeout_ms)
+                transactional_id, transaction_timeout_ms, loop=loop)
         else:
             self._txn_manager = None
 
@@ -371,6 +378,11 @@ class AIOKafkaProducer(object):
         # first make sure the metadata for the topic is available
         yield from self.client._wait_on_metadata(topic)
 
+        # Ensure transaction not committing  XXX: FIX ME
+        if self._txn_manager is not None and \
+                self._txn_manager.needs_transaction_commit():
+            assert False
+
         key_bytes, value_bytes = self._serialize(topic, key, value)
         partition = self._partition(topic, partition, key, value,
                                     key_bytes, value_bytes)
@@ -412,11 +424,22 @@ class AIOKafkaProducer(object):
               done.
         """
         tasks = set()
+        txn_task = None  # Track a single task for transaction interactions
         try:
             while True:
                 # If indempotence or transactions are turned on we need to
-                # have a valid PID to send requests
+                # have a valid PID to send any request below
                 yield from self._maybe_wait_for_pid()
+
+                # As transaction coordination is done via a single, separate
+                # socket we do not need to pump it to several nodes, as we do
+                # with produce requests.
+                # We will only have 1 task at a time and will try to spawn
+                # another once that is done.
+                if txn_task is None or txn_task.done():
+                    txn_task = self._maybe_do_transactional_request()
+                    if txn_task is not None:
+                        tasks.add(txn_task)
 
                 batches, unknown_leaders_exist = \
                     self._message_accumulator.drain_by_nodes(
@@ -482,10 +505,149 @@ class AIOKafkaProducer(object):
                 node_id = self.client.get_random_node()
             success = yield from self._do_init_pid(node_id)
             if not success:
-                yield from self.force_metadata_update()
+                yield from self.client.force_metadata_update()
                 yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
             else:
                 break
+
+    def _maybe_do_transactional_request(self):
+        txn_manager = self._txn_manager
+        if txn_manager is None or txn_manager.transactional_id is None:
+            return
+
+        # If we have any new partitions, still not added to the transaction
+        # we need to do that before committing
+        tps = txn_manager.partitions_to_add()
+        if tps:
+            return ensure_future(
+                self._do_add_partitions_to_txn(tps),
+                loop=self._loop)
+
+        commit_result = txn_manager.needs_transaction_commit()
+        if commit_result is not None:
+            return ensure_future(
+                self._do_txn_commit(commit_result),
+                loop=self._loop)
+
+    @asyncio.coroutine
+    def _do_txn_commit(self, commit_result):
+        """ Committing transaction should be done with care.
+            Transactional requests will be blocked by this coroutine, so no new
+        offsets or new partitions will be added.
+            Produce requests will be stopped, as accumulator will not be
+        yielding any new batches.
+        """
+        # First we need to ensure that all pending messages were flushed
+        # before committing. Note, that this will only flush batches available
+        # till this point, no new ones.
+        yield from self._message_accumulator.flush_for_commit()
+
+        txn_manager = self._txn_manager
+        # First assert we have a valid coordinator to send the request to
+        node_id = yield from self._find_coordinator(
+            CoordinationType.TRANSACTION, txn_manager.transactional_id)
+
+        req = EndTxnRequest[0](
+            transactional_id=txn_manager.transactional_id,
+            producer_id=txn_manager.producer_id,
+            producer_epoch=txn_manager.producer_epoch,
+            transaction_result=commit_result)
+
+        try:
+            resp = yield from self.client.send(
+                node_id, req, group=ConnectionGroup.COORDINATION)
+        except KafkaError as err:
+            log.warning("Could not send EndTxnRequest: %r", err)
+            return
+
+        error_type = Errors.for_code(resp.error_code)
+
+        if error_type is Errors.NoError:
+            txn_manager.complete_transaction()
+            return
+        elif (error_type is CoordinatorNotAvailableError or
+                error_type is NotCoordinatorError):
+            self._coordinator_dead(CoordinationType.TRANSACTION)
+        elif (error_type is CoordinatorLoadInProgressError or
+                error_type is ConcurrentTransactions):
+            # We will just retry after backoff
+            pass
+        elif error_type is InvalidProducerEpoch:
+            raise ProducerFenced()
+        elif error_type is InvalidTxnState:
+            raise
+        else:
+            log.exception(
+                "Could not end transaction due to unexpected error")
+            raise
+
+        # Backoff on error
+        yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+
+    @asyncio.coroutine
+    def _do_add_partitions_to_txn(self, tps):
+        txn_manager = self._txn_manager
+        # First assert we have a valid coordinator to send the request to
+        node_id = yield from self._find_coordinator(
+            CoordinationType.TRANSACTION, txn_manager.transactional_id)
+
+        partition_data = collections.defaultdict(list)
+        for tp in tps:
+            partition_data[tp.topic].append(tp.partition)
+
+        req = AddPartitionsToTxnRequest[0](
+            transactional_id=txn_manager.transactional_id,
+            producer_id=txn_manager.producer_id,
+            producer_epoch=txn_manager.producer_epoch,
+            topics=list(partition_data.items()))
+
+        try:
+            resp = yield from self.client.send(
+                node_id, req, group=ConnectionGroup.COORDINATION)
+        except KafkaError as err:
+            log.warning("Could not send AddPartitionsToTxnRequest: %r", err)
+            return
+
+        retry_backoff = self._retry_backoff
+        for topic, partitions in resp.errors:
+            for partition, error_code in partitions:
+                tp = TopicPartition(topic, partition)
+                error_type = Errors.for_code(error_code)
+
+                if error_type is Errors.NoError:
+                    log.debug("Added partition %s to transaction", tp)
+                    txn_manager.partition_added(tp)
+                    return
+                elif (error_type is CoordinatorNotAvailableError or
+                        error_type is NotCoordinatorError):
+                    self._coordinator_dead(CoordinationType.TRANSACTION)
+                elif error_type is ConcurrentTransactions:
+                    # See KAFKA-5477: There is some time between commit and
+                    # actual transaction marker write, that will produce this
+                    # ConcurrentTransactions. We don't want the 100ms latency
+                    # in that case.
+                    if not txn_manager.txn_partitions:
+                        retry_backoff = BACKOFF_OVERRIDE
+                elif (error_type is CoordinatorLoadInProgressError or
+                        error_type is UnknownTopicOrPartitionError):
+                    # We will just retry after backoff
+                    pass
+                elif error_type is InvalidProducerEpoch:
+                    raise ProducerFenced()
+                elif (error_type is InvalidProducerIdMapping or
+                        error_type is InvalidTxnState):
+                    raise
+                else:
+                    log.exception(
+                        "Could not add partition %s due to unexpected error",
+                        partition)
+                    raise
+
+        # Backoff on error
+        yield from asyncio.sleep(retry_backoff, loop=self._loop)
+
+    def _coordinator_dead(self, coordinator_type):
+        self._coordinators.pop(coordinator_type, None)
 
     @asyncio.coroutine
     def _find_coordinator(self, coordinator_type, coordinator_key):
@@ -535,17 +697,22 @@ class AIOKafkaProducer(object):
         try:
             resp = yield from self.client.send(node_id, init_pid_req)
         except KafkaError as err:
-            log.debug("Could not send InitProducerIdRequest: %r", err)
+            log.warning("Could not send InitProducerIdRequest: %r", err)
             return False
 
         error = Errors.for_code(resp.error_code)
         if error is Errors.NoError:
+            log.debug(
+                "Successfully found PID={} EPOCH={} for Producer {}".format(
+                    resp.producer_id, resp.producer_epoch,
+                    self.client._client_id))
             self._txn_manager.set_pid_and_epoch(
                 resp.producer_id, resp.producer_epoch)
             # Just in case we got bad values from broker
             return self._txn_manager.has_pid()
         else:
-            log.debug("Got an error for InitProducerIdRequest: %r", error)
+            log.warning("Got an error for InitProducerIdRequest: %r %s",
+                        error, self.client._client_id)
             return False
 
     @asyncio.coroutine
@@ -623,7 +790,21 @@ class AIOKafkaProducer(object):
 
                         if error is Errors.NoError:
                             batch.done(offset, timestamp)
-                        elif not self._can_retry(error(), batch):
+                        elif error is DuplicateSequenceNumber:
+                            # If we have received a duplicate sequence error,
+                            # it means that the sequence number has advanced
+                            # beyond the sequence of the current batch, and we
+                            # haven't retained batch metadata on the broker to
+                            # return the correct offset and timestamp.
+                            #
+                            # The only thing we can do is to return success to
+                            # the user and not return a valid offset and
+                            # timestamp.
+                            batch.done(offset, timestamp)
+                        elif error is InvalidProducerEpoch:
+                            error = ProducerFenced
+
+                        if not self._can_retry(error(), batch):
                             batch.failure(exception=error())
                         else:
                             log.warning(
@@ -732,6 +913,11 @@ class AIOKafkaProducer(object):
         # We only validate we have the partition in the metadata here
         partition = self._partition(topic, partition, None, None, None, None)
 
+        # Ensure transaction not committing  XXX: FIX ME
+        if self._txn_manager is not None and \
+                self._txn_manager.needs_transaction_commit():
+            assert False
+
         tp = TopicPartition(topic, partition)
         log.debug("Sending batch to %s", tp)
         future = yield from self._wait_for_reponse_or_error(
@@ -759,3 +945,63 @@ class AIOKafkaProducer(object):
             routine_task.result()  # Raises set exception if any
 
         return (yield from data_task)
+
+    def _ensure_transactional(self):
+        if self._txn_manager is None or \
+                self._txn_manager.transactional_id is None:
+            raise IllegalOperation(
+                "You need to configure transaction_id to use transactions")
+
+    @asyncio.coroutine
+    def begin_transaction(self):
+        self._ensure_transactional()
+        log.debug(
+            "Beginning a new transaction for id %s",
+            self._txn_manager.transactional_id)
+        yield from self._wait_for_reponse_or_error(
+            self._txn_manager.wait_for_pid()
+        )
+        self._txn_manager.begin_transaction()
+
+    @asyncio.coroutine
+    def commit_transaction(self):
+        self._ensure_transactional()
+        log.debug(
+            "Committing transaction for id %s",
+            self._txn_manager.transactional_id)
+        self._txn_manager.committing_transaction()
+        yield from self._wait_for_reponse_or_error(
+            self._txn_manager.wait_for_transaction_end()
+        )
+
+    @asyncio.coroutine
+    def abort_transaction(self):
+        self._ensure_transactional()
+        log.debug(
+            "Aborting transaction for id %s",
+            self._txn_manager.transactional_id)
+        self._txn_manager.aborting_transaction()
+        yield from self._wait_for_reponse_or_error(
+            self._txn_manager.wait_for_transaction_end()
+        )
+
+    def transaction(self):
+        return TransactionContext(self)
+
+
+class TransactionContext:
+
+    def __init__(self, producer):
+        self._producer = producer
+
+    @asyncio.coroutine
+    def __aenter__(self):
+        yield from self._producer.begin_transaction()
+        return self
+
+    @asyncio.coroutine
+    def __aexit__(self, exc_type, exc_value, traceback):
+        if exc_type is not None:
+            yield from self._producer.abort_transaction()
+        else:
+            yield from self._producer.commit_transaction()
