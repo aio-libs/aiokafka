@@ -100,10 +100,13 @@ class NoGroupCoordinator(BaseCoordinator):
                 raise Errors.UnknownTopicOrPartitionError()
             for p_id in p_ids:
                 partitions.append(TopicPartition(topic, p_id))
-        self._subscription.assign_from_subscribed(partitions)
 
-        # Reset all committed points, as the GroupCoordinator would
-        self.reset_committed()
+        # If assignment did not change no need to reset it
+        assignment = self._subscription.subscription.assignment
+        if assignment is None or set(partitions) != assignment.tps:
+            self._subscription.assign_from_subscribed(partitions)
+            # Reset all committed points, as the GroupCoordinator would
+            self.reset_committed()
 
     def reset_committed(self):
         """ Group coordinator will reset committed points to UNKNOWN_OFFSET

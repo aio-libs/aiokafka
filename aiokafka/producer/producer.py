@@ -558,6 +558,7 @@ class AIOKafkaProducer(object):
                 node_id, req, group=ConnectionGroup.COORDINATION)
         except KafkaError as err:
             log.warning("Could not send EndTxnRequest: %r", err)
+            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
             return
 
         error_type = Errors.for_code(resp.error_code)
@@ -606,6 +607,7 @@ class AIOKafkaProducer(object):
                 node_id, req, group=ConnectionGroup.COORDINATION)
         except KafkaError as err:
             log.warning("Could not send AddPartitionsToTxnRequest: %r", err)
+            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
             return
 
         retry_backoff = self._retry_backoff
@@ -745,7 +747,10 @@ class AIOKafkaProducer(object):
 
         kwargs = {}
         if version >= 3:
-            kwargs['transactional_id'] = self._txn_manager.transactional_id
+            if self._txn_manager is not None:
+                kwargs['transactional_id'] = self._txn_manager.transactional_id
+            else:
+                kwargs['transactional_id'] = None
 
         request = ProduceRequest[version](
             required_acks=self._acks,
