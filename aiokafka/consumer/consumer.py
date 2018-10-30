@@ -150,6 +150,27 @@ class AIOKafkaConsumer(object):
         connections_max_idle_ms (int): Close idle connections after the number
             of milliseconds specified by this config. Specifying `None` will
             disable idle checks. Default: 540000 (9hours).
+        isolation_level (str): Controls how to read messages written
+            transactionally. If set to *read_committed*,
+            ``consumer.getmany()``
+            will only return transactional messages which have been committed.
+            If set to *read_uncommitted* (the default), ``consumer.getmany()``
+            will return all messages, even transactional messages which have
+            been aborted.
+
+            Non-transactional messages will be returned unconditionally in
+            either mode.
+
+            Messages will always be returned in offset order. Hence, in
+            *read_committed* mode, ``consumer.getmany()`` will only return
+            messages up to the last stable offset (LSO), which is the one less
+            than the offset of the first open transaction. In particular any
+            messages appearing after messages belonging to ongoing transactions
+            will be withheld until the relevant transaction has been completed.
+            As a result, *read_committed* consumers will not be able to read up
+            to the high watermark when there are in flight transactions.
+            Further, when in *read_committed* the seek_to_end method will
+            return the LSO. See method docs below. Default: "read_uncommitted"
 
     Note:
         Many configuration parameters are taken from Java Client:
@@ -185,7 +206,8 @@ class AIOKafkaConsumer(object):
                  security_protocol='PLAINTEXT',
                  api_version='auto',
                  exclude_internal_topics=True,
-                 connections_max_idle_ms=540000):
+                 connections_max_idle_ms=540000,
+                 isolation_level="read_uncommitted"):
         if max_poll_records is not None and (
                 not isinstance(max_poll_records, int) or max_poll_records < 1):
             raise ValueError("`max_poll_records` should be positive Integer")
@@ -218,6 +240,7 @@ class AIOKafkaConsumer(object):
         self._exclude_internal_topics = exclude_internal_topics
         self._max_poll_records = max_poll_records
         self._consumer_timeout = consumer_timeout_ms / 1000
+        self._isolation_level = isolation_level
         self._check_crcs = check_crcs
         self._subscription = SubscriptionState(loop=loop)
         self._fetcher = None

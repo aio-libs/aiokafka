@@ -180,67 +180,72 @@ class FetchError:
 
 
 class Fetcher:
-    def __init__(self, client, subscriptions, *, loop,
-                 key_deserializer=None,
-                 value_deserializer=None,
-                 fetch_min_bytes=1,
-                 fetch_max_bytes=52428800,
-                 fetch_max_wait_ms=500,
-                 max_partition_fetch_bytes=1048576,
-                 check_crcs=True,
-                 fetcher_timeout=0.2,
-                 prefetch_backoff=0.1,
-                 retry_backoff_ms=100,
-                 auto_offset_reset='latest'):
-        """Initialize a Kafka Message Fetcher.
+    """Initialize a Kafka Message Fetcher.
 
-        Parameters:
-            client (AIOKafkaClient): kafka client
-            subscription (SubscriptionState): instance of SubscriptionState
-                located in kafka.consumer.subscription_state
-            key_deserializer (callable): Any callable that takes a
-                raw message key and returns a deserialized key.
-            value_deserializer (callable, optional): Any callable that takes a
-                raw message value and returns a deserialized value.
-            fetch_min_bytes (int): Minimum amount of data the server should
-                return for a fetch request, otherwise wait up to
-                fetch_max_wait_ms for more data to accumulate. Default: 1.
-            fetch_max_bytes (int): The maximum amount of data the server should
-                return for a fetch request. This is not an absolute maximum, if
-                the first message in the first non-empty partition of the fetch
-                is larger than this value, the message will still be returned
-                to ensure that the consumer can make progress. NOTE: consumer
-                performs fetches to multiple brokers in parallel so memory
-                usage will depend on the number of brokers containing
-                partitions for the topic.
-                Supported Kafka version >= 0.10.1.0. Default: 52428800 (50 Mb).
-            fetch_max_wait_ms (int): The maximum amount of time in milliseconds
-                the server will block before answering the fetch request if
-                there isn't sufficient data to immediately satisfy the
-                requirement given by fetch_min_bytes. Default: 500.
-            max_partition_fetch_bytes (int): The maximum amount of data
-                per-partition the server will return. The maximum total memory
-                used for a request = #partitions * max_partition_fetch_bytes.
-                This size must be at least as large as the maximum message size
-                the server allows or else it is possible for the producer to
-                send messages larger than the consumer can fetch. If that
-                happens, the consumer can get stuck trying to fetch a large
-                message on a certain partition. Default: 1048576.
-            check_crcs (bool): Automatically check the CRC32 of the records
-                consumed. This ensures no on-the-wire or on-disk corruption to
-                the messages occurred. This check adds some overhead, so it may
-                be disabled in cases seeking extreme performance. Default: True
-            fetcher_timeout (float): Maximum polling interval in the background
-                fetching routine. Default: 0.2
-            prefetch_backoff (float): number of seconds to wait until
-                consumption of partition is paused. Paused partitions will not
-                request new data from Kafka server (will not be included in
-                next poll request).
-            auto_offset_reset (str): A policy for resetting offsets on
-                OffsetOutOfRange errors: 'earliest' will move to the oldest
-                available message, 'latest' will move to the most recent. Any
-                ofther value will raise the exception. Default: 'latest'.
-        """
+    Parameters:
+        client (AIOKafkaClient): kafka client
+        subscription (SubscriptionState): instance of SubscriptionState
+            located in kafka.consumer.subscription_state
+        key_deserializer (callable): Any callable that takes a
+            raw message key and returns a deserialized key.
+        value_deserializer (callable, optional): Any callable that takes a
+            raw message value and returns a deserialized value.
+        fetch_min_bytes (int): Minimum amount of data the server should
+            return for a fetch request, otherwise wait up to
+            fetch_max_wait_ms for more data to accumulate. Default: 1.
+        fetch_max_bytes (int): The maximum amount of data the server should
+            return for a fetch request. This is not an absolute maximum, if
+            the first message in the first non-empty partition of the fetch
+            is larger than this value, the message will still be returned
+            to ensure that the consumer can make progress. NOTE: consumer
+            performs fetches to multiple brokers in parallel so memory
+            usage will depend on the number of brokers containing
+            partitions for the topic.
+            Supported Kafka version >= 0.10.1.0. Default: 52428800 (50 Mb).
+        fetch_max_wait_ms (int): The maximum amount of time in milliseconds
+            the server will block before answering the fetch request if
+            there isn't sufficient data to immediately satisfy the
+            requirement given by fetch_min_bytes. Default: 500.
+        max_partition_fetch_bytes (int): The maximum amount of data
+            per-partition the server will return. The maximum total memory
+            used for a request = #partitions * max_partition_fetch_bytes.
+            This size must be at least as large as the maximum message size
+            the server allows or else it is possible for the producer to
+            send messages larger than the consumer can fetch. If that
+            happens, the consumer can get stuck trying to fetch a large
+            message on a certain partition. Default: 1048576.
+        check_crcs (bool): Automatically check the CRC32 of the records
+            consumed. This ensures no on-the-wire or on-disk corruption to
+            the messages occurred. This check adds some overhead, so it may
+            be disabled in cases seeking extreme performance. Default: True
+        fetcher_timeout (float): Maximum polling interval in the background
+            fetching routine. Default: 0.2
+        prefetch_backoff (float): number of seconds to wait until
+            consumption of partition is paused. Paused partitions will not
+            request new data from Kafka server (will not be included in
+            next poll request).
+        auto_offset_reset (str): A policy for resetting offsets on
+            OffsetOutOfRange errors: 'earliest' will move to the oldest
+            available message, 'latest' will move to the most recent. Any
+            ofther value will raise the exception. Default: 'latest'.
+        isolation_level (str): Controls how to read messages written
+            transactionally. See consumer description.
+    """
+
+    def __init__(
+            self, client, subscriptions, *, loop,
+            key_deserializer=None,
+            value_deserializer=None,
+            fetch_min_bytes=1,
+            fetch_max_bytes=52428800,
+            fetch_max_wait_ms=500,
+            max_partition_fetch_bytes=1048576,
+            check_crcs=True,
+            fetcher_timeout=0.2,
+            prefetch_backoff=0.1,
+            retry_backoff_ms=100,
+            auto_offset_reset='latest',
+            isolation_level="read_uncommitted"):
         self._client = client
         self._loop = loop
         self._key_deserializer = key_deserializer
@@ -256,7 +261,14 @@ class Fetcher:
         self._subscriptions = subscriptions
         self._default_reset_strategy = OffsetResetStrategy.from_str(
             auto_offset_reset)
-        self._isolation_level = READ_UNCOMMITTED
+
+        if isolation_level == "read_uncommitted":
+            self._isolation_level = READ_UNCOMMITTED
+        elif isolation_level == "read_committed":
+            self._isolation_level = READ_COMMITTED
+        else:
+            raise ValueError(
+                "Incorrect isolation level {}".format(isolation_level))
 
         self._records = collections.OrderedDict()
         self._in_flight = set()
