@@ -20,7 +20,7 @@ class SubscriptionType(Enum):
     USER_ASSIGNED = 4
 
 
-class TransactionResult(Enum):
+class TransactionResult:
 
     ABORT = 0
     COMMIT = 1

@@ -23,9 +23,10 @@ from aiokafka.errors import (
     # MessageSizeTooLargeError, NotLeaderForPartitionError,
     # LeaderNotAvailableError, RequestTimedOutError,
     UnsupportedVersionError,
-    ProducerFenced
+    ProducerFenced, OutOfOrderSequenceNumber
     # ProducerClosed
 )
+from aiokafka.structs import TopicPartition
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
@@ -112,3 +113,43 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         await producer2.start()
         self.add_cleanup(producer2.stop)
         self.assertEqual(pid, producer2._txn_manager.producer_id)
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_producer_transactional_raise_out_of_sequence(self):
+        # If we were to fail to send some message we should get\
+        # OutOfOrderSequenceNumber
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer", client_id="p1")
+        await producer.start()
+        self.add_cleanup(producer.stop)
+
+        with self.assertRaises(OutOfOrderSequenceNumber):
+            async with producer.transaction():
+                await producer.send_and_wait(self.topic, b'msg1', partition=0)
+                # Imitate a not delivered message
+                producer._txn_manager.increment_sequence_number(
+                    TopicPartition(self.topic, 0), 1)
+                await producer.send_and_wait(self.topic, b'msg2', partition=0)
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_producer_transactional_aborting_previous_failure(self):
+        # If we were to fail to send some message we should get\
+        # OutOfOrderSequenceNumber
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer", client_id="p1")
+        await producer.start()
+        self.add_cleanup(producer.stop)
+
+        with self.assertRaises(OutOfOrderSequenceNumber):
+            async with producer.transaction():
+                await producer.send_and_wait(self.topic, b'msg1', partition=0)
+                # Imitate a not delivered message
+                producer._txn_manager.increment_sequence_number(
+                    TopicPartition(self.topic, 0), 1)
+                await producer.send_and_wait(self.topic, b'msg2', partition=0)
