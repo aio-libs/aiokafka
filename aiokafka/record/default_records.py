@@ -144,6 +144,10 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
         return bool(self.attributes & self.CONTROL_MASK)
 
     @property
+    def last_offset_delta(self):
+        return self._header_data[7]
+
+    @property
     def first_timestamp(self):
         return self._header_data[7]
 
@@ -162,6 +166,10 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
     @property
     def base_sequence(self):
         return self._header_data[11]
+
+    @property
+    def next_offset(self):
+        return self.base_offset + self.last_offset_delta + 1
 
     def _maybe_uncompress(self):
         if not self._decompressed:

@@ -31,7 +31,7 @@ from .transaction_manager import TransactionManager
 log = logging.getLogger(__name__)
 
 _missing = object()
-BACKOFF_OVERRIDE = 20  # 20ms wait between transactions is better than 100ms.
+BACKOFF_OVERRIDE = 0.02  # 20ms wait between transactions is better than 100ms.
 
 
 class AIOKafkaProducer(object):
@@ -219,10 +219,10 @@ class AIOKafkaProducer(object):
         elif acks == 'all':
             acks = -1
 
-        self._PRODUCER_CLIENT_ID_SEQUENCE += 1
+        AIOKafkaProducer._PRODUCER_CLIENT_ID_SEQUENCE += 1
         if client_id is None:
             client_id = 'aiokafka-producer-%s' % \
-                self._PRODUCER_CLIENT_ID_SEQUENCE
+                AIOKafkaProducer._PRODUCER_CLIENT_ID_SEQUENCE
 
         self._acks = acks
         self._key_serializer = key_serializer
@@ -434,6 +434,7 @@ class AIOKafkaProducer(object):
                 # have a valid PID to send any request below
                 yield from self._maybe_wait_for_pid()
 
+                waiters = set()
                 # As transaction coordination is done via a single, separate
                 # socket we do not need to pump it to several nodes, as we do
                 # with produce requests.
@@ -447,6 +448,9 @@ class AIOKafkaProducer(object):
                         txn_task = self._maybe_do_transactional_request()
                         if txn_task is not None:
                             tasks.add(txn_task)
+                        else:
+                            # Waiters will not be awaited on exit, tasks will
+                            waiters.add(txn_manager.make_task_waiter())
                     # We can't have a race condition between
                     # AddPartitionsToTxnRequest and a ProduceRequest, so we
                     # mute the partition until added.
@@ -472,10 +476,10 @@ class AIOKafkaProducer(object):
                     # we have at least one unknown partition's leader,
                     # try to update cluster metadata and wait backoff time
                     fut = self.client.force_metadata_update()
-                    waiters = tasks.union([fut])
+                    waiters |= tasks.union([fut])
                 else:
                     fut = self._message_accumulator.data_waiter()
-                    waiters = tasks.union([fut])
+                    waiters |= tasks.union([fut])
 
                 # wait when:
                 # * At least one of produce task is finished

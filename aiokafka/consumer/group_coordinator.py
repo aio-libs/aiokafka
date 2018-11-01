@@ -277,7 +277,7 @@ class GroupCoordinator(BaseCoordinator):
 
     @property
     def error_future(self):
-        return asyncio.shield(self._coordination_task)
+        return self._coordination_task
 
     @asyncio.coroutine
     def close(self):

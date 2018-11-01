@@ -71,6 +71,7 @@ class TransactionManager:
         self._pid_waiter = create_future(loop)
         self._sequence_numbers = defaultdict(lambda: 0)
         self._transaction_waiter = None
+        self._task_waiter = None
 
         self._txn_partitions = set()
         self._pending_txn_partitions = set()
@@ -148,9 +149,11 @@ class TransactionManager:
 
     def committing_transaction(self):
         self._transition_to(TransactionState.COMMITTING_TRANSACTION)
+        self.notify_task_waiter()
 
     def aborting_transaction(self):
         self._transition_to(TransactionState.ABORTING_TRANSACTION)
+        self.notify_task_waiter()
 
     def complete_transaction(self):
         assert not self._pending_txn_partitions
@@ -168,6 +171,7 @@ class TransactionManager:
         assert self.state == TransactionState.IN_TRANSACTION
         if tp not in self._txn_partitions:
             self._pending_txn_partitions.add(tp)
+            self.notify_task_waiter()
 
     def partitions_to_add(self):
         return self._pending_txn_partitions
@@ -188,8 +192,13 @@ class TransactionManager:
         else:
             return
 
-    def needs_transaction_abort(self):
-        return
-
     def wait_for_transaction_end(self):
         return self._transaction_waiter
+
+    def notify_task_waiter(self):
+        if self._task_waiter is not None and not self._task_waiter.done():
+            self._task_waiter.set_result(None)
+
+    def make_task_waiter(self):
+        self._task_waiter = create_future(loop=self._loop)
+        return self._task_waiter

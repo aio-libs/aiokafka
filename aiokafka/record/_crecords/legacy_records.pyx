@@ -55,6 +55,10 @@ cdef class LegacyRecordBatch:
     CODEC_SNAPPY = _ATTR_CODEC_SNAPPY
     CODEC_LZ4 = _ATTR_CODEC_LZ4
 
+    is_control_batch = False
+    is_transactional = False
+    producer_id = None
+
     def __init__(self, object buffer, char magic):
         PyObject_GetBuffer(buffer, &self._buffer, PyBUF_SIMPLE)
         self._magic = magic
@@ -85,6 +89,10 @@ cdef class LegacyRecordBatch:
 
     def __dealloc__(self):
         PyBuffer_Release(&self._buffer)
+
+    @property
+    def next_offset(self):
+        return self._main_record.offset + 1
 
     def validate_crc(self):
         cdef:

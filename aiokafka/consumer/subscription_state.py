@@ -410,6 +410,7 @@ class TopicPartitionState(object):
         self._committed_fut = create_future(loop=loop)
 
         self.highwater = None  # Last fetched highwater mark
+        self.lso = None  # Last fetched stable offset mark
         self._position = None  # The current position of the topic
         self._position_fut = create_future(loop=loop)
 
