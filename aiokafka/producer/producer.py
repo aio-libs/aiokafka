@@ -692,10 +692,15 @@ class AIOKafkaProducer(object):
     def _wait_for_reponse_or_error(self, coro):
         routine_task = self._sender_task
         data_task = ensure_future(coro, loop=self._loop)
-        yield from asyncio.wait(
-            [data_task, routine_task],
-            return_when=asyncio.FIRST_COMPLETED,
-            loop=self._loop)
+
+        try:
+            yield from asyncio.wait(
+                [data_task, routine_task],
+                return_when=asyncio.FIRST_COMPLETED,
+                loop=self._loop)
+        except asyncio.CancelledError:
+            data_task.cancel()
+            return (yield from data_task)
 
         # Check for errors in sender and raise if any
         if routine_task.done():
