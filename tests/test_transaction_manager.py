@@ -8,8 +8,8 @@ NO_PRODUCER_EPOCH = -1
 
 
 @pytest.fixture
-def txn_manager():
-    return TransactionManager()
+def txn_manager(loop):
+    return TransactionManager("txn_id", 20000, loop=loop)
 
 
 def test_txn_manager(txn_manager):

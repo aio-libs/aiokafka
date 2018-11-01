@@ -17,7 +17,8 @@ from aiokafka.structs import (
 )
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer.fetcher import (
-    Fetcher, FetchResult, FetchError, ConsumerRecord, OffsetResetStrategy
+    Fetcher, FetchResult, FetchError, ConsumerRecord, OffsetResetStrategy,
+    PartitionRecords, READ_UNCOMMITTED
 )
 from aiokafka.consumer.subscription_state import SubscriptionState
 from aiokafka.util import ensure_future
@@ -40,14 +41,10 @@ def test_offset_reset_strategy():
 
 def test_fetch_result_and_error(loop):
     # Add some data
-    messages = [ConsumerRecord(
-        topic="some_topic", partition=1, offset=0, timestamp=0,
-        timestamp_type=0, key=None, value=b"some", checksum=None,
-        serialized_key_size=0, serialized_value_size=4)]
     result = FetchResult(
         TopicPartition("test", 0), assignment=mock.Mock(), loop=loop,
-        message_iterator=iter(messages), backoff=0,
-        fetch_offset=0)
+        partition_records=mock.Mock(next_fetch_offset=0), backoff=0)
+
     assert repr(result) == "<FetchResult position=0>"
     error = FetchError(
         loop=loop, error=OffsetOutOfRangeError({}), backoff=0)
@@ -355,10 +352,13 @@ class TestFetcher(unittest.TestCase):
             topic="some_topic", partition=1, offset=0, timestamp=0,
             timestamp_type=0, key=None, value=b"some", checksum=None,
             serialized_key_size=0, serialized_value_size=4)]
+        partition_records = PartitionRecords(
+            tp2, mock.Mock(), [], 0,
+            None, None, False, READ_UNCOMMITTED)
+        partition_records._records_iterator = iter(messages)
         fetcher._records[tp2] = FetchResult(
             tp2, assignment=assignment, loop=self.loop,
-            message_iterator=iter(messages), backoff=0,
-            fetch_offset=0)
+            partition_records=partition_records, backoff=0)
         # Add some error
         fetcher._records[tp1] = FetchError(
             loop=self.loop, error=OffsetOutOfRangeError({}), backoff=0)

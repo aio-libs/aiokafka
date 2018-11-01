@@ -141,7 +141,8 @@ class FetchResult:
         return self._partition_records is not None
 
     def __repr__(self):
-        return "<FetchResult position={!r}>".format(self._expected_position)
+        return "<FetchResult position={!r}>".format(
+            self._partition_records.next_fetch_offset)
 
 
 class FetchError:
@@ -205,7 +206,6 @@ class PartitionRecords:
         records = self._records
         while records.has_next():
             next_batch = records.next_batch()
-            print("BATCH", next_batch)
             if self._check_crcs and not next_batch.validate_crc():
                 # This iterator will be closed after the exception, so we don't
                 # try to drain other batches here. They will be refetched.
@@ -235,7 +235,6 @@ class PartitionRecords:
                 continue
 
             for record in next_batch:
-                print("RECORD", record)
                 # It's OK for the offset to be larger than the current
                 # partition. It will happen in compacted topics.
                 if record.offset < self.next_fetch_offset:
