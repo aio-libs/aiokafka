@@ -996,10 +996,14 @@ class AIOKafkaConsumer(object):
         if coordination_error_fut is not None:  # group_id is None case
             futs.append(coordination_error_fut)
 
-        yield from asyncio.wait(
-            futs,
-            return_when=asyncio.FIRST_COMPLETED,
-            loop=self._loop)
+        try:
+            yield from asyncio.wait(
+                futs,
+                return_when=asyncio.FIRST_COMPLETED,
+                loop=self._loop)
+        except asyncio.CancelledError:
+            data_task.cancel()
+            return (yield from data_task)
 
         # Check for errors and raise if any
         if coordination_error_fut is not None and \

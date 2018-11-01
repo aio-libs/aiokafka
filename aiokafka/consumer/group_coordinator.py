@@ -5,7 +5,6 @@ import logging
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.coordinator.protocol import ConsumerProtocol
 from kafka.protocol.commit import (
-    GroupCoordinatorRequest_v0 as GroupCoordinatorRequest,
     OffsetCommitRequest_v2 as OffsetCommitRequest,
     OffsetFetchRequest_v1 as OffsetFetchRequest)
 from kafka.protocol.group import (
@@ -16,7 +15,7 @@ from kafka.protocol.group import (
 
 import aiokafka.errors as Errors
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from aiokafka.client import ConnectionGroup
+from aiokafka.client import ConnectionGroup, CoordinationType
 from aiokafka.util import ensure_future, create_future
 
 log = logging.getLogger(__name__)
@@ -473,7 +472,10 @@ class GroupCoordinator(BaseCoordinator):
             retry_backoff = self._retry_backoff_ms / 1000
             while self.coordinator_id is None:
                 try:
-                    coordinator_id = yield from self._do_coordinator_lookup()
+                    coordinator_id = (
+                        yield from self._client.coordinator_lookup(
+                            CoordinationType.GROUP, self.group_id)
+                    )
                 except Errors.KafkaError as err:
                     log.error("Group Coordinator Request failed: %s", err)
                     yield from self._client.force_metadata_update()
@@ -492,24 +494,6 @@ class GroupCoordinator(BaseCoordinator):
                 self._coordinator_dead_fut = create_future(loop=self._loop)
                 log.info("Discovered coordinator %s for group %s",
                          self.coordinator_id, self.group_id)
-
-    @asyncio.coroutine
-    def _do_coordinator_lookup(self):
-        node_id = self._client.get_random_node()
-        assert node_id is not None, "Did we not perform bootstrap?"
-
-        log.debug(
-            "Sending group coordinator request for group %s to broker "
-            "%s", self.group_id, node_id)
-        request = GroupCoordinatorRequest(self.group_id)
-        resp = yield from self._client.send(
-            node_id, request, group=ConnectionGroup.DEFAULT)
-        log.debug("Received group coordinator response %s", resp)
-        error_type = Errors.for_code(resp.error_code)
-        if error_type is not Errors.NoError:
-            err = error_type()
-            raise err
-        return resp.coordinator_id
 
     @asyncio.coroutine
     def _coordination_routine(self):

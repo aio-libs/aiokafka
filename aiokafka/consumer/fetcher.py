@@ -173,7 +173,7 @@ class PartitionRecords:
         self._tp = tp
         self._records = records
         self._aborted_transactions = sorted(
-            aborted_transactions, key=lambda x: x[1])
+            aborted_transactions or [], key=lambda x: x[1])
         self._aborted_producers = set()
         self._key_deserializer = key_deserializer
         self._value_deserializer = value_deserializer
@@ -670,7 +670,7 @@ class Fetcher:
                         aborted_transactions = part_data[-2]
                         lso = part_data[-3]
                     else:
-                        aborted_transactions = []
+                        aborted_transactions = None
                         lso = highwater
                     tp_state.highwater = highwater
                     tp_state.lso = lso

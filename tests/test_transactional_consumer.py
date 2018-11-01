@@ -145,9 +145,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
             await asyncio.wait_for(
                 consumer.getone(), timeout=0.5, loop=self.loop)
 
-    @kafka_versions('>=0.11.0')
-    @run_until_complete
-    async def test_consumer_transactional_read_only_control_record(self):
+    async def _test_control_record(self, isolation_level):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer")
@@ -162,7 +160,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
             self.topic, loop=self.loop,
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest",
-            isolation_level="read_committed",
+            isolation_level=isolation_level,
             fetch_max_bytes=10)
         await consumer.start()
         self.add_cleanup(consumer.stop)
@@ -188,3 +186,13 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.timestamp, meta2.timestamp)
         self.assertEqual(msg.value, b"Hello from transaction 2")
         self.assertEqual(msg.key, None)
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_consumer_transactional_read_only_control_record(self):
+        await self._test_control_record("read_committed")
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_consumer_simple_read_only_control_record(self):
+        await self._test_control_record("read_uncommitted")
