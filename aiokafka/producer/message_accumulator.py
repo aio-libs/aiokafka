@@ -321,11 +321,15 @@ class MessageAccumulator:
         self._batches[tp].appendleft(batch)
         batch.reset_drain()
 
-    def drain_by_nodes(self, ignore_nodes):
+    def drain_by_nodes(self, ignore_nodes, muted_partitions=set()):
         """ Group batches by leader to partiton nodes. """
         nodes = collections.defaultdict(dict)
         unknown_leaders_exist = False
         for tp in list(self._batches.keys()):
+            # Just ignoring by node is not enough, as leader can change during
+            # the cycle
+            if tp in muted_partitions:
+                continue
             leader = self._cluster.leader_for_partition(tp)
             if leader is None or leader == -1:
                 if self._batches[tp][0].expired():

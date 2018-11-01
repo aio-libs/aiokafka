@@ -18,8 +18,7 @@ The client is designed to function much like the official Java client, with a sp
 
 **aiokafka** can be used with 0.9+ Kafka brokers and supports fully coordinated
 consumer groups -- i.e., dynamic partition assignment to multiple consumers in
-the same group. For now new features of Kafka 11+ are yet to be implemented,
-including Transactional Producer.
+the same group.
 
 
 Getting started

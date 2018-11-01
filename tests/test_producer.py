@@ -599,3 +599,118 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         with self.assertRaises(asyncio.TimeoutError):
             yield from asyncio.wait_for(consumer.getone(), timeout=0.5)
+
+    @run_until_complete
+    def test_producer_invalid_leader_retry_metadata(self):
+        # See related issue #362. The metadata can have a new node in leader
+        # set while we still don't have metadata for that node.
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts, linger_ms=1000)
+        yield from producer.start()
+        self.add_cleanup(producer.stop)
+
+        # Make sure we have fresh metadata for partitions
+        yield from producer.partitions_for(self.topic)
+        # Alter metadata to convince the producer, that leader or partition 0
+        # is a different node
+        topic_meta = producer._metadata._partitions[self.topic]
+        topic_meta[0] = topic_meta[0]._replace(leader=topic_meta[0].leader + 1)
+
+        meta = yield from producer.send_and_wait(self.topic, b'hello, Kafka!')
+        self.assertTrue(meta)
+
+    @run_until_complete
+    def test_producer_leader_change_preserves_order(self):
+        # Before 0.5.0 we did not lock partition until a response came from
+        # the server, but locked the node itself.
+        # For example: Say the sender sent a request to node 1 and before an
+        # failure answer came we updated metadata and leader become node 0.
+        # This way we may send the next batch to node 0 without waiting for
+        # node 1 batch to be reenqueued, resulting in out-of-order batches
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts, linger_ms=1000)
+        yield from producer.start()
+        self.add_cleanup(producer.stop)
+
+        # Alter metadata to convince the producer, that leader or partition 0
+        # is a different node
+        yield from producer.partitions_for(self.topic)
+        topic_meta = producer._metadata._partitions[self.topic]
+        real_leader = topic_meta[0].leader
+        topic_meta[0] = topic_meta[0]._replace(leader=real_leader + 1)
+
+        # Make sure the first request for produce takes more time
+        original_send = producer.client.send
+
+        @asyncio.coroutine
+        def mocked_send(node_id, request, *args, **kw):
+            if node_id != real_leader and \
+                    request.API_KEY == ProduceResponse[0].API_KEY:
+                yield from asyncio.sleep(2, loop=self.loop)
+
+            result = yield from original_send(node_id, request, *args, **kw)
+            return result
+        producer.client.send = mocked_send
+
+        # Send Batch 1. This will end up waiting for some time on fake leader
+        batch = producer.create_batch()
+        meta = batch.append(key=b"key", value=b"1", timestamp=None)
+        batch.close()
+        fut = yield from producer.send_batch(
+            batch, self.topic, partition=0)
+
+        # Make sure we sent the request
+        yield from asyncio.sleep(0.1, loop=self.loop)
+        # Update metadata to return leader to real one
+        yield from producer.client.force_metadata_update()
+
+        # Send Batch 2, that if it's bugged will go straight to the real node
+        batch2 = producer.create_batch()
+        meta2 = batch2.append(key=b"key", value=b"2", timestamp=None)
+        batch2.close()
+        fut2 = yield from producer.send_batch(
+            batch2, self.topic, partition=0)
+
+        batch_meta = yield from fut
+        batch_meta2 = yield from fut2
+
+        # Check the order of messages
+        consumer = AIOKafkaConsumer(
+            self.topic, loop=self.loop,
+            bootstrap_servers=self.hosts,
+            auto_offset_reset="earliest")
+        yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+        msg = yield from consumer.getone()
+        self.assertEqual(msg.offset, batch_meta.offset)
+        self.assertEqual(msg.timestamp or -1, meta.timestamp)
+        self.assertEqual(msg.value, b"1")
+        self.assertEqual(msg.key, b"key")
+        msg2 = yield from consumer.getone()
+        self.assertEqual(msg2.offset, batch_meta2.offset)
+        self.assertEqual(msg2.timestamp or -1, meta2.timestamp)
+        self.assertEqual(msg2.value, b"2")
+        self.assertEqual(msg2.key, b"key")
+
+    @run_until_complete
+    def test_producer_sender_errors_propagate_to_producer(self):
+        # Following on #362 there may be other unexpected errors in sender
+        # routine that we wan't the user to see, rather than just get stuck.
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts, linger_ms=1000)
+        yield from producer.start()
+        self.add_cleanup(producer.stop)
+
+        with mock.patch.object(producer, '_send_produce_req') as mocked:
+            mocked.side_effect = KeyError
+
+            with self.assertRaises(KeyError):
+                yield from producer.send_and_wait(
+                    self.topic, b'hello, Kafka!')
+
+        with self.assertRaises(KeyError):
+            yield from producer.send_and_wait(
+                self.topic, b'hello, Kafka!')
