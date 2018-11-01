@@ -953,20 +953,32 @@ class AIOKafkaConsumer(object):
 
     @asyncio.coroutine
     def _wait_for_data_or_error(self, coro):
-        if self._group_id is None:
-            return (yield from coro)
-        else:
-            coordination_error_fut = self._coordinator.error_future
-            data_task = ensure_future(coro, loop=self._loop)
+        data_task = ensure_future(coro, loop=self._loop)
+        fetcher_error_fut = self._fetcher.error_future
+        futs = [data_task, fetcher_error_fut]
+        coordination_error_fut = self._coordinator.error_future
+        if coordination_error_fut is not None:  # group_id is None case
+            futs.append(coordination_error_fut)
+
+        try:
             yield from asyncio.wait(
-                [data_task, coordination_error_fut],
-                return_when=asyncio.FIRST_COMPLETED)
-
-            # Check for errors in coordination and raise if any
-            if coordination_error_fut.done():
-                coordination_error_fut.result()  # Raises set exception if any
-
+                futs,
+                return_when=asyncio.FIRST_COMPLETED,
+                loop=self._loop)
+        except asyncio.CancelledError:
+            data_task.cancel()
             return (yield from data_task)
+
+        # Check for errors and raise if any
+        if coordination_error_fut is not None and \
+                coordination_error_fut.done():
+            coordination_error_fut.result()  # Raises set exception if any
+
+        # Check for errors in fetcher and raise if any
+        if fetcher_error_fut.done():
+            fetcher_error_fut.result()
+
+        return (yield from data_task)
 
     @asyncio.coroutine
     def getone(self, *partitions):

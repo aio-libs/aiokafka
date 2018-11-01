@@ -286,6 +286,10 @@ class Fetcher:
             lambda f, waiters=self._fetch_waiters: waiters.remove(f))
         return fut
 
+    @property
+    def error_future(self):
+        return self._fetch_task
+
     @asyncio.coroutine
     def _fetch_requests_routine(self):
         """ Implements a background task to populate internal fetch queue
