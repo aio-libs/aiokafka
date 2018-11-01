@@ -1,6 +1,15 @@
 CHANGES
 --------
 
+0.4.3 (2018-11-01)
+^^^^^^^^^^^^^^^^^^
+
+Bugfix:
+
+* Fixed memory issue introduced as a result of a bug in `asyncio.shield` and 
+  not cancelling coroutine after usage. (see issue #444 and #436)
+
+
 0.4.2 (2018-09-12)
 ^^^^^^^^^^^^^^^^^^
 
