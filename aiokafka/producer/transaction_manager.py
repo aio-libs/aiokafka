@@ -29,22 +29,18 @@ class TransactionResult:
 class TransactionState(Enum):
 
     UNINITIALIZED = 1
-    INITIALIZING = 2
-    READY = 3
-    IN_TRANSACTION = 4
-    COMMITTING_TRANSACTION = 5
-    ABORTING_TRANSACTION = 6
-    ERROR = 7
+    READY = 2
+    IN_TRANSACTION = 3
+    COMMITTING_TRANSACTION = 4
+    ABORTING_TRANSACTION = 5
+    ERROR = 6
 
     @classmethod
     def is_transition_valid(cls, source, target):
-        if target == cls.INITIALIZING:
-            return source == cls.UNINITIALIZED
-        elif target == cls.READY:
-            return source == cls.INITIALIZING or \
+        if target == cls.READY:
+            return source == cls.UNINITIALIZED or \
                 source == cls.COMMITTING_TRANSACTION or \
-                source == cls.ABORTING_TRANSACTION or \
-                source == cls.UNINITIALIZED  # XXX REMOVE ME
+                source == cls.ABORTING_TRANSACTION
         elif target == cls.IN_TRANSACTION:
             return source == cls.READY
         elif target == cls.COMMITTING_TRANSACTION:
@@ -136,12 +132,6 @@ class TransactionManager:
         assert TransactionState.is_transition_valid(self.state, target), \
             "Invalid state transition {} -> {}".format(self.state, target)
         self.state = target
-
-    def is_fenced(self):
-        return self.state == TransactionState.FENCED
-
-    def init_transactions(self):
-        self._transition_to(TransactionState.INITIALIZING)
 
     def begin_transaction(self):
         self._transition_to(TransactionState.IN_TRANSACTION)
