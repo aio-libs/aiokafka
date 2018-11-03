@@ -145,7 +145,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
 
     @property
     def last_offset_delta(self):
-        return self._header_data[7]
+        return self._header_data[6]
 
     @property
     def first_timestamp(self):
