@@ -16,13 +16,14 @@ from aiokafka.errors import (
     CoordinatorNotAvailableError, NotCoordinatorError,
     CoordinatorLoadInProgressError, InvalidProducerEpoch,
     ProducerFenced, InvalidProducerIdMapping, InvalidTxnState,
-    ConcurrentTransactions, DuplicateSequenceNumber)
+    ConcurrentTransactions, DuplicateSequenceNumber, RequestTimedOutError)
 from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.protocol.transaction import (
-    InitProducerIdRequest, AddPartitionsToTxnRequest, EndTxnRequest
+    InitProducerIdRequest, AddPartitionsToTxnRequest, EndTxnRequest,
+    AddOffsetsToTxnRequest, TxnOffsetCommitRequest
 )
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
-from aiokafka.structs import TopicPartition
+from aiokafka.structs import TopicPartition, OffsetAndMetadata
 from aiokafka.util import ensure_future, INTEGER_MAX_VALUE, PY_341, PY_36
 
 from .message_accumulator import MessageAccumulator
@@ -537,6 +538,21 @@ class AIOKafkaProducer(object):
                 self._do_add_partitions_to_txn(tps),
                 loop=self._loop)
 
+        # We need to add group to transaction before we can commit the offset
+        group_id = txn_manager.consumer_group_to_add()
+        if group_id is not None:
+            return ensure_future(
+                self._do_add_offsets_to_txn(group_id),
+                loop=self._loop)
+
+        # Now commit the added group's offset
+        commit_data = txn_manager.offsets_to_commit()
+        if commit_data is not None:
+            offsets, group_id = commit_data
+            return ensure_future(
+                self._do_txn_offset_commit(offsets, group_id),
+                loop=self._loop)
+
         commit_result = txn_manager.needs_transaction_commit()
         if commit_result is not None:
             return ensure_future(
@@ -590,12 +606,12 @@ class AIOKafkaProducer(object):
         elif error_type is InvalidProducerEpoch:
             raise ProducerFenced()
         elif error_type is InvalidTxnState:
-            raise
+            raise error_type()
         else:
             log.error(
                 "Could not end transaction due to unexpected error: %s",
                 error_type)
-            raise
+            raise error_type()
 
         # Backoff on error
         yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
@@ -653,12 +669,12 @@ class AIOKafkaProducer(object):
                     raise ProducerFenced()
                 elif (error_type is InvalidProducerIdMapping or
                         error_type is InvalidTxnState):
-                    raise
+                    raise error_type()
                 else:
                     log.error(
                         "Could not add partition %s due to unexpected error:"
                         " %s", partition, error_type)
-                    raise
+                    raise error_type()
 
         # Backoff on error
         yield from asyncio.sleep(retry_backoff, loop=self._loop)
@@ -721,9 +737,9 @@ class AIOKafkaProducer(object):
         error_type = Errors.for_code(resp.error_code)
         if error_type is Errors.NoError:
             log.debug(
-                "Successfully found PID={} EPOCH={} for Producer {}".format(
-                    resp.producer_id, resp.producer_epoch,
-                    self.client._client_id))
+                "Successfully found PID=%s EPOCH=%s for Producer %s",
+                resp.producer_id, resp.producer_epoch,
+                self.client._client_id)
             self._txn_manager.set_pid_and_epoch(
                 resp.producer_id, resp.producer_epoch)
             # Just in case we got bad values from broker
@@ -740,7 +756,7 @@ class AIOKafkaProducer(object):
             log.error(
                 "Unexpected error during InitProducerIdRequest: %s",
                 error_type)
-            raise
+            raise error_type()
 
     @asyncio.coroutine
     def _send_produce_req(self, node_id, batches):
@@ -1017,6 +1033,162 @@ class AIOKafkaProducer(object):
 
     def transaction(self):
         return TransactionContext(self)
+
+    @asyncio.coroutine
+    def send_offsets_to_transaction(self, offsets, group_id):
+        self._ensure_transactional()
+
+        if not self._txn_manager.is_in_transaction():
+            raise IllegalOperation("Not in the middle of a transaction")
+
+        # validate `offsets` structure
+        if not offsets or not isinstance(offsets, dict):
+            raise ValueError(offsets)
+        if not group_id or not isinstance(group_id, str):
+            raise ValueError(group_id)
+
+        formatted_offsets = {}
+        for tp, offset_and_metadata in offsets.items():
+            if not isinstance(tp, TopicPartition):
+                raise ValueError("Key should be TopicPartition instance")
+
+            if isinstance(offset_and_metadata, int):
+                offset, metadata = offset_and_metadata, ""
+            else:
+                try:
+                    offset, metadata = offset_and_metadata
+                except Exception:
+                    raise ValueError(offsets)
+
+                if not isinstance(metadata, str):
+                    raise ValueError("Metadata should be a string")
+
+            formatted_offsets[tp] = OffsetAndMetadata(offset, metadata)
+
+        log.debug(
+            "Begin adding offsets %s for consumer group %s to transaction",
+            formatted_offsets, group_id)
+        fut = self._txn_manager.add_offsets_to_txn(formatted_offsets, group_id)
+        yield from self._wait_for_reponse_or_error(fut)
+
+    @asyncio.coroutine
+    def _do_add_offsets_to_txn(self, group_id):
+        txn_manager = self._txn_manager
+        # First assert we have a valid coordinator to send the request to
+        node_id = yield from self._find_coordinator(
+            CoordinationType.TRANSACTION, txn_manager.transactional_id)
+
+        req = AddOffsetsToTxnRequest[0](
+            transactional_id=self._txn_manager.transactional_id,
+            producer_id=self._txn_manager.producer_id,
+            producer_epoch=self._txn_manager.producer_epoch,
+            group_id=group_id
+        )
+        try:
+            resp = yield from self.client.send(
+                node_id, req, group=ConnectionGroup.COORDINATION)
+        except KafkaError as err:
+            log.warning("Could not send AddOffsetsToTxnRequest: %r", err)
+            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+            return
+
+        error_type = Errors.for_code(resp.error_code)
+        if error_type is Errors.NoError:
+            log.debug(
+                "Successfully added consumer group %s to transaction", group_id
+            )
+            txn_manager.consumer_group_added(group_id)
+            return
+        elif (error_type is CoordinatorNotAvailableError or
+                error_type is NotCoordinatorError):
+            self._coordinator_dead(CoordinationType.TRANSACTION)
+        elif (error_type is CoordinatorLoadInProgressError or
+                error_type is ConcurrentTransactions):
+            # We will just retry after backoff
+            pass
+        elif error_type is InvalidProducerEpoch:
+            raise ProducerFenced()
+        elif error_type is InvalidTxnState:
+            raise error_type()
+        else:
+            log.error(
+                "Could not add consumer group due to unexpected error: %s",
+                error_type)
+            raise error_type()
+
+        # Backoff on error
+        yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+
+    @asyncio.coroutine
+    def _do_txn_offset_commit(self, offsets, group_id):
+        txn_manager = self._txn_manager
+
+        # Fast return if nothing to commit
+        if not offsets:
+            return
+
+        # create the offset commit request structure
+        offset_data = collections.defaultdict(list)
+        for tp, offset in offsets.items():
+            offset_data[tp.topic].append(
+                (tp.partition,
+                 offset.offset,
+                 offset.metadata))
+
+        req = TxnOffsetCommitRequest[0](
+            transactional_id=txn_manager.transactional_id,
+            group_id=group_id,
+            producer_id=txn_manager.producer_id,
+            producer_epoch=txn_manager.producer_epoch,
+            topics=list(offset_data.items())
+        )
+
+        # NOTE: We send this one to GROUP coordinator, not TRANSACTION
+        node_id = yield from self._find_coordinator(
+            CoordinationType.GROUP, group_id)
+        log.debug(
+            "Sending offset-commit request with %s for group %s to %s",
+            offsets, group_id, node_id
+        )
+        try:
+            resp = yield from self.client.send(
+                node_id, req, group=ConnectionGroup.COORDINATION)
+        except KafkaError as err:
+            log.warning("Could not send AddPartitionsToTxnRequest: %r", err)
+            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+            return
+
+        for topic, partitions in resp.errors:
+            for partition, error_code in partitions:
+                tp = TopicPartition(topic, partition)
+                error_type = Errors.for_code(error_code)
+
+                if error_type is Errors.NoError:
+                    offset = offsets[tp].offset
+                    log.debug(
+                        "Offset %s for partition %s committed to group %s",
+                        offset, tp, group_id)
+                    txn_manager.offset_committed(tp, offset, group_id)
+                    return
+                elif (error_type is CoordinatorNotAvailableError or
+                        error_type is NotCoordinatorError or
+                        # Copied from Java. Not sure why it's only in this case
+                        error_type is RequestTimedOutError):
+                    self._coordinator_dead(CoordinationType.GROUP)
+                elif (error_type is CoordinatorLoadInProgressError or
+                        error_type is UnknownTopicOrPartitionError):
+                    # We will just retry after backoff
+                    pass
+                elif error_type is InvalidProducerEpoch:
+                    raise ProducerFenced()
+                else:
+                    log.error(
+                        "Could not commit offset for partition %s due to "
+                        "unexpected error: %s", partition, error_type)
+                    raise error_type()
+
+        # Backoff on error
+        yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
 
 
 class TransactionContext:

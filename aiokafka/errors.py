@@ -22,7 +22,7 @@ __all__ = [
     "GroupAuthorizationFailedError", "IllegalStateError",
     "UnsupportedVersionError", "CorruptRecordException", "InvalidMessageError",
     "CoordinatorNotAvailableError", "NotCoordinatorError",
-    "CoordinatorLoadInProgressError",
+    "CoordinatorLoadInProgressError", "RequestTimedOutError",
     # aiokafka custom errors
     "ConsumerStoppedError", "NoOffsetForPartitionError", "RecordTooLargeError",
     "ProducerClosed"

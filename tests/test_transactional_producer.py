@@ -1,30 +1,13 @@
-# import asyncio
-# import gc
-# import json
-# import pytest
-# import time
-# import weakref
-# from unittest import mock
-
-# from kafka.cluster import ClusterMetadata
-
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, kafka_versions
 )
 
-# from aiokafka.protocol.produce import ProduceResponse
 from aiokafka.producer import AIOKafkaProducer
-# from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer
-# from aiokafka.util import PY_341, create_future
 
 from aiokafka.errors import (
-    # KafkaTimeoutError, UnknownTopicOrPartitionError,
-    # MessageSizeTooLargeError, NotLeaderForPartitionError,
-    # LeaderNotAvailableError, RequestTimedOutError,
     UnsupportedVersionError,
     ProducerFenced, OutOfOrderSequenceNumber
-    # ProducerClosed
 )
 from aiokafka.structs import TopicPartition
 
@@ -153,3 +136,62 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 producer._txn_manager.increment_sequence_number(
                     TopicPartition(self.topic, 0), 1)
                 await producer.send_and_wait(self.topic, b'msg2', partition=0)
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_producer_transactional_send_offsets_to_transaction(self):
+        # This is a pair test of Consume - To - Produce processing. We consume
+        # a batch, process, produce with Procuder and send commit through
+        # Producer also. At the end commit the transaction through Producer.
+        # This will update commit point in Consumer too.
+
+        # Setup some messages in INPUT topic
+        await self.send_messages(0, list(range(0, 100)))
+        await self.send_messages(1, list(range(100, 200)))
+        in_topic = self.topic
+        out_topic = self.topic + "-out"
+        group_id = self.topic + "-group"
+
+        consumer = AIOKafkaConsumer(
+            in_topic, loop=self.loop,
+            bootstrap_servers=self.hosts,
+            group_id=group_id,
+            auto_offset_reset="earliest")
+        await consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer", client_id="p1")
+        await producer.start()
+        self.add_cleanup(producer.stop)
+
+        assignment = consumer.assignment()
+        self.assertTrue(assignment)
+        for tp in assignment:
+            await consumer.commit({tp: 0})
+            offset_before = await consumer.committed(tp)
+            self.assertEqual(offset_before, 0)
+
+        async def transform():
+            while True:
+                batch = await consumer.getmany(timeout_ms=5000, max_records=20)
+                if not batch:
+                    break
+                async with producer.transaction():
+                    offsets = {}
+                    for tp, msgs in batch.items():
+                        for msg in msgs:
+                            out_msg = b"OUT-" + msg.value
+                            # We produce to the same partition
+                            producer.send(
+                                out_topic, value=out_msg,
+                                partition=tp.partition)
+                        offsets[tp] = msg.offset + 1
+                    await producer.send_offsets_to_transaction(
+                        offsets, group_id)
+
+        await transform()
+        for tp in assignment:
+            offset = await consumer.committed(tp)
+            self.assertEqual(offset, 100)

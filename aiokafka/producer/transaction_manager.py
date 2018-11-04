@@ -1,7 +1,7 @@
 import asyncio
 from copy import copy
 from enum import Enum
-from collections import namedtuple, defaultdict
+from collections import namedtuple, defaultdict, deque
 
 from aiokafka.structs import TopicPartition
 from aiokafka.util import create_future
@@ -71,6 +71,8 @@ class TransactionManager:
 
         self._txn_partitions = set()
         self._pending_txn_partitions = set()
+        self._txn_consumer_group = None
+        self._pending_txn_offsets = deque()
 
         self._loop = loop
 
@@ -147,8 +149,10 @@ class TransactionManager:
 
     def complete_transaction(self):
         assert not self._pending_txn_partitions
+        assert not self._pending_txn_offsets
         self._transition_to(TransactionState.READY)
         self._txn_partitions.clear()
+        self._txn_consumer_group = None
         self._transaction_waiter.set_result(None)
 
     def transition_to_error(self, exc):
@@ -158,17 +162,55 @@ class TransactionManager:
     def maybe_add_partition_to_txn(self, tp: TopicPartition):
         if self.transactional_id is None:
             return
-        assert self.state == TransactionState.IN_TRANSACTION
+        assert self.is_in_transaction()
         if tp not in self._txn_partitions:
             self._pending_txn_partitions.add(tp)
             self.notify_task_waiter()
 
+    def add_offsets_to_txn(self, offsets, group_id):
+        assert self.is_in_transaction()
+        assert self.transactional_id
+        fut = create_future(loop=self._loop)
+        self._pending_txn_offsets.append(
+            (group_id, offsets, fut)
+        )
+        self.notify_task_waiter()
+        return fut
+
+    def is_in_transaction(self):
+        return self.state == TransactionState.IN_TRANSACTION
+
     def partitions_to_add(self):
         return self._pending_txn_partitions
+
+    def consumer_group_to_add(self):
+        if self._txn_consumer_group is not None:
+            return
+        for group_id, _, _ in self._pending_txn_offsets:
+            return group_id
+
+    def offsets_to_commit(self):
+        if self._txn_consumer_group is None:
+            return
+        for group_id, offsets, _ in self._pending_txn_offsets:
+            return offsets, group_id
 
     def partition_added(self, tp: TopicPartition):
         self._pending_txn_partitions.remove(tp)
         self._txn_partitions.add(tp)
+
+    def consumer_group_added(self, group_id):
+        self._txn_consumer_group = group_id
+
+    def offset_committed(self, tp, offset, group_id):
+        pending_group_id, pending_offsets, fut = self._pending_txn_offsets[0]
+        assert pending_group_id == group_id
+        assert tp in pending_offsets and pending_offsets[tp].offset == offset
+        del pending_offsets[tp]
+
+        if not pending_offsets:
+            fut.set_result(None)
+            self._pending_txn_offsets.popleft()
 
     @property
     def txn_partitions(self):

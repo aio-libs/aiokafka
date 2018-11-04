@@ -1,32 +1,15 @@
 import asyncio
-# import gc
-# import json
-# import pytest
-# import time
-# import weakref
-# from unittest import mock
-
-# from kafka.cluster import ClusterMetadata
 
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, kafka_versions
 )
 
-# from aiokafka.protocol.produce import ProduceResponse
 from aiokafka.producer import AIOKafkaProducer
-# from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer
-# from aiokafka.util import PY_341, create_future
 
 from aiokafka.errors import (
-    # KafkaTimeoutError, UnknownTopicOrPartitionError,
-    # MessageSizeTooLargeError, NotLeaderForPartitionError,
-    # LeaderNotAvailableError, RequestTimedOutError,
     UnsupportedVersionError,
-    # ProducerFenced, OutOfOrderSequenceNumber
-    # ProducerClosed
 )
-# from aiokafka.structs import TopicPartition
 
 
 class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
