@@ -155,6 +155,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             in_topic, loop=self.loop,
             bootstrap_servers=self.hosts,
+            enable_auto_commit=False,
             group_id=group_id,
             auto_offset_reset="earliest")
         await consumer.start()
@@ -192,6 +193,78 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                         offsets, group_id)
 
         await transform()
+        for tp in assignment:
+            offset = await consumer.committed(tp)
+            self.assertEqual(offset, 100)
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_producer_transactional_send_offsets_and_abort(self):
+        # Following previous, we will process but abort transaction. Commit
+        # should not be processed and the same data should be returned after
+        # reset
+
+        # Setup some messages in INPUT topic
+        await self.send_messages(0, list(range(0, 100)))
+        await self.send_messages(1, list(range(100, 200)))
+        in_topic = self.topic
+        out_topic = self.topic + "-out"
+        group_id = self.topic + "-group"
+
+        consumer = AIOKafkaConsumer(
+            in_topic, loop=self.loop,
+            bootstrap_servers=self.hosts,
+            enable_auto_commit=False,
+            group_id=group_id,
+            auto_offset_reset="earliest")
+        await consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer", client_id="p1")
+        await producer.start()
+        self.add_cleanup(producer.stop)
+
+        assignment = consumer.assignment()
+        self.assertTrue(assignment)
+        for tp in assignment:
+            await consumer.commit({tp: 0})
+            offset_before = await consumer.committed(tp)
+            self.assertEqual(offset_before, 0)
+
+        async def transform(raise_error):
+            while True:
+                batch = await consumer.getmany(timeout_ms=5000, max_records=20)
+                if not batch:
+                    break
+                async with producer.transaction():
+                    offsets = {}
+                    for tp, msgs in batch.items():
+                        for msg in msgs:
+                            out_msg = b"OUT-" + msg.value
+                            # We produce to the same partition
+                            producer.send(
+                                out_topic, value=out_msg,
+                                partition=tp.partition)
+                        offsets[tp] = msg.offset + 1
+                    await producer.send_offsets_to_transaction(
+                        offsets, group_id)
+                    if raise_error:
+                        raise ValueError()
+
+        try:
+            await transform(raise_error=True)
+        except ValueError:
+            pass
+
+        for tp in assignment:
+            offset = await consumer.committed(tp)
+            self.assertEqual(offset, 0)
+
+        await consumer.seek_to_committed()
+        await transform(raise_error=False)
+
         for tp in assignment:
             offset = await consumer.committed(tp)
             self.assertEqual(offset, 100)

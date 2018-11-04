@@ -290,6 +290,12 @@ class AIOKafkaConsumer(object):
             raise ValueError("Unsupported Kafka version: {}".format(
                 self._client.api_version))
 
+        if self._isolation_level == "read_committed" and \
+                self._client.api_version < (0, 11):
+            raise UnsupportedVersionError(
+                "`read_committed` isolation_level available only for Brokers "
+                "0.11 and above")
+
         self._fetcher = Fetcher(
             self._client, self._subscription, loop=self._loop,
             key_deserializer=self._key_deserializer,
@@ -520,12 +526,12 @@ class AIOKafkaConsumer(object):
         """ Get the last committed offset for the given partition. (whether the
         commit happened by this process or another).
 
-        This offset will be used as the position for the consumer
-        in the event of a failure.
+        This offset will be used as the position for the consumer in the event
+        of a failure.
 
-        This call may block to do a remote call if the partition in question
-        isn't assigned to this consumer or if the consumer hasn't yet
-        initialized its cache of committed offsets.
+        This call will block to do a remote call to get the latest offset, as
+        those are not cached by consumer (Transactional Producer can change
+        them without Consumer knowledge as of Kafka 0.11.0)
 
         Arguments:
             partition (TopicPartition): the partition to check
@@ -539,22 +545,14 @@ class AIOKafkaConsumer(object):
         if self._group_id is None:
             raise IllegalOperation("Requires group_id")
 
-        if self._subscription.is_assigned(partition):
-            assignment = self._subscription.subscription.assignment
-            tp_state = assignment.state_value(partition)
-            if tp_state.committed is None:
-                yield from tp_state.wait_for_committed()
-            committed = tp_state.committed.offset
-
-        else:
-            commit_map = yield from self._coordinator.fetch_committed_offsets(
-                [partition])
-            if partition in commit_map:
-                committed = commit_map[partition].offset
-            else:
+        commit_map = yield from self._coordinator.fetch_committed_offsets(
+            [partition])
+        if partition in commit_map:
+            committed = commit_map[partition].offset
+            if committed == -1:
                 committed = None
-        if committed == -1:
-            return None
+        else:
+            committed = None
         return committed
 
     @asyncio.coroutine
