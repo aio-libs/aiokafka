@@ -6,6 +6,7 @@ from ._testutil import (
 
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.consumer import AIOKafkaConsumer
+from aiokafka.structs import TopicPartition
 
 from aiokafka.errors import (
     UnsupportedVersionError,
@@ -61,6 +62,10 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
         await asyncio.sleep(1, loop=self.loop)
         self.assertFalse(task.done())
 
+        tp = TopicPartition(self.topic, 0)
+        self.assertEqual(consumer.last_stable_offset(tp), 0)
+        self.assertEqual(consumer.highwater(tp), 2)
+
         await producer.commit_transaction()
 
         # Order should be preserved. We first yield the first message, although
@@ -76,6 +81,11 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.timestamp, meta2.timestamp)
         self.assertEqual(msg.value, b"Hello from non-transaction")
         self.assertEqual(msg.key, None)
+
+        # 3, because we have a commit marker also
+        tp = TopicPartition(self.topic, 0)
+        self.assertEqual(consumer.last_stable_offset(tp), 3)
+        self.assertEqual(consumer.highwater(tp), 3)
 
     @kafka_versions('>=0.11.0')
     @run_until_complete
@@ -114,6 +124,10 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
         await asyncio.sleep(1, loop=self.loop)
         self.assertFalse(task.done())
 
+        tp = TopicPartition(self.topic, 0)
+        self.assertEqual(consumer.last_stable_offset(tp), 0)
+        self.assertEqual(consumer.highwater(tp), 2)
+
         await producer.abort_transaction()
 
         # Order should be preserved. We first yield the first message, although
@@ -127,6 +141,10 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(asyncio.TimeoutError):
             await asyncio.wait_for(
                 consumer.getone(), timeout=0.5, loop=self.loop)
+
+        tp = TopicPartition(self.topic, 0)
+        self.assertEqual(consumer.last_stable_offset(tp), 3)
+        self.assertEqual(consumer.highwater(tp), 3)
 
     async def _test_control_record(self, isolation_level):
         producer = AIOKafkaProducer(

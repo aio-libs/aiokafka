@@ -670,7 +670,7 @@ class Fetcher:
                         lso = part_data[-3]
                     else:
                         aborted_transactions = None
-                        lso = highwater
+                        lso = None
                     tp_state.highwater = highwater
                     tp_state.lso = lso
 

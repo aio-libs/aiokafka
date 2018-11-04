@@ -642,6 +642,27 @@ class AIOKafkaConsumer(object):
         assignment = self._subscription.subscription.assignment
         return assignment.state_value(partition).highwater
 
+    def last_stable_offset(self, partition):
+        """ Returns the Last Stable Offset of a topic. It will be the last
+        offset up to which point all transactions were completed. Only
+        available in with isolation_level `read_committed`, in
+        `read_uncommitted` will always return -1. Will return None for older
+        Brokers.
+
+        As with ``highwater()`` will not be available until some messages are
+        consumed.
+
+        Arguments:
+            partition (TopicPartition): partition to check
+
+        Returns:
+            int or None: offset if available
+        """
+        assert self._subscription.is_assigned(partition), \
+            'Partition is not assigned'
+        assignment = self._subscription.subscription.assignment
+        return assignment.state_value(partition).lso
+
     def seek(self, partition, offset):
         """ Manually specify the fetch offset for a TopicPartition.
 
