@@ -121,6 +121,54 @@ This option will change a bit the logic on message delivery:
 .. versionadded:: 0.5.0
 
 
+Transactional producer
+----------------------
+
+As of Kafka 0.11 the Brokers support transactional message producer, meaning
+that messages sent to one or more topics will only be visible on consumers
+after the transaction is committed. To use the transactional producer and the
+attendant APIs, you must set the ``transactional_id`` configuration property::
+
+    producer = aiokafka.AIOKafkaProducer(
+        loop=loop, bootstrap_servers='localhost:9092',
+        transactional_id="transactional_test")
+    await producer.start()
+    try:
+        async with producer.transaction():
+            res = await producer.send_and_wait(
+                "test-topic", b"Super transactional message")
+    finally:
+        await producer.stop()
+
+If the ``transactional_id`` is set, idempotence is automatically enabled along
+with the producer configs which idempotence depends on. Further, topics which
+are included in transactions should be configured for durability. In
+particular, the ``replication.factor`` should be at least ``3``, and the
+``min.insync.replicas`` for these topics should be set to ``2``. Finally, in
+order for transactional guarantees to be realized from end-to-end, the
+consumers must be configured to read only committed messages as well. See 
+:ref:`Reading Transactional Messages <transactional-consume>`.
+
+The purpose of the ``transactional_id`` is to enable transaction recovery
+across  multiple sessions of a single producer instance. It would typically be
+derived from the shard identifier in a partitioned, stateful, application. As
+such, it should be unique to each producer instance running within a
+partitioned application. Using the same ``transactional_id`` will cause the
+previous instance to raise an excpetion ``ProducerFenced`` that is not
+retriable and will force it to exit.
+
+Besides the ``transaction()`` shortcut producer also supports a set of API's
+similar to ones in Java Client. See :ref:`AIOKafkaProducer <aiokafka-producer>`
+API docs.
+
+Besides being able to commit several topics atomically, as offsets are also
+stored in a separate system topic it's possible to commit a consumer offset as
+part of the same transaction. See
+:ref:`Tranactional Consume-Process-Produce <transaction-example>` example.
+
+.. versionadded:: 0.5.0
+
+
 Returned RecordMetadata object
 ------------------------------
 
