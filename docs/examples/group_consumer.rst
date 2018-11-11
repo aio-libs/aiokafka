@@ -3,7 +3,7 @@ Group consumer
 ==============
 
 As of Kafka 9.0 Consumers can consume on the same topic simultaneously. This
-is achieved by coordinating consumers by some of Kafka broker nodes
+is achieved by coordinating consumers by one of Kafka broker nodes
 (coordinator). This node will perform synchronization of partition assignment
 (thou the partitions will be assigned by python code) and consumers will always
 return messages for the assigned partitions.

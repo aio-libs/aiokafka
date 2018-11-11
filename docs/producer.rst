@@ -121,6 +121,8 @@ This option will change a bit the logic on message delivery:
 .. versionadded:: 0.5.0
 
 
+.. _transactional-producer:
+
 Transactional producer
 ----------------------
 

@@ -2,13 +2,19 @@
 Manual commit
 =============
 
-When processing more sensitive data autocommit=True mode of Consumer can lead
-to data loss in cases of critical failure. To avoid it we can commit offsets
-manually after they were processed. Note, that this is a tradeoff from 
-*at most once* to *at least once* delivery, to achieve *exactly once* you will
-need to save offsets in the destination database and validate those yourself.
+When processing more sensitive data ``enable_auto_commit=False`` mode of
+Consumer can lead to data loss in cases of critical failure. To avoid it we
+can commit offsets manually after they were processed. Note, that this is a
+tradeoff from *at most once* to *at least once* delivery, to achieve
+*exactly once* you will need to save offsets in the destination database and
+validate those yourself.
 
 More on message delivery: https://kafka.apache.org/documentation.html#semantics
+
+.. note::
+    After Kafka Broker version 0.11 and after `aiokafka==0.5.0` it is possible
+    to use Transactional Producer to achive *exactly once* delivery semantics.
+    See :ref:`Tranactional Producer <transactional-producer>` section.
 
 
 Consumer:
