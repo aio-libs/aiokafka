@@ -156,7 +156,7 @@ across  multiple sessions of a single producer instance. It would typically be
 derived from the shard identifier in a partitioned, stateful, application. As
 such, it should be unique to each producer instance running within a
 partitioned application. Using the same ``transactional_id`` will cause the
-previous instance to raise an excpetion ``ProducerFenced`` that is not
+previous instance to raise an exception ``ProducerFenced`` that is not
 retriable and will force it to exit.
 
 Besides the ``transaction()`` shortcut producer also supports a set of API's
@@ -165,8 +165,17 @@ API docs.
 
 Besides being able to commit several topics atomically, as offsets are also
 stored in a separate system topic it's possible to commit a consumer offset as
-part of the same transaction. See
-:ref:`Tranactional Consume-Process-Produce <transaction-example>` example.
+part of the same transaction::
+
+    async with producer.transaction():
+        commit_offsets = {
+            TopicPartition("some-topic", 0): 100
+        }
+        await producer.send_offsets_to_transaction(
+            commit_offsets, "some-consumer-group")
+
+See a more full example in
+:ref:`Transactional Consume-Process-Produce <transaction-example>`.
 
 .. versionadded:: 0.5.0
 
