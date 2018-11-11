@@ -55,6 +55,24 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @kafka_versions('>=0.11.0')
     @run_until_complete
+    async def test_producer_transactional_empty_txn(self):
+        # If we commit or abort transaction that was never started we should
+        # not even send the End marker
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer")
+        await producer.start()
+        self.add_cleanup(producer.stop)
+
+        await producer.begin_transaction()
+        await producer.commit_transaction()
+
+        await producer.begin_transaction()
+        await producer.abort_transaction()
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
     async def test_producer_transactional_fences_off_previous(self):
         # Test 2 producers fencing one another by using the same
         # transactional_id

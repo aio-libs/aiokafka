@@ -573,6 +573,12 @@ class AIOKafkaProducer(object):
         yield from self._message_accumulator.flush_for_commit()
 
         txn_manager = self._txn_manager
+
+        # If we never sent any data to begin with, no need to commit
+        if txn_manager.is_empty_transaction():
+            txn_manager.complete_transaction()
+            return
+
         # First assert we have a valid coordinator to send the request to
         node_id = yield from self._find_coordinator(
             CoordinationType.TRANSACTION, txn_manager.transactional_id)

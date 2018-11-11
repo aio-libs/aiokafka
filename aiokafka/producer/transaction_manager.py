@@ -224,6 +224,13 @@ class TransactionManager:
         else:
             return
 
+    def is_empty_transaction(self):
+        # whether we sent either data to a partition or committed offset
+        return (
+            len(self.txn_partitions) == 0 and
+            self._txn_consumer_group is None
+        )
+
     def wait_for_transaction_end(self):
         return self._transaction_waiter
 
