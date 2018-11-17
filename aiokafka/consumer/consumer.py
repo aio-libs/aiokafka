@@ -12,8 +12,7 @@ from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
     TopicAuthorizationFailedError, OffsetOutOfRangeError,
     ConsumerStoppedError, IllegalOperation, UnsupportedVersionError,
-    IllegalStateError, NoOffsetForPartitionError, RecordTooLargeError,
-    CorruptRecordException
+    IllegalStateError, NoOffsetForPartitionError, RecordTooLargeError
 )
 from aiokafka.structs import TopicPartition, OffsetAndMetadata
 from aiokafka.util import PY_341, PY_35, PY_352, PY_36, ensure_future
@@ -1156,6 +1155,5 @@ class AIOKafkaConsumer(object):
                         OffsetOutOfRangeError,
                         NoOffsetForPartitionError) as err:
                     raise err
-                except (RecordTooLargeError,
-                        CorruptRecordException):
+                except RecordTooLargeError:
                     log.exception("error in consumer iterator: %s")

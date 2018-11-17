@@ -189,7 +189,7 @@ class PartitionRecords:
         self._records_iterator = self._unpack_records()
 
     def __iter__(self):
-        return self._records_iterator
+        return self
 
     def __next__(self):
         try:
@@ -687,6 +687,7 @@ class Fetcher:
                             tp, records, aborted_transactions, fetch_offset,
                             self._key_deserializer, self._value_deserializer,
                             self._check_crcs, self._isolation_level)
+
                         self._records[tp] = FetchResult(
                             tp, partition_records=partition_records,
                             assignment=assignment,

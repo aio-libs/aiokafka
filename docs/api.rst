@@ -105,4 +105,5 @@ differently. Possible consumer errors include:
       `max_partition_fetch_bytes`. **async for** - log error, **get*** will
       raise it.
     * ``InvalidMessageError`` - CRC check on MessageSet failed due to connection
-      failure or bug. **async for** - log error. **get*** will raise it.
+      failure or bug. Always raised. Changed in version ``0.5.0``, before we
+      ignored this error in ``async for``.

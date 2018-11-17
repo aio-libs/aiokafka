@@ -8,7 +8,7 @@ import pytest
 
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.consumer import AIOKafkaConsumer
-from aiokafka.consumer.fetcher import RecordTooLargeError
+from aiokafka.consumer.fetcher import RecordTooLargeError, FetchRequest
 from aiokafka.consumer import fetcher
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
@@ -19,7 +19,8 @@ from aiokafka.structs import (
 from aiokafka.errors import (
     IllegalStateError, OffsetOutOfRangeError, UnsupportedVersionError,
     KafkaTimeoutError, NoOffsetForPartitionError, ConsumerStoppedError,
-    IllegalOperation, UnknownError, KafkaError, InvalidSessionTimeoutError
+    IllegalOperation, UnknownError, KafkaError, InvalidSessionTimeoutError,
+    CorruptRecordException
 )
 
 from ._testutil import (
@@ -689,12 +690,11 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     def test_max_poll_records(self):
-        # A strange use case of kafka-python, that can be reproduced in
-        # aiokafka https://github.com/dpkp/kafka-python/issues/675
         yield from self.send_messages(0, list(range(100)))
 
         consumer = yield from self.consumer_factory(
             max_poll_records=48)
+
         data = yield from consumer.getmany(timeout_ms=1000)
         count = sum(map(len, data.values()))
         self.assertEqual(count, 48)
@@ -704,6 +704,12 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         data = yield from consumer.getmany(timeout_ms=1000, max_records=None)
         count = sum(map(len, data.values()))
         self.assertEqual(count, 10)
+
+        yield from self.send_messages(0, list(range(1)))
+        # Query more than we have
+        data = yield from consumer.getmany(timeout_ms=1000, max_records=100)
+        count = sum(map(len, data.values()))
+        self.assertEqual(count, 1)
 
         with self.assertRaises(ValueError):
             data = yield from consumer.getmany(max_records=0)
@@ -1675,3 +1681,65 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # In case of success it will need to raise error again on stop
         with self.assertRaises(InvalidSessionTimeoutError):
             yield from consumer.stop()
+
+    @run_until_complete
+    def test_consumer_invalid_crc_in_records(self):
+        yield from self.send_messages(0, list(range(0, 10)))
+
+        consumer = yield from self.consumer_factory()
+        orig_send = consumer._client.send
+        with mock.patch.object(consumer._client, "send") as m:
+            corrupted = []
+
+            @asyncio.coroutine
+            def mock_send(node_id, req, group=None):
+                res = yield from orig_send(node_id, req, group=group)
+                if res.API_KEY == FetchRequest[0].API_KEY and not corrupted:
+                    for topic, partitions in res.topics:
+                        for index, partition_data in enumerate(partitions):
+                            partition_data = list(partition_data)
+                            records_data = bytearray(partition_data[-1])
+                            if records_data:
+                                records_data[-1] ^= 0xff
+                                partition_data[-1] = bytes(records_data)
+                                partitions[index] = tuple(partition_data)
+                                corrupted.append(index)
+                return res
+            m.side_effect = mock_send
+
+            # We should be able to continue if next time we get normal record
+            with self.assertRaises(CorruptRecordException):
+                yield from consumer.getone()
+
+            # All other calls should succeed
+            res = yield from consumer.getmany(timeout_ms=2000)
+            self.assertEqual(len(list(res.values())[0]), 10)
+
+    @run_until_complete
+    def test_consumer_compacted_topic(self):
+        yield from self.send_messages(0, list(range(0, 10)))
+
+        consumer = yield from self.consumer_factory()
+        with mock.patch.object(
+                fetcher.PartitionRecords, "__next__", autospec=True) as m:
+            def mock_next(self):
+                try:
+                    res = next(self._records_iterator)
+                except StopIteration:
+                    self._records_iterator = None
+                    raise
+                # Say offsets 1, 3 and 4 were compacted out
+                if res.offset in [1, 3, 4, 9]:
+                    return mock_next(self)
+                return res
+            m.side_effect = mock_next
+
+            # All other calls should succeed
+            res = yield from consumer.getmany(timeout_ms=2000)
+            self.assertEqual(len(list(res.values())[0]), 6)
+            # Even thou 9'th offset was compacted out we still need to proceed
+            # from 10th as record batch contains information about that and
+            # the same batch will be returned over and over if we try to fetch
+            # 9th again.
+            pos = yield from consumer.position(TopicPartition(self.topic, 0))
+            self.assertEqual(pos, 10)
