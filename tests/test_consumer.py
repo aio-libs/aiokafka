@@ -1,6 +1,7 @@
 import asyncio
 import gc
 import time
+import json
 from unittest import mock
 from contextlib import contextmanager
 
@@ -1684,8 +1685,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     def test_consumer_invalid_crc_in_records(self):
-        yield from self.send_messages(0, list(range(0, 10)))
-
         consumer = yield from self.consumer_factory()
         orig_send = consumer._client.send
         with mock.patch.object(consumer._client, "send") as m:
@@ -1706,6 +1705,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                                 corrupted.append(index)
                 return res
             m.side_effect = mock_send
+
+            yield from self.send_messages(0, list(range(0, 10)))
 
             # We should be able to continue if next time we get normal record
             with self.assertRaises(CorruptRecordException):
@@ -1743,3 +1744,32 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             # 9th again.
             pos = yield from consumer.position(TopicPartition(self.topic, 0))
             self.assertEqual(pos, 10)
+
+    @run_until_complete
+    def test_consumer_serialize_deserialize(self):
+
+        def serialize(value):
+            if value is None:
+                return None
+            return json.dumps(value).encode()
+
+        def deserialize(value):
+            if value is None:
+                return None
+            return json.loads(value.decode())
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            key_serializer=serialize, value_serializer=serialize)
+        yield from producer.start()
+        self.add_cleanup(producer.stop)
+
+        yield from producer.send_and_wait(
+            self.topic, key={"key": 1}, value=["value1", "value2"])
+
+        consumer = yield from self.consumer_factory(
+            key_deserializer=deserialize, value_deserializer=deserialize)
+
+        msg = yield from consumer.getone()
+        self.assertEqual(msg.key, {"key": 1})
+        self.assertEqual(msg.value, ["value1", "value2"])

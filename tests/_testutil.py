@@ -185,7 +185,6 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         yield from producer.start()
         try:
             yield from self.wait_topic(producer.client, topic)
-            futures = []
 
             for msg in messages:
                 if isinstance(msg, str):
@@ -195,11 +194,6 @@ class KafkaIntegrationTestCase(unittest.TestCase):
                 future = yield from producer.send(
                     topic, msg, partition=partition,
                     timestamp_ms=timestamp_ms)
-                futures.append(future)
-
-            assert futures
-            yield from asyncio.wait(futures, loop=self.loop)
-            for future in futures:
                 resp = yield from future
                 self.assertEqual(resp.topic, topic)
                 self.assertEqual(resp.partition, partition)

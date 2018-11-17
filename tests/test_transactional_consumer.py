@@ -197,3 +197,40 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_consumer_simple_read_only_control_record(self):
         await self._test_control_record("read_uncommitted")
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_consumer_several_transactions(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer")
+        await producer.start()
+        self.add_cleanup(producer.stop)
+
+        msgs = []
+        for i in range(10):
+            await producer.begin_transaction()
+            msg = b'Hello ' + str(i).encode()
+            await producer.send(self.topic, msg, partition=0)
+            if i % 3 == 0:
+                await producer.commit_transaction()
+                msgs.append(msg)
+            else:
+                await producer.abort_transaction()
+
+        consumer = AIOKafkaConsumer(
+            self.topic, loop=self.loop,
+            bootstrap_servers=self.hosts,
+            auto_offset_reset="earliest",
+            isolation_level="read_committed")
+        await consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        async for msg in consumer:
+            self.assertEqual(msg.value, msgs.pop(0))
+            if not msgs:
+                break
+
+        with self.assertRaises(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                consumer.getone(), timeout=0.5, loop=self.loop)
