@@ -73,8 +73,6 @@ class BatchBuilder:
         if self._closed:
             return
         self._closed = True
-        self._buffer = self._builder.build()
-        del self._builder
 
     def _set_producer_state(self, producer_id, producer_epoch, base_sequence):
         assert type(self._builder) is DefaultRecordBatchBuilder
@@ -82,8 +80,10 @@ class BatchBuilder:
             producer_id, producer_epoch, base_sequence)
 
     def _build(self):
-        if not self._closed:
-            self.close()
+        self.close()
+        if self._buffer is None:
+            self._buffer = self._builder.build()
+            del self._builder  # We may only call self._builder.build() once!
         return self._buffer
 
     def size(self):
@@ -266,10 +266,11 @@ class MessageAccumulator:
             for batch in batches:
                 # We force all buffers to close to finalyze the transaction
                 # scope. We should not add anything to this transaction.
-                batch.get_data_buffer()  # To close the buffer
+                batch._builder.close()
                 waiters.append(batch.wait_deliver())
         # Wait for all waiters to finish. We only wait for the scope we defined
-        # above, other batches should not be delivered as this transaction
+        # above, other batches should not be delivered as part of this
+        # transaction
         if waiters:
             yield from asyncio.wait(waiters, loop=self._loop)
 

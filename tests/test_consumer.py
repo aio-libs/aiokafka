@@ -9,6 +9,7 @@ import pytest
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.consumer.fetcher import RecordTooLargeError
+from aiokafka.consumer import fetcher
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka.util import ensure_future, PY_341
@@ -46,18 +47,17 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @contextmanager
     def count_fetch_requests(self, consumer, count):
-        orig = consumer._fetcher._proc_fetch_request
+        records_class = fetcher.PartitionRecords
         with mock.patch.object(
-                consumer._fetcher, "_proc_fetch_request") as mocked:
+                fetcher, "PartitionRecords") as mocked:
             call_count = [0]
 
-            @asyncio.coroutine
-            def coro(*args, **kw):
-                res = yield from orig(*args, **kw)
+            def factory(*args, **kw):
+                res = records_class(*args, **kw)
                 call_count[0] += 1
                 return res
 
-            mocked.side_effect = coro
+            mocked.side_effect = factory
             yield
             self.assertEqual(call_count[0], count)
 

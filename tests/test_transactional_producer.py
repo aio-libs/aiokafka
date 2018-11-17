@@ -286,3 +286,26 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         for tp in assignment:
             offset = await consumer.committed(tp)
             self.assertEqual(offset, 100)
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_producer_transactional_flush_before_commit(self):
+        # We need to be sure, that we send all pending batches before
+        # committing the transaction
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer", client_id="p1")
+        await producer.start()
+        self.add_cleanup(producer.stop)
+
+        await producer.begin_transaction()
+        futs = []
+        for i in range(10):
+            fut = await producer.send(self.topic, b"Super msg")
+            futs.append(fut)
+
+        await producer.commit_transaction()
+
+        for fut in futs:
+            self.assertTrue(fut.done())
