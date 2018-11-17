@@ -61,7 +61,6 @@ class TransactionManager:
         self.transactional_id = transactional_id
         self.transaction_timeout_ms = transaction_timeout_ms
         self.state = TransactionState.UNINITIALIZED
-        self._exception = None
 
         self._pid_and_epoch = PidAndEpoch(NO_PRODUCER_ID, NO_PRODUCER_EPOCH)
         self._pid_waiter = create_future(loop)
@@ -128,9 +127,6 @@ class TransactionManager:
     # TRANSACTION PART
 
     def _transition_to(self, target):
-        if self.state == TransactionState.ERROR:
-            raise copy(self._exception)
-
         assert TransactionState.is_transition_valid(self.state, target), \
             "Invalid state transition {} -> {}".format(self.state, target)
         self.state = target
@@ -154,10 +150,6 @@ class TransactionManager:
         self._txn_partitions.clear()
         self._txn_consumer_group = None
         self._transaction_waiter.set_result(None)
-
-    def transition_to_error(self, exc):
-        self._transition_to(TransactionState.ERROR)
-        self._exception = exc
 
     def maybe_add_partition_to_txn(self, tp: TopicPartition):
         if self.transactional_id is None:
