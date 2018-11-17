@@ -26,6 +26,10 @@ class ControlRecord:
         version, type_ = _schema.unpack_from(data)
         return cls(version, type_)
 
+    def __repr__(self):
+        return "ControlRecord(version={}, type_={})".format(
+            self._version, self._type)
+
 
 ABORT_MARKER = ControlRecord(0, 0)
 COMMIT_MARKER = ControlRecord(0, 1)

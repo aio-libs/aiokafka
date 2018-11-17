@@ -33,7 +33,7 @@ etc. Examples would be:
 
   * `bootstrap`, which blocks in the constructor itself
   * blocking iterator for consumption
-  * sending produce requests block it buffer is full
+  * sending produce requests block if buffer is full
 
 All those can't be changed to use `Future` API seamlessly. So to get a normal,
 non-blocking interface based on Future's and coroutines a new library needed to

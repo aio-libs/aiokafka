@@ -24,6 +24,12 @@ def test_read_write_serde_v0_v1_no_compression(magic, key, value, checksum):
 
     batch = LegacyRecordBatch(buffer, magic)
     assert batch.validate_crc()
+
+    assert batch.is_control_batch is False
+    assert batch.is_transactional is False
+    assert batch.producer_id is None
+    assert batch.next_offset == 1
+
     msgs = list(batch)
     assert len(msgs) == 1
     msg = msgs[0]
@@ -50,8 +56,17 @@ def test_read_write_serde_v0_v1_with_compression(compression_type, magic):
             offset, timestamp=9999999, key=b"test", value=b"Super")
     buffer = builder.build()
 
+    # Broker will set the offset to a proper last offset value
+    struct.pack_into(">q", buffer, 0, 9)
+
     batch = LegacyRecordBatch(buffer, magic)
     assert batch.validate_crc()
+
+    assert batch.is_control_batch is False
+    assert batch.is_transactional is False
+    assert batch.producer_id is None
+    assert batch.next_offset == 10
+
     msgs = list(batch)
 
     for offset, msg in enumerate(msgs):

@@ -24,3 +24,11 @@ def test_control_record_parse():
     record = ControlRecord.parse(b"\x00\xFF\x00\x00")
     assert record.version == 255
     assert record.type_ == 0
+
+
+def test_control_record_other():
+    record = ControlRecord.parse(b"\x00\x00\x00\x01")
+    assert record != 1
+    assert record != object()
+
+    assert repr(record) == "ControlRecord(version=0, type_=1)"
