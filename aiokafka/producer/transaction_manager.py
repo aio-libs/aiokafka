@@ -1,5 +1,4 @@
 import asyncio
-from copy import copy
 from enum import Enum
 from collections import namedtuple, defaultdict, deque
 
