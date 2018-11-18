@@ -239,6 +239,7 @@ class MessageAccumulator:
             self, cluster, batch_size, compression_type, batch_ttl, *,
             txn_manager=None, loop):
         self._batches = collections.defaultdict(collections.deque)
+        self._pending_batches = set([])
         self._cluster = cluster
         self._batch_size = batch_size
         self._compression_type = compression_type
@@ -258,6 +259,8 @@ class MessageAccumulator:
         for batches in list(self._batches.values()):
             for batch in list(batches):
                 yield from batch.wait_deliver()
+        for batch in list(self._pending_batches):
+            yield from batch.wait_deliver()
 
     @asyncio.coroutine
     def flush_for_commit(self):
@@ -268,6 +271,8 @@ class MessageAccumulator:
                 # scope. We should not add anything to this transaction.
                 batch._builder.close()
                 waiters.append(batch.wait_deliver())
+        for batch in self._pending_batches:
+            waiters.append(batch.wait_deliver())
         # Wait for all waiters to finish. We only wait for the scope we defined
         # above, other batches should not be delivered as part of this
         # transaction
@@ -331,11 +336,18 @@ class MessageAccumulator:
         batch.drain_ready()
         if len(self._batches[tp]) == 0:
             del self._batches[tp]
+        self._pending_batches.add(batch)
+
+        if batch.retry_count == 0:
+            def cb(fut, batch=batch, self=self):
+                self._pending_batches.remove(batch)
+            batch.future.add_done_callback(cb)
         return batch
 
     def reenqueue(self, batch):
         tp = batch.tp
         self._batches[tp].appendleft(batch)
+        self._pending_batches.remove(batch)
         batch.reset_drain()
 
     def drain_by_nodes(self, ignore_nodes, muted_partitions=set()):
