@@ -743,6 +743,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         msgs = [msg.value for msg in msgs]
         self.assertEqual(msgs, [b"1", b"2", b"3"])
 
+    @run_until_complete
     def test_consumer_arguments(self):
         with self.assertRaisesRegex(
                 ValueError, "`security_protocol` should be SSL or PLAINTEXT"):
@@ -757,6 +758,13 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.topic, loop=self.loop,
                 bootstrap_servers=self.hosts,
                 security_protocol="SSL", ssl_context=None)
+        with self.assertRaisesRegex(
+                ValueError, "Incorrect isolation level READ_CCC"):
+            consumer = AIOKafkaConsumer(
+                self.topic, loop=self.loop,
+                bootstrap_servers=self.hosts,
+                isolation_level="READ_CCC")
+            yield from consumer.start()
 
     @run_until_complete
     def test_consumer_commit_validation(self):
@@ -1706,7 +1714,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 return res
             m.side_effect = mock_send
 
-            yield from self.send_messages(0, list(range(0, 10)))
+            yield from self.send_messages(0, [0])
 
             # We should be able to continue if next time we get normal record
             with self.assertRaises(CorruptRecordException):
@@ -1714,7 +1722,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
             # All other calls should succeed
             res = yield from consumer.getmany(timeout_ms=2000)
-            self.assertEqual(len(list(res.values())[0]), 10)
+            self.assertEqual(len(list(res.values())[0]), 1)
 
     @run_until_complete
     def test_consumer_compacted_topic(self):
