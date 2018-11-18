@@ -1713,6 +1713,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                                 corrupted.append(index)
                 return res
             m.side_effect = mock_send
+            # Make sure we do the mocked send, not wait for old fetch
+            yield from asyncio.sleep(0.5, loop=self.loop)
 
             yield from self.send_messages(0, [0])
 
