@@ -323,7 +323,8 @@ class MessageAccumulator:
 
     def _pop_batch(self, tp):
         batch = self._batches[tp].popleft()
-        if self._txn_manager is not None and batch.retry_count == 0:
+        not_retry = batch.retry_count == 0
+        if self._txn_manager is not None and not_retry:
             assert self._txn_manager.has_pid(), \
                 "We should have waited for it in sender routine"
             seq = self._txn_manager.sequence_number(batch.tp)
@@ -338,7 +339,7 @@ class MessageAccumulator:
             del self._batches[tp]
         self._pending_batches.add(batch)
 
-        if batch.retry_count == 0:
+        if not_retry:
             def cb(fut, batch=batch, self=self):
                 self._pending_batches.remove(batch)
             batch.future.add_done_callback(cb)

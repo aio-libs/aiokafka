@@ -264,3 +264,70 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertTrue(ma._wait_data_future.done())
         self.assertEqual(len(ma._batches[tp0]), 0)
         self.assertEqual(len(ma._batches[tp1]), 1)
+
+    @run_until_complete
+    def test_batch_pending_batch_list(self):
+        # In message accumulator we have _pending_batches list, that stores
+        # batches when those are delivered to node. We must be sure we never
+        # lose a batch during retries and that we don't produce duplicate batch
+        # links in the process
+
+        tp0 = TopicPartition("test-topic", 0)
+
+        def mocked_leader_for_partition(tp):
+            if tp == tp0:
+                return 0
+            return None
+
+        cluster = ClusterMetadata(metadata_max_age_ms=10000)
+        cluster.leader_for_partition = mock.MagicMock()
+        cluster.leader_for_partition.side_effect = mocked_leader_for_partition
+
+        ma = MessageAccumulator(cluster, 1000, 0, 1, loop=self.loop)
+        fut1 = yield from ma.add_message(
+            tp0, b'key', b'value', timeout=2)
+
+        # Drain and Reenqueu
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
+        batch = batches[0][tp0]
+        self.assertIn(batch, ma._pending_batches)
+        self.assertFalse(ma._batches)
+        self.assertFalse(fut1.done())
+
+        ma.reenqueue(batch)
+        self.assertEqual(batch.retry_count, 1)
+        self.assertFalse(ma._pending_batches)
+        self.assertIn(batch, ma._batches[tp0])
+        self.assertFalse(fut1.done())
+
+        # Drain and Reenqueu again. We check for repeated call
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
+        self.assertEqual(batches[0][tp0], batch)
+        self.assertEqual(batch.retry_count, 2)
+        self.assertIn(batch, ma._pending_batches)
+        self.assertFalse(ma._batches)
+        self.assertFalse(fut1.done())
+
+        ma.reenqueue(batch)
+        self.assertEqual(batch.retry_count, 2)
+        self.assertFalse(ma._pending_batches)
+        self.assertIn(batch, ma._batches[tp0])
+        self.assertFalse(fut1.done())
+
+        # Drain and mark as done. Check that no link to batch remained
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
+        self.assertEqual(batches[0][tp0], batch)
+        self.assertEqual(batch.retry_count, 3)
+        self.assertIn(batch, ma._pending_batches)
+        self.assertFalse(ma._batches)
+        self.assertFalse(fut1.done())
+
+        if hasattr(batch.future, "_callbacks"):  # Vanilla asyncio
+            print(batch.future._callbacks)
+            self.assertEqual(len(batch.future._callbacks), 1)
+
+        batch.done_noack()
+        yield from asyncio.sleep(0.01, loop=self.loop)
+        self.assertEqual(batch.retry_count, 3)
+        self.assertFalse(ma._pending_batches)
+        self.assertFalse(ma._batches)
