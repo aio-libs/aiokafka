@@ -12,6 +12,7 @@ from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.consumer.fetcher import RecordTooLargeError, FetchRequest
 from aiokafka.consumer import fetcher
 from aiokafka.producer import AIOKafkaProducer
+from aiokafka.record import MemoryRecords
 from aiokafka.client import AIOKafkaClient
 from aiokafka.util import ensure_future, PY_341
 from aiokafka.structs import (
@@ -1783,3 +1784,53 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         msg = yield from consumer.getone()
         self.assertEqual(msg.key, {"key": 1})
         self.assertEqual(msg.value, ["value1", "value2"])
+
+    @run_until_complete
+    def test_consumer_compressed_returns_older_msgs(self):
+        # If a batch contains 10 elements and we request offset of 1 in the
+        # middle the broker will return the WHOLE batch, including old offsets
+        # Those should be omitted and not returned to user.
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            compression_type="gzip")
+        yield from producer.start()
+        self.add_cleanup(producer.stop)
+        yield from self.wait_topic(producer.client, self.topic)
+
+        # We must be sure that we will end up with 1 and only 1 batch
+        batch = producer.create_batch()
+        for i in range(10):
+            batch.append(key=b"123", value=str(i).encode(), timestamp=None)
+        fut = yield from producer.send_batch(
+            batch, topic=self.topic, partition=0)
+        batch_meta = yield from fut
+
+        consumer = yield from self.consumer_factory()
+        consumer.seek(TopicPartition(self.topic, 0), batch_meta.offset + 5)
+
+        orig_send = consumer._client.send
+        with mock.patch.object(consumer._client, "send") as m:
+            recv_records = []
+
+            @asyncio.coroutine
+            def mock_send(node_id, req, group=None, test_case=self):
+                res = yield from orig_send(node_id, req, group=group)
+                if res.API_KEY == FetchRequest[0].API_KEY:
+                    for topic, partitions in res.topics:
+                        for partition_data in partitions:
+                            data = partition_data[-1]
+                            # Manually do unpack using internal tools so that
+                            # we can count how many were actually passed from
+                            # broker
+                            records = MemoryRecords(data)
+                            while records.has_next():
+                                recv_records.extend(records.next_batch())
+                return res
+            m.side_effect = mock_send
+
+            res = yield from consumer.getmany(timeout_ms=2000)
+            self.assertEqual(len(list(res.values())[0]), 5)
+            self.assertEqual(len(recv_records), 10)
+
+        pos = yield from consumer.position(TopicPartition(self.topic, 0))
+        self.assertEqual(pos, batch_meta.offset + 10)
