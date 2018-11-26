@@ -1,4 +1,4 @@
-flake8==3.5.0
+flake8==3.6.0
 pytest==3.9.1
 pytest-cov==2.6.0
 docker-py==1.10.6
