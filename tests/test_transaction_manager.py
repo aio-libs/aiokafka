@@ -40,11 +40,3 @@ def test_txn_manager(txn_manager):
     # sequence number should wrap around 32 bit signed integers
     txn_manager.increment_sequence_number(tp1, 2 ** 32 - 5)
     assert txn_manager.sequence_number(tp1) == -4
-
-    txn_manager.reset_producer_id()
-    assert txn_manager._pid_and_epoch.pid == NO_PRODUCER_ID
-    assert txn_manager._pid_and_epoch.epoch == NO_PRODUCER_EPOCH
-    assert not txn_manager._sequence_numbers
-    assert not txn_manager.has_pid()
-    assert txn_manager.sequence_number(tp1) == 0
-    assert txn_manager.sequence_number(tp2) == 0
