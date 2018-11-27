@@ -14,8 +14,11 @@ from aiokafka.errors import (
     ConsumerStoppedError, IllegalOperation, UnsupportedVersionError,
     IllegalStateError, NoOffsetForPartitionError, RecordTooLargeError
 )
-from aiokafka.structs import TopicPartition, OffsetAndMetadata
-from aiokafka.util import PY_341, PY_35, PY_352, PY_36, ensure_future
+from aiokafka.structs import TopicPartition
+from aiokafka.util import (
+    PY_341, PY_35, PY_352, PY_36, wait_for_reponse_or_error,
+    commit_structure_validate
+)
 from aiokafka import __version__
 
 from .fetcher import Fetcher, OffsetResetStrategy
@@ -326,7 +329,9 @@ class AIOKafkaConsumer(object):
                     # Either we passed `topics` to constructor or `subscribe`
                     # was called before `start`
                     yield from self._wait_for_data_or_error(
-                        self._subscription.wait_for_assignment())
+                        self._subscription.wait_for_assignment(),
+                        shield=False
+                    )
                 else:
                     # `assign` was called before `start`. We did not start
                     # this task on that call, as coordinator was yet to be
@@ -490,33 +495,11 @@ class AIOKafkaConsumer(object):
         if offsets is None:
             offsets = assignment.all_consumed_offsets()
         else:
-            # validate `offsets` structure
-            if not offsets or not isinstance(offsets, dict):
-                raise ValueError(offsets)
-
-            formatted_offsets = {}
-            for tp, offset_and_metadata in offsets.items():
-                if not isinstance(tp, TopicPartition):
-                    raise ValueError("Key should be TopicPartition instance")
-
+            offsets = commit_structure_validate(offsets)
+            for tp in offsets:
                 if tp not in assignment.tps:
                     raise IllegalStateError(
                         "Partition {} is not assigned".format(tp))
-
-                if isinstance(offset_and_metadata, int):
-                    offset, metadata = offset_and_metadata, ""
-                else:
-                    try:
-                        offset, metadata = offset_and_metadata
-                    except Exception:
-                        raise ValueError(offsets)
-
-                    if not isinstance(metadata, str):
-                        raise ValueError("Metadata should be a string")
-
-                formatted_offsets[tp] = OffsetAndMetadata(offset, metadata)
-
-            offsets = formatted_offsets
 
         yield from self._coordinator.commit_offsets(assignment, offsets)
 
@@ -1005,34 +988,14 @@ class AIOKafkaConsumer(object):
         log.info(
             "Unsubscribed all topics or patterns and assigned partitions")
 
-    @asyncio.coroutine
-    def _wait_for_data_or_error(self, coro):
-        data_task = ensure_future(coro, loop=self._loop)
-        fetcher_error_fut = self._fetcher.error_future
-        futs = [data_task, fetcher_error_fut]
+    def _wait_for_data_or_error(self, coro, *, shield):
+        futs = [self._fetcher.error_future]
         coordination_error_fut = self._coordinator.error_future
         if coordination_error_fut is not None:  # group_id is None case
             futs.append(coordination_error_fut)
 
-        try:
-            yield from asyncio.wait(
-                futs,
-                return_when=asyncio.FIRST_COMPLETED,
-                loop=self._loop)
-        except asyncio.CancelledError:
-            data_task.cancel()
-            return (yield from data_task)
-
-        # Check for errors and raise if any
-        if coordination_error_fut is not None and \
-                coordination_error_fut.done():
-            coordination_error_fut.result()  # Raises set exception if any
-
-        # Check for errors in fetcher and raise if any
-        if fetcher_error_fut.done():
-            fetcher_error_fut.result()
-
-        return (yield from data_task)
+        return wait_for_reponse_or_error(
+            coro, futs, shield=shield, loop=self._loop)
 
     @asyncio.coroutine
     def getone(self, *partitions):
@@ -1074,7 +1037,7 @@ class AIOKafkaConsumer(object):
             raise ConsumerStoppedError()
 
         msg = yield from self._wait_for_data_or_error(
-            self._fetcher.next_record(partitions))
+            self._fetcher.next_record(partitions), shield=False)
         return msg
 
     @asyncio.coroutine
@@ -1123,7 +1086,8 @@ class AIOKafkaConsumer(object):
         records = yield from self._wait_for_data_or_error(
             self._fetcher.fetched_records(
                 partitions, timeout,
-                max_records=max_records or self._max_poll_records)
+                max_records=max_records or self._max_poll_records),
+            shield=False
         )
         return records
 

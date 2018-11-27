@@ -45,6 +45,12 @@ class CoordinatorLoadInProgressError(GroupLoadInProgressError):
     message = "COORDINATOR_LOAD_IN_PROGRESS"
 
 
+InvalidMessageError = CorruptRecordException
+GroupCoordinatorNotAvailableError = CoordinatorNotAvailableError
+NotCoordinatorForGroupError = NotCoordinatorError
+GroupLoadInProgressError = CoordinatorLoadInProgressError
+
+
 class ConsumerStoppedError(Exception):
     """ Raised on `get*` methods of Consumer if it's cancelled, even pending
         ones.

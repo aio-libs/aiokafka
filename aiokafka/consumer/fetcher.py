@@ -534,6 +534,7 @@ class Fetcher:
             pass
         except Exception:  # pragma: no cover
             log.error("Unexpected error in fetcher routine", exc_info=True)
+            raise Errors.KafkaError("Unexpected error during data retrieval")
 
     def _get_actions_per_node(self, assignment):
         """ For each assigned partition determine the action needed to be

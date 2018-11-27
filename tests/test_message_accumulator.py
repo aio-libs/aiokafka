@@ -323,7 +323,6 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertFalse(fut1.done())
 
         if hasattr(batch.future, "_callbacks"):  # Vanilla asyncio
-            print(batch.future._callbacks)
             self.assertEqual(len(batch.future._callbacks), 1)
 
         batch.done_noack()

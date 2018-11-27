@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 BACKOFF_OVERRIDE = 0.02  # 20ms wait between transactions is better than 100ms.
 
 
-class Sender(object):
+class Sender:
     """ Background processing abstraction for Producer. By all means just
     separates batch delivery and transaction management from the main Producer
     code
@@ -53,6 +53,14 @@ class Sender(object):
         yield from self._maybe_wait_for_pid()
         self._sender_task = ensure_future(
             self._sender_routine(), loop=self._loop)
+        self._sender_task.add_done_callback(self._fail_all_batches)
+
+    def _fail_all_batches(self, task):
+        """ Called when sender fails. Will fail all pending batches, as they
+        will never be delivered.
+        """
+        if task.exception() is not None:
+            self._message_accumulator.fail_all(task.exception())
 
     @property
     def sender_task(self):
@@ -153,7 +161,7 @@ class Sender(object):
             raise
         except Exception:  # pragma: no cover
             log.error("Unexpected error in sender routine", exc_info=True)
-            raise
+            raise KafkaError("Unexpected error during batch delivery")
 
     @asyncio.coroutine
     def _maybe_wait_for_pid(self):
@@ -172,7 +180,6 @@ class Sender(object):
             success = yield from self._do_init_pid(node_id)
             if not success:
                 yield from self.client.force_metadata_update()
-                yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
             else:
                 break
 
@@ -220,40 +227,8 @@ class Sender(object):
 
     @asyncio.coroutine
     def _do_init_pid(self, node_id):
-        init_pid_req = InitProducerIdRequest[0](
-            transactional_id=self._txn_manager.transactional_id,
-            transaction_timeout_ms=self._txn_manager.transaction_timeout_ms)
-
-        try:
-            resp = yield from self.client.send(node_id, init_pid_req)
-        except KafkaError as err:
-            log.warning("Could not send InitProducerIdRequest: %r", err)
-            # Backoff will be done on calling function
-            return False
-
-        error_type = Errors.for_code(resp.error_code)
-        if error_type is Errors.NoError:
-            log.debug(
-                "Successfully found PID=%s EPOCH=%s for Producer %s",
-                resp.producer_id, resp.producer_epoch,
-                self.client._client_id)
-            self._txn_manager.set_pid_and_epoch(
-                resp.producer_id, resp.producer_epoch)
-            # Just in case we got bad values from broker
-            return self._txn_manager.has_pid()
-        elif (error_type is CoordinatorNotAvailableError or
-                error_type is NotCoordinatorError):
-            self._coordinator_dead(CoordinationType.TRANSACTION)
-            return False
-        elif (error_type is CoordinatorLoadInProgressError or
-                error_type is ConcurrentTransactions):
-            # Backoff will be done on calling function
-            return False
-        else:
-            log.error(
-                "Unexpected error during InitProducerIdRequest: %s",
-                error_type)
-            raise error_type()
+        handler = InitPIDHandler(self)
+        return (yield from handler.do(node_id))
 
     ###########################################################################
     # Message delivery handler('s')
@@ -433,139 +408,25 @@ class Sender(object):
 
     @asyncio.coroutine
     def _do_add_partitions_to_txn(self, tps):
-        txn_manager = self._txn_manager
         # First assert we have a valid coordinator to send the request to
         node_id = yield from self._find_coordinator(
-            CoordinationType.TRANSACTION, txn_manager.transactional_id)
-
-        partition_data = collections.defaultdict(list)
-        for tp in tps:
-            partition_data[tp.topic].append(tp.partition)
-
-        req = AddPartitionsToTxnRequest[0](
-            transactional_id=txn_manager.transactional_id,
-            producer_id=txn_manager.producer_id,
-            producer_epoch=txn_manager.producer_epoch,
-            topics=list(partition_data.items()))
-
-        try:
-            resp = yield from self.client.send(
-                node_id, req, group=ConnectionGroup.COORDINATION)
-        except KafkaError as err:
-            log.warning("Could not send AddPartitionsToTxnRequest: %r", err)
-            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
-            return
-
-        retry_backoff = self._retry_backoff
-        for topic, partitions in resp.errors:
-            for partition, error_code in partitions:
-                tp = TopicPartition(topic, partition)
-                error_type = Errors.for_code(error_code)
-
-                if error_type is Errors.NoError:
-                    log.debug("Added partition %s to transaction", tp)
-                    txn_manager.partition_added(tp)
-                    return
-                elif (error_type is CoordinatorNotAvailableError or
-                        error_type is NotCoordinatorError):
-                    self._coordinator_dead(CoordinationType.TRANSACTION)
-                elif error_type is ConcurrentTransactions:
-                    # See KAFKA-5477: There is some time between commit and
-                    # actual transaction marker write, that will produce this
-                    # ConcurrentTransactions. We don't want the 100ms latency
-                    # in that case.
-                    if not txn_manager.txn_partitions:
-                        retry_backoff = BACKOFF_OVERRIDE
-                elif (error_type is CoordinatorLoadInProgressError or
-                        error_type is UnknownTopicOrPartitionError):
-                    # We will just retry after backoff
-                    pass
-                elif error_type is InvalidProducerEpoch:
-                    raise ProducerFenced()
-                elif (error_type is InvalidProducerIdMapping or
-                        error_type is InvalidTxnState):
-                    raise error_type()
-                else:
-                    log.error(
-                        "Could not add partition %s due to unexpected error:"
-                        " %s", partition, error_type)
-                    raise error_type()
-
-        # Backoff on error
-        yield from asyncio.sleep(retry_backoff, loop=self._loop)
+            CoordinationType.TRANSACTION, self._txn_manager.transactional_id)
+        handler = AddPartitionsToTxnHandler(self, tps)
+        return (yield from handler.do(node_id))
 
     @asyncio.coroutine
     def _do_add_offsets_to_txn(self, group_id):
-        txn_manager = self._txn_manager
         # First assert we have a valid coordinator to send the request to
         node_id = yield from self._find_coordinator(
-            CoordinationType.TRANSACTION, txn_manager.transactional_id)
-
-        req = AddOffsetsToTxnRequest[0](
-            transactional_id=self._txn_manager.transactional_id,
-            producer_id=self._txn_manager.producer_id,
-            producer_epoch=self._txn_manager.producer_epoch,
-            group_id=group_id
-        )
-        try:
-            resp = yield from self.client.send(
-                node_id, req, group=ConnectionGroup.COORDINATION)
-        except KafkaError as err:
-            log.warning("Could not send AddOffsetsToTxnRequest: %r", err)
-            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
-            return
-
-        error_type = Errors.for_code(resp.error_code)
-        if error_type is Errors.NoError:
-            log.debug(
-                "Successfully added consumer group %s to transaction", group_id
-            )
-            txn_manager.consumer_group_added(group_id)
-            return
-        elif (error_type is CoordinatorNotAvailableError or
-                error_type is NotCoordinatorError):
-            self._coordinator_dead(CoordinationType.TRANSACTION)
-        elif (error_type is CoordinatorLoadInProgressError or
-                error_type is ConcurrentTransactions):
-            # We will just retry after backoff
-            pass
-        elif error_type is InvalidProducerEpoch:
-            raise ProducerFenced()
-        elif error_type is InvalidTxnState:
-            raise error_type()
-        else:
-            log.error(
-                "Could not add consumer group due to unexpected error: %s",
-                error_type)
-            raise error_type()
-
-        # Backoff on error
-        yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+            CoordinationType.TRANSACTION, self._txn_manager.transactional_id)
+        handler = AddOffsetsToTxnHandler(self, group_id)
+        return (yield from handler.do(node_id))
 
     @asyncio.coroutine
     def _do_txn_offset_commit(self, offsets, group_id):
-        txn_manager = self._txn_manager
-
         # Fast return if nothing to commit
         if not offsets:
             return
-
-        # create the offset commit request structure
-        offset_data = collections.defaultdict(list)
-        for tp, offset in offsets.items():
-            offset_data[tp.topic].append(
-                (tp.partition,
-                 offset.offset,
-                 offset.metadata))
-
-        req = TxnOffsetCommitRequest[0](
-            transactional_id=txn_manager.transactional_id,
-            group_id=group_id,
-            producer_id=txn_manager.producer_id,
-            producer_epoch=txn_manager.producer_epoch,
-            topics=list(offset_data.items())
-        )
-
         # NOTE: We send this one to GROUP coordinator, not TRANSACTION
         node_id = yield from self._find_coordinator(
             CoordinationType.GROUP, group_id)
@@ -573,45 +434,8 @@ class Sender(object):
             "Sending offset-commit request with %s for group %s to %s",
             offsets, group_id, node_id
         )
-        try:
-            resp = yield from self.client.send(
-                node_id, req, group=ConnectionGroup.COORDINATION)
-        except KafkaError as err:
-            log.warning("Could not send AddPartitionsToTxnRequest: %r", err)
-            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
-            return
-
-        for topic, partitions in resp.errors:
-            for partition, error_code in partitions:
-                tp = TopicPartition(topic, partition)
-                error_type = Errors.for_code(error_code)
-
-                if error_type is Errors.NoError:
-                    offset = offsets[tp].offset
-                    log.debug(
-                        "Offset %s for partition %s committed to group %s",
-                        offset, tp, group_id)
-                    txn_manager.offset_committed(tp, offset, group_id)
-                    return
-                elif (error_type is CoordinatorNotAvailableError or
-                        error_type is NotCoordinatorError or
-                        # Copied from Java. Not sure why it's only in this case
-                        error_type is RequestTimedOutError):
-                    self._coordinator_dead(CoordinationType.GROUP)
-                elif (error_type is CoordinatorLoadInProgressError or
-                        error_type is UnknownTopicOrPartitionError):
-                    # We will just retry after backoff
-                    pass
-                elif error_type is InvalidProducerEpoch:
-                    raise ProducerFenced()
-                else:
-                    log.error(
-                        "Could not commit offset for partition %s due to "
-                        "unexpected error: %s", partition, error_type)
-                    raise error_type()
-
-        # Backoff on error
-        yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+        handler = TxnOffsetCommitHandler(self, offsets, group_id)
+        return (yield from handler.do(node_id))
 
     @asyncio.coroutine
     def _do_txn_commit(self, commit_result):
@@ -637,20 +461,270 @@ class Sender(object):
         node_id = yield from self._find_coordinator(
             CoordinationType.TRANSACTION, txn_manager.transactional_id)
 
+        handler = EndTxnHandler(self, commit_result)
+        return (yield from handler.do(node_id))
+
+
+class BaseHandler:
+    group = ConnectionGroup.DEFAULT
+
+    def __init__(self, sender):
+        self._sender = sender
+        self._default_backoff = sender._retry_backoff
+        self._loop = sender._loop
+
+    @asyncio.coroutine
+    def do(self, node_id):
+        req = self.create_request()
+        try:
+            resp = yield from self._sender.client.send(
+                node_id, req, group=self.group)
+        except KafkaError as err:
+            log.warning("Could not send %r: %r", req.__class__, err)
+            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+            return
+
+        retry_backoff = self.handle_reponse(resp)
+        if retry_backoff is not None:
+            yield from asyncio.sleep(retry_backoff, loop=self._loop)
+            return False  # Failure
+        else:
+            return True  # Success
+
+    def create_request(self):
+        raise NotImplementedError  # pragma: no cover
+
+    def handle_reponse(self, response):
+        raise NotImplementedError  # pragma: no cover
+
+
+class InitPIDHandler(BaseHandler):
+
+    def create_request(self):
+        txn_manager = self._sender._txn_manager
+        return InitProducerIdRequest[0](
+            transactional_id=txn_manager.transactional_id,
+            transaction_timeout_ms=txn_manager.transaction_timeout_ms)
+
+    def handle_reponse(self, resp):
+        error_type = Errors.for_code(resp.error_code)
+        if error_type is Errors.NoError:
+            log.debug(
+                "Successfully found PID=%s EPOCH=%s for Producer %s",
+                resp.producer_id, resp.producer_epoch,
+                self._sender.client._client_id)
+            self._sender._txn_manager.set_pid_and_epoch(
+                resp.producer_id, resp.producer_epoch)
+            return
+        elif (error_type is CoordinatorNotAvailableError or
+                error_type is NotCoordinatorError):
+            self._sender._coordinator_dead(CoordinationType.TRANSACTION)
+        elif (error_type is CoordinatorLoadInProgressError or
+                error_type is ConcurrentTransactions):
+            pass
+        else:
+            log.error(
+                "Unexpected error during InitProducerIdRequest: %s",
+                error_type)
+            raise error_type()
+
+        return self._default_backoff
+
+
+class AddPartitionsToTxnHandler(BaseHandler):
+    group = ConnectionGroup.COORDINATION
+
+    def __init__(self, sender, topic_partitions):
+        super().__init__(sender)
+        self._tps = topic_partitions
+
+    def create_request(self):
+        txn_manager = self._sender._txn_manager
+
+        partition_data = collections.defaultdict(list)
+        for tp in self._tps:
+            partition_data[tp.topic].append(tp.partition)
+
+        req = AddPartitionsToTxnRequest[0](
+            transactional_id=txn_manager.transactional_id,
+            producer_id=txn_manager.producer_id,
+            producer_epoch=txn_manager.producer_epoch,
+            topics=list(partition_data.items()))
+        return req
+
+    def handle_reponse(self, resp):
+        txn_manager = self._sender._txn_manager
+
+        retry_backoff = self._default_backoff
+        for topic, partitions in resp.errors:
+            for partition, error_code in partitions:
+                tp = TopicPartition(topic, partition)
+                error_type = Errors.for_code(error_code)
+
+                if error_type is Errors.NoError:
+                    log.debug("Added partition %s to transaction", tp)
+                    txn_manager.partition_added(tp)
+                    return
+                elif (error_type is CoordinatorNotAvailableError or
+                        error_type is NotCoordinatorError):
+                    self._sender._coordinator_dead(
+                        CoordinationType.TRANSACTION)
+                elif error_type is ConcurrentTransactions:
+                    # See KAFKA-5477: There is some time between commit and
+                    # actual transaction marker write, that will produce this
+                    # ConcurrentTransactions. We don't want the 100ms latency
+                    # in that case.
+                    if not txn_manager.txn_partitions:
+                        retry_backoff = BACKOFF_OVERRIDE
+                elif (error_type is CoordinatorLoadInProgressError or
+                        error_type is UnknownTopicOrPartitionError):
+                    # We will just retry after backoff
+                    pass
+                elif error_type is InvalidProducerEpoch:
+                    raise ProducerFenced()
+                elif (error_type is InvalidProducerIdMapping or
+                        error_type is InvalidTxnState):
+                    raise error_type()
+                else:
+                    log.error(
+                        "Could not add partition %s due to unexpected error:"
+                        " %s", partition, error_type)
+                    raise error_type()
+
+        # Backoff on error
+        return retry_backoff
+
+
+class AddOffsetsToTxnHandler(BaseHandler):
+    group = ConnectionGroup.COORDINATION
+
+    def __init__(self, sender, group_id):
+        super().__init__(sender)
+        self._group_id = group_id
+
+    def create_request(self):
+        txn_manager = self._sender._txn_manager
+
+        req = AddOffsetsToTxnRequest[0](
+            transactional_id=txn_manager.transactional_id,
+            producer_id=txn_manager.producer_id,
+            producer_epoch=txn_manager.producer_epoch,
+            group_id=self._group_id
+        )
+        return req
+
+    def handle_reponse(self, resp):
+        txn_manager = self._sender._txn_manager
+        group_id = self._group_id
+
+        error_type = Errors.for_code(resp.error_code)
+        if error_type is Errors.NoError:
+            log.debug(
+                "Successfully added consumer group %s to transaction", group_id
+            )
+            txn_manager.consumer_group_added(group_id)
+            return
+        elif (error_type is CoordinatorNotAvailableError or
+                error_type is NotCoordinatorError):
+            self._sender._coordinator_dead(CoordinationType.TRANSACTION)
+        elif (error_type is CoordinatorLoadInProgressError or
+                error_type is ConcurrentTransactions):
+            # We will just retry after backoff
+            pass
+        elif error_type is InvalidProducerEpoch:
+            raise ProducerFenced()
+        elif error_type is InvalidTxnState:
+            raise error_type()
+        else:
+            log.error(
+                "Could not add consumer group due to unexpected error: %s",
+                error_type)
+            raise error_type()
+
+        return self._default_backoff
+
+
+class TxnOffsetCommitHandler(BaseHandler):
+    group = ConnectionGroup.COORDINATION
+
+    def __init__(self, sender, offsets, group_id):
+        super().__init__(sender)
+        self._offsets = offsets
+        self._group_id = group_id
+
+    def create_request(self):
+        txn_manager = self._sender._txn_manager
+        # create the offset commit request structure
+        offset_data = collections.defaultdict(list)
+        for tp, offset in self._offsets.items():
+            offset_data[tp.topic].append(
+                (tp.partition,
+                 offset.offset,
+                 offset.metadata))
+
+        req = TxnOffsetCommitRequest[0](
+            transactional_id=txn_manager.transactional_id,
+            group_id=self._group_id,
+            producer_id=txn_manager.producer_id,
+            producer_epoch=txn_manager.producer_epoch,
+            topics=list(offset_data.items())
+        )
+        return req
+
+    def handle_reponse(self, resp):
+        txn_manager = self._sender._txn_manager
+        group_id = self._group_id
+
+        for topic, partitions in resp.errors:
+            for partition, error_code in partitions:
+                tp = TopicPartition(topic, partition)
+                error_type = Errors.for_code(error_code)
+
+                if error_type is Errors.NoError:
+                    offset = self._offsets[tp].offset
+                    log.debug(
+                        "Offset %s for partition %s committed to group %s",
+                        offset, tp, group_id)
+                    txn_manager.offset_committed(tp, offset, group_id)
+                    return
+                elif (error_type is CoordinatorNotAvailableError or
+                        error_type is NotCoordinatorError or
+                        # Copied from Java. Not sure why it's only in this case
+                        error_type is RequestTimedOutError):
+                    self._sender._coordinator_dead(CoordinationType.GROUP)
+                elif (error_type is CoordinatorLoadInProgressError or
+                        error_type is UnknownTopicOrPartitionError):
+                    # We will just retry after backoff
+                    pass
+                elif error_type is InvalidProducerEpoch:
+                    raise ProducerFenced()
+                else:
+                    log.error(
+                        "Could not commit offset for partition %s due to "
+                        "unexpected error: %s", partition, error_type)
+                    raise error_type()
+
+        return self._default_backoff
+
+
+class EndTxnHandler(BaseHandler):
+    group = ConnectionGroup.COORDINATION
+
+    def __init__(self, sender, commit_result):
+        super().__init__(sender)
+        self._commit_result = commit_result
+
+    def create_request(self):
+        txn_manager = self._sender._txn_manager
         req = EndTxnRequest[0](
             transactional_id=txn_manager.transactional_id,
             producer_id=txn_manager.producer_id,
             producer_epoch=txn_manager.producer_epoch,
-            transaction_result=commit_result)
+            transaction_result=self._commit_result)
+        return req
 
-        try:
-            resp = yield from self.client.send(
-                node_id, req, group=ConnectionGroup.COORDINATION)
-        except KafkaError as err:
-            log.warning("Could not send EndTxnRequest: %r", err)
-            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
-            return
-
+    def handle_reponse(self, resp):
+        txn_manager = self._sender._txn_manager
         error_type = Errors.for_code(resp.error_code)
 
         if error_type is Errors.NoError:
@@ -658,7 +732,7 @@ class Sender(object):
             return
         elif (error_type is CoordinatorNotAvailableError or
                 error_type is NotCoordinatorError):
-            self._coordinator_dead(CoordinationType.TRANSACTION)
+            self._sender._coordinator_dead(CoordinationType.TRANSACTION)
         elif (error_type is CoordinatorLoadInProgressError or
                 error_type is ConcurrentTransactions):
             # We will just retry after backoff
@@ -673,5 +747,4 @@ class Sender(object):
                 error_type)
             raise error_type()
 
-        # Backoff on error
-        yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+        return self._default_backoff

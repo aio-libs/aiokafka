@@ -189,6 +189,11 @@ class MessageBatch:
             # https://github.com/aio-libs/aiokafka/issues/246
             future.set_exception(copy.copy(exception))
 
+        # Consume exception to avoid warnings. We delegate this consumption
+        # to user only in case of explicit batch API.
+        if self._msg_futures:
+            self.future.exception()
+
     def wait_deliver(self, timeout=None):
         """Wait until all message from this batch is processed"""
         return asyncio.wait([self.future], timeout=timeout, loop=self._loop)
@@ -278,6 +283,14 @@ class MessageAccumulator:
         # transaction
         if waiters:
             yield from asyncio.wait(waiters, loop=self._loop)
+
+    def fail_all(self, exception):
+        # Close all batches with this exception
+        for batches in self._batches.values():
+            for batch in batches:
+                batch.failure(exception)
+        for batch in self._pending_batches:
+            batch.failure(exception)
 
     @asyncio.coroutine
     def close(self):

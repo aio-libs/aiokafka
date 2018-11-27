@@ -11,8 +11,11 @@ from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
     MessageSizeTooLargeError, UnsupportedVersionError, IllegalOperation)
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
-from aiokafka.structs import TopicPartition, OffsetAndMetadata
-from aiokafka.util import ensure_future, INTEGER_MAX_VALUE, PY_341, PY_36
+from aiokafka.structs import TopicPartition
+from aiokafka.util import (
+    INTEGER_MAX_VALUE, PY_341, PY_36, wait_for_reponse_or_error,
+    commit_structure_validate
+)
 
 from .message_accumulator import MessageAccumulator
 from .sender import Sender
@@ -349,25 +352,9 @@ class AIOKafkaProducer(object):
         return self._partitioner(
             serialized_key, all_partitions, available)
 
-    @asyncio.coroutine
-    def _wait_for_reponse_or_error(self, coro):
-        routine_task = self._sender.sender_task
-        data_task = ensure_future(coro, loop=self._loop)
-
-        try:
-            yield from asyncio.wait(
-                [data_task, routine_task],
-                return_when=asyncio.FIRST_COMPLETED,
-                loop=self._loop)
-        except asyncio.CancelledError:
-            data_task.cancel()
-            return (yield from data_task)
-
-        # Check for errors in sender and raise if any
-        if routine_task.done():
-            routine_task.result()  # Raises set exception if any
-
-        return (yield from data_task)
+    def _wait_for_reponse_or_error(self, coro, *, shield):
+        return wait_for_reponse_or_error(
+            coro, [self._sender.sender_task], shield=shield, loop=self._loop)
 
     @asyncio.coroutine
     def send(self, topic, value=None, key=None, partition=None,
@@ -422,7 +409,8 @@ class AIOKafkaProducer(object):
         if self._txn_manager is not None and \
                 self._txn_manager.needs_transaction_commit():
             yield from self._wait_for_reponse_or_error(
-                self._txn_manager.wait_for_transaction_end()
+                self._txn_manager.wait_for_transaction_end(),
+                shield=True
             )
 
         key_bytes, value_bytes = self._serialize(topic, key, value)
@@ -435,7 +423,8 @@ class AIOKafkaProducer(object):
         fut = yield from self._wait_for_reponse_or_error(
             self._message_accumulator.add_message(
                 tp, key_bytes, value_bytes, self._request_timeout_ms / 1000,
-                timestamp_ms=timestamp_ms)
+                timestamp_ms=timestamp_ms),
+            shield=False
         )
         return fut
 
@@ -445,7 +434,7 @@ class AIOKafkaProducer(object):
         """Publish a message to a topic and wait the result"""
         future = yield from self.send(
             topic, value, key, partition, timestamp_ms)
-        return (yield from self._wait_for_reponse_or_error(future))
+        return (yield from future)
 
     def create_batch(self):
         """Create and return an empty BatchBuilder.
@@ -479,14 +468,16 @@ class AIOKafkaProducer(object):
         if self._txn_manager is not None and \
                 self._txn_manager.needs_transaction_commit():
             yield from self._wait_for_reponse_or_error(
-                self._txn_manager.wait_for_transaction_end()
+                self._txn_manager.wait_for_transaction_end(),
+                shield=True
             )
 
         tp = TopicPartition(topic, partition)
         log.debug("Sending batch to %s", tp)
         future = yield from self._wait_for_reponse_or_error(
             self._message_accumulator.add_batch(
-                batch, tp, self._request_timeout_ms / 1000)
+                batch, tp, self._request_timeout_ms / 1000),
+            shield=False
         )
         return future
 
@@ -503,7 +494,8 @@ class AIOKafkaProducer(object):
             "Beginning a new transaction for id %s",
             self._txn_manager.transactional_id)
         yield from self._wait_for_reponse_or_error(
-            self._txn_manager.wait_for_pid()
+            self._txn_manager.wait_for_pid(),
+            shield=True
         )
         self._txn_manager.begin_transaction()
 
@@ -515,7 +507,8 @@ class AIOKafkaProducer(object):
             self._txn_manager.transactional_id)
         self._txn_manager.committing_transaction()
         yield from self._wait_for_reponse_or_error(
-            self._txn_manager.wait_for_transaction_end()
+            self._txn_manager.wait_for_transaction_end(),
+            shield=True
         )
 
     @asyncio.coroutine
@@ -526,7 +519,8 @@ class AIOKafkaProducer(object):
             self._txn_manager.transactional_id)
         self._txn_manager.aborting_transaction()
         yield from self._wait_for_reponse_or_error(
-            self._txn_manager.wait_for_transaction_end()
+            self._txn_manager.wait_for_transaction_end(),
+            shield=True
         )
 
     def transaction(self):
@@ -539,35 +533,17 @@ class AIOKafkaProducer(object):
         if not self._txn_manager.is_in_transaction():
             raise IllegalOperation("Not in the middle of a transaction")
 
-        # validate `offsets` structure
-        if not offsets or not isinstance(offsets, dict):
-            raise ValueError(offsets)
         if not group_id or not isinstance(group_id, str):
             raise ValueError(group_id)
 
-        formatted_offsets = {}
-        for tp, offset_and_metadata in offsets.items():
-            if not isinstance(tp, TopicPartition):
-                raise ValueError("Key should be TopicPartition instance")
-
-            if isinstance(offset_and_metadata, int):
-                offset, metadata = offset_and_metadata, ""
-            else:
-                try:
-                    offset, metadata = offset_and_metadata
-                except Exception:
-                    raise ValueError(offsets)
-
-                if not isinstance(metadata, str):
-                    raise ValueError("Metadata should be a string")
-
-            formatted_offsets[tp] = OffsetAndMetadata(offset, metadata)
+        # validate `offsets` structure
+        formatted_offsets = commit_structure_validate(offsets)
 
         log.debug(
             "Begin adding offsets %s for consumer group %s to transaction",
             formatted_offsets, group_id)
         fut = self._txn_manager.add_offsets_to_txn(formatted_offsets, group_id)
-        yield from self._wait_for_reponse_or_error(fut)
+        yield from self._wait_for_reponse_or_error(fut, shield=True)
 
 
 class TransactionContext:

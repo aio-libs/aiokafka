@@ -1,15 +1,18 @@
+import asyncio
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, kafka_versions
 )
 
 from aiokafka.producer import AIOKafkaProducer
+from aiokafka.producer.transaction_manager import TransactionState
 from aiokafka.consumer import AIOKafkaConsumer
 
 from aiokafka.errors import (
     UnsupportedVersionError,
-    ProducerFenced, OutOfOrderSequenceNumber
+    ProducerFenced, OutOfOrderSequenceNumber, IllegalOperation
 )
 from aiokafka.structs import TopicPartition
+from aiokafka.util import ensure_future
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
@@ -289,6 +292,24 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @kafka_versions('>=0.11.0')
     @run_until_complete
+    async def test_producer_transactional_send_offsets_error_checks(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer", client_id="p1")
+        await producer.start()
+        self.add_cleanup(producer.stop)
+
+        # Not in transaction
+        with self.assertRaises(IllegalOperation):
+            await producer.send_offsets_to_transaction({}, group_id=None)
+
+        # Not proper group_id
+        async with producer.transaction():
+            with self.assertRaises(ValueError):
+                await producer.send_offsets_to_transaction({}, group_id=None)
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
     async def test_producer_transactional_flush_before_commit(self):
         # We need to be sure, that we send all pending batches before
         # committing the transaction
@@ -309,3 +330,69 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         for fut in futs:
             self.assertTrue(fut.done())
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_producer_transactional_cancel_txn_methods(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer", client_id="p1")
+        txn_manager = producer._txn_manager
+        self.assertEqual(txn_manager.state, TransactionState.UNINITIALIZED)
+        await producer.start()
+        self.add_cleanup(producer.stop)
+        self.assertEqual(txn_manager.state, TransactionState.READY)
+
+        async def cancel(task):
+            # Coroutines will not be started until we yield at least 1ce
+            await asyncio.sleep(0)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        # test cancel begin_transaction.
+        task = ensure_future(producer.begin_transaction())
+        await cancel(task)
+        self.assertEqual(txn_manager.state, TransactionState.READY)
+
+        # test cancel commit_transaction. Commit should not be cancelled.
+        await producer.begin_transaction()
+        self.assertEqual(txn_manager.state, TransactionState.IN_TRANSACTION)
+        task = ensure_future(producer.commit_transaction())
+        await cancel(task)
+        self.assertEqual(
+            txn_manager.state, TransactionState.COMMITTING_TRANSACTION)
+        await asyncio.sleep(0.1)
+        self.assertEqual(txn_manager.state, TransactionState.READY)
+
+        # test cancel abort_transaction. Abort should also not be cancelled.
+        await producer.begin_transaction()
+        self.assertEqual(txn_manager.state, TransactionState.IN_TRANSACTION)
+        task = ensure_future(producer.abort_transaction())
+        await cancel(task)
+        self.assertEqual(
+            txn_manager.state, TransactionState.ABORTING_TRANSACTION)
+        await asyncio.sleep(0.1)
+        self.assertEqual(txn_manager.state, TransactionState.READY)
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_producer_requeire_transactional_id(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        await producer.start()
+        self.add_cleanup(producer.stop)
+
+        with self.assertRaises(IllegalOperation):
+            await producer.begin_transaction()
+        with self.assertRaises(IllegalOperation):
+            await producer.commit_transaction()
+        with self.assertRaises(IllegalOperation):
+            await producer.abort_transaction()
+        with self.assertRaises(IllegalOperation):
+            async with producer.transaction():
+                pass
+        with self.assertRaises(IllegalOperation):
+            await producer.send_offsets_to_transaction({}, group_id="123")

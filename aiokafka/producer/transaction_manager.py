@@ -32,7 +32,6 @@ class TransactionState(Enum):
     IN_TRANSACTION = 3
     COMMITTING_TRANSACTION = 4
     ABORTING_TRANSACTION = 5
-    ERROR = 6
 
     @classmethod
     def is_transition_valid(cls, source, target):
@@ -45,13 +44,7 @@ class TransactionState(Enum):
         elif target == cls.COMMITTING_TRANSACTION:
             return source == cls.IN_TRANSACTION
         elif target == cls.ABORTING_TRANSACTION:
-            return source == cls.IN_TRANSACTION or source == cls.ERROR
-        # We can transition to ERROR unconditionally.
-        # ERROR is never a valid starting state for any transition. So the
-        # only option is to close the producer or do purely non transactional
-        # requests.
-        else:
-            return True
+            return source == cls.IN_TRANSACTION
 
 
 class TransactionManager:

@@ -22,7 +22,7 @@ from aiokafka.errors import (
     KafkaTimeoutError, UnknownTopicOrPartitionError,
     MessageSizeTooLargeError, NotLeaderForPartitionError,
     LeaderNotAvailableError, RequestTimedOutError,
-    UnsupportedVersionError, ProducerClosed)
+    UnsupportedVersionError, ProducerClosed, KafkaError)
 
 LOG_APPEND_TIME = 1
 
@@ -704,10 +704,12 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         with mock.patch.object(producer._sender, '_send_produce_req') as m:
             m.side_effect = KeyError
 
-            with self.assertRaises(KeyError):
+            with self.assertRaisesRegex(
+                    KafkaError, "Unexpected error during batch delivery"):
                 yield from producer.send_and_wait(
                     self.topic, b'hello, Kafka!')
 
-        with self.assertRaises(KeyError):
+        with self.assertRaisesRegex(
+                KafkaError, "Unexpected error during batch delivery"):
             yield from producer.send_and_wait(
                 self.topic, b'hello, Kafka!')
