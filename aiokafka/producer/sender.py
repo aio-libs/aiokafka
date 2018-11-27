@@ -555,7 +555,6 @@ class AddPartitionsToTxnHandler(BaseHandler):
     def handle_reponse(self, resp):
         txn_manager = self._sender._txn_manager
 
-        retry_backoff = self._default_backoff
         for topic, partitions in resp.errors:
             for partition, error_code in partitions:
                 tp = TopicPartition(topic, partition)
@@ -564,22 +563,23 @@ class AddPartitionsToTxnHandler(BaseHandler):
                 if error_type is Errors.NoError:
                     log.debug("Added partition %s to transaction", tp)
                     txn_manager.partition_added(tp)
-                    return
                 elif (error_type is CoordinatorNotAvailableError or
                         error_type is NotCoordinatorError):
                     self._sender._coordinator_dead(
                         CoordinationType.TRANSACTION)
+                    return self._default_backoff
                 elif error_type is ConcurrentTransactions:
                     # See KAFKA-5477: There is some time between commit and
                     # actual transaction marker write, that will produce this
                     # ConcurrentTransactions. We don't want the 100ms latency
                     # in that case.
                     if not txn_manager.txn_partitions:
-                        retry_backoff = BACKOFF_OVERRIDE
+                        return BACKOFF_OVERRIDE
+                    else:
+                        return self._default_backoff
                 elif (error_type is CoordinatorLoadInProgressError or
                         error_type is UnknownTopicOrPartitionError):
-                    # We will just retry after backoff
-                    pass
+                    return self._default_backoff
                 elif error_type is InvalidProducerEpoch:
                     raise ProducerFenced()
                 elif (error_type is InvalidProducerIdMapping or
@@ -590,9 +590,7 @@ class AddPartitionsToTxnHandler(BaseHandler):
                         "Could not add partition %s due to unexpected error:"
                         " %s", partition, error_type)
                     raise error_type()
-
-        # Backoff on error
-        return retry_backoff
+        return
 
 
 class AddOffsetsToTxnHandler(BaseHandler):
@@ -686,16 +684,16 @@ class TxnOffsetCommitHandler(BaseHandler):
                         "Offset %s for partition %s committed to group %s",
                         offset, tp, group_id)
                     txn_manager.offset_committed(tp, offset, group_id)
-                    return
                 elif (error_type is CoordinatorNotAvailableError or
                         error_type is NotCoordinatorError or
                         # Copied from Java. Not sure why it's only in this case
                         error_type is RequestTimedOutError):
                     self._sender._coordinator_dead(CoordinationType.GROUP)
+                    return self._default_backoff
                 elif (error_type is CoordinatorLoadInProgressError or
                         error_type is UnknownTopicOrPartitionError):
                     # We will just retry after backoff
-                    pass
+                    return self._default_backoff
                 elif error_type is InvalidProducerEpoch:
                     raise ProducerFenced()
                 else:
@@ -703,8 +701,6 @@ class TxnOffsetCommitHandler(BaseHandler):
                         "Could not commit offset for partition %s due to "
                         "unexpected error: %s", partition, error_type)
                     raise error_type()
-
-        return self._default_backoff
 
 
 class EndTxnHandler(BaseHandler):

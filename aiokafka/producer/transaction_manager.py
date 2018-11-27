@@ -71,9 +71,9 @@ class TransactionManager:
 
     def set_pid_and_epoch(self, pid: int, epoch: int):
         self._pid_and_epoch = PidAndEpoch(pid, epoch)
+        self._pid_waiter.set_result(None)
         if self.transactional_id:
             self._transition_to(TransactionState.READY)
-            self._pid_waiter.set_result(None)
 
     def has_pid(self):
         return self._pid_and_epoch.pid != NO_PRODUCER_ID
@@ -84,18 +84,6 @@ class TransactionManager:
             return
         else:
             yield from self._pid_waiter
-
-    def reset_producer_id(self):
-        """ This method is used when the producer needs to reset it's internal
-        state because of an irrecoverable exception from the broker.
-            In all of these cases, we don't know whether batch was actually
-        committed on the broker, and hence whether the sequence number was
-        actually updated. If we don't reset the producer state, we risk the
-        chance that all future messages will return an
-        ``OutOfOrderSequenceException``.
-        """
-        self._pid_and_epoch = PidAndEpoch(NO_PRODUCER_ID, NO_PRODUCER_EPOCH)
-        self._sequence_numbers.clear()
 
     def sequence_number(self, tp: TopicPartition):
         return self._sequence_numbers[tp]
