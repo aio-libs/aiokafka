@@ -482,7 +482,7 @@ class BaseHandler:
         except KafkaError as err:
             log.warning("Could not send %r: %r", req.__class__, err)
             yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
-            return
+            return False
 
         retry_backoff = self.handle_reponse(resp)
         if retry_backoff is not None:

@@ -396,3 +396,63 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 pass
         with self.assertRaises(IllegalOperation):
             await producer.send_offsets_to_transaction({}, group_id="123")
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_producer_transactional_send_message_outside_txn(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer", client_id="p1")
+        await producer.start()
+        self.add_cleanup(producer.stop)
+
+        # Can not send if not yet in transaction
+        with self.assertRaises(IllegalOperation):
+            await producer.send(self.topic, value=b"2", partition=0)
+
+        await producer.begin_transaction()
+        await producer.send(self.topic, value=b"1", partition=0)
+        commit_task = ensure_future(producer.commit_transaction())
+        await asyncio.sleep(0.01, loop=self.loop)
+        self.assertFalse(commit_task.done())
+
+        # Already not in transaction
+        with self.assertRaises(IllegalOperation):
+            await producer.send(self.topic, value=b"2", partition=0)
+
+        await commit_task
+        # Transaction needs to be restarted
+        with self.assertRaises(IllegalOperation):
+            await producer.send(self.topic, value=b"2", partition=0)
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_producer_transactional_send_batch_outside_txn(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer", client_id="p1")
+        await producer.start()
+        self.add_cleanup(producer.stop)
+
+        batch = producer.create_batch()
+        batch.append(timestamp=None, key=None, value=b"2")
+        batch.close()
+
+        # Can not send if not yet in transaction
+        with self.assertRaises(IllegalOperation):
+            await producer.send_batch(batch, self.topic, partition=0)
+
+        await producer.begin_transaction()
+        await producer.send(self.topic, value=b"1", partition=0)
+        commit_task = ensure_future(producer.commit_transaction())
+        await asyncio.sleep(0.01, loop=self.loop)
+        self.assertFalse(commit_task.done())
+
+        # Already not in transaction
+        with self.assertRaises(IllegalOperation):
+            await producer.send_batch(batch, self.topic, partition=0)
+
+        await commit_task
+        # Transaction needs to be restarted
+        with self.assertRaises(IllegalOperation):
+            await producer.send_batch(batch, self.topic, partition=0)
