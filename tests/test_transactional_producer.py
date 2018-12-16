@@ -379,7 +379,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @kafka_versions('>=0.11.0')
     @run_until_complete
-    async def test_producer_requeire_transactional_id(self):
+    async def test_producer_require_transactional_id(self):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
         await producer.start()

@@ -247,105 +247,8 @@ class Sender:
         """
         t0 = self._loop.time()
 
-        topics = collections.defaultdict(list)
-        for tp, batch in batches.items():
-            topics[tp.topic].append(
-                (tp.partition, batch.get_data_buffer())
-            )
-
-        if self.client.api_version >= (0, 11):
-            version = 3
-        elif self.client.api_version >= (0, 10):
-            version = 2
-        elif self.client.api_version == (0, 9):
-            version = 1
-        else:
-            version = 0
-
-        kwargs = {}
-        if version >= 3:
-            if self._txn_manager is not None:
-                kwargs['transactional_id'] = self._txn_manager.transactional_id
-            else:
-                kwargs['transactional_id'] = None
-
-        request = ProduceRequest[version](
-            required_acks=self._acks,
-            timeout=self._request_timeout_ms,
-            topics=list(topics.items()),
-            **kwargs)
-
-        reenqueue = []
-        try:
-            response = yield from self.client.send(node_id, request)
-        except KafkaError as err:
-            log.warning(
-                "Got error produce response: %s", err)
-            if getattr(err, "invalid_metadata", False):
-                self.client.force_metadata_update()
-
-            for batch in batches.values():
-                if not self._can_retry(err, batch):
-                    batch.failure(exception=err)
-                else:
-                    reenqueue.append(batch)
-        else:
-            # noacks, just mark batches as "done"
-            if request.required_acks == 0:
-                for batch in batches.values():
-                    batch.done_noack()
-            else:
-                for topic, partitions in response.topics:
-                    for partition_info in partitions:
-                        if response.API_VERSION < 2:
-                            partition, error_code, offset = partition_info
-                            # Mimic CREATE_TIME to take user provided timestamp
-                            timestamp = -1
-                        else:
-                            partition, error_code, offset, timestamp = \
-                                partition_info
-                        tp = TopicPartition(topic, partition)
-                        error = Errors.for_code(error_code)
-                        batch = batches.get(tp)
-                        if batch is None:
-                            continue
-
-                        if error is Errors.NoError:
-                            batch.done(offset, timestamp)
-                        elif error is DuplicateSequenceNumber:
-                            # If we have received a duplicate sequence error,
-                            # it means that the sequence number has advanced
-                            # beyond the sequence of the current batch, and we
-                            # haven't retained batch metadata on the broker to
-                            # return the correct offset and timestamp.
-                            #
-                            # The only thing we can do is to return success to
-                            # the user and not return a valid offset and
-                            # timestamp.
-                            batch.done(offset, timestamp)
-                        elif error is InvalidProducerEpoch:
-                            error = ProducerFenced
-
-                        if not self._can_retry(error(), batch):
-                            batch.failure(exception=error())
-                        else:
-                            log.warning(
-                                "Got error produce response on topic-partition"
-                                " %s, retrying. Error: %s", tp, error)
-                            # Ok, we can retry this batch
-                            if getattr(error, "invalid_metadata", False):
-                                self.client.force_metadata_update()
-                            reenqueue.append(batch)
-
-        if reenqueue:
-            # Wait backoff before reequeue
-            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
-
-            for batch in reenqueue:
-                self._message_accumulator.reenqueue(batch)
-            # If some error started metadata refresh we have to wait before
-            # trying again
-            yield from self.client._maybe_wait_metadata()
+        handler = SendProduceReqHandler(self, batches)
+        yield from handler.do(node_id)
 
         # if batches for node is processed in less than a linger seconds
         # then waiting for the remaining time
@@ -356,19 +259,6 @@ class Sender:
         self._in_flight.remove(node_id)
         for tp in batches:
             self._muted_partitions.remove(tp)
-
-    def _can_retry(self, error, batch):
-        # If indempotence is enabled we never expire batches, but retry until
-        # we succeed. We can be sure, that no duplicates will be introduced
-        # as long as we set proper sequence, pid and epoch.
-        if self._txn_manager is None and batch.expired():
-            return False
-        # XXX: remove unknown topic check as we fix
-        #      https://github.com/dpkp/kafka-python/issues/1155
-        if error.retriable or isinstance(error, UnknownTopicOrPartitionError)\
-                or error is UnknownTopicOrPartitionError:
-            return True
-        return False
 
     ###########################################################################
     # Transaction handler('s')
@@ -744,3 +634,132 @@ class EndTxnHandler(BaseHandler):
             raise error_type()
 
         return self._default_backoff
+
+
+class SendProduceReqHandler(BaseHandler):
+
+    def __init__(self, sender, batches):
+        super().__init__(sender)
+        self._batches = batches
+        self._client = sender.client
+        self._to_reenqueue = []
+
+    def create_request(self):
+        topics = collections.defaultdict(list)
+        for tp, batch in self._batches.items():
+            topics[tp.topic].append(
+                (tp.partition, batch.get_data_buffer())
+            )
+
+        if self._client.api_version >= (0, 11):
+            version = 3
+        elif self._client.api_version >= (0, 10):
+            version = 2
+        elif self._client.api_version == (0, 9):
+            version = 1
+        else:
+            version = 0
+
+        kwargs = {}
+        if version >= 3:
+            if self._sender._txn_manager is not None:
+                kwargs['transactional_id'] = \
+                    self._sender._txn_manager.transactional_id
+            else:
+                kwargs['transactional_id'] = None
+
+        request = ProduceRequest[version](
+            required_acks=self._sender._acks,
+            timeout=self._sender._request_timeout_ms,
+            topics=list(topics.items()),
+            **kwargs)
+        return request
+
+    @asyncio.coroutine
+    def do(self, node_id):
+        request = self.create_request()
+        try:
+            response = yield from self._client.send(node_id, request)
+        except KafkaError as err:
+            log.warning(
+                "Got error produce response: %s", err)
+            if getattr(err, "invalid_metadata", False):
+                self._client.force_metadata_update()
+
+            for batch in self._batches.values():
+                if not self._can_retry(err, batch):
+                    batch.failure(exception=err)
+                else:
+                    self._to_reenqueue.append(batch)
+        else:
+            # noacks, just mark batches as "done"
+            if request.required_acks == 0:
+                for batch in self._batches.values():
+                    batch.done_noack()
+            else:
+                self.handle_reponse(response)
+
+        if self._to_reenqueue:
+            # Wait backoff before reequeue
+            yield from asyncio.sleep(self._default_backoff, loop=self._loop)
+
+            for batch in self._to_reenqueue:
+                self._sender._message_accumulator.reenqueue(batch)
+            # If some error started metadata refresh we have to wait before
+            # trying again
+            yield from self._client._maybe_wait_metadata()
+
+    def handle_reponse(self, response):
+        for topic, partitions in response.topics:
+            for partition_info in partitions:
+                if response.API_VERSION < 2:
+                    partition, error_code, offset = partition_info
+                    # Mimic CREATE_TIME to take user provided timestamp
+                    timestamp = -1
+                else:
+                    partition, error_code, offset, timestamp = partition_info
+                tp = TopicPartition(topic, partition)
+                error = Errors.for_code(error_code)
+                batch = self._batches.get(tp)
+                if batch is None:
+                    continue
+
+                if error is Errors.NoError:
+                    batch.done(offset, timestamp)
+                elif error is DuplicateSequenceNumber:
+                    # If we have received a duplicate sequence error,
+                    # it means that the sequence number has advanced
+                    # beyond the sequence of the current batch, and we
+                    # haven't retained batch metadata on the broker to
+                    # return the correct offset and timestamp.
+                    #
+                    # The only thing we can do is to return success to
+                    # the user and not return a valid offset and
+                    # timestamp.
+                    batch.done(offset, timestamp)
+                elif error is InvalidProducerEpoch:
+                    error = ProducerFenced
+
+                if not self._can_retry(error(), batch):
+                    batch.failure(exception=error())
+                else:
+                    log.warning(
+                        "Got error produce response on topic-partition"
+                        " %s, retrying. Error: %s", tp, error)
+                    # Ok, we can retry this batch
+                    if getattr(error, "invalid_metadata", False):
+                        self._client.force_metadata_update()
+                    self._to_reenqueue.append(batch)
+
+    def _can_retry(self, error, batch):
+        # If indempotence is enabled we never expire batches, but retry until
+        # we succeed. We can be sure, that no duplicates will be introduced
+        # as long as we set proper sequence, pid and epoch.
+        if self._sender._txn_manager is None and batch.expired():
+            return False
+        # XXX: remove unknown topic check as we fix
+        #      https://github.com/dpkp/kafka-python/issues/1155
+        if error.retriable or isinstance(error, UnknownTopicOrPartitionError)\
+                or error is UnknownTopicOrPartitionError:
+            return True
+        return False

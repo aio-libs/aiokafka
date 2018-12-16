@@ -406,10 +406,12 @@ class AIOKafkaProducer(object):
         yield from self.client._wait_on_metadata(topic)
 
         # Ensure transaction is started and not committing
-        if self._txn_manager is not None and \
-                not self._txn_manager.is_in_transaction():
-            raise IllegalOperation(
-                "Can't send messages while not in transaction")
+        if self._txn_manager is not None:
+            txn_manager = self._txn_manager
+            if txn_manager.transactional_id is not None and \
+                    not self._txn_manager.is_in_transaction():
+                raise IllegalOperation(
+                    "Can't send messages while not in transaction")
 
         key_bytes, value_bytes = self._serialize(topic, key, value)
         partition = self._partition(topic, partition, key, value,
@@ -463,10 +465,12 @@ class AIOKafkaProducer(object):
         partition = self._partition(topic, partition, None, None, None, None)
 
         # Ensure transaction is started and not committing
-        if self._txn_manager is not None and \
-                not self._txn_manager.is_in_transaction():
-            raise IllegalOperation(
-                "Can't send messages while not in transaction")
+        if self._txn_manager is not None:
+            txn_manager = self._txn_manager
+            if txn_manager.transactional_id is not None and \
+                    not self._txn_manager.is_in_transaction():
+                raise IllegalOperation(
+                    "Can't send messages while not in transaction")
 
         tp = TopicPartition(topic, partition)
         log.debug("Sending batch to %s", tp)
