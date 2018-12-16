@@ -6,7 +6,8 @@ from ._testutil import (
 
 from aiokafka.producer.sender import (
     Sender, InitPIDHandler, AddPartitionsToTxnHandler,
-    AddOffsetsToTxnHandler, TxnOffsetCommitHandler, EndTxnHandler
+    AddOffsetsToTxnHandler, TxnOffsetCommitHandler, EndTxnHandler,
+    BaseHandler, SendProduceReqHandler
 )
 from aiokafka.producer.transaction_manager import TransactionManager
 from aiokafka.protocol.transaction import (
@@ -16,8 +17,11 @@ from aiokafka.protocol.transaction import (
     TxnOffsetCommitRequest, TxnOffsetCommitResponse,
     EndTxnRequest, EndTxnResponse
 )
+from aiokafka.protocol.produce import (
+    ProduceRequest, ProduceResponse
+)
 from aiokafka.producer.message_accumulator import MessageAccumulator
-from aiokafka.client import AIOKafkaClient, CoordinationType
+from aiokafka.client import AIOKafkaClient, CoordinationType, ConnectionGroup
 from aiokafka.structs import TopicPartition, OffsetAndMetadata
 
 from aiokafka.errors import (
@@ -26,7 +30,7 @@ from aiokafka.errors import (
     CoordinatorLoadInProgressError, ConcurrentTransactions,
     UnknownTopicOrPartitionError, InvalidProducerEpoch,
     ProducerFenced, InvalidProducerIdMapping, InvalidTxnState,
-    RequestTimedOutError
+    RequestTimedOutError, DuplicateSequenceNumber
 )
 
 LOG_APPEND_TIME = 1
@@ -51,18 +55,133 @@ class TestSender(KafkaIntegrationTestCase):
         self.add_cleanup(sender.close)
         return sender
 
-    def _mock_maybe_wait_for_pid(self):
-        async def mocked_call():
-            return
-        return mock.Mock(side_effect=mocked_call)
-
     @run_until_complete
     async def test_sender__sender_routine(self):
         sender = await self._setup_sender()
-        sender._maybe_wait_for_pid = self._mock_maybe_wait_for_pid()
+
+        async def mocked_call():
+            return
+        sender._maybe_wait_for_pid = mock.Mock(side_effect=mocked_call)
         await sender.start()
 
         sender._maybe_wait_for_pid.assert_called()
+
+    async def _setup_sender_with_init_mocked(self):
+        sender = await self._setup_sender(no_init=True)
+        call_count = [0]
+
+        async def mocked_call(node_id):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return False
+            else:
+                return True
+        sender._do_init_pid = mock.Mock(side_effect=mocked_call)
+        return sender
+
+    @run_until_complete
+    async def test_sender_maybe_wait_for_pid_non_transactional(self):
+        sender = await self._setup_sender_with_init_mocked()
+
+        # If we are not using transactional manager will return rigth away
+        sender._txn_manager = None
+        await sender._maybe_wait_for_pid()
+        sender._do_init_pid.assert_not_called()
+
+    @run_until_complete
+    async def test_sender_maybe_wait_for_pid_on_failure(self):
+        sender = await self._setup_sender_with_init_mocked()
+        # Should retry metadata on failure
+        sender.client.force_metadata_update = mock.Mock(
+            side_effect=sender.client.force_metadata_update)
+        await sender._maybe_wait_for_pid()
+        sender._do_init_pid.assert_called()
+        sender.client.force_metadata_update.assert_called()
+
+    @run_until_complete
+    async def test_sender__find_coordinator(self):
+        sender = await self._setup_sender()
+
+        async def coordinator_lookup(coordinator_type, coordinator_key):
+            if coordinator_type == CoordinationType.GROUP:
+                return 0
+            return 1
+        sender.client.coordinator_lookup = mock.Mock(
+            side_effect=coordinator_lookup)
+
+        async def ready(coordinator_id, group, *, count=[0]):
+            c = count[0]
+            count[0] += 1
+            if c == 0:
+                return False
+            else:
+                return True
+        sender.client.ready = mock.Mock(side_effect=ready)
+
+        node_id = await sender._find_coordinator(
+            coordinator_type=CoordinationType.GROUP, coordinator_key="key")
+        self.assertEqual(node_id, 0)
+        sender.client.coordinator_lookup.assert_called_with(
+            CoordinationType.GROUP, "key")
+        sender.client.ready.assert_called_with(
+            0, group=ConnectionGroup.COORDINATION)
+
+        node_id = await sender._find_coordinator(
+            coordinator_type=CoordinationType.TRANSACTION,
+            coordinator_key="key")
+        self.assertEqual(node_id, 1)
+        sender.client.coordinator_lookup.assert_called_with(
+            CoordinationType.TRANSACTION, "key")
+        sender.client.ready.assert_called_with(
+            1, group=ConnectionGroup.COORDINATION)
+
+        # Repeat call will return from cache
+        self.assertEqual(sender.client.coordinator_lookup.call_count, 3)
+        node_id = await sender._find_coordinator(
+            coordinator_type=CoordinationType.GROUP, coordinator_key="key")
+        self.assertEqual(node_id, 0)
+        node_id = await sender._find_coordinator(
+            coordinator_type=CoordinationType.TRANSACTION,
+            coordinator_key="key")
+        self.assertEqual(node_id, 1)
+        self.assertEqual(sender.client.coordinator_lookup.call_count, 3)
+
+        sender._coordinator_dead(CoordinationType.TRANSACTION)
+        node_id = await sender._find_coordinator(
+            coordinator_type=CoordinationType.GROUP, coordinator_key="key")
+        self.assertEqual(node_id, 0)
+        self.assertEqual(sender.client.coordinator_lookup.call_count, 3)
+        node_id = await sender._find_coordinator(
+            coordinator_type=CoordinationType.TRANSACTION,
+            coordinator_key="key")
+        self.assertEqual(node_id, 1)
+        self.assertEqual(sender.client.coordinator_lookup.call_count, 4)
+
+    @run_until_complete
+    async def test_sender__handler_base_do(self):
+        sender = await self._setup_sender()
+
+        class MockHandler(BaseHandler):
+            def create_request(self):
+                return InitProducerIdRequest[0](
+                    transactional_id=None,
+                    transaction_timeout_ms=0)
+
+        mock_handler = MockHandler(sender)
+        mock_handler.handle_response = mock.Mock(return_value=0.1)
+        success = await mock_handler.do(node_id=0)
+        self.assertFalse(success)
+
+        MockHandler.return_value = None
+        mock_handler.handle_response = mock.Mock(return_value=None)
+        success = await mock_handler.do(node_id=0)
+        self.assertTrue(success)
+
+        time = self.loop.time()
+        sender.client.send = mock.Mock(side_effect=UnknownError())
+        success = await mock_handler.do(node_id=0)
+        self.assertFalse(success)
+        self.assertAlmostEqual(self.loop.time() - time, 0.1, 1)
 
     @run_until_complete
     async def test_sender__do_init_pid_create(self):
@@ -91,7 +210,7 @@ class TestSender(KafkaIntegrationTestCase):
             producer_id=17,
             producer_epoch=1
         )
-        backoff = init_handler.handle_reponse(resp)
+        backoff = init_handler.handle_response(resp)
         self.assertIsNone(backoff)
         self.assertEqual(sender._txn_manager.producer_id, 17)
         self.assertEqual(sender._txn_manager.producer_epoch, 1)
@@ -114,7 +233,7 @@ class TestSender(KafkaIntegrationTestCase):
                     producer_id=17,
                     producer_epoch=1
                 )
-                backoff = init_handler.handle_reponse(resp)
+                backoff = init_handler.handle_response(resp)
                 self.assertEqual(backoff, 0.1)
                 self.assertEqual(sender._txn_manager.producer_id, -1)
                 self.assertEqual(sender._txn_manager.producer_epoch, -1)
@@ -131,7 +250,7 @@ class TestSender(KafkaIntegrationTestCase):
                 producer_id=17,
                 producer_epoch=1
             )
-            backoff = init_handler.handle_reponse(resp)
+            backoff = init_handler.handle_response(resp)
             self.assertEqual(backoff, 0.1)
             self.assertEqual(sender._txn_manager.producer_id, -1)
             self.assertEqual(sender._txn_manager.producer_epoch, -1)
@@ -145,7 +264,7 @@ class TestSender(KafkaIntegrationTestCase):
             producer_epoch=1
         )
         with self.assertRaises(UnknownError):
-            init_handler.handle_reponse(resp)
+            init_handler.handle_response(resp)
         self.assertEqual(sender._txn_manager.producer_id, -1)
         self.assertEqual(sender._txn_manager.producer_epoch, -1)
 
@@ -193,7 +312,7 @@ class TestSender(KafkaIntegrationTestCase):
                 ])
             ]
         )
-        backoff = add_handler.handle_reponse(resp)
+        backoff = add_handler.handle_response(resp)
         self.assertIsNone(backoff)
         self.assertEqual(tm.partition_added.call_count, 3)
         tm.partition_added.assert_has_calls([
@@ -232,41 +351,48 @@ class TestSender(KafkaIntegrationTestCase):
         for error_cls in [CoordinatorNotAvailableError, NotCoordinatorError]:
             with mock.patch.object(sender, "_coordinator_dead") as mocked:
                 resp = create_response(error_cls)
-                backoff = add_handler.handle_reponse(resp)
+                backoff = add_handler.handle_response(resp)
                 self.assertEqual(backoff, 0.1)
                 tm.partition_added.assert_not_called()
                 mocked.assert_called_with(CoordinationType.TRANSACTION)
 
         # Special case for ConcurrentTransactions
         resp = create_response(ConcurrentTransactions)
-        backoff = add_handler.handle_reponse(resp)
+        backoff = add_handler.handle_response(resp)
         self.assertEqual(backoff, 0.02)  # BACKOFF_OVERRIDE
+        tm.partition_added.assert_not_called()
+
+        # Special case for ConcurrentTransactions if this is not the first call
+        tm._txn_partitions.add(tps[0])
+        resp = create_response(ConcurrentTransactions)
+        backoff = add_handler.handle_response(resp)
+        self.assertEqual(backoff, 0.1)  # Default backoff
         tm.partition_added.assert_not_called()
 
         # Not coordination retriable errors
         for error_cls in [
                 CoordinatorLoadInProgressError, UnknownTopicOrPartitionError]:
             resp = create_response(error_cls)
-            backoff = add_handler.handle_reponse(resp)
+            backoff = add_handler.handle_response(resp)
             self.assertEqual(backoff, 0.1)
             tm.partition_added.assert_not_called()
 
         # ProducerFenced case
         resp = create_response(InvalidProducerEpoch)
         with self.assertRaises(ProducerFenced):
-            add_handler.handle_reponse(resp)
+            add_handler.handle_response(resp)
         tm.partition_added.assert_not_called()
 
         for error_type in [InvalidProducerIdMapping, InvalidTxnState]:
             resp = create_response(error_type)
             with self.assertRaises(error_type):
-                add_handler.handle_reponse(resp)
+                add_handler.handle_response(resp)
             tm.partition_added.assert_not_called()
 
         # Handle unknown error
         resp = create_response(UnknownError)
         with self.assertRaises(UnknownError):
-            add_handler.handle_reponse(resp)
+            add_handler.handle_response(resp)
         tm.partition_added.assert_not_called()
 
     @run_until_complete
@@ -295,7 +421,7 @@ class TestSender(KafkaIntegrationTestCase):
             throttle_time_ms=300,
             error_code=NoError.errno
         )
-        backoff = add_handler.handle_reponse(resp)
+        backoff = add_handler.handle_response(resp)
         self.assertIsNone(backoff)
         tm.consumer_group_added.assert_called_with("some_group")
 
@@ -318,7 +444,7 @@ class TestSender(KafkaIntegrationTestCase):
         for error_cls in [CoordinatorNotAvailableError, NotCoordinatorError]:
             with mock.patch.object(sender, "_coordinator_dead") as mocked:
                 resp = create_response(error_cls)
-                backoff = add_handler.handle_reponse(resp)
+                backoff = add_handler.handle_response(resp)
                 self.assertEqual(backoff, 0.1)
                 tm.consumer_group_added.assert_not_called()
                 mocked.assert_called_with(CoordinationType.TRANSACTION)
@@ -327,26 +453,26 @@ class TestSender(KafkaIntegrationTestCase):
         for error_cls in [
                 CoordinatorLoadInProgressError, ConcurrentTransactions]:
             resp = create_response(error_cls)
-            backoff = add_handler.handle_reponse(resp)
+            backoff = add_handler.handle_response(resp)
             self.assertEqual(backoff, 0.1)
             tm.consumer_group_added.assert_not_called()
 
         # ProducerFenced case
         resp = create_response(InvalidProducerEpoch)
         with self.assertRaises(ProducerFenced):
-            add_handler.handle_reponse(resp)
+            add_handler.handle_response(resp)
         tm.consumer_group_added.assert_not_called()
 
         for error_type in [InvalidTxnState]:
             resp = create_response(error_type)
             with self.assertRaises(error_type):
-                add_handler.handle_reponse(resp)
+                add_handler.handle_response(resp)
             tm.consumer_group_added.assert_not_called()
 
         # Handle unknown error
         resp = create_response(UnknownError)
         with self.assertRaises(UnknownError):
-            add_handler.handle_reponse(resp)
+            add_handler.handle_response(resp)
         tm.consumer_group_added.assert_not_called()
 
     @run_until_complete
@@ -394,7 +520,7 @@ class TestSender(KafkaIntegrationTestCase):
                 ])
             ]
         )
-        backoff = add_handler.handle_reponse(resp)
+        backoff = add_handler.handle_response(resp)
         self.assertIsNone(backoff)
         self.assertEqual(tm.offset_committed.call_count, 2)
         tm.offset_committed.assert_has_calls([
@@ -432,7 +558,7 @@ class TestSender(KafkaIntegrationTestCase):
                 RequestTimedOutError]:
             with mock.patch.object(sender, "_coordinator_dead") as mocked:
                 resp = create_response(error_cls)
-                backoff = add_handler.handle_reponse(resp)
+                backoff = add_handler.handle_response(resp)
                 self.assertEqual(backoff, 0.1)
                 tm.offset_committed.assert_not_called()
                 mocked.assert_called_with(CoordinationType.GROUP)
@@ -441,20 +567,20 @@ class TestSender(KafkaIntegrationTestCase):
         for error_cls in [
                 CoordinatorLoadInProgressError, UnknownTopicOrPartitionError]:
             resp = create_response(error_cls)
-            backoff = add_handler.handle_reponse(resp)
+            backoff = add_handler.handle_response(resp)
             self.assertEqual(backoff, 0.1)
             tm.offset_committed.assert_not_called()
 
         # ProducerFenced case
         resp = create_response(InvalidProducerEpoch)
         with self.assertRaises(ProducerFenced):
-            add_handler.handle_reponse(resp)
+            add_handler.handle_response(resp)
         tm.offset_committed.assert_not_called()
 
         # Handle unknown error
         resp = create_response(UnknownError)
         with self.assertRaises(UnknownError):
-            add_handler.handle_reponse(resp)
+            add_handler.handle_response(resp)
         tm.offset_committed.assert_not_called()
 
     @run_until_complete
@@ -483,7 +609,7 @@ class TestSender(KafkaIntegrationTestCase):
             throttle_time_ms=300,
             error_code=NoError.errno
         )
-        backoff = add_handler.handle_reponse(resp)
+        backoff = add_handler.handle_response(resp)
         self.assertIsNone(backoff)
         tm.complete_transaction.assert_called_with()
 
@@ -506,7 +632,7 @@ class TestSender(KafkaIntegrationTestCase):
         for error_cls in [CoordinatorNotAvailableError, NotCoordinatorError]:
             with mock.patch.object(sender, "_coordinator_dead") as mocked:
                 resp = create_response(error_cls)
-                backoff = add_handler.handle_reponse(resp)
+                backoff = add_handler.handle_response(resp)
                 self.assertEqual(backoff, 0.1)
                 tm.complete_transaction.assert_not_called()
                 mocked.assert_called_with(CoordinationType.TRANSACTION)
@@ -515,24 +641,103 @@ class TestSender(KafkaIntegrationTestCase):
         for error_cls in [
                 CoordinatorLoadInProgressError, ConcurrentTransactions]:
             resp = create_response(error_cls)
-            backoff = add_handler.handle_reponse(resp)
+            backoff = add_handler.handle_response(resp)
             self.assertEqual(backoff, 0.1)
             tm.complete_transaction.assert_not_called()
 
         # ProducerFenced case
         resp = create_response(InvalidProducerEpoch)
         with self.assertRaises(ProducerFenced):
-            add_handler.handle_reponse(resp)
+            add_handler.handle_response(resp)
         tm.complete_transaction.assert_not_called()
 
         for error_type in [InvalidTxnState]:
             resp = create_response(error_type)
             with self.assertRaises(error_type):
-                add_handler.handle_reponse(resp)
+                add_handler.handle_response(resp)
             tm.complete_transaction.assert_not_called()
 
         # Handle unknown error
         resp = create_response(UnknownError)
         with self.assertRaises(UnknownError):
-            add_handler.handle_reponse(resp)
+            add_handler.handle_response(resp)
         tm.complete_transaction.assert_not_called()
+
+    @run_until_complete
+    async def test_sender__produce_request_create(self):
+        sender = await self._setup_sender()
+        tp = TopicPartition("my_topic", 0)
+        batch_mock = mock.Mock()
+        batch_mock.get_data_buffer = mock.Mock(return_value=b"123")
+        send_handler = SendProduceReqHandler(
+            sender, {tp: batch_mock})
+
+        req = send_handler.create_request()
+        self.assertEqual(req.API_KEY, ProduceRequest[0].API_KEY)
+        if req.API_VERSION > 2:
+            self.assertEqual(req.transactional_id, "test_tid")
+        self.assertEqual(req.required_acks, -1)
+        self.assertEqual(req.timeout, 40000)
+        self.assertEqual(req.topics, [("my_topic", [(0, b"123")])])
+
+    @run_until_complete
+    async def test_sender__produce_request_ok(self):
+        sender = await self._setup_sender()
+        tp = TopicPartition("my_topic", 0)
+        batch_mock = mock.Mock()
+        send_handler = SendProduceReqHandler(
+            sender, {tp: batch_mock})
+
+        def create_response(error_type):
+            cls = ProduceResponse[4]
+            resp = cls(
+                throttle_time_ms=300,
+                topics=[
+                    ("my_topic", [
+                        (0, error_type.errno, 100, 200)
+                    ])
+                ]
+            )
+            return resp
+
+        # Special case for DuplicateSequenceNumber
+        resp = create_response(NoError)
+        send_handler.handle_response(resp)
+        batch_mock.done.assert_called_with(100, 200)
+        self.assertEqual(send_handler._to_reenqueue, [])
+
+    @run_until_complete
+    async def test_sender__produce_request_not_ok(self):
+        sender = await self._setup_sender()
+        tp = TopicPartition("my_topic", 0)
+        batch_mock = mock.Mock()
+        send_handler = SendProduceReqHandler(
+            sender, {tp: batch_mock})
+
+        def create_response(error_type):
+            cls = ProduceResponse[4]
+            resp = cls(
+                throttle_time_ms=300,
+                topics=[
+                    ("my_topic", [
+                        (0, error_type.errno, 0, -1)
+                    ])
+                ]
+            )
+            return resp
+
+        # Special case for DuplicateSequenceNumber
+        resp = create_response(DuplicateSequenceNumber)
+        send_handler.handle_response(resp)
+        batch_mock.done.assert_called_with(0, -1)
+        batch_mock.failure.assert_not_called()
+        self.assertEqual(send_handler._to_reenqueue, [])
+
+        batch_mock.reset_mock()
+
+        # Special case for InvalidProducerEpoch
+        resp = create_response(InvalidProducerEpoch)
+        send_handler.handle_response(resp)
+        batch_mock.done.assert_not_called()
+        batch_mock.failure.assert_called()
+        self.assertEqual(send_handler._to_reenqueue, [])

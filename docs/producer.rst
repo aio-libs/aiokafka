@@ -197,6 +197,11 @@ containing fields:
       ``send()`` 0 will be returned (CreateTime). If Broker set it's own
       timestamp 1 will be returned (LogAppendTime).
 
+.. note:: In a very rare case, when Indempotent or Transactional producer is
+    used and there was a long wait between batch initial send and a retry,
+    producer may return ``offset == -1`` and ``timestamp == -1`` as Broker
+    already expired the metadata for this produce sequence and only knows that
+    it's a duplicate due to a larger sequence present
 
 Direct batch control
 --------------------

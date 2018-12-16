@@ -333,6 +333,36 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @kafka_versions('>=0.11.0')
     @run_until_complete
+    async def test_producer_transactional_flush_2_batches_before_commit(self):
+        # We need to be sure if batches that are pending and batches that are
+        # queued will be waited. To test this we need at least 2 batches on
+        # the same partition. They will be sent one at a time.
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            transactional_id="sobaka_producer", client_id="p1")
+        await producer.start()
+        self.add_cleanup(producer.stop)
+
+        await producer.begin_transaction()
+
+        batch = producer.create_batch()
+        batch.append(timestamp=None, key=None, value=b"1")
+        batch.close()
+        fut1 = await producer.send_batch(batch, self.topic, partition=0)
+
+        batch = producer.create_batch()
+        batch.append(timestamp=None, key=None, value=b"2")
+        batch.close()
+        fut2 = await producer.send_batch(batch, self.topic, partition=0)
+
+        await producer.commit_transaction()
+
+        self.assertTrue(fut1.done())
+        self.assertTrue(fut2.done())
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
     async def test_producer_transactional_cancel_txn_methods(self):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts,

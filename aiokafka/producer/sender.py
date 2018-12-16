@@ -371,10 +371,10 @@ class BaseHandler:
                 node_id, req, group=self.group)
         except KafkaError as err:
             log.warning("Could not send %r: %r", req.__class__, err)
-            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+            yield from asyncio.sleep(self._default_backoff, loop=self._loop)
             return False
 
-        retry_backoff = self.handle_reponse(resp)
+        retry_backoff = self.handle_response(resp)
         if retry_backoff is not None:
             yield from asyncio.sleep(retry_backoff, loop=self._loop)
             return False  # Failure
@@ -384,7 +384,7 @@ class BaseHandler:
     def create_request(self):
         raise NotImplementedError  # pragma: no cover
 
-    def handle_reponse(self, response):
+    def handle_response(self, response):
         raise NotImplementedError  # pragma: no cover
 
 
@@ -396,7 +396,7 @@ class InitPIDHandler(BaseHandler):
             transactional_id=txn_manager.transactional_id,
             transaction_timeout_ms=txn_manager.transaction_timeout_ms)
 
-    def handle_reponse(self, resp):
+    def handle_response(self, resp):
         error_type = Errors.for_code(resp.error_code)
         if error_type is Errors.NoError:
             log.debug(
@@ -442,7 +442,7 @@ class AddPartitionsToTxnHandler(BaseHandler):
             topics=list(partition_data.items()))
         return req
 
-    def handle_reponse(self, resp):
+    def handle_response(self, resp):
         txn_manager = self._sender._txn_manager
 
         for topic, partitions in resp.errors:
@@ -501,7 +501,7 @@ class AddOffsetsToTxnHandler(BaseHandler):
         )
         return req
 
-    def handle_reponse(self, resp):
+    def handle_response(self, resp):
         txn_manager = self._sender._txn_manager
         group_id = self._group_id
 
@@ -559,7 +559,7 @@ class TxnOffsetCommitHandler(BaseHandler):
         )
         return req
 
-    def handle_reponse(self, resp):
+    def handle_response(self, resp):
         txn_manager = self._sender._txn_manager
         group_id = self._group_id
 
@@ -609,7 +609,7 @@ class EndTxnHandler(BaseHandler):
             transaction_result=self._commit_result)
         return req
 
-    def handle_reponse(self, resp):
+    def handle_response(self, resp):
         txn_manager = self._sender._txn_manager
         error_type = Errors.for_code(resp.error_code)
 
@@ -697,7 +697,7 @@ class SendProduceReqHandler(BaseHandler):
                 for batch in self._batches.values():
                     batch.done_noack()
             else:
-                self.handle_reponse(response)
+                self.handle_response(response)
 
         if self._to_reenqueue:
             # Wait backoff before reequeue
@@ -709,7 +709,7 @@ class SendProduceReqHandler(BaseHandler):
             # trying again
             yield from self._client._maybe_wait_metadata()
 
-    def handle_reponse(self, response):
+    def handle_response(self, response):
         for topic, partitions in response.topics:
             for partition_info in partitions:
                 if response.API_VERSION < 2:
@@ -737,10 +737,9 @@ class SendProduceReqHandler(BaseHandler):
                     # the user and not return a valid offset and
                     # timestamp.
                     batch.done(offset, timestamp)
-                elif error is InvalidProducerEpoch:
-                    error = ProducerFenced
-
-                if not self._can_retry(error(), batch):
+                elif not self._can_retry(error(), batch):
+                    if error is InvalidProducerEpoch:
+                        error = ProducerFenced
                     batch.failure(exception=error())
                 else:
                     log.warning(
