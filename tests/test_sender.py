@@ -1,7 +1,7 @@
 from unittest import mock
 
 from ._testutil import (
-    KafkaIntegrationTestCase, run_until_complete
+    KafkaIntegrationTestCase, run_until_complete, kafka_versions
 )
 
 from aiokafka.producer.sender import (
@@ -32,6 +32,9 @@ from aiokafka.errors import (
     ProducerFenced, InvalidProducerIdMapping, InvalidTxnState,
     RequestTimedOutError, DuplicateSequenceNumber
 )
+
+from kafka.protocol.metadata import MetadataRequest
+
 
 LOG_APPEND_TIME = 1
 
@@ -64,7 +67,7 @@ class TestSender(KafkaIntegrationTestCase):
         sender._maybe_wait_for_pid = mock.Mock(side_effect=mocked_call)
         await sender.start()
 
-        sender._maybe_wait_for_pid.assert_called()
+        self.assertNotEqual(sender._maybe_wait_for_pid.call_count, 0)
 
     async def _setup_sender_with_init_mocked(self):
         sender = await self._setup_sender(no_init=True)
@@ -79,6 +82,7 @@ class TestSender(KafkaIntegrationTestCase):
         sender._do_init_pid = mock.Mock(side_effect=mocked_call)
         return sender
 
+    @kafka_versions('>=0.11.0')
     @run_until_complete
     async def test_sender_maybe_wait_for_pid_non_transactional(self):
         sender = await self._setup_sender_with_init_mocked()
@@ -88,6 +92,7 @@ class TestSender(KafkaIntegrationTestCase):
         await sender._maybe_wait_for_pid()
         sender._do_init_pid.assert_not_called()
 
+    @kafka_versions('>=0.11.0')
     @run_until_complete
     async def test_sender_maybe_wait_for_pid_on_failure(self):
         sender = await self._setup_sender_with_init_mocked()
@@ -95,9 +100,10 @@ class TestSender(KafkaIntegrationTestCase):
         sender.client.force_metadata_update = mock.Mock(
             side_effect=sender.client.force_metadata_update)
         await sender._maybe_wait_for_pid()
-        sender._do_init_pid.assert_called()
-        sender.client.force_metadata_update.assert_called()
+        self.assertNotEqual(sender._do_init_pid.call_count, 0)
+        self.assertNotEqual(sender.client.force_metadata_update.call_count, 0)
 
+    @kafka_versions('>=0.11.0')
     @run_until_complete
     async def test_sender__find_coordinator(self):
         sender = await self._setup_sender()
@@ -163,9 +169,7 @@ class TestSender(KafkaIntegrationTestCase):
 
         class MockHandler(BaseHandler):
             def create_request(self):
-                return InitProducerIdRequest[0](
-                    transactional_id=None,
-                    transaction_timeout_ms=0)
+                return MetadataRequest[0]([])
 
         mock_handler = MockHandler(sender)
         mock_handler.handle_response = mock.Mock(return_value=0.1)
@@ -284,7 +288,9 @@ class TestSender(KafkaIntegrationTestCase):
         self.assertEqual(req.transactional_id, "test_tid")
         self.assertEqual(req.producer_id, 120)
         self.assertEqual(req.producer_epoch, 22)
-        self.assertEqual(req.topics, [("topic", [0, 1]), ("topic2", [1])])
+        self.assertEqual(
+            list(sorted(req.topics)),
+            list(sorted([("topic", [0, 1]), ("topic2", [1])])))
 
     @run_until_complete
     async def test_sender__do_add_partitions_to_txn_ok(self):
@@ -739,5 +745,5 @@ class TestSender(KafkaIntegrationTestCase):
         resp = create_response(InvalidProducerEpoch)
         send_handler.handle_response(resp)
         batch_mock.done.assert_not_called()
-        batch_mock.failure.assert_called()
+        self.assertNotEqual(batch_mock.failure.call_count, 0)
         self.assertEqual(send_handler._to_reenqueue, [])
