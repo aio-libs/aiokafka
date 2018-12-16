@@ -544,7 +544,7 @@ class TxnOffsetCommitHandler(BaseHandler):
         txn_manager = self._sender._txn_manager
         # create the offset commit request structure
         offset_data = collections.defaultdict(list)
-        for tp, offset in self._offsets.items():
+        for tp, offset in sorted(self._offsets.items()):
             offset_data[tp.topic].append(
                 (tp.partition,
                  offset.offset,
