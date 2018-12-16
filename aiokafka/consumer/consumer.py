@@ -12,11 +12,13 @@ from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
     TopicAuthorizationFailedError, OffsetOutOfRangeError,
     ConsumerStoppedError, IllegalOperation, UnsupportedVersionError,
-    IllegalStateError, NoOffsetForPartitionError, RecordTooLargeError,
-    CorruptRecordException
+    IllegalStateError, NoOffsetForPartitionError, RecordTooLargeError
 )
-from aiokafka.structs import TopicPartition, OffsetAndMetadata
-from aiokafka.util import PY_341, PY_35, PY_352, PY_36, ensure_future
+from aiokafka.structs import TopicPartition
+from aiokafka.util import (
+    PY_341, PY_35, PY_352, PY_36, wait_for_reponse_or_error,
+    commit_structure_validate
+)
 from aiokafka import __version__
 
 from .fetcher import Fetcher, OffsetResetStrategy
@@ -150,6 +152,27 @@ class AIOKafkaConsumer(object):
         connections_max_idle_ms (int): Close idle connections after the number
             of milliseconds specified by this config. Specifying `None` will
             disable idle checks. Default: 540000 (9hours).
+        isolation_level (str): Controls how to read messages written
+            transactionally. If set to *read_committed*,
+            ``consumer.getmany()``
+            will only return transactional messages which have been committed.
+            If set to *read_uncommitted* (the default), ``consumer.getmany()``
+            will return all messages, even transactional messages which have
+            been aborted.
+
+            Non-transactional messages will be returned unconditionally in
+            either mode.
+
+            Messages will always be returned in offset order. Hence, in
+            *read_committed* mode, ``consumer.getmany()`` will only return
+            messages up to the last stable offset (LSO), which is the one less
+            than the offset of the first open transaction. In particular any
+            messages appearing after messages belonging to ongoing transactions
+            will be withheld until the relevant transaction has been completed.
+            As a result, *read_committed* consumers will not be able to read up
+            to the high watermark when there are in flight transactions.
+            Further, when in *read_committed* the seek_to_end method will
+            return the LSO. See method docs below. Default: "read_uncommitted"
 
     Note:
         Many configuration parameters are taken from Java Client:
@@ -185,7 +208,8 @@ class AIOKafkaConsumer(object):
                  security_protocol='PLAINTEXT',
                  api_version='auto',
                  exclude_internal_topics=True,
-                 connections_max_idle_ms=540000):
+                 connections_max_idle_ms=540000,
+                 isolation_level="read_uncommitted"):
         if max_poll_records is not None and (
                 not isinstance(max_poll_records, int) or max_poll_records < 1):
             raise ValueError("`max_poll_records` should be positive Integer")
@@ -218,6 +242,7 @@ class AIOKafkaConsumer(object):
         self._exclude_internal_topics = exclude_internal_topics
         self._max_poll_records = max_poll_records
         self._consumer_timeout = consumer_timeout_ms / 1000
+        self._isolation_level = isolation_level
         self._check_crcs = check_crcs
         self._subscription = SubscriptionState(loop=loop)
         self._fetcher = None
@@ -267,6 +292,12 @@ class AIOKafkaConsumer(object):
             raise ValueError("Unsupported Kafka version: {}".format(
                 self._client.api_version))
 
+        if self._isolation_level == "read_committed" and \
+                self._client.api_version < (0, 11):
+            raise UnsupportedVersionError(
+                "`read_committed` isolation_level available only for Brokers "
+                "0.11 and above")
+
         self._fetcher = Fetcher(
             self._client, self._subscription, loop=self._loop,
             key_deserializer=self._key_deserializer,
@@ -278,7 +309,8 @@ class AIOKafkaConsumer(object):
             check_crcs=self._check_crcs,
             fetcher_timeout=self._consumer_timeout,
             retry_backoff_ms=self._retry_backoff_ms,
-            auto_offset_reset=self._auto_offset_reset)
+            auto_offset_reset=self._auto_offset_reset,
+            isolation_level=self._isolation_level)
 
         if self._group_id is not None:
             # using group coordinator for automatic partitions assignment
@@ -297,7 +329,9 @@ class AIOKafkaConsumer(object):
                     # Either we passed `topics` to constructor or `subscribe`
                     # was called before `start`
                     yield from self._wait_for_data_or_error(
-                        self._subscription.wait_for_assignment())
+                        self._subscription.wait_for_assignment(),
+                        shield=False
+                    )
                 else:
                     # `assign` was called before `start`. We did not start
                     # this task on that call, as coordinator was yet to be
@@ -461,33 +495,11 @@ class AIOKafkaConsumer(object):
         if offsets is None:
             offsets = assignment.all_consumed_offsets()
         else:
-            # validate `offsets` structure
-            if not offsets or not isinstance(offsets, dict):
-                raise ValueError(offsets)
-
-            formatted_offsets = {}
-            for tp, offset_and_metadata in offsets.items():
-                if not isinstance(tp, TopicPartition):
-                    raise ValueError("Key should be TopicPartition instance")
-
+            offsets = commit_structure_validate(offsets)
+            for tp in offsets:
                 if tp not in assignment.tps:
                     raise IllegalStateError(
                         "Partition {} is not assigned".format(tp))
-
-                if isinstance(offset_and_metadata, int):
-                    offset, metadata = offset_and_metadata, ""
-                else:
-                    try:
-                        offset, metadata = offset_and_metadata
-                    except Exception:
-                        raise ValueError(offsets)
-
-                    if not isinstance(metadata, str):
-                        raise ValueError("Metadata should be a string")
-
-                formatted_offsets[tp] = OffsetAndMetadata(offset, metadata)
-
-            offsets = formatted_offsets
 
         yield from self._coordinator.commit_offsets(assignment, offsets)
 
@@ -496,12 +508,12 @@ class AIOKafkaConsumer(object):
         """ Get the last committed offset for the given partition. (whether the
         commit happened by this process or another).
 
-        This offset will be used as the position for the consumer
-        in the event of a failure.
+        This offset will be used as the position for the consumer in the event
+        of a failure.
 
-        This call may block to do a remote call if the partition in question
-        isn't assigned to this consumer or if the consumer hasn't yet
-        initialized its cache of committed offsets.
+        This call will block to do a remote call to get the latest offset, as
+        those are not cached by consumer (Transactional Producer can change
+        them without Consumer knowledge as of Kafka 0.11.0)
 
         Arguments:
             partition (TopicPartition): the partition to check
@@ -515,22 +527,14 @@ class AIOKafkaConsumer(object):
         if self._group_id is None:
             raise IllegalOperation("Requires group_id")
 
-        if self._subscription.is_assigned(partition):
-            assignment = self._subscription.subscription.assignment
-            tp_state = assignment.state_value(partition)
-            if tp_state.committed is None:
-                yield from tp_state.wait_for_committed()
-            committed = tp_state.committed.offset
-
-        else:
-            commit_map = yield from self._coordinator.fetch_committed_offsets(
-                [partition])
-            if partition in commit_map:
-                committed = commit_map[partition].offset
-            else:
+        commit_map = yield from self._coordinator.fetch_committed_offsets(
+            [partition])
+        if partition in commit_map:
+            committed = commit_map[partition].offset
+            if committed == -1:
                 committed = None
-        if committed == -1:
-            return None
+        else:
+            committed = None
         return committed
 
     @asyncio.coroutine
@@ -619,6 +623,27 @@ class AIOKafkaConsumer(object):
             'Partition is not assigned'
         assignment = self._subscription.subscription.assignment
         return assignment.state_value(partition).highwater
+
+    def last_stable_offset(self, partition):
+        """ Returns the Last Stable Offset of a topic. It will be the last
+        offset up to which point all transactions were completed. Only
+        available in with isolation_level `read_committed`, in
+        `read_uncommitted` will always return -1. Will return None for older
+        Brokers.
+
+        As with ``highwater()`` will not be available until some messages are
+        consumed.
+
+        Arguments:
+            partition (TopicPartition): partition to check
+
+        Returns:
+            int or None: offset if available
+        """
+        assert self._subscription.is_assigned(partition), \
+            'Partition is not assigned'
+        assignment = self._subscription.subscription.assignment
+        return assignment.state_value(partition).lso
 
     def seek(self, partition, offset):
         """ Manually specify the fetch offset for a TopicPartition.
@@ -963,23 +988,14 @@ class AIOKafkaConsumer(object):
         log.info(
             "Unsubscribed all topics or patterns and assigned partitions")
 
-    @asyncio.coroutine
-    def _wait_for_data_or_error(self, coro):
-        if self._group_id is None:
-            return (yield from coro)
-        else:
-            coordination_error_fut = self._coordinator.error_future
-            data_task = ensure_future(coro, loop=self._loop)
-            yield from asyncio.wait(
-                [data_task, coordination_error_fut],
-                return_when=asyncio.FIRST_COMPLETED,
-                loop=self._loop)
+    def _wait_for_data_or_error(self, coro, *, shield):
+        futs = [self._fetcher.error_future]
+        coordination_error_fut = self._coordinator.error_future
+        if coordination_error_fut is not None:  # group_id is None case
+            futs.append(coordination_error_fut)
 
-            # Check for errors in coordination and raise if any
-            if coordination_error_fut.done():
-                coordination_error_fut.result()  # Raises set exception if any
-
-            return (yield from data_task)
+        return wait_for_reponse_or_error(
+            coro, futs, shield=shield, loop=self._loop)
 
     @asyncio.coroutine
     def getone(self, *partitions):
@@ -1021,7 +1037,7 @@ class AIOKafkaConsumer(object):
             raise ConsumerStoppedError()
 
         msg = yield from self._wait_for_data_or_error(
-            self._fetcher.next_record(partitions))
+            self._fetcher.next_record(partitions), shield=False)
         return msg
 
     @asyncio.coroutine
@@ -1070,7 +1086,8 @@ class AIOKafkaConsumer(object):
         records = yield from self._wait_for_data_or_error(
             self._fetcher.fetched_records(
                 partitions, timeout,
-                max_records=max_records or self._max_poll_records)
+                max_records=max_records or self._max_poll_records),
+            shield=False
         )
         return records
 
@@ -1102,6 +1119,5 @@ class AIOKafkaConsumer(object):
                         OffsetOutOfRangeError,
                         NoOffsetForPartitionError) as err:
                     raise err
-                except (RecordTooLargeError,
-                        CorruptRecordException):
+                except RecordTooLargeError:
                     log.exception("error in consumer iterator: %s")

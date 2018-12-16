@@ -13,13 +13,15 @@ from aiokafka.util import create_future
 
 
 class BatchBuilder:
-    def __init__(self, magic, batch_size, compression_type):
+    def __init__(self, magic, batch_size, compression_type,
+                 *, is_transactional):
         if magic < 2:
+            assert not is_transactional
             self._builder = LegacyRecordBatchBuilder(
                 magic, compression_type, batch_size)
         else:
             self._builder = DefaultRecordBatchBuilder(
-                magic, compression_type, is_transactional=0,
+                magic, compression_type, is_transactional=is_transactional,
                 producer_id=-1, producer_epoch=-1, base_sequence=0,
                 batch_size=batch_size)
         self._relative_offset = 0
@@ -71,8 +73,6 @@ class BatchBuilder:
         if self._closed:
             return
         self._closed = True
-        self._buffer = self._builder.build()
-        del self._builder
 
     def _set_producer_state(self, producer_id, producer_epoch, base_sequence):
         assert type(self._builder) is DefaultRecordBatchBuilder
@@ -80,8 +80,10 @@ class BatchBuilder:
             producer_id, producer_epoch, base_sequence)
 
     def _build(self):
-        if not self._closed:
-            self.close()
+        self.close()
+        if self._buffer is None:
+            self._buffer = self._builder.build()
+            del self._builder  # We may only call self._builder.build() once!
         return self._buffer
 
     def size(self):
@@ -187,6 +189,11 @@ class MessageBatch:
             # https://github.com/aio-libs/aiokafka/issues/246
             future.set_exception(copy.copy(exception))
 
+        # Consume exception to avoid warnings. We delegate this consumption
+        # to user only in case of explicit batch API.
+        if self._msg_futures:
+            self.future.exception()
+
     def wait_deliver(self, timeout=None):
         """Wait until all message from this batch is processed"""
         return asyncio.wait([self.future], timeout=timeout, loop=self._loop)
@@ -237,6 +244,7 @@ class MessageAccumulator:
             self, cluster, batch_size, compression_type, batch_ttl, *,
             txn_manager=None, loop):
         self._batches = collections.defaultdict(collections.deque)
+        self._pending_batches = set([])
         self._cluster = cluster
         self._batch_size = batch_size
         self._compression_type = compression_type
@@ -256,6 +264,33 @@ class MessageAccumulator:
         for batches in list(self._batches.values()):
             for batch in list(batches):
                 yield from batch.wait_deliver()
+        for batch in list(self._pending_batches):
+            yield from batch.wait_deliver()
+
+    @asyncio.coroutine
+    def flush_for_commit(self):
+        waiters = []
+        for batches in self._batches.values():
+            for batch in batches:
+                # We force all buffers to close to finalyze the transaction
+                # scope. We should not add anything to this transaction.
+                batch._builder.close()
+                waiters.append(batch.wait_deliver())
+        for batch in self._pending_batches:
+            waiters.append(batch.wait_deliver())
+        # Wait for all waiters to finish. We only wait for the scope we defined
+        # above, other batches should not be delivered as part of this
+        # transaction
+        if waiters:
+            yield from asyncio.wait(waiters, loop=self._loop)
+
+    def fail_all(self, exception):
+        # Close all batches with this exception
+        for batches in self._batches.values():
+            for batch in batches:
+                batch.failure(exception)
+        for batch in self._pending_batches:
+            batch.failure(exception)
 
     @asyncio.coroutine
     def close(self):
@@ -301,7 +336,8 @@ class MessageAccumulator:
 
     def _pop_batch(self, tp):
         batch = self._batches[tp].popleft()
-        if self._txn_manager is not None and batch.retry_count == 0:
+        not_retry = batch.retry_count == 0
+        if self._txn_manager is not None and not_retry:
             assert self._txn_manager.has_pid(), \
                 "We should have waited for it in sender routine"
             seq = self._txn_manager.sequence_number(batch.tp)
@@ -314,11 +350,18 @@ class MessageAccumulator:
         batch.drain_ready()
         if len(self._batches[tp]) == 0:
             del self._batches[tp]
+        self._pending_batches.add(batch)
+
+        if not_retry:
+            def cb(fut, batch=batch, self=self):
+                self._pending_batches.remove(batch)
+            batch.future.add_done_callback(cb)
         return batch
 
     def reenqueue(self, batch):
         tp = batch.tp
         self._batches[tp].appendleft(batch)
+        self._pending_batches.remove(batch)
         batch.reset_drain()
 
     def drain_by_nodes(self, ignore_nodes, muted_partitions=set()):
@@ -372,9 +415,20 @@ class MessageAccumulator:
             magic = 1
         else:
             magic = 0
-        return BatchBuilder(magic, self._batch_size, self._compression_type)
+
+        is_transactional = False
+        if self._txn_manager is not None and \
+                self._txn_manager.transactional_id is not None:
+            is_transactional = True
+        return BatchBuilder(
+            magic, self._batch_size, self._compression_type,
+            is_transactional=is_transactional)
 
     def _append_batch(self, builder, tp):
+        # We must do this before actual add takes place to check for errors.
+        if self._txn_manager is not None:
+            self._txn_manager.maybe_add_partition_to_txn(tp)
+
         batch = MessageBatch(tp, builder, self._batch_ttl, self._loop)
         self._batches[tp].append(batch)
         if not self._wait_data_future.done():

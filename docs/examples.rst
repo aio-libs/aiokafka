@@ -13,3 +13,4 @@ Examples
    SSL usage <examples/ssl_consume_produce>
    Local state consumer <examples/local_state_consumer>
    Batch producer <examples/batch_produce>
+   Tranactional Consume-Process-Produce <examples/transaction_example>

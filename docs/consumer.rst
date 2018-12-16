@@ -439,6 +439,64 @@ Some things to note about it:
   filtering, just use ``consumer.getone()`` instead.
 
 
+.. _transactional-consume:
+
+Reading Transactional Messages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Transactions were introduced in Kafka 0.11.0 wherein applications can write to
+multiple topics and partitions atomically. In order for this to work, consumers
+reading from these partitions should be configured to only read committed data.
+This can be achieved by by setting the ``isolation_level=read_committed`` in
+the consumer's configuration::
+
+    consumer = aiokafka.AIOKafkaConsumer(
+        "my_topic",
+        loop=loop, bootstrap_servers='localhost:9092',
+        isolation_level="read_committed"
+    )
+    await consumer.start()
+    async for msg in consumer:  # Only read committed tranasctions
+        pass
+
+In `read_committed` mode, the consumer will read only those transactional
+messages which have been successfully committed. It will continue to read
+non-transactional messages as before. There is no client-side buffering in
+`read_committed` mode. Instead, the end offset of a partition for a
+`read_committed` consumer would be the offset of the first message in the
+partition belonging to an open transaction. This offset is known as the 
+**Last Stable Offset** (LSO).
+
+A `read_committed` consumer will only read up to the LSO and filter out any
+transactional messages which have been aborted. The LSO also affects the
+behavior of ``seek_to_end(*partitions)`` and ``end_offsets(partitions)``
+for ``read_committed`` consumers, details of which are in each method's
+documentation. Finally, ``last_stable_offset()`` API was added similary to
+``highwater()`` API to query the lSO on a currently assigned transaction::
+
+    async for msg in consumer:  # Only read committed tranasctions
+        tp = TopicPartition(msg.topic, msg.partition)
+        lso = consumer.last_stable_offset(tp)
+        lag = lso - msg.offset
+        print(f"Consumer is behind by {lag} messages")
+
+        end_offsets = await consumer.end_offsets([tp])
+        assert end_offsets[tp] == lso
+
+    await consumer.seek_to_end(tp)
+    position = await consumer.position(tp)
+
+Partitions with transactional messages will include commit or abort markers
+which indicate the result of a transaction. There markers are not returned to
+applications, yet have an offset in the log. As a result, applications reading
+from topics with transactional messages will see gaps in the consumed offsets.
+These missing messages would be the transaction markers, and they are filtered
+out for consumers in both isolation levels. Additionally, applications using 
+`read_committed` consumers may also see gaps due to aborted transactions, since
+those messages would not be returned by the consumer and yet would have valid
+offsets.
+
+
 Detecting Consumer Failures
 ---------------------------
 

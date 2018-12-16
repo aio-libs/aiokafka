@@ -1,5 +1,4 @@
 import asyncio
-import collections
 import logging
 import sys
 import traceback
@@ -8,18 +7,18 @@ import warnings
 from kafka.partitioner.default import DefaultPartitioner
 from kafka.codec import has_gzip, has_snappy, has_lz4
 
-import aiokafka.errors as Errors
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
-    MessageSizeTooLargeError, KafkaError, UnknownTopicOrPartitionError,
-    UnsupportedVersionError)
-from aiokafka.protocol.produce import ProduceRequest
-from aiokafka.protocol.transaction import InitProducerIdRequest
+    MessageSizeTooLargeError, UnsupportedVersionError, IllegalOperation)
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import TopicPartition
-from aiokafka.util import ensure_future, INTEGER_MAX_VALUE, PY_341, PY_36
+from aiokafka.util import (
+    INTEGER_MAX_VALUE, PY_341, PY_36, wait_for_reponse_or_error,
+    commit_structure_validate
+)
 
 from .message_accumulator import MessageAccumulator
+from .sender import Sender
 from .transaction_manager import TransactionManager
 
 log = logging.getLogger(__name__)
@@ -161,8 +160,6 @@ class AIOKafkaProducer(object):
         'snappy': (has_snappy, LegacyRecordBatchBuilder.CODEC_SNAPPY),
         'lz4': (has_lz4, LegacyRecordBatchBuilder.CODEC_LZ4),
     }
-    _transactional_id = None  # XXX: For now no transactions available
-    _transaction_timeout_ms = INTEGER_MAX_VALUE
 
     _closed = None  # Serves as an uninitialized flag for __del__
     _source_traceback = None
@@ -177,7 +174,8 @@ class AIOKafkaProducer(object):
                  linger_ms=0, send_backoff_ms=100,
                  retry_backoff_ms=100, security_protocol="PLAINTEXT",
                  ssl_context=None, connections_max_idle_ms=540000,
-                 enable_idempotence=False):
+                 enable_idempotence=False, transactional_id=None,
+                 transaction_timeout_ms=60000):
         if acks not in (0, 1, -1, 'all', _missing):
             raise ValueError("Invalid ACKS parameter")
         if compression_type not in ('gzip', 'snappy', 'lz4', None):
@@ -190,6 +188,11 @@ class AIOKafkaProducer(object):
         else:
             compression_attrs = 0
 
+        if transactional_id is not None:
+            enable_idempotence = True
+        else:
+            transaction_timeout_ms = INTEGER_MAX_VALUE
+
         if enable_idempotence:
             if acks is _missing:
                 acks = -1
@@ -197,7 +200,8 @@ class AIOKafkaProducer(object):
                 raise ValueError(
                     "acks={} not supported if enable_idempotence=True"
                     .format(acks))
-            self._txn_manager = TransactionManager()
+            self._txn_manager = TransactionManager(
+                transactional_id, transaction_timeout_ms, loop=loop)
         else:
             self._txn_manager = None
 
@@ -206,12 +210,11 @@ class AIOKafkaProducer(object):
         elif acks == 'all':
             acks = -1
 
-        self._PRODUCER_CLIENT_ID_SEQUENCE += 1
+        AIOKafkaProducer._PRODUCER_CLIENT_ID_SEQUENCE += 1
         if client_id is None:
             client_id = 'aiokafka-producer-%s' % \
-                self._PRODUCER_CLIENT_ID_SEQUENCE
+                AIOKafkaProducer._PRODUCER_CLIENT_ID_SEQUENCE
 
-        self._acks = acks
         self._key_serializer = key_serializer
         self._value_serializer = value_serializer
         self._compression_type = compression_type
@@ -232,15 +235,14 @@ class AIOKafkaProducer(object):
             self._metadata, max_batch_size, compression_attrs,
             self._request_timeout_ms / 1000, txn_manager=self._txn_manager,
             loop=loop)
-        self._sender_task = None
-        self._in_flight = set()
-        self._muted_partitions = set()
-        self._loop = loop
-        self._retry_backoff = retry_backoff_ms / 1000
-        self._linger_time = linger_ms / 1000
-        self._producer_magic = 0
-        self._enable_idempotence = enable_idempotence
+        self._sender = Sender(
+            self.client, acks=acks, txn_manager=self._txn_manager,
+            retry_backoff_ms=retry_backoff_ms, linger_ms=linger_ms,
+            message_accumulator=self._message_accumulator,
+            request_timeout_ms=request_timeout_ms,
+            loop=loop)
 
+        self._loop = loop
         if loop.get_debug():
             self._source_traceback = traceback.extract_stack(sys._getframe(1))
         self._closed = False
@@ -278,8 +280,7 @@ class AIOKafkaProducer(object):
                 "Indempotent producer available only for Broker vesion 0.11"
                 " and above")
 
-        self._sender_task = ensure_future(
-            self._sender_routine(), loop=self._loop)
+        yield from self._sender.start()
         self._message_accumulator.set_api_version(self.client.api_version)
         self._producer_magic = 0 if self.client.api_version < (0, 10) else 1
         log.debug("Kafka producer started")
@@ -297,16 +298,14 @@ class AIOKafkaProducer(object):
         self._closed = True
 
         # If the sender task is down there is no way for accumulator to flush
-        if self._sender_task is not None:
+        if self._sender is not None and self._sender.sender_task is not None:
             yield from asyncio.wait([
                 self._message_accumulator.close(),
-                self._sender_task],
+                self._sender.sender_task],
                 return_when=asyncio.FIRST_COMPLETED,
                 loop=self._loop)
 
-            if not self._sender_task.done():
-                self._sender_task.cancel()
-                yield from self._sender_task
+            yield from self._sender.close()
 
         yield from self.client.close()
         log.debug("The Kafka producer has closed.")
@@ -315,6 +314,47 @@ class AIOKafkaProducer(object):
     def partitions_for(self, topic):
         """Returns set of all known partitions for the topic."""
         return (yield from self.client._wait_on_metadata(topic))
+
+    def _serialize(self, topic, key, value):
+        if self._key_serializer:
+            serialized_key = self._key_serializer(key)
+        else:
+            serialized_key = key
+        if self._value_serializer:
+            serialized_value = self._value_serializer(value)
+        else:
+            serialized_value = value
+
+        message_size = LegacyRecordBatchBuilder.record_overhead(
+            self._producer_magic)
+        if serialized_key is not None:
+            message_size += len(serialized_key)
+        if serialized_value is not None:
+            message_size += len(serialized_value)
+        if message_size > self._max_request_size:
+            raise MessageSizeTooLargeError(
+                "The message is %d bytes when serialized which is larger than"
+                " the maximum request size you have configured with the"
+                " max_request_size configuration" % message_size)
+
+        return serialized_key, serialized_value
+
+    def _partition(self, topic, partition, key, value,
+                   serialized_key, serialized_value):
+        if partition is not None:
+            assert partition >= 0
+            assert partition in self._metadata.partitions_for_topic(topic), \
+                'Unrecognized partition'
+            return partition
+
+        all_partitions = list(self._metadata.partitions_for_topic(topic))
+        available = list(self._metadata.available_partitions_for_topic(topic))
+        return self._partitioner(
+            serialized_key, all_partitions, available)
+
+    def _wait_for_reponse_or_error(self, coro, *, shield):
+        return wait_for_reponse_or_error(
+            coro, [self._sender.sender_task], shield=shield, loop=self._loop)
 
     @asyncio.coroutine
     def send(self, topic, value=None, key=None, partition=None,
@@ -365,6 +405,14 @@ class AIOKafkaProducer(object):
         # first make sure the metadata for the topic is available
         yield from self.client._wait_on_metadata(topic)
 
+        # Ensure transaction is started and not committing
+        if self._txn_manager is not None:
+            txn_manager = self._txn_manager
+            if txn_manager.transactional_id is not None and \
+                    not self._txn_manager.is_in_transaction():
+                raise IllegalOperation(
+                    "Can't send messages while not in transaction")
+
         key_bytes, value_bytes = self._serialize(topic, key, value)
         partition = self._partition(topic, partition, key, value,
                                     key_bytes, value_bytes)
@@ -375,7 +423,8 @@ class AIOKafkaProducer(object):
         fut = yield from self._wait_for_reponse_or_error(
             self._message_accumulator.add_message(
                 tp, key_bytes, value_bytes, self._request_timeout_ms / 1000,
-                timestamp_ms=timestamp_ms)
+                timestamp_ms=timestamp_ms),
+            shield=False
         )
         return fut
 
@@ -385,272 +434,7 @@ class AIOKafkaProducer(object):
         """Publish a message to a topic and wait the result"""
         future = yield from self.send(
             topic, value, key, partition, timestamp_ms)
-        return (yield from self._wait_for_reponse_or_error(future))
-
-    @asyncio.coroutine
-    def _sender_routine(self):
-        """ Background task, that sends pending batches to leader nodes for
-        batch's partition. This incapsulates same logic as Java's `Sender`
-        background thread. Because we use asyncio this is more event based
-        loop, rather than counting timeout till next possible even like in
-        Java.
-
-            The procedure:
-            * Group pending batches by partition leaders (write nodes)
-            * Ignore not ready (disconnected) and nodes, that already have a
-              pending request.
-            * If we have unknown leaders for partitions, we request a metadata
-              update.
-            * Wait for any event, that can change the above procedure, like
-              new metadata or pending send is finished and a new one can be
-              done.
-        """
-        tasks = set()
-        try:
-            while True:
-                # If indempotence or transactions are turned on we need to
-                # have a valid PID to send requests
-                yield from self._maybe_wait_for_pid()
-
-                batches, unknown_leaders_exist = \
-                    self._message_accumulator.drain_by_nodes(
-                        ignore_nodes=self._in_flight,
-                        muted_partitions=self._muted_partitions)
-
-                # create produce task for every batch
-                for node_id, batches in batches.items():
-                    task = ensure_future(
-                        self._send_produce_req(node_id, batches),
-                        loop=self._loop)
-                    self._in_flight.add(node_id)
-                    for tp in batches:
-                        self._muted_partitions.add(tp)
-                    tasks.add(task)
-
-                if unknown_leaders_exist:
-                    # we have at least one unknown partition's leader,
-                    # try to update cluster metadata and wait backoff time
-                    fut = self.client.force_metadata_update()
-                    waiters = tasks.union([fut])
-                else:
-                    fut = self._message_accumulator.data_waiter()
-                    waiters = tasks.union([fut])
-
-                # wait when:
-                # * At least one of produce task is finished
-                # * Data for new partition arrived
-                # * Metadata update if partition leader unknown
-                done, _ = yield from asyncio.wait(
-                    waiters,
-                    return_when=asyncio.FIRST_COMPLETED,
-                    loop=self._loop)
-
-                # done tasks should never produce errors, if they are it's a
-                # bug
-                for task in done:
-                    task.result()
-
-                tasks -= done
-
-        except asyncio.CancelledError:
-            # done tasks should never produce errors, if they are it's a bug
-            for task in tasks:
-                yield from task
-        except Exception:  # pragma: no cover
-            log.error("Unexpected error in sender routine", exc_info=True)
-            raise
-
-    @asyncio.coroutine
-    def _maybe_wait_for_pid(self):
-        if self._txn_manager is None or self._txn_manager.has_pid():
-            return
-
-        while True:
-            success = yield from self._do_init_pid()
-            if not success:
-                yield from self.force_metadata_update()
-                yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
-            else:
-                break
-
-    @asyncio.coroutine
-    def _do_init_pid(self):
-        init_pid_req = InitProducerIdRequest[0](
-            transactional_id=self._transactional_id,
-            transaction_timeout_ms=self._transaction_timeout_ms)
-
-        node_id = self.client.get_random_node()
-        try:
-            resp = yield from self.client.send(node_id, init_pid_req)
-        except KafkaError as err:
-            log.debug("Could not send InitProducerIdRequest: %r", err)
-            return False
-
-        error = Errors.for_code(resp.error_code)
-        if error is Errors.NoError:
-            self._txn_manager.set_pid_and_epoch(
-                resp.producer_id, resp.producer_epoch)
-            # Just in case we got bad values from broker
-            return self._txn_manager.has_pid()
-        else:
-            log.debug("Got an error for InitProducerIdRequest: %r", error)
-            return False
-
-    @asyncio.coroutine
-    def _send_produce_req(self, node_id, batches):
-        """ Create produce request to node
-        If producer configured with `retries`>0 and produce response contain
-        "failed" partitions produce request for this partition will try
-        resend to broker `retries` times with `retry_timeout_ms` timeouts.
-
-        Arguments:
-            node_id (int): kafka broker identifier
-            batches (dict): dictionary of {TopicPartition: MessageBatch}
-        """
-        t0 = self._loop.time()
-
-        topics = collections.defaultdict(list)
-        for tp, batch in batches.items():
-            topics[tp.topic].append(
-                (tp.partition, batch.get_data_buffer())
-            )
-
-        if self.client.api_version >= (0, 11):
-            version = 3
-        elif self.client.api_version >= (0, 10):
-            version = 2
-        elif self.client.api_version == (0, 9):
-            version = 1
-        else:
-            version = 0
-
-        kwargs = {}
-        if version >= 3:
-            kwargs['transactional_id'] = self._transactional_id
-
-        request = ProduceRequest[version](
-            required_acks=self._acks,
-            timeout=self._request_timeout_ms,
-            topics=list(topics.items()),
-            **kwargs)
-
-        reenqueue = []
-        try:
-            response = yield from self.client.send(node_id, request)
-        except KafkaError as err:
-            log.warning(
-                "Got error produce response: %s", err)
-            if getattr(err, "invalid_metadata", False):
-                self.client.force_metadata_update()
-
-            for batch in batches.values():
-                if not self._can_retry(err, batch):
-                    batch.failure(exception=err)
-                else:
-                    reenqueue.append(batch)
-        else:
-            # noacks, just mark batches as "done"
-            if request.required_acks == 0:
-                for batch in batches.values():
-                    batch.done_noack()
-            else:
-                for topic, partitions in response.topics:
-                    for partition_info in partitions:
-                        if response.API_VERSION < 2:
-                            partition, error_code, offset = partition_info
-                            # Mimic CREATE_TIME to take user provided timestamp
-                            timestamp = -1
-                        else:
-                            partition, error_code, offset, timestamp = \
-                                partition_info
-                        tp = TopicPartition(topic, partition)
-                        error = Errors.for_code(error_code)
-                        batch = batches.get(tp)
-                        if batch is None:
-                            continue
-
-                        if error is Errors.NoError:
-                            batch.done(offset, timestamp)
-                        elif not self._can_retry(error(), batch):
-                            batch.failure(exception=error())
-                        else:
-                            log.warning(
-                                "Got error produce response on topic-partition"
-                                " %s, retrying. Error: %s", tp, error)
-                            # Ok, we can retry this batch
-                            if getattr(error, "invalid_metadata", False):
-                                self.client.force_metadata_update()
-                            reenqueue.append(batch)
-
-        if reenqueue:
-            # Wait backoff before reequeue
-            yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
-
-            for batch in reenqueue:
-                self._message_accumulator.reenqueue(batch)
-            # If some error started metadata refresh we have to wait before
-            # trying again
-            yield from self.client._maybe_wait_metadata()
-
-        # if batches for node is processed in less than a linger seconds
-        # then waiting for the remaining time
-        sleep_time = self._linger_time - (self._loop.time() - t0)
-        if sleep_time > 0:
-            yield from asyncio.sleep(sleep_time, loop=self._loop)
-
-        self._in_flight.remove(node_id)
-        for tp in batches:
-            self._muted_partitions.remove(tp)
-
-    def _can_retry(self, error, batch):
-        # If indempotence is enabled we never expire batches, but retry until
-        # we succeed. We can be sure, that no duplicates will be introduced
-        # as long as we set proper sequence, pid and epoch.
-        if self._txn_manager is None and batch.expired():
-            return False
-        # XXX: remove unknown topic check as we fix
-        #      https://github.com/dpkp/kafka-python/issues/1155
-        if error.retriable or isinstance(error, UnknownTopicOrPartitionError)\
-                or error is UnknownTopicOrPartitionError:
-            return True
-        return False
-
-    def _serialize(self, topic, key, value):
-        if self._key_serializer:
-            serialized_key = self._key_serializer(key)
-        else:
-            serialized_key = key
-        if self._value_serializer:
-            serialized_value = self._value_serializer(value)
-        else:
-            serialized_value = value
-
-        message_size = LegacyRecordBatchBuilder.record_overhead(
-            self._producer_magic)
-        if serialized_key is not None:
-            message_size += len(serialized_key)
-        if serialized_value is not None:
-            message_size += len(serialized_value)
-        if message_size > self._max_request_size:
-            raise MessageSizeTooLargeError(
-                "The message is %d bytes when serialized which is larger than"
-                " the maximum request size you have configured with the"
-                " max_request_size configuration" % message_size)
-
-        return serialized_key, serialized_value
-
-    def _partition(self, topic, partition, key, value,
-                   serialized_key, serialized_value):
-        if partition is not None:
-            assert partition >= 0
-            assert partition in self._metadata.partitions_for_topic(topic), \
-                'Unrecognized partition'
-            return partition
-
-        all_partitions = list(self._metadata.partitions_for_topic(topic))
-        available = list(self._metadata.available_partitions_for_topic(topic))
-        return self._partitioner(
-            serialized_key, all_partitions, available)
+        return (yield from future)
 
     def create_batch(self):
         """Create and return an empty BatchBuilder.
@@ -680,30 +464,101 @@ class AIOKafkaProducer(object):
         # We only validate we have the partition in the metadata here
         partition = self._partition(topic, partition, None, None, None, None)
 
+        # Ensure transaction is started and not committing
+        if self._txn_manager is not None:
+            txn_manager = self._txn_manager
+            if txn_manager.transactional_id is not None and \
+                    not self._txn_manager.is_in_transaction():
+                raise IllegalOperation(
+                    "Can't send messages while not in transaction")
+
         tp = TopicPartition(topic, partition)
         log.debug("Sending batch to %s", tp)
         future = yield from self._wait_for_reponse_or_error(
             self._message_accumulator.add_batch(
-                batch, tp, self._request_timeout_ms / 1000)
+                batch, tp, self._request_timeout_ms / 1000),
+            shield=False
         )
         return future
 
+    def _ensure_transactional(self):
+        if self._txn_manager is None or \
+                self._txn_manager.transactional_id is None:
+            raise IllegalOperation(
+                "You need to configure transaction_id to use transactions")
+
     @asyncio.coroutine
-    def _wait_for_reponse_or_error(self, coro):
-        routine_task = self._sender_task
-        data_task = ensure_future(coro, loop=self._loop)
+    def begin_transaction(self):
+        self._ensure_transactional()
+        log.debug(
+            "Beginning a new transaction for id %s",
+            self._txn_manager.transactional_id)
+        yield from self._wait_for_reponse_or_error(
+            self._txn_manager.wait_for_pid(),
+            shield=True
+        )
+        self._txn_manager.begin_transaction()
 
-        try:
-            yield from asyncio.wait(
-                [data_task, routine_task],
-                return_when=asyncio.FIRST_COMPLETED,
-                loop=self._loop)
-        except asyncio.CancelledError:
-            data_task.cancel()
-            return (yield from data_task)
+    @asyncio.coroutine
+    def commit_transaction(self):
+        self._ensure_transactional()
+        log.debug(
+            "Committing transaction for id %s",
+            self._txn_manager.transactional_id)
+        self._txn_manager.committing_transaction()
+        yield from self._wait_for_reponse_or_error(
+            self._txn_manager.wait_for_transaction_end(),
+            shield=True
+        )
 
-        # Check for errors in sender and raise if any
-        if routine_task.done():
-            routine_task.result()  # Raises set exception if any
+    @asyncio.coroutine
+    def abort_transaction(self):
+        self._ensure_transactional()
+        log.debug(
+            "Aborting transaction for id %s",
+            self._txn_manager.transactional_id)
+        self._txn_manager.aborting_transaction()
+        yield from self._wait_for_reponse_or_error(
+            self._txn_manager.wait_for_transaction_end(),
+            shield=True
+        )
 
-        return (yield from data_task)
+    def transaction(self):
+        return TransactionContext(self)
+
+    @asyncio.coroutine
+    def send_offsets_to_transaction(self, offsets, group_id):
+        self._ensure_transactional()
+
+        if not self._txn_manager.is_in_transaction():
+            raise IllegalOperation("Not in the middle of a transaction")
+
+        if not group_id or not isinstance(group_id, str):
+            raise ValueError(group_id)
+
+        # validate `offsets` structure
+        formatted_offsets = commit_structure_validate(offsets)
+
+        log.debug(
+            "Begin adding offsets %s for consumer group %s to transaction",
+            formatted_offsets, group_id)
+        fut = self._txn_manager.add_offsets_to_txn(formatted_offsets, group_id)
+        yield from self._wait_for_reponse_or_error(fut, shield=True)
+
+
+class TransactionContext:
+
+    def __init__(self, producer):
+        self._producer = producer
+
+    @asyncio.coroutine
+    def __aenter__(self):
+        yield from self._producer.begin_transaction()
+        return self
+
+    @asyncio.coroutine
+    def __aexit__(self, exc_type, exc_value, traceback):
+        if exc_type is not None:
+            yield from self._producer.abort_transaction()
+        else:
+            yield from self._producer.commit_transaction()

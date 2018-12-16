@@ -5,10 +5,10 @@ from aiokafka.record.default_records import (
 
 
 @pytest.mark.parametrize("compression_type,crc", [
-    (DefaultRecordBatch.CODEC_NONE, 3561259852),
+    (DefaultRecordBatch.CODEC_NONE, 3950153926),
     (DefaultRecordBatch.CODEC_GZIP, None),  # No idea why, but crc changes here
-    (DefaultRecordBatch.CODEC_SNAPPY, 575732511),
-    (DefaultRecordBatch.CODEC_LZ4, 2182428004)
+    (DefaultRecordBatch.CODEC_SNAPPY, 2171068483),
+    (DefaultRecordBatch.CODEC_LZ4, 462121143)
 ])
 def test_read_write_serde_v2(compression_type, crc):
     builder = DefaultRecordBatchBuilder(
@@ -18,7 +18,7 @@ def test_read_write_serde_v2(compression_type, crc):
     headers = [("header1", b"aaa"), ("header2", b"bbb")]
     for offset in range(10):
         builder.append(
-            offset, timestamp=9999999, key=b"test", value=b"Super",
+            offset, timestamp=9999999 + offset, key=b"test", value=b"Super",
             headers=headers)
     buffer = builder.build()
     reader = DefaultRecordBatch(bytes(buffer))
@@ -26,15 +26,20 @@ def test_read_write_serde_v2(compression_type, crc):
     msgs = list(reader)
 
     assert reader.is_transactional is True
+    assert reader.is_control_batch is False
     assert reader.compression_type == compression_type
     assert reader.magic == 2
     assert reader.timestamp_type == 0
     assert reader.base_offset == 0
+    assert reader.last_offset_delta == 9
+    assert reader.next_offset == 10
+    assert reader.first_timestamp == 9999999
+    assert reader.max_timestamp == 10000008
     if crc is not None:
         assert reader.crc == crc
     for offset, msg in enumerate(msgs):
         assert msg.offset == offset
-        assert msg.timestamp == 9999999
+        assert msg.timestamp == 9999999 + offset
         assert msg.key == b"test"
         assert msg.value == b"Super"
         assert msg.headers == headers

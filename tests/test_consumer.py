@@ -1,6 +1,7 @@
 import asyncio
 import gc
 import time
+import json
 from unittest import mock
 from contextlib import contextmanager
 
@@ -8,8 +9,10 @@ import pytest
 
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.consumer import AIOKafkaConsumer
-from aiokafka.consumer.fetcher import RecordTooLargeError
+from aiokafka.consumer.fetcher import RecordTooLargeError, FetchRequest
+from aiokafka.consumer import fetcher
 from aiokafka.producer import AIOKafkaProducer
+from aiokafka.record import MemoryRecords
 from aiokafka.client import AIOKafkaClient
 from aiokafka.util import ensure_future, PY_341
 from aiokafka.structs import (
@@ -18,7 +21,8 @@ from aiokafka.structs import (
 from aiokafka.errors import (
     IllegalStateError, OffsetOutOfRangeError, UnsupportedVersionError,
     KafkaTimeoutError, NoOffsetForPartitionError, ConsumerStoppedError,
-    IllegalOperation, UnknownError, KafkaError, InvalidSessionTimeoutError
+    IllegalOperation, UnknownError, KafkaError, InvalidSessionTimeoutError,
+    CorruptRecordException
 )
 
 from ._testutil import (
@@ -46,18 +50,17 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @contextmanager
     def count_fetch_requests(self, consumer, count):
-        orig = consumer._fetcher._proc_fetch_request
+        records_class = fetcher.PartitionRecords
         with mock.patch.object(
-                consumer._fetcher, "_proc_fetch_request") as mocked:
+                fetcher, "PartitionRecords") as mocked:
             call_count = [0]
 
-            @asyncio.coroutine
-            def coro(*args, **kw):
-                res = yield from orig(*args, **kw)
+            def factory(*args, **kw):
+                res = records_class(*args, **kw)
                 call_count[0] += 1
                 return res
 
-            mocked.side_effect = coro
+            mocked.side_effect = factory
             yield
             self.assertEqual(call_count[0], count)
 
@@ -667,34 +670,12 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             self.assertEqual(rmsg1.timestamp_type, None)
 
     @run_until_complete
-    def test_equal_consumption(self):
-        # A strange use case of kafka-python, that can be reproduced in
-        # aiokafka https://github.com/dpkp/kafka-python/issues/675
-        yield from self.send_messages(0, list(range(200)))
-        yield from self.send_messages(1, list(range(200)))
-
-        partition_consumption = [0, 0]
-        for x in range(10):
-            consumer = yield from self.consumer_factory(
-                max_partition_fetch_bytes=10000)
-            for x in range(10):
-                msg = yield from consumer.getone()
-                partition_consumption[msg.partition] += 1
-            yield from consumer.stop()
-
-        diff = abs(partition_consumption[0] - partition_consumption[1])
-        # We are good as long as it's not 100%, as we do rely on randomness of
-        # a shuffle in code. Ideally it should be 50/50 (0 diff) thou
-        self.assertLess(diff / sum(partition_consumption), 1.0)
-
-    @run_until_complete
     def test_max_poll_records(self):
-        # A strange use case of kafka-python, that can be reproduced in
-        # aiokafka https://github.com/dpkp/kafka-python/issues/675
         yield from self.send_messages(0, list(range(100)))
 
         consumer = yield from self.consumer_factory(
             max_poll_records=48)
+
         data = yield from consumer.getmany(timeout_ms=1000)
         count = sum(map(len, data.values()))
         self.assertEqual(count, 48)
@@ -704,6 +685,12 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         data = yield from consumer.getmany(timeout_ms=1000, max_records=None)
         count = sum(map(len, data.values()))
         self.assertEqual(count, 10)
+
+        yield from self.send_messages(0, list(range(1)))
+        # Query more than we have
+        data = yield from consumer.getmany(timeout_ms=1000, max_records=100)
+        count = sum(map(len, data.values()))
+        self.assertEqual(count, 1)
 
         with self.assertRaises(ValueError):
             data = yield from consumer.getmany(max_records=0)
@@ -736,6 +723,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         msgs = [msg.value for msg in msgs]
         self.assertEqual(msgs, [b"1", b"2", b"3"])
 
+    @run_until_complete
     def test_consumer_arguments(self):
         with self.assertRaisesRegex(
                 ValueError, "`security_protocol` should be SSL or PLAINTEXT"):
@@ -750,6 +738,13 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.topic, loop=self.loop,
                 bootstrap_servers=self.hosts,
                 security_protocol="SSL", ssl_context=None)
+        with self.assertRaisesRegex(
+                ValueError, "Incorrect isolation level READ_CCC"):
+            consumer = AIOKafkaConsumer(
+                self.topic, loop=self.loop,
+                bootstrap_servers=self.hosts,
+                isolation_level="READ_CCC")
+            yield from consumer.start()
 
     @run_until_complete
     def test_consumer_commit_validation(self):
@@ -1675,3 +1670,146 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # In case of success it will need to raise error again on stop
         with self.assertRaises(InvalidSessionTimeoutError):
             yield from consumer.stop()
+
+    @run_until_complete
+    def test_consumer_invalid_crc_in_records(self):
+        consumer = yield from self.consumer_factory()
+        orig_send = consumer._client.send
+        with mock.patch.object(consumer._client, "send") as m:
+            corrupted = []
+
+            @asyncio.coroutine
+            def mock_send(node_id, req, group=None):
+                res = yield from orig_send(node_id, req, group=group)
+                if res.API_KEY == FetchRequest[0].API_KEY and not corrupted:
+                    for topic, partitions in res.topics:
+                        for index, partition_data in enumerate(partitions):
+                            partition_data = list(partition_data)
+                            records_data = bytearray(partition_data[-1])
+                            if records_data:
+                                records_data[-1] ^= 0xff
+                                partition_data[-1] = bytes(records_data)
+                                partitions[index] = tuple(partition_data)
+                                corrupted.append(index)
+                return res
+            m.side_effect = mock_send
+            # Make sure we do the mocked send, not wait for old fetch
+            yield from asyncio.sleep(0.5, loop=self.loop)
+
+            yield from self.send_messages(0, [0])
+
+            # We should be able to continue if next time we get normal record
+            with self.assertRaises(CorruptRecordException):
+                yield from consumer.getone()
+
+            # All other calls should succeed
+            res = yield from consumer.getmany(timeout_ms=2000)
+            self.assertEqual(len(list(res.values())[0]), 1)
+
+    @run_until_complete
+    def test_consumer_compacted_topic(self):
+        yield from self.send_messages(0, list(range(0, 10)))
+
+        consumer = yield from self.consumer_factory()
+        with mock.patch.object(
+                fetcher.PartitionRecords, "__next__", autospec=True) as m:
+            def mock_next(self):
+                try:
+                    res = next(self._records_iterator)
+                except StopIteration:
+                    self._records_iterator = None
+                    raise
+                # Say offsets 1, 3 and 4 were compacted out
+                if res.offset in [1, 3, 4, 9]:
+                    return mock_next(self)
+                return res
+            m.side_effect = mock_next
+
+            # All other calls should succeed
+            res = yield from consumer.getmany(timeout_ms=2000)
+            self.assertEqual(len(list(res.values())[0]), 6)
+            # Even thou 9'th offset was compacted out we still need to proceed
+            # from 10th as record batch contains information about that and
+            # the same batch will be returned over and over if we try to fetch
+            # 9th again.
+            pos = yield from consumer.position(TopicPartition(self.topic, 0))
+            self.assertEqual(pos, 10)
+
+    @run_until_complete
+    def test_consumer_serialize_deserialize(self):
+
+        def serialize(value):
+            if value is None:
+                return None
+            return json.dumps(value).encode()
+
+        def deserialize(value):
+            if value is None:
+                return None
+            return json.loads(value.decode())
+
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            key_serializer=serialize, value_serializer=serialize)
+        yield from producer.start()
+        self.add_cleanup(producer.stop)
+
+        yield from producer.send_and_wait(
+            self.topic, key={"key": 1}, value=["value1", "value2"])
+
+        consumer = yield from self.consumer_factory(
+            key_deserializer=deserialize, value_deserializer=deserialize)
+
+        msg = yield from consumer.getone()
+        self.assertEqual(msg.key, {"key": 1})
+        self.assertEqual(msg.value, ["value1", "value2"])
+
+    @run_until_complete
+    def test_consumer_compressed_returns_older_msgs(self):
+        # If a batch contains 10 elements and we request offset of 1 in the
+        # middle the broker will return the WHOLE batch, including old offsets
+        # Those should be omitted and not returned to user.
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts,
+            compression_type="gzip")
+        yield from producer.start()
+        self.add_cleanup(producer.stop)
+        yield from self.wait_topic(producer.client, self.topic)
+
+        # We must be sure that we will end up with 1 and only 1 batch
+        batch = producer.create_batch()
+        for i in range(10):
+            batch.append(key=b"123", value=str(i).encode(), timestamp=None)
+        fut = yield from producer.send_batch(
+            batch, topic=self.topic, partition=0)
+        batch_meta = yield from fut
+
+        consumer = yield from self.consumer_factory()
+        consumer.seek(TopicPartition(self.topic, 0), batch_meta.offset + 5)
+
+        orig_send = consumer._client.send
+        with mock.patch.object(consumer._client, "send") as m:
+            recv_records = []
+
+            @asyncio.coroutine
+            def mock_send(node_id, req, group=None, test_case=self):
+                res = yield from orig_send(node_id, req, group=group)
+                if res.API_KEY == FetchRequest[0].API_KEY:
+                    for topic, partitions in res.topics:
+                        for partition_data in partitions:
+                            data = partition_data[-1]
+                            # Manually do unpack using internal tools so that
+                            # we can count how many were actually passed from
+                            # broker
+                            records = MemoryRecords(data)
+                            while records.has_next():
+                                recv_records.extend(records.next_batch())
+                return res
+            m.side_effect = mock_send
+
+            res = yield from consumer.getmany(timeout_ms=2000)
+            self.assertEqual(len(list(res.values())[0]), 5)
+            self.assertEqual(len(recv_records), 10)
+
+        pos = yield from consumer.position(TopicPartition(self.topic, 0))
+        self.assertEqual(pos, batch_meta.offset + 10)

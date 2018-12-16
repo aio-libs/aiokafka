@@ -167,6 +167,10 @@ cdef class DefaultRecordBatch:
         else:
             return False
 
+    @property
+    def next_offset(self):
+        return self.base_offset + self.last_offset_delta + 1
+
     cdef inline _read_header(self):
         # NOTE: We move the data to it's slot in the structure because we will
         #       lose the header part after decompression.
@@ -180,6 +184,8 @@ cdef class DefaultRecordBatch:
         self.magic = buf[MAGIC_OFFSET]
         self.crc = <uint32_t> hton.unpack_int32(&buf[CRC_OFFSET])
         self.attributes = hton.unpack_int16(&buf[ATTRIBUTES_OFFSET])
+        self.last_offset_delta = \
+            hton.unpack_int32(&buf[LAST_OFFSET_DELTA_OFFSET])
         self.first_timestamp = \
             hton.unpack_int64(&buf[FIRST_TIMESTAMP_OFFSET])
         self.max_timestamp = \

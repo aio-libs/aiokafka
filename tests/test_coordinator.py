@@ -889,17 +889,17 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 return True
             return False
         client.ready.side_effect = ready
-        coordinator._do_coordinator_lookup = mock.Mock()
+        client.coordinator_lookup = mock.Mock()
 
         coordinator_lookup = None
 
         @asyncio.coroutine
-        def _do_coordinator_lookup():
+        def _do_coordinator_lookup(type_, key):
             node_id = coordinator_lookup.pop()
             if isinstance(node_id, Exception):
                 raise node_id
             return node_id
-        coordinator._do_coordinator_lookup.side_effect = _do_coordinator_lookup
+        client.coordinator_lookup.side_effect = _do_coordinator_lookup
 
         # CASE: the lookup returns a broken node, that can't be connected
         # to. Ensure should wait until coordinator lookup finds the correct

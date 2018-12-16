@@ -1,8 +1,9 @@
 import collections
-from kafka.common import OffsetAndMetadata, TopicPartition
+from kafka.common import OffsetAndMetadata, TopicPartition, BrokerMetadata
 
 __all__ = [
-    "OffsetAndMetadata", "TopicPartition", "RecordMetadata", "ConsumerRecord"
+    "OffsetAndMetadata", "TopicPartition", "RecordMetadata", "ConsumerRecord",
+    "BrokerMetadata"
 ]
 
 RecordMetadata = collections.namedtuple(

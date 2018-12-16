@@ -1,4 +1,5 @@
 import asyncio
+import collections
 import functools
 import logging
 import struct
@@ -80,7 +81,9 @@ class AIOKafkaConnection:
         self._secutity_protocol = security_protocol
 
         self._reader = self._writer = self._protocol = None
-        self._requests = []
+        # Even on small size seems to be a bit faster than list.
+        # ~2x on size of 2 in Python3.6
+        self._requests = collections.deque()
         self._read_task = None
         self._correlation_id = 0
         self._closed_fut = None
@@ -238,7 +241,7 @@ class AIOKafkaConnection:
                         error.__cause__ = exc
                         error.__context__ = exc
                     fut.set_exception(error)
-            self._requests = []
+            self._requests = collections.deque()
             if self._on_close_cb is not None:
                 self._on_close_cb(self, reason)
                 self._on_close_cb = None
@@ -275,7 +278,7 @@ class AIOKafkaConnection:
     def _handle_frame(self, resp):
         recv_correlation_id, = struct.unpack_from(">i", resp, 0)
 
-        correlation_id, resp_type, fut = self._requests.pop(0)
+        correlation_id, resp_type, fut = self._requests[0]
         if (self._api_version == (0, 8, 2) and
                 resp_type is GroupCoordinatorResponse and
                 correlation_id != 0 and recv_correlation_id == 0):
@@ -301,6 +304,10 @@ class AIOKafkaConnection:
             fut.set_result(response)
         # Update idle timer.
         self._last_action = self._loop.time()
+        # We should clear the request future only after all code is done and
+        # future is resolved. If any fails it's up to close() method to fail
+        # this future.
+        self._requests.popleft()
 
     def _next_correlation_id(self):
         self._correlation_id = (self._correlation_id + 1) % 2**31

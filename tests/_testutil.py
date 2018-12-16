@@ -185,13 +185,15 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         yield from producer.start()
         try:
             yield from self.wait_topic(producer.client, topic)
+
             for msg in messages:
                 if isinstance(msg, str):
                     msg = msg.encode()
                 elif isinstance(msg, int):
                     msg = str(msg).encode()
                 future = yield from producer.send(
-                    topic, msg, partition=partition, timestamp_ms=timestamp_ms)
+                    topic, msg, partition=partition,
+                    timestamp_ms=timestamp_ms)
                 resp = yield from future
                 self.assertEqual(resp.topic, topic)
                 self.assertEqual(resp.partition, partition)

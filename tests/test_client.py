@@ -12,7 +12,7 @@ from kafka.protocol.metadata import (
     MetadataResponse_v0 as MetadataResponse)
 from kafka.protocol.fetch import FetchRequest_v0
 
-from aiokafka.client import AIOKafkaClient, ConnectionGroup
+from aiokafka.client import AIOKafkaClient, ConnectionGroup, CoordinationType
 from aiokafka.conn import AIOKafkaConnection, CloseReason
 from aiokafka.util import ensure_future
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
@@ -460,6 +460,11 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(client.close)
 
         node_id = client.get_random_node()
+        broker = client.cluster.broker_metadata(node_id)
+        client.cluster.add_coordinator(
+            node_id, broker.host, broker.port, rack=None,
+            purpose=(CoordinationType.GROUP, ""))
+
         conn1 = yield from client._get_conn(node_id)
         conn2 = yield from client._get_conn(
             node_id, group=ConnectionGroup.COORDINATION)
@@ -479,6 +484,11 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         yield from self.wait_topic(client, self.topic)
 
         node_id = client.get_random_node()
+        broker = client.cluster.broker_metadata(node_id)
+        client.cluster.add_coordinator(
+            node_id, broker.host, broker.port, rack=None,
+            purpose=(CoordinationType.GROUP, ""))
+
         wait_request = FetchRequest_v0(
             -1,  # replica_id
             500,  # max_wait_ms

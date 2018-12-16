@@ -16,6 +16,9 @@ New features:
 
 Bugfixes:
 
+* Fix issue with connections not propagating serialization errors
+* Fix issue with `group=None` resetting offsets on every metadata update
+  (issue #441)
 * 
 
 0.4.2 (2018-09-12)

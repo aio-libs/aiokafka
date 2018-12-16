@@ -22,7 +22,7 @@ from aiokafka.errors import (
     KafkaTimeoutError, UnknownTopicOrPartitionError,
     MessageSizeTooLargeError, NotLeaderForPartitionError,
     LeaderNotAvailableError, RequestTimedOutError,
-    UnsupportedVersionError, ProducerClosed)
+    UnsupportedVersionError, ProducerClosed, KafkaError)
 
 LOG_APPEND_TIME = 1
 
@@ -86,12 +86,9 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             with self.assertWarnsRegex(
                     ResourceWarning, "Unclosed AIOKafkaProducer"):
                 del producer
-                # _sender_routine will contain a reference and will only be
-                # freed after loop will spin once. Not sure why dou...
-                yield from asyncio.sleep(0, loop=self.loop)
                 gc.collect()
-                # Assure that the reference was properly collected
-                self.assertIsNone(producer_ref())
+        # Assure that the reference was properly collected
+        self.assertIsNone(producer_ref())
 
     @run_until_complete
     def test_producer_notopic(self):
@@ -459,8 +456,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             yield from producer.send(self.topic, 'text1')
 
         send_mock = mock.Mock()
-        send_mock.side_effect = producer._send_produce_req
-        producer._send_produce_req = send_mock
+        send_mock.side_effect = producer._sender._send_produce_req
+        producer._sender._send_produce_req = send_mock
 
         yield from producer.flush()
         self.assertEqual(send_mock.call_count, 0)
@@ -517,7 +514,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             loop=self.loop, enable_idempotence=True)
         self.add_cleanup(producer.stop)
-        self.assertEqual(producer._acks, -1)  # -1 is set for `all` config
+        self.assertEqual(producer._sender._acks, -1)  # -1 is set for `all`
         self.assertIsNotNone(producer._txn_manager)
 
     @kafka_versions('<0.11.0')
@@ -704,13 +701,15 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         yield from producer.start()
         self.add_cleanup(producer.stop)
 
-        with mock.patch.object(producer, '_send_produce_req') as mocked:
-            mocked.side_effect = KeyError
+        with mock.patch.object(producer._sender, '_send_produce_req') as m:
+            m.side_effect = KeyError
 
-            with self.assertRaises(KeyError):
+            with self.assertRaisesRegex(
+                    KafkaError, "Unexpected error during batch delivery"):
                 yield from producer.send_and_wait(
                     self.topic, b'hello, Kafka!')
 
-        with self.assertRaises(KeyError):
+        with self.assertRaisesRegex(
+                KafkaError, "Unexpected error during batch delivery"):
             yield from producer.send_and_wait(
                 self.topic, b'hello, Kafka!')

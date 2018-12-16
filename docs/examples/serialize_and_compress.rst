@@ -11,6 +11,10 @@ Note:
     larger batches. You can consider setting `linger_ms` to batch more data
     before sending.
 
+By default ``msg.value`` and ``msg.key`` attributes of returned ``msg``
+instances are `bytes`. You can use custom serializer/deserializer hooks to
+operate on objects instead of bytes in those attributes.
+
 Producer
 
 .. code:: python

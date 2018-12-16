@@ -76,6 +76,10 @@ class LegacyRecordBase:
 
 class _LegacyRecordBatchPy(LegacyRecordBase):
 
+    is_control_batch = False
+    is_transactional = False
+    producer_id = None
+
     def __init__(self, buffer, magic):
         self._buffer = memoryview(buffer)
         self._magic = magic
@@ -107,6 +111,10 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
     @property
     def compression_type(self):
         return self._attributes & self.CODEC_MASK
+
+    @property
+    def next_offset(self):
+        return self._offset + 1
 
     def validate_crc(self):
         crc = crc32(self._buffer[self.MAGIC_OFFSET:])

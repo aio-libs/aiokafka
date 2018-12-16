@@ -15,6 +15,7 @@ cdef class DefaultRecordBatch:
         readonly char magic
         readonly uint32_t crc
         readonly int16_t attributes
+        readonly int32_t last_offset_delta
         readonly int64_t first_timestamp
         readonly int64_t max_timestamp
 

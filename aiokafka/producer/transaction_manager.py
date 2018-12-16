@@ -1,6 +1,9 @@
-from collections import namedtuple, defaultdict
+import asyncio
+from enum import Enum
+from collections import namedtuple, defaultdict, deque
 
 from aiokafka.structs import TopicPartition
+from aiokafka.util import create_future
 
 
 PidAndEpoch = namedtuple("PidAndEpoch", ["pid", "epoch"])
@@ -8,29 +11,79 @@ NO_PRODUCER_ID = -1
 NO_PRODUCER_EPOCH = -1
 
 
+class SubscriptionType(Enum):
+
+    NONE = 1
+    AUTO_TOPICS = 2
+    AUTO_PATTERN = 3
+    USER_ASSIGNED = 4
+
+
+class TransactionResult:
+
+    ABORT = 0
+    COMMIT = 1
+
+
+class TransactionState(Enum):
+
+    UNINITIALIZED = 1
+    READY = 2
+    IN_TRANSACTION = 3
+    COMMITTING_TRANSACTION = 4
+    ABORTING_TRANSACTION = 5
+
+    @classmethod
+    def is_transition_valid(cls, source, target):
+        if target == cls.READY:
+            return source == cls.UNINITIALIZED or \
+                source == cls.COMMITTING_TRANSACTION or \
+                source == cls.ABORTING_TRANSACTION
+        elif target == cls.IN_TRANSACTION:
+            return source == cls.READY
+        elif target == cls.COMMITTING_TRANSACTION:
+            return source == cls.IN_TRANSACTION
+        elif target == cls.ABORTING_TRANSACTION:
+            return source == cls.IN_TRANSACTION
+
+
 class TransactionManager:
 
-    def __init__(self):
+    def __init__(self, transactional_id, transaction_timeout_ms, *, loop):
+        self.transactional_id = transactional_id
+        self.transaction_timeout_ms = transaction_timeout_ms
+        self.state = TransactionState.UNINITIALIZED
+
         self._pid_and_epoch = PidAndEpoch(NO_PRODUCER_ID, NO_PRODUCER_EPOCH)
+        self._pid_waiter = create_future(loop)
         self._sequence_numbers = defaultdict(lambda: 0)
+        self._transaction_waiter = None
+        self._task_waiter = None
+
+        self._txn_partitions = set()
+        self._pending_txn_partitions = set()
+        self._txn_consumer_group = None
+        self._pending_txn_offsets = deque()
+
+        self._loop = loop
+
+    # INDEMPOTANCE PART
 
     def set_pid_and_epoch(self, pid: int, epoch: int):
         self._pid_and_epoch = PidAndEpoch(pid, epoch)
+        self._pid_waiter.set_result(None)
+        if self.transactional_id:
+            self._transition_to(TransactionState.READY)
 
     def has_pid(self):
         return self._pid_and_epoch.pid != NO_PRODUCER_ID
 
-    def reset_producer_id(self):
-        """ This method is used when the producer needs to reset it's internal
-        state because of an irrecoverable exception from the broker.
-            In all of these cases, we don't know whether batch was actually
-        committed on the broker, and hence whether the sequence number was
-        actually updated. If we don't reset the producer state, we risk the
-        chance that all future messages will return an
-        ``OutOfOrderSequenceException``.
-        """
-        self._pid_and_epoch = PidAndEpoch(NO_PRODUCER_ID, NO_PRODUCER_EPOCH)
-        self._sequence_numbers.clear()
+    @asyncio.coroutine
+    def wait_for_pid(self):
+        if self.has_pid():
+            return
+        else:
+            yield from self._pid_waiter
 
     def sequence_number(self, tp: TopicPartition):
         return self._sequence_numbers[tp]
@@ -50,3 +103,113 @@ class TransactionManager:
     @property
     def producer_epoch(self):
         return self._pid_and_epoch.epoch
+
+    # TRANSACTION PART
+
+    def _transition_to(self, target):
+        assert TransactionState.is_transition_valid(self.state, target), \
+            "Invalid state transition {} -> {}".format(self.state, target)
+        self.state = target
+
+    def begin_transaction(self):
+        self._transition_to(TransactionState.IN_TRANSACTION)
+        self._transaction_waiter = create_future(loop=self._loop)
+
+    def committing_transaction(self):
+        self._transition_to(TransactionState.COMMITTING_TRANSACTION)
+        self.notify_task_waiter()
+
+    def aborting_transaction(self):
+        self._transition_to(TransactionState.ABORTING_TRANSACTION)
+        self.notify_task_waiter()
+
+    def complete_transaction(self):
+        assert not self._pending_txn_partitions
+        assert not self._pending_txn_offsets
+        self._transition_to(TransactionState.READY)
+        self._txn_partitions.clear()
+        self._txn_consumer_group = None
+        self._transaction_waiter.set_result(None)
+
+    def maybe_add_partition_to_txn(self, tp: TopicPartition):
+        if self.transactional_id is None:
+            return
+        assert self.is_in_transaction()
+        if tp not in self._txn_partitions:
+            self._pending_txn_partitions.add(tp)
+            self.notify_task_waiter()
+
+    def add_offsets_to_txn(self, offsets, group_id):
+        assert self.is_in_transaction()
+        assert self.transactional_id
+        fut = create_future(loop=self._loop)
+        self._pending_txn_offsets.append(
+            (group_id, offsets, fut)
+        )
+        self.notify_task_waiter()
+        return fut
+
+    def is_in_transaction(self):
+        return self.state == TransactionState.IN_TRANSACTION
+
+    def partitions_to_add(self):
+        return self._pending_txn_partitions
+
+    def consumer_group_to_add(self):
+        if self._txn_consumer_group is not None:
+            return
+        for group_id, _, _ in self._pending_txn_offsets:
+            return group_id
+
+    def offsets_to_commit(self):
+        if self._txn_consumer_group is None:
+            return
+        for group_id, offsets, _ in self._pending_txn_offsets:
+            return offsets, group_id
+
+    def partition_added(self, tp: TopicPartition):
+        self._pending_txn_partitions.remove(tp)
+        self._txn_partitions.add(tp)
+
+    def consumer_group_added(self, group_id):
+        self._txn_consumer_group = group_id
+
+    def offset_committed(self, tp, offset, group_id):
+        pending_group_id, pending_offsets, fut = self._pending_txn_offsets[0]
+        assert pending_group_id == group_id
+        assert tp in pending_offsets and pending_offsets[tp].offset == offset
+        del pending_offsets[tp]
+
+        if not pending_offsets:
+            fut.set_result(None)
+            self._pending_txn_offsets.popleft()
+
+    @property
+    def txn_partitions(self):
+        return self._txn_partitions
+
+    def needs_transaction_commit(self):
+        if self.state == TransactionState.COMMITTING_TRANSACTION:
+            return TransactionResult.COMMIT
+        elif self.state == TransactionState.ABORTING_TRANSACTION:
+            return TransactionResult.ABORT
+        else:
+            return
+
+    def is_empty_transaction(self):
+        # whether we sent either data to a partition or committed offset
+        return (
+            len(self.txn_partitions) == 0 and
+            self._txn_consumer_group is None
+        )
+
+    def wait_for_transaction_end(self):
+        return self._transaction_waiter
+
+    def notify_task_waiter(self):
+        if self._task_waiter is not None and not self._task_waiter.done():
+            self._task_waiter.set_result(None)
+
+    def make_task_waiter(self):
+        self._task_waiter = create_future(loop=self._loop)
+        return self._task_waiter
