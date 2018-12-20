@@ -277,7 +277,7 @@ class AIOKafkaProducer(object):
 
         if self._txn_manager is not None and self.client.api_version < (0, 11):
             raise UnsupportedVersionError(
-                "Indempotent producer available only for Broker vesion 0.11"
+                "Idempotent producer available only for Broker vesion 0.11"
                 " and above")
 
         yield from self._sender.start()

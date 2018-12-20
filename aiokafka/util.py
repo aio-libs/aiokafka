@@ -43,9 +43,7 @@ def wait_for_reponse_or_error(coro, error_tasks, *, shield=False, loop):
     except asyncio.CancelledError:
         if not shield:
             data_task.cancel()
-            return (yield from data_task)
-        else:
-            raise
+        raise
 
     # Check for errors in other tasks
     for error_task in error_tasks:
