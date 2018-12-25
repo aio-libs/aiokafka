@@ -5,3 +5,21 @@ http://perf.readthedocs.io/en/latest/run_benchmark.html.
 
 The `simple_` benchmarks can be just run, consult command line argument on how
 to run those.
+
+
+For profiling speed degradation use either::
+
+    python -m cProfile -o profile.dump benchmark/simple_produce_bench.py
+    python -m snakeviz profile.dump
+
+Or if the problem is not visible, because most of the time we spent in epoll(),
+you can use some static profiler like vmprof. Install the server or use
+vmprof.com. For local server setup see https://github.com/vmprof/vmprof-server
+
+To run using vmprof.com for visualization::
+
+    python -m vmprof --web benchmark/simple_produce_bench.py
+
+For local server::
+
+    python -m vmprof --web-url http://localhost:8000 --web benchmark/simple_produce_bench.py

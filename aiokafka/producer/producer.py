@@ -420,12 +420,9 @@ class AIOKafkaProducer(object):
         tp = TopicPartition(topic, partition)
         log.debug("Sending (key=%s value=%s) to %s", key, value, tp)
 
-        fut = yield from self._wait_for_reponse_or_error(
-            self._message_accumulator.add_message(
-                tp, key_bytes, value_bytes, self._request_timeout_ms / 1000,
-                timestamp_ms=timestamp_ms),
-            shield=False
-        )
+        fut = yield from self._message_accumulator.add_message(
+            tp, key_bytes, value_bytes, self._request_timeout_ms / 1000,
+            timestamp_ms=timestamp_ms)
         return fut
 
     @asyncio.coroutine
@@ -474,11 +471,8 @@ class AIOKafkaProducer(object):
 
         tp = TopicPartition(topic, partition)
         log.debug("Sending batch to %s", tp)
-        future = yield from self._wait_for_reponse_or_error(
-            self._message_accumulator.add_batch(
-                batch, tp, self._request_timeout_ms / 1000),
-            shield=False
-        )
+        future = yield from self._message_accumulator.add_batch(
+            batch, tp, self._request_timeout_ms / 1000)
         return future
 
     def _ensure_transactional(self):
