@@ -17,6 +17,17 @@ class Benchmark:
             max_batch_size=args.batch_size,
             bootstrap_servers=args.broker_list,
         )
+        if args.enable_idempotence:
+            self._producer_kwargs['enable_idempotence'] = True
+
+        if args.transactional_id:
+            self._producer_kwargs['transactional_id'] = args.transactional_id
+            self._is_transactional = True
+        else:
+            self._is_transactional = False
+
+        self.transaction_size = args.transaction_size
+
         self._partition = args.partition
         self._stats_interval = 1
         self._stats = [Counter()]
@@ -59,11 +70,22 @@ class Benchmark:
 
         # We start from after producer connect
         reporter_task = loop.create_task(self._stats_report(loop.time()))
+        transaction_size = self.transaction_size
+
         try:
-            for i in range(self._num):
-                # payload[i % self._size] = random.randint(0, 255)
-                await producer.send(topic, payload, partition=partition)
-                self._stats[-1]['count'] += 1
+            if not self._is_transactional:
+                for i in range(self._num):
+                    # payload[i % self._size] = random.randint(0, 255)
+                    await producer.send(topic, payload, partition=partition)
+                    self._stats[-1]['count'] += 1
+            else:
+                for i in range(self._num // transaction_size):
+                    # payload[i % self._size] = random.randint(0, 255)
+                    async with producer.transaction():
+                        for _ in range(transaction_size):
+                            await producer.send(
+                                topic, payload, partition=partition)
+                            self._stats[-1]['count'] += 1
         except asyncio.CancelledError:
             pass
         finally:
@@ -99,6 +121,15 @@ def parse_args():
     parser.add_argument(
         '--uvloop', action='store_true',
         help='Use uvloop instead of asyncio default loop.')
+    parser.add_argument(
+        '--enable-idempotence', action='store_true',
+        help='If producer should be set up with `enable_idempotence`')
+    parser.add_argument(
+        '--transactional-id',
+        help='To enable transactional producer')
+    parser.add_argument(
+        '--transaction-size', type=int, default=100,
+        help='Number of messages in transaction')
     return parser.parse_args()
 
 
