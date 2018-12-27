@@ -194,14 +194,23 @@ class MessageBatch:
         if self._msg_futures:
             self.future.exception()
 
+        # In case where sender fails and closes batches all waiters have to be
+        # reset also.
+        if not self._drain_waiter.done():
+            self._drain_waiter.set_exception(exception)
+
     def wait_deliver(self, timeout=None):
         """Wait until all message from this batch is processed"""
         return asyncio.wait([self.future], timeout=timeout, loop=self._loop)
 
+    @asyncio.coroutine
     def wait_drain(self, timeout=None):
         """Wait until all message from this batch is processed"""
-        return asyncio.wait(
-            [self._drain_waiter], timeout=timeout, loop=self._loop)
+        waiter = self._drain_waiter
+        yield from asyncio.wait(
+            [waiter], timeout=timeout, loop=self._loop)
+        if waiter.done():
+            waiter.result()  # Check for exception
 
     def expired(self):
         """Check that batch is expired or not"""
@@ -255,6 +264,8 @@ class MessageAccumulator:
         self._api_version = (0, 9)
         self._txn_manager = txn_manager
 
+        self._exception = None  # Critical exception
+
     def set_api_version(self, api_version):
         self._api_version = api_version
 
@@ -291,6 +302,7 @@ class MessageAccumulator:
                 batch.failure(exception)
         for batch in self._pending_batches:
             batch.failure(exception)
+        self._exception = exception
 
     @asyncio.coroutine
     def close(self):
@@ -307,6 +319,8 @@ class MessageAccumulator:
             # this can happen when producer is closing but try to send some
             # messages in async task
             raise ProducerClosed()
+        if self._exception is not None:
+            raise copy.copy(self._exception)
 
         pending_batches = self._batches.get(tp)
         if not pending_batches:
@@ -456,6 +470,8 @@ class MessageAccumulator:
         """
         if self._closed:
             raise ProducerClosed()
+        if self._exception is not None:
+            raise copy.copy(self._exception)
 
         start = self._loop.time()
         while timeout > 0:

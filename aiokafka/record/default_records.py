@@ -100,6 +100,8 @@ class DefaultRecordBase:
     LOG_APPEND_TIME = 1
     CREATE_TIME = 0
 
+    NO_PARTITION_LEADER_EPOCH = -1
+
 
 class _DefaultRecordBatchPy(DefaultRecordBase):
 
@@ -483,7 +485,7 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
             self._buffer, 0,
             0,  # BaseOffset, set by broker
             batch_len - self.AFTER_LEN_OFFSET,  # Size from here to end
-            0,  # PartitionLeaderEpoch, set by broker
+            self.NO_PARTITION_LEADER_EPOCH,
             self._magic,
             0,  # CRC will be set below, as we need a filled buffer for it
             self._get_attributes(use_compression_type),

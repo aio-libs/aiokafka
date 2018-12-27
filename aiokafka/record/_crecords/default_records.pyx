@@ -100,6 +100,8 @@ DEF FIRST_RECORD_OFFSET = RECORD_COUNT_OFFSET + 4
 # 5 bytes length + 10 bytes timestamp + 5 bytes offset + 1 byte attributes
 DEF MAX_RECORD_OVERHEAD = 21
 
+DEF NO_PARTITION_LEADER_EPOCH = -1
+
 
 # Initialize CRC32 on import
 cutil.crc32c_global_init()
@@ -632,7 +634,8 @@ cdef class DefaultRecordBatchBuilder:
             &buf[LENGTH_OFFSET],
             <int32_t> self._pos - PARTITION_LEADER_EPOCH_OFFSET)
         # PartitionLeaderEpoch, set by broker
-        hton.pack_int32(&buf[PARTITION_LEADER_EPOCH_OFFSET], 0)
+        hton.pack_int32(
+            &buf[PARTITION_LEADER_EPOCH_OFFSET], NO_PARTITION_LEADER_EPOCH)
         buf[MAGIC_OFFSET] = self._magic
         # CRC will be set below
         hton.pack_int16(

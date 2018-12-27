@@ -52,7 +52,7 @@ def func(loops: int, magic: int):
     t0 = perf.perf_counter()
     for _ in range(loops):
         batch = BatchBuilder(magic, batch_size=DEFAULT_BATCH_SIZE,
-                             compression_type=0)
+                             compression_type=0, is_transactional=False)
         for _ in range(MESSAGES_PER_BATCH):
             key, value, timestamp = next(precomputed_samples)
             size = batch.append(timestamp=None, key=key, value=value)
