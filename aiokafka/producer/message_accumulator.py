@@ -320,7 +320,7 @@ class MessageAccumulator:
             # messages in async task
             raise ProducerClosed()
         if self._exception is not None:
-            raise copy(self._exception)
+            raise copy.copy(self._exception)
 
         pending_batches = self._batches.get(tp)
         if not pending_batches:
@@ -471,7 +471,7 @@ class MessageAccumulator:
         if self._closed:
             raise ProducerClosed()
         if self._exception is not None:
-            raise copy(self._exception)
+            raise copy.copy(self._exception)
 
         start = self._loop.time()
         while timeout > 0:

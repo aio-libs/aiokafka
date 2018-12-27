@@ -14,6 +14,7 @@ class Benchmark:
         self._num = args.num
         self._stats_interval = 1
         self._stats = [Counter()]
+        self._use_iter = args.use_iter
 
     async def _stats_report(self, start):
         loop = asyncio.get_event_loop()
@@ -57,16 +58,27 @@ class Benchmark:
         reporter_task = loop.create_task(self._stats_report(loop.time()))
         try:
             total_msgs = 0
-            while True:
-                msg_set = await consumer.getmany(timeout_ms=1000)
-                if not msg_set:
-                    break
-                for msgs in msg_set.values():
-                    len_msgs = len(msgs)
-                    self._stats[-1]['count'] += len_msgs
-                    total_msgs += len_msgs
-                if total_msgs > self._num:
-                    break
+
+            if not self._use_iter:
+                while True:
+                    msg_set = await consumer.getmany(timeout_ms=1000)
+                    if not msg_set:
+                        break
+                    for msgs in msg_set.values():
+                        len_msgs = len(msgs)
+                        self._stats[-1]['count'] += len_msgs
+                        total_msgs += len_msgs
+                    if total_msgs > self._num:
+                        break
+            else:
+                while True:
+                    async for msg in consumer:
+                        msg
+                        self._stats[-1]['count'] += 1
+                        total_msgs += 1
+                        if total_msgs > self._num:
+                            break
+
         except asyncio.CancelledError:
             pass
         finally:
@@ -92,6 +104,9 @@ def parse_args():
     parser.add_argument(
         '--uvloop', action='store_true',
         help='Use uvloop instead of asyncio default loop.')
+    parser.add_argument(
+        '--use-iter', action='store_true',
+        help='Use iteration interface rather than getmany()')
     return parser.parse_args()
 
 
