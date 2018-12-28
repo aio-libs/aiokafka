@@ -32,7 +32,7 @@ class TestAIOKafkaClient(unittest.TestCase):
             loop=self.loop, bootstrap_servers=[
                 '127.0.0.1:9092', '127.0.0.2:9092', '127.0.0.3:9092'])
         self.assertEqual(
-            '<AIOKafkaClient client_id=aiokafka-0.4.3>',
+            '<AIOKafkaClient client_id=aiokafka-0.5.0>',
             client.__repr__())
         self.assertEqual(
             sorted([('127.0.0.1', 9092, socket.AF_INET),

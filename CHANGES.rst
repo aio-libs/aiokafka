@@ -1,25 +1,28 @@
 CHANGES
 --------
 
-0.5.0 (XXXX-XX-XX)
+0.5.0 (2018-12-28)
 ^^^^^^^^^^^^^^^^^^
 
 New features:
 
 * Add full support for V2 format messages with a Cython extension. Those are
   used for Kafka >= 0.11.0.0
+* Added support for transactional producing (issue #182)
 * Added support for indempotent producing with `enable_idempotence` parameter
 * Added support for `fetch_max_bytes` in AIOKafkaConsumer. This can help limit
   the amount of data transferred in a single roundtrip to broker, which is
   essential for consumers with large amount of partitions
-* 
 
 Bugfixes:
 
 * Fix issue with connections not propagating serialization errors
 * Fix issue with `group=None` resetting offsets on every metadata update
   (issue #441)
-* 
+* Fix issue with messages not delivered in order when Leader changes (issue
+  #228)
+* Fixed version parsing of `api_version` parameter. Before it ignored the
+  parameter
 
 
 0.4.3 (2018-11-01)
