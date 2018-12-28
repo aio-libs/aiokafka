@@ -650,7 +650,7 @@ else:
         DefaultRecordMetadata = _DefaultRecordMetadataCython
         DefaultRecordBatch = _DefaultRecordBatchCython
         DefaultRecord = _DefaultRecordCython
-    except ImportError as err:  # pragma: no cover
+    except ImportError:  # pragma: no cover
         DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderPy
         DefaultRecordMetadata = _DefaultRecordMetadataPy
         DefaultRecordBatch = _DefaultRecordBatchPy
