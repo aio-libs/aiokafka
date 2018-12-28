@@ -829,7 +829,7 @@ class GroupCoordinator(BaseCoordinator):
                         loop=self._loop)
             except (Errors.UnknownMemberIdError,
                     Errors.IllegalGenerationError,
-                    Errors.RebalanceInProgressError) as err:
+                    Errors.RebalanceInProgressError):
                 raise Errors.CommitFailedError(
                     "Commit cannot be completed since the group has already "
                     "rebalanced and may have assigned the partitions "

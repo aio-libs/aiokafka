@@ -499,7 +499,7 @@ else:
         LegacyRecordMetadata = _LegacyRecordMetadataCython
         LegacyRecordBatch = _LegacyRecordBatchCython
         LegacyRecord = _LegacyRecordCython
-    except ImportError as err:  # pragma: no cover
+    except ImportError:  # pragma: no cover
         LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
         LegacyRecordMetadata = _LegacyRecordMetadataPy
         LegacyRecordBatch = _LegacyRecordBatchPy

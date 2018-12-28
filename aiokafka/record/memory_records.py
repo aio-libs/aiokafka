@@ -100,5 +100,5 @@ else:
     try:
         from ._crecords import MemoryRecords as _MemoryRecordsCython
         MemoryRecords = _MemoryRecordsCython
-    except ImportError as err:  # pragma: no cover
+    except ImportError:  # pragma: no cover
         MemoryRecords = _MemoryRecordsPy
