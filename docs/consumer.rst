@@ -342,6 +342,33 @@ notified through a ``ConsumerRebalanceListener``, which allows them to finish
 necessary application-level logic such as state cleanup, manual offset commits,
 etc. See :meth:`aiokafka.AIOKafkaConsumer.subscribe` docs for more details.
 
+
+.. warning:: Be careful with ``ConsumerRebalanceListener`` to avoid deadlocks.
+    The Consumer will await the defined handlers and will block subsequent
+    calls to `getmany()` and `getone()`. For example this code will deadlock::
+
+        lock = asyncio.Lock()
+        consumer = AIOKafkaConsumer(...)
+
+        class MyRebalancer(aiokafka.ConsumerRebalanceListener):
+
+            async def on_partitions_revoked(self, revoked):
+                async with self.lock:
+                    pass
+
+            async def on_partitions_assigned(self, assigned):
+                pass
+
+        async def main():
+            consumer.subscribe("topic", listener=MyRebalancer())
+            while True:
+                async with self.lock:
+                    msgs = await consumer.getmany(timeout_ms=1000)
+                    # process messages
+
+    You need to put ``consumer.getmany(timeout_ms=1000)`` call outside of the
+    lock.
+
 For more information on how **Consumer Groups** are organized see 
 `Official Kafka Docs <https://kafka.apache.org/documentation/#intro_consumers>`_.
 
