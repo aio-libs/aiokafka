@@ -9,37 +9,34 @@ if [ ! -z "$NUM_PARTITIONS" ]; then
     OPTIONS="$OPTIONS --override num.partitions=$NUM_PARTITIONS"
 fi
 
+# Set the external host and port
+echo "advertised host: $ADVERTISED_HOST"
+echo "advertised port: $ADVERTISED_PORT"
+echo "advertised ssl port: $ADVERTISED_SSL_PORT"
+echo "advertised sasl plaintext port: $ADVERTISED_SASL_PLAINTEXT_PORT"
+echo "advertised sasl ssl port: $ADVERTISED_SASL_SSL_PORT"
+OPTIONS="$OPTIONS --override advertised.listeners=PLAINTEXT://$ADVERTISED_HOST:$ADVERTISED_PORT,SSL://$ADVERTISED_HOST:$ADVERTISED_SSL_PORT,SASL_PLAINTEXT://$ADVERTISED_HOST:$ADVERTISED_SASL_PLAINTEXT_PORT,SASL_SSL://$ADVERTISED_HOST:$ADVERTISED_SASL_SSL_PORT"
 
-# Configure the default number of log partitions per topic
-if [ ! -z "$ADVERTISED_SSL_PORT" ]; then
-    # Set the external host and port
-    echo "advertised host: $ADVERTISED_HOST"
-    echo "advertised port: $ADVERTISED_PORT"
-    echo "advertised ssl port: $ADVERTISED_SSL_PORT"
-    OPTIONS="$OPTIONS --override advertised.listeners=PLAINTEXT://$ADVERTISED_HOST:$ADVERTISED_PORT,SSL://$ADVERTISED_HOST:$ADVERTISED_SSL_PORT"
+# SSL options
+OPTIONS="$OPTIONS --override ssl.protocol=TLS"
+OPTIONS="$OPTIONS --override ssl.enabled.protocols=TLSv1.2,TLSv1.1,TLSv1"
+OPTIONS="$OPTIONS --override ssl.keystore.type=JKS"
+OPTIONS="$OPTIONS --override ssl.keystore.location=/ssl_cert/br_server.keystore.jks"
+OPTIONS="$OPTIONS --override ssl.keystore.password=abcdefgh"
+OPTIONS="$OPTIONS --override ssl.key.password=abcdefgh"
+OPTIONS="$OPTIONS --override ssl.truststore.type=JKS"
+OPTIONS="$OPTIONS --override ssl.truststore.location=/ssl_cert/br_server.truststore.jks"
+OPTIONS="$OPTIONS --override ssl.truststore.password=abcdefgh"
+OPTIONS="$OPTIONS --override ssl.client.auth=required"
+OPTIONS="$OPTIONS --override security.inter.broker.protocol=SSL"
+OPTIONS="$OPTIONS --override listeners=PLAINTEXT://:$ADVERTISED_PORT,SSL://:$ADVERTISED_SSL_PORT,SASL_PLAINTEXT://:$ADVERTISED_SASL_PLAINTEXT_PORT,SASL_SSL://:$ADVERTISED_SASL_SSL_PORT"
+OPTIONS="$OPTIONS --override ssl.endpoint.identification.algorithm="
 
-    # SSL options
-    OPTIONS="$OPTIONS --override ssl.protocol=TLS"
-    OPTIONS="$OPTIONS --override ssl.enabled.protocols=TLSv1.2,TLSv1.1,TLSv1"
-    OPTIONS="$OPTIONS --override ssl.keystore.type=JKS"
-    OPTIONS="$OPTIONS --override ssl.keystore.location=/ssl_cert/br_server.keystore.jks"
-    OPTIONS="$OPTIONS --override ssl.keystore.password=abcdefgh"
-    OPTIONS="$OPTIONS --override ssl.key.password=abcdefgh"
-    OPTIONS="$OPTIONS --override ssl.truststore.type=JKS"
-    OPTIONS="$OPTIONS --override ssl.truststore.location=/ssl_cert/br_server.truststore.jks"
-    OPTIONS="$OPTIONS --override ssl.truststore.password=abcdefgh"
-    OPTIONS="$OPTIONS --override ssl.client.auth=required"
-    OPTIONS="$OPTIONS --override security.inter.broker.protocol=SSL"
-    OPTIONS="$OPTIONS --override listeners=PLAINTEXT://:$ADVERTISED_PORT,SSL://:$ADVERTISED_SSL_PORT"
-
-else
-
-    # Set the external host and port
-    echo "advertised host: $ADVERTISED_HOST"
-    echo "advertised port: $ADVERTISED_PORT"
-    OPTIONS="$OPTIONS --override advertised.listeners=PLAINTEXT://$ADVERTISED_HOST:$ADVERTISED_PORT"    
-    OPTIONS="$OPTIONS --override listeners=PLAINTEXT://:$ADVERTISED_PORT"
-
+if [ ! -z "$SASL_MECHANISMS" ]; then
+    echo "sasl mechanisms: $SASL_MECHANISMS"
+    OPTIONS="$OPTIONS --override sasl.enabled.mechanisms=$SASL_MECHANISMS"
+    OPTIONS="$OPTIONS --override authorizer.class.name=kafka.security.auth.SimpleAclAuthorizer"
+    OPTIONS="$OPTIONS --override allow.everyone.if.no.acl.found=true"
 fi
 
 # Enable auto creation of topics
@@ -48,4 +45,5 @@ OPTIONS="$OPTIONS --override auto.create.topics.enable=true"
 # Run Kafka
 echo "$KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server.properties $OPTIONS"
 
+export KAFKA_OPTS="-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
 exec $KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server.properties $OPTIONS

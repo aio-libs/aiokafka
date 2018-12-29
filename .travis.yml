@@ -100,7 +100,7 @@ matrix:
       python: *mainstream_python
       services:
       - docker
-      env: KAFKA_VERSION=0.11.0.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
+      env: KAFKA_VERSION=0.11.0.3 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
       script:
       - make ci-test-all
 

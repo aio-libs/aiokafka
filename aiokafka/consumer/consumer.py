@@ -174,6 +174,13 @@ class AIOKafkaConsumer(object):
             Further, when in *read_committed* the seek_to_end method will
             return the LSO. See method docs below. Default: "read_uncommitted"
 
+        sasl_mechanism (str): Authentication mechanism when security_protocol
+            is configured for SASL_PLAINTEXT or SASL_SSL. Valid values are:
+            PLAIN, GSSAPI. Default: PLAIN
+        sasl_plain_username (str): username for sasl PLAIN authentication.
+            Default: None
+        sasl_plain_password (str): password for sasl PLAIN authentication.
+            Default: None
     Note:
         Many configuration parameters are taken from Java Client:
         https://kafka.apache.org/documentation.html#newconsumerconfigs
@@ -209,7 +216,10 @@ class AIOKafkaConsumer(object):
                  api_version='auto',
                  exclude_internal_topics=True,
                  connections_max_idle_ms=540000,
-                 isolation_level="read_uncommitted"):
+                 isolation_level="read_uncommitted",
+                 sasl_mechanism="PLAIN",
+                 sasl_plain_password=None,
+                 sasl_plain_username=None):
         if max_poll_records is not None and (
                 not isinstance(max_poll_records, int) or max_poll_records < 1):
             raise ValueError("`max_poll_records` should be positive Integer")
@@ -222,7 +232,10 @@ class AIOKafkaConsumer(object):
             api_version=api_version,
             ssl_context=ssl_context,
             security_protocol=security_protocol,
-            connections_max_idle_ms=connections_max_idle_ms)
+            connections_max_idle_ms=connections_max_idle_ms,
+            sasl_mechanism=sasl_mechanism,
+            sasl_plain_username=sasl_plain_username,
+            sasl_plain_password=sasl_plain_password)
 
         self._group_id = group_id
         self._heartbeat_interval_ms = heartbeat_interval_ms
@@ -243,6 +256,7 @@ class AIOKafkaConsumer(object):
         self._max_poll_records = max_poll_records
         self._consumer_timeout = consumer_timeout_ms / 1000
         self._isolation_level = isolation_level
+
         self._check_crcs = check_crcs
         self._subscription = SubscriptionState(loop=loop)
         self._fetcher = None
