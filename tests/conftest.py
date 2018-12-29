@@ -72,7 +72,7 @@ def ssl_folder(docker_ip_address):
 
 
 @pytest.fixture(scope='session')
-def docker_ip_address(request, docker):
+def docker_ip_address():
     """Returns IP address of the docker daemon service."""
     return '127.0.0.1'
 
