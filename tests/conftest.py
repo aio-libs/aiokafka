@@ -72,38 +72,10 @@ def ssl_folder(docker_ip_address):
     return ssl_dir
 
 
-if sys.platform == 'darwin' or sys.platform == 'win32':
-
-    @pytest.fixture(scope='session')
-    def docker_ip_address():
-        """Returns IP address of the docker daemon service."""
-        # docker for mac publishes ports on localhost
-        return '127.0.0.1'
-
-else:
-
-    @pytest.fixture(scope='session')
-    def docker_ip_address(request, docker):
-        """Returns IP address of the docker daemon service."""
-        if not docker:
-            return '127.0.0.1'
-        # Fallback docker daemon bridge name
-        ifname = 'docker0'
-        try:
-            for network in docker.networks():
-                _ifname = network['Options'].get(
-                    'com.docker.network.bridge.name')
-                if _ifname is not None:
-                    ifname = _ifname
-                    break
-        except libdocker.errors.InvalidVersion:
-            pass
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        import fcntl
-        return socket.inet_ntoa(fcntl.ioctl(
-            s.fileno(),
-            0x8915,  # SIOCGIFADDR
-            struct.pack('256s', ifname[:15].encode('utf-8')))[20:24])
+@pytest.fixture(scope='session')
+def docker_ip_address(request, docker):
+    """Returns IP address of the docker daemon service."""
+    return '127.0.0.1'
 
 
 @pytest.fixture(scope='session')
