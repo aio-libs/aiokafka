@@ -3,7 +3,6 @@ import gc
 import docker as libdocker
 import pytest
 import socket
-import struct
 import uuid
 import sys
 import pathlib
@@ -112,7 +111,6 @@ if sys.platform != 'win32':
         container = docker.containers.run(
             image=image,
             name='aiokafka-tests',
-            # name='aiokafka-tests-{}'.format(session_id),
             ports={
                 2181: 2181,
                 kafka_port: kafka_port,
