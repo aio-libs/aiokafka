@@ -41,7 +41,7 @@ def docker(request):
     image = request.config.getoption('--docker-image')
     if not image:
         return None
-    return libdocker.Client(version='auto')
+    return libdocker.from_env()
 
 
 @pytest.fixture(scope='session')
@@ -131,38 +131,45 @@ if sys.platform != 'win32':
                 "Skipping functional test as `--docker-image` not provided")
             return
         if not request.config.getoption('--no-pull'):
-            docker.pull(image)
+            docker.images.pull(image)
         kafka_host = docker_ip_address
         kafka_port = unused_port()
         kafka_ssl_port = unused_port()
-        container = docker.create_container(
+        kafka_sasl_plain_port = unused_port()
+        kafka_sasl_ssl_port = unused_port()
+        container = docker.containers.run(
             image=image,
             name='aiokafka-tests',
             # name='aiokafka-tests-{}'.format(session_id),
-            ports=[2181, kafka_port, kafka_ssl_port],
-            volumes=['/ssl_cert'],
+            ports={
+                2181: 2181,
+                kafka_port: kafka_port,
+                kafka_ssl_port: kafka_ssl_port,
+                kafka_sasl_plain_port: kafka_sasl_plain_port,
+                kafka_sasl_ssl_port: kafka_sasl_ssl_port
+            },
+            volumes={
+                str(ssl_folder.resolve()): {
+                    "bind": "/ssl_cert",
+                    "mode": "ro"
+                }
+            },
             environment={
                 'ADVERTISED_HOST': kafka_host,
                 'ADVERTISED_PORT': kafka_port,
                 'ADVERTISED_SSL_PORT': kafka_ssl_port,
+                'ADVERTISED_SASL_PLAINTEXT_PORT': kafka_sasl_plain_port,
+                'ADVERTISED_SASL_SSL_PORT': kafka_sasl_ssl_port,
+                'SASL_MECHANISMS': "PLAIN",
                 'NUM_PARTITIONS': 2
             },
-            host_config=docker.create_host_config(
-                port_bindings={
-                    2181: (kafka_host, unused_port()),
-                    kafka_port: (kafka_host, kafka_port),
-                    kafka_ssl_port: (kafka_host, kafka_ssl_port)
-                },
-                binds={
-                    str(ssl_folder.resolve()): {
-                        "bind": "/ssl_cert",
-                        "mode": "ro"
-                    }
-                }))
-        docker.start(container=container['Id'])
-        yield kafka_host, kafka_port, kafka_ssl_port
-        docker.kill(container=container['Id'])
-        docker.remove_container(container['Id'])
+            tty=True,
+            detach=True)
+        yield (
+            kafka_host, kafka_port, kafka_ssl_port, kafka_sasl_plain_port,
+            kafka_sasl_ssl_port
+        )
+        container.remove(force=True)
 
 else:
 
@@ -204,10 +211,11 @@ def setup_test_class_serverless(request, loop, ssl_folder):
 @pytest.fixture(scope='class')
 def setup_test_class(request, loop, kafka_server, ssl_folder):
     request.cls.loop = loop
-    khost, kport, ksslport = kafka_server
-    request.cls.kafka_host = khost
-    request.cls.kafka_port = kport
-    request.cls.kafka_ssl_port = ksslport
+    request.cls.kafka_host = kafka_server[0]
+    request.cls.kafka_port = kafka_server[1]
+    request.cls.kafka_ssl_port = kafka_server[2]
+    request.cls.kafka_sasl_plain_port = kafka_server[3]
+    request.cls.kafka_sasl_ssl_port = kafka_server[4]
     request.cls.ssl_folder = ssl_folder
 
     docker_image = request.config.getoption('--docker-image')
