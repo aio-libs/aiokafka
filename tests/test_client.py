@@ -298,6 +298,9 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
     def test_metadata_update_fail(self):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         yield from client.bootstrap()
+        # Make sure the connection is initialize before mock to avoid crashing
+        # api_version routine
+        yield from client.force_metadata_update()
 
         with mock.patch.object(
                 AIOKafkaConnection, 'send') as mocked:
