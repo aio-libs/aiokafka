@@ -5,6 +5,7 @@ import random
 from kafka.conn import collect_hosts
 from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.commit import OffsetFetchRequest
+from kafka.protocol.fetch import FetchRequest
 
 import aiokafka.errors as Errors
 from aiokafka import __version__
@@ -368,7 +369,8 @@ class AIOKafkaClient:
             self.force_metadata_update()
 
     @asyncio.coroutine
-    def _get_conn(self, node_id, *, group=ConnectionGroup.DEFAULT):
+    def _get_conn(self, node_id, *, group=ConnectionGroup.DEFAULT,
+                  no_hint=False):
         "Get or create a connection to a broker using host and port"
         conn_id = (node_id, group)
         if conn_id in self._conns:
@@ -400,7 +402,7 @@ class AIOKafkaClient:
                     return self._conns[conn_id]
 
                 version_hint = self._api_version
-                if version_hint == "auto":
+                if version_hint == "auto" or no_hint:
                     version_hint = None
 
                 self._conns[conn_id] = yield from create_conn(
@@ -505,7 +507,7 @@ class AIOKafkaClient:
         # vanilla MetadataRequest. If the server did not recognize the first
         # request, both will be failed with a ConnectionError that wraps
         # socket.error (32, 54, or 104)
-        conn = yield from self._get_conn(node_id)
+        conn = yield from self._get_conn(node_id, no_hint=True)
         if conn is None:
             raise ConnectionError(
                 "No connection to node with id {}".format(node_id))
@@ -544,6 +546,8 @@ class AIOKafkaClient:
         # in descending order. As soon as we find one that works, return it
         test_cases = [
             # format (<broker verion>, <needed struct>)
+            ((2, 1, 0), MetadataRequest[0].API_KEY, 7),
+            ((1, 1, 0), FetchRequest[0].API_KEY, 7),
             ((1, 0, 0), MetadataRequest[0].API_KEY, 5),
             ((0, 11, 0), MetadataRequest[0].API_KEY, 4),
             ((0, 10, 2), OffsetFetchRequest[0].API_KEY, 2),
