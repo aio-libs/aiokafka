@@ -37,7 +37,7 @@ def create_conn(host, port, *, loop=None, client_id='aiokafka',
                 request_timeout_ms=40000, api_version=(0, 8, 2),
                 ssl_context=None, security_protocol="PLAINTEXT",
                 max_idle_ms=None, on_close=None,
-                sasl_mechanism,
+                sasl_mechanism=None,
                 sasl_plain_username=None,
                 sasl_plain_password=None):
     if loop is None:
@@ -78,8 +78,8 @@ class AIOKafkaConnection:
     def __init__(self, host, port, *, loop, client_id='aiokafka',
                  request_timeout_ms=40000, api_version=(0, 8, 2),
                  ssl_context=None, security_protocol="PLAINTEXT",
-                 max_idle_ms=None, on_close=None, sasl_mechanism,
-                 sasl_plain_password, sasl_plain_username):
+                 max_idle_ms=None, on_close=None, sasl_mechanism=None,
+                 sasl_plain_password=None, sasl_plain_username=None):
         self._loop = loop
         self._host = host
         self._port = port

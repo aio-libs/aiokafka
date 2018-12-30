@@ -1,8 +1,8 @@
 # Some simple testing tasks (sorry, UNIX only).
 
 FLAGS=
-SCALA_VERSION?=2.12
-KAFKA_VERSION?=2.1.0
+SCALA_VERSION?=2.11
+KAFKA_VERSION?=0.9.0.1
 DOCKER_IMAGE=aiolibs/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
 DIFF_BRANCH=origin/master
 

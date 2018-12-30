@@ -108,6 +108,18 @@ if sys.platform != 'win32':
         kafka_ssl_port = unused_port()
         kafka_sasl_plain_port = unused_port()
         kafka_sasl_ssl_port = unused_port()
+        environment = {
+            'ADVERTISED_HOST': kafka_host,
+            'ADVERTISED_PORT': kafka_port,
+            'ADVERTISED_SSL_PORT': kafka_ssl_port,
+            'ADVERTISED_SASL_PLAINTEXT_PORT': kafka_sasl_plain_port,
+            'ADVERTISED_SASL_SSL_PORT': kafka_sasl_ssl_port,
+            'NUM_PARTITIONS': 2
+        }
+        kafka_version = image.split(":")[-1].split("_")[-1]
+        if not kafka_version == "0.9.0.1":
+            environment['SASL_MECHANISMS'] = "PLAIN"
+
         container = docker.containers.run(
             image=image,
             name='aiokafka-tests',
@@ -124,15 +136,7 @@ if sys.platform != 'win32':
                     "mode": "ro"
                 }
             },
-            environment={
-                'ADVERTISED_HOST': kafka_host,
-                'ADVERTISED_PORT': kafka_port,
-                'ADVERTISED_SSL_PORT': kafka_ssl_port,
-                'ADVERTISED_SASL_PLAINTEXT_PORT': kafka_sasl_plain_port,
-                'ADVERTISED_SASL_SSL_PORT': kafka_sasl_ssl_port,
-                'SASL_MECHANISMS': "PLAIN",
-                'NUM_PARTITIONS': 2
-            },
+            environment=environment,
             tty=True,
             detach=True)
         yield (
