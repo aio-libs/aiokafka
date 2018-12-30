@@ -399,6 +399,10 @@ class AIOKafkaClient:
                 if conn_id in self._conns:
                     return self._conns[conn_id]
 
+                version_hint = self._api_version
+                if version_hint == "auto":
+                    version_hint = None
+
                 self._conns[conn_id] = yield from create_conn(
                     broker.host, broker.port, loop=self._loop,
                     client_id=self._client_id,
@@ -410,6 +414,7 @@ class AIOKafkaClient:
                     sasl_mechanism=self._sasl_mechanism,
                     sasl_plain_username=self._sasl_plain_username,
                     sasl_plain_password=self._sasl_plain_password,
+                    version_hint=version_hint
                 )
         except (OSError, asyncio.TimeoutError) as err:
             log.error('Unable connect to node with id %s: %s', node_id, err)

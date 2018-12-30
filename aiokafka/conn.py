@@ -9,7 +9,9 @@ import warnings
 import weakref
 
 from kafka.protocol.api import RequestHeader
-from kafka.protocol.admin import SaslHandShakeRequest
+from kafka.protocol.admin import (
+    SaslHandShakeRequest, SaslAuthenticateRequest, ApiVersionRequest
+)
 from kafka.protocol.commit import (
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
@@ -32,6 +34,27 @@ class CloseReason:
     AUTH_FAILURE = 5
 
 
+class VersionInfo:
+
+    def __init__(self, versions):
+        self._versions = versions
+
+    def pick_best(self, request_versions):
+        api_key = request_versions[0].API_KEY
+        supported_versions = self._versions.get(api_key)
+        if supported_versions is None:
+            return request_versions[0]
+        else:
+            for req_klass in reversed(request_versions):
+                if supported_versions[0] <= req_klass.API_VERSION and \
+                        req_klass.API_VERSION <= supported_versions[1]:
+                    return req_klass
+        raise Errors.KafkaError(
+            "Could not pick a version for API_KEY={} from {}. ".format(
+                api_key, supported_versions)
+        )
+
+
 @asyncio.coroutine
 def create_conn(host, port, *, loop=None, client_id='aiokafka',
                 request_timeout_ms=40000, api_version=(0, 8, 2),
@@ -39,7 +62,8 @@ def create_conn(host, port, *, loop=None, client_id='aiokafka',
                 max_idle_ms=None, on_close=None,
                 sasl_mechanism=None,
                 sasl_plain_username=None,
-                sasl_plain_password=None):
+                sasl_plain_password=None,
+                version_hint=None):
     if loop is None:
         loop = asyncio.get_event_loop()
     conn = AIOKafkaConnection(
@@ -50,7 +74,8 @@ def create_conn(host, port, *, loop=None, client_id='aiokafka',
         max_idle_ms=max_idle_ms, on_close=on_close,
         sasl_mechanism=sasl_mechanism,
         sasl_plain_username=sasl_plain_username,
-        sasl_plain_password=sasl_plain_password)
+        sasl_plain_password=sasl_plain_password,
+        version_hint=version_hint)
     yield from conn.connect()
     return conn
 
@@ -79,7 +104,8 @@ class AIOKafkaConnection:
                  request_timeout_ms=40000, api_version=(0, 8, 2),
                  ssl_context=None, security_protocol="PLAINTEXT",
                  max_idle_ms=None, on_close=None, sasl_mechanism=None,
-                 sasl_plain_password=None, sasl_plain_username=None):
+                 sasl_plain_password=None, sasl_plain_username=None,
+                 version_hint=None):
         self._loop = loop
         self._host = host
         self._port = port
@@ -91,6 +117,10 @@ class AIOKafkaConnection:
         self._sasl_mechanism = sasl_mechanism
         self._sasl_plain_username = sasl_plain_username
         self._sasl_plain_password = sasl_plain_password
+
+        # Version hint is the version determined by initial client bootstrap
+        self._version_hint = version_hint
+        self._version_info = VersionInfo({})
 
         self._reader = self._writer = self._protocol = None
         # Even on small size seems to be a bit faster than list.
@@ -163,14 +193,28 @@ class AIOKafkaConnection:
             self._idle_handle = self._loop.call_soon(
                 self._idle_check, weakref.ref(self))
 
+        if self._version_hint and self._version_hint >= (0, 10):
+            yield from self._do_version_lookup()
+
         if self._security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
             yield from self._do_sasl_handshake()
 
         return reader, writer
 
     @asyncio.coroutine
+    def _do_version_lookup(self):
+        version_req = ApiVersionRequest[0]()
+        response = yield from self.send(version_req)
+        versions = {}
+        for api_key, min_version, max_version in response.api_versions:
+            versions[api_key] = (min_version, max_version)
+        self._version_info = VersionInfo(versions)
+
+    @asyncio.coroutine
     def _do_sasl_handshake(self):
-        sasl_handshake = SaslHandShakeRequest[0](self._sasl_mechanism)
+        req_klass = self._version_info.pick_best(SaslHandShakeRequest)
+
+        sasl_handshake = req_klass(self._sasl_mechanism)
         response = yield from self.send(sasl_handshake)
         error_type = Errors.for_code(response.error_code)
         if error_type is not Errors.NoError:
@@ -191,19 +235,42 @@ class AIOKafkaConnection:
             self.log.warning(
                 'Sending username and password in the clear')
 
+        authenticator = self.authenticator_plain()
+
+        auth_bytes = None
+        while True:
+            try:
+                payload = authenticator.send(auth_bytes)
+            except StopIteration:
+                break
+
+            if req_klass.API_VERSION == 0:
+                auth_bytes = yield from self._send_sasl_token(payload)
+            else:
+                req_klass = self._version_info.pick_best(
+                    SaslAuthenticateRequest)
+                req = req_klass(payload)
+                resp = yield from self.send(req)
+                error_type = Errors.for_code(resp.error_code)
+                if error_type is not Errors.NoError:
+                    raise error_type(resp.error_message)
+                auth_bytes = resp.sasl_auth_bytes
+
+        self.log.info(
+            'Authenticated as %s via PLAIN', self._sasl_plain_username)
+
+    def authenticator_plain(self):
+        """ Automaton to authenticate with SASL tokens
+        """
         # Send PLAIN credentials per RFC-4616
-        msg = '\0'.join([
+        resp = yield '\0'.join([
             self._sasl_plain_username,
             self._sasl_plain_username,
             self._sasl_plain_password]
         ).encode("utf-8")
-
-        resp = yield from self._send_sasl_token(msg)
-
-        assert resp == b"", "Server should either close or send an empty resp"
-
-        self.log.info(
-            'Authenticated as %s via PLAIN', self._sasl_plain_username)
+        assert resp == b"", (
+            "Server should either close or send an empty response"
+        )
 
     @staticmethod
     def _on_read_task_error(self_ref, read_task):
