@@ -43,6 +43,21 @@ def docker(request):
     return libdocker.from_env()
 
 
+@pytest.fixture(scope='class')
+def acl_manager(kafka_server):
+    from ._testutil import ACLManager
+    manager = ACLManager(kafka_server[-1])
+    return manager
+
+
+@pytest.yield_fixture(autouse=True)
+def clean_acl(acl_manager):
+    # This is used to have a better report on ResourceWarnings. Without it
+    # all warnings will be filled in the end of last test-case.
+    yield
+    acl_manager.cleanup()
+
+
 @pytest.fixture(scope='session')
 def ssl_folder(docker_ip_address):
     ssl_dir = pathlib.Path('tests/ssl_cert')
@@ -139,9 +154,10 @@ if sys.platform != 'win32':
             environment=environment,
             tty=True,
             detach=True)
+
         yield (
             kafka_host, kafka_port, kafka_ssl_port, kafka_sasl_plain_port,
-            kafka_sasl_ssl_port
+            kafka_sasl_ssl_port, container
         )
         container.remove(force=True)
 
@@ -183,7 +199,7 @@ def setup_test_class_serverless(request, loop, ssl_folder):
 
 
 @pytest.fixture(scope='class')
-def setup_test_class(request, loop, kafka_server, ssl_folder):
+def setup_test_class(request, loop, kafka_server, ssl_folder, acl_manager):
     request.cls.loop = loop
     request.cls.kafka_host = kafka_server[0]
     request.cls.kafka_port = kafka_server[1]
@@ -191,6 +207,7 @@ def setup_test_class(request, loop, kafka_server, ssl_folder):
     request.cls.kafka_sasl_plain_port = kafka_server[3]
     request.cls.kafka_sasl_ssl_port = kafka_server[4]
     request.cls.ssl_folder = ssl_folder
+    request.cls.acl_manager = acl_manager
 
     docker_image = request.config.getoption('--docker-image')
     kafka_version = docker_image.split(":")[-1].split("_")[-1]

@@ -10,7 +10,7 @@ from aiokafka.errors import (
     CoordinatorLoadInProgressError, InvalidProducerEpoch,
     ProducerFenced, InvalidProducerIdMapping, InvalidTxnState,
     ConcurrentTransactions, DuplicateSequenceNumber, RequestTimedOutError,
-    OutOfOrderSequenceNumber)
+    OutOfOrderSequenceNumber, TopicAuthorizationFailedError)
 from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.protocol.transaction import (
     InitProducerIdRequest, AddPartitionsToTxnRequest, EndTxnRequest,
@@ -739,8 +739,12 @@ class SendProduceReqHandler(BaseHandler):
                     batch.done(offset, timestamp)
                 elif not self._can_retry(error(), batch):
                     if error is InvalidProducerEpoch:
-                        error = ProducerFenced
-                    batch.failure(exception=error())
+                        exc = ProducerFenced()
+                    elif error is TopicAuthorizationFailedError:
+                        exc = error(topic)
+                    else:
+                        exc = error()
+                    batch.failure(exception=exc)
                 else:
                     log.warning(
                         "Got error produce response on topic-partition"

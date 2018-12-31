@@ -58,6 +58,7 @@ fi
 OPTIONS="$OPTIONS --override auto.create.topics.enable=true"
 OPTIONS="$OPTIONS --override listeners=$LISTENERS"
 OPTIONS="$OPTIONS --override advertised.listeners=$ADVERTISED_LISTENERS"
+OPTIONS="$OPTIONS --override super.users=User:admin"
 
 
 # Run Kafka

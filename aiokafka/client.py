@@ -598,6 +598,8 @@ class AIOKafkaClient:
                 break
             if (self._loop.time() - t0) > (self._request_timeout_ms / 1000):
                 raise UnknownTopicOrPartitionError()
+            if topic in self.cluster.unauthorized_topics:
+                raise Errors.TopicAuthorizationFailedError(topic)
             yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
 
         return self.cluster.partitions_for_topic(topic)
