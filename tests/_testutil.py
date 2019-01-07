@@ -155,6 +155,7 @@ class ACLManager:
 
     def _format_params(
             self, cluster=None, topic=None, group=None,
+            transactional_id=None,
             allow_principal=None, deny_principal=None,
             allow_host=None, deny_host=None,
             operation=None, producer=None, consumer=None):
@@ -165,6 +166,8 @@ class ACLManager:
             options.append("--topic {}".format(topic))
         if group is not None:
             options.append("--group {}".format(group))
+        if transactional_id is not None:
+            options.append("--transactional-id {}".format(transactional_id))
         if allow_principal is not None:
             options.append("--allow-principal User:{}".format(allow_principal))
         if deny_principal is not None:

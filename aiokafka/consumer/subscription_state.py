@@ -480,6 +480,7 @@ class TopicPartitionState(object):
         for fut in self._committed_futs:
             if not fut.done():
                 fut.set_result(offset_meta)
+        self._committed_futs.clear()
 
     # Position manipulation
 

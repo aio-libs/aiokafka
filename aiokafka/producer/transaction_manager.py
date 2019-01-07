@@ -236,6 +236,9 @@ class TransactionManager:
             self._txn_consumer_group is None
         )
 
+    def is_fatal_error(self):
+        return self.state == TransactionState.FATAL_ERROR
+
     def wait_for_transaction_end(self):
         return self._transaction_waiter
 

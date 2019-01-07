@@ -559,6 +559,10 @@ class TransactionContext:
     @asyncio.coroutine
     def __aexit__(self, exc_type, exc_value, traceback):
         if exc_type is not None:
+            # If called directly we want the API to raise a InvalidState error,
+            # but when exiting a context manager we should just let it out
+            if self._producer._txn_manager.is_fatal_error():
+                return
             yield from self._producer.abort_transaction()
         else:
             yield from self._producer.commit_transaction()

@@ -7,7 +7,8 @@ from aiokafka.producer import AIOKafkaProducer
 from aiokafka.consumer import AIOKafkaConsumer
 
 from aiokafka.errors import (
-    TopicAuthorizationFailedError, GroupAuthorizationFailedError
+    TopicAuthorizationFailedError, GroupAuthorizationFailedError,
+    TransactionalIdAuthorizationFailed
 )
 from aiokafka.structs import TopicPartition
 
@@ -164,3 +165,37 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 await producer.send_offsets_to_transaction(
                     {TopicPartition(self.topic, 0): 0},
                     group_id=self.group_id)
+
+    ##########################################################################
+    # Transactional ID resource
+    ##########################################################################
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_sasl_deny_txnid_describe(self):
+        self.acl_manager.add_acl(
+            allow_principal="test", operation="All",
+            transactional_id="test_id")
+        self.acl_manager.add_acl(
+            deny_principal="test", operation="DESCRIBE",
+            transactional_id="test_id")
+
+        # Transactional producers will require DESCRIBE to perform
+        # FindCoordinator
+        with self.assertRaises(TransactionalIdAuthorizationFailed):
+            await self.producer_factory(transactional_id="test_id")
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_sasl_deny_txnid_write(self):
+        self.acl_manager.add_acl(
+            allow_principal="test", operation="All",
+            transactional_id="test_id")
+        self.acl_manager.add_acl(
+            deny_principal="test", operation="WRITE",
+            transactional_id="test_id")
+
+        # Transactional producers will require DESCRIBE to perform
+        # FindCoordinator
+        with self.assertRaises(TransactionalIdAuthorizationFailed):
+            await self.producer_factory(transactional_id="test_id")

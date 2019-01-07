@@ -17,7 +17,6 @@ import kafka.common as Errors
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 from aiokafka import ConsumerRebalanceListener
-from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.consumer.group_coordinator import (
@@ -331,43 +330,6 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         self.assertEqual(test_listener.revoked, [set([])])
         self.assertEqual(test_listener.assigned, [assigned])
-        yield from coordinator.close()
-        yield from client.close()
-
-    @run_until_complete
-    def test_get_offsets(self):
-        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
-        yield from client.bootstrap()
-        yield from self.wait_topic(client, 'topic1')
-        tp1 = TopicPartition('topic1', 0)
-        tp2 = TopicPartition('topic1', 1)
-
-        subscription = SubscriptionState(loop=self.loop)
-        subscription.subscribe(topics=set(['topic1']))
-        coordinator = GroupCoordinator(
-            client, subscription, loop=self.loop,
-            group_id='getoffsets-group')
-        yield from subscription.wait_for_assignment()
-        assignment = subscription.subscription.assignment
-
-        producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts)
-        yield from producer.start()
-        yield from producer.send('topic1', b'first msg', partition=0)
-        yield from producer.send('topic1', b'second msg', partition=1)
-        yield from producer.send('topic1', b'third msg', partition=1)
-        yield from producer.stop()
-
-        offsets = {TopicPartition('topic1', 0): OffsetAndMetadata(1, ''),
-                   TopicPartition('topic1', 1): OffsetAndMetadata(2, '')}
-        yield from coordinator.commit_offsets(assignment, offsets)
-
-        self.assertEqual(assignment.all_consumed_offsets(), {})
-        subscription.seek(tp1, 0)
-        subscription.seek(tp2, 0)
-        self.assertEqual(assignment.state_value(tp1).committed.offset, 1)
-        self.assertEqual(assignment.state_value(tp2).committed.offset, 2)
-
         yield from coordinator.close()
         yield from client.close()
 
@@ -913,7 +875,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # CASE: lookup fails with error first time. We update metadata and try
         # again
         coordinator.coordinator_dead()
-        coordinator_lookup = [0, Errors.UnknownError()]
+        coordinator_lookup = [0, Errors.UnknownTopicOrPartitionError()]
         yield from coordinator.ensure_coordinator_known()
         self.assertEqual(client.force_metadata_update.call_count, 1)
 
@@ -980,8 +942,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertEqual(coordinator.member_id, UNKNOWN_MEMBER_ID)
 
         heartbeat_error = Errors.UnknownError()
-        success = yield from coordinator._do_heartbeat()
-        self.assertFalse(success)
+        with self.assertRaises(Errors.KafkaError):
+            yield from coordinator._do_heartbeat()
 
         heartbeat_error = None
         send_req_error = Errors.RequestTimedOutError()
@@ -1086,13 +1048,14 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             subscription.assign_from_user({tp})
             assignment = subscription.subscription.assignment
             tp_state = assignment.state_value(tp)
-            return assignment, tp_state
-        assignment, tp_state = reset_assignment()
+            fut = tp_state.fetch_committed()
+            return assignment, tp_state, fut
+        assignment, tp_state, fut = reset_assignment()
 
         # Success case
         resp = yield from coordinator._maybe_refresh_commit_offsets(assignment)
         self.assertEqual(resp, True)
-        self.assertEqual(tp_state.committed, OffsetAndMetadata(12, ""))
+        self.assertEqual(fut.result(), OffsetAndMetadata(12, ""))
 
         # Calling again will fast return without a request
         resp = yield from coordinator._maybe_refresh_commit_offsets(assignment)
@@ -1101,21 +1064,21 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         # Commit not found case
         fetched_offsets = {}
-        assignment, tp_state = reset_assignment()
+        assignment, tp_state, fut = reset_assignment()
         resp = yield from coordinator._maybe_refresh_commit_offsets(assignment)
         self.assertEqual(resp, True)
-        self.assertEqual(tp_state.committed, OffsetAndMetadata(-1, ""))
+        self.assertEqual(fut.result(), OffsetAndMetadata(-1, ""))
 
         # Retriable error will be skipped
-        assignment, tp_state = reset_assignment()
+        assignment, tp_state, fut = reset_assignment()
         mocked.side_effect = Errors.GroupCoordinatorNotAvailableError()
         resp = yield from coordinator._maybe_refresh_commit_offsets(assignment)
         self.assertEqual(resp, False)
 
-        # Not retriable error will be skipped also...?
+        # Not retriable error will not be skipped
         mocked.side_effect = Errors.UnknownError()
-        resp = yield from coordinator._maybe_refresh_commit_offsets(assignment)
-        self.assertEqual(resp, False)
+        with self.assertRaises(Errors.UnknownError):
+            yield from coordinator._maybe_refresh_commit_offsets(assignment)
 
     @run_until_complete
     def test_coordinator__maybe_do_autocommit(self):
@@ -1184,10 +1147,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         mocked.side_effect = Errors.UnknownError()
         now = self.loop.time()
         coordinator._next_autocommit_deadline = 0
-        timeout = yield from coordinator._maybe_do_autocommit(assignment)
-        self.assertAlmostEqual(timeout, 1, places=1)
-        self.assertAlmostEqual(
-            coordinator._next_autocommit_deadline, now + interval, places=1)
+        with self.assertRaises(Errors.KafkaError):
+            yield from coordinator._maybe_do_autocommit(assignment)
 
     @run_until_complete
     def test_coordinator__coordination_routine(self):

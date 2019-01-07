@@ -118,14 +118,13 @@ class TestFetcher(unittest.TestCase):
         yield from asyncio.sleep(0.1, loop=self.loop)
         self.assertFalse(update_task.done())
         # Will continue only after committed is resolved
-        tp_state.reset_committed(OffsetAndMetadata(4, ""))
+        tp_state.update_committed(OffsetAndMetadata(4, ""))
         needs_wakeup = yield from update_task
         self.assertFalse(needs_wakeup)
         self.assertEqual(tp_state._position, 4)
         self.assertEqual(fetcher._proc_offset_request.call_count, 0)
 
-        # CASE: reset for already valid position will have no effect
-        tp_state.begin_commit()  # reset commit, to make sure we don't wait it
+        # CASE: will not query committed if position already present
         yield from fetcher._update_fetch_positions(assignment, 0, [partition])
         self.assertEqual(tp_state._position, 4)
         self.assertEqual(fetcher._proc_offset_request.call_count, 0)
@@ -147,12 +146,12 @@ class TestFetcher(unittest.TestCase):
         self.assertFalse(update_task.done())
 
         tp_state.seek(8)
-        tp_state.reset_committed(OffsetAndMetadata(4, ""))
+        tp_state.update_committed(OffsetAndMetadata(4, ""))
         yield from update_task
         self.assertEqual(tp_state._position, 8)
         self.assertEqual(fetcher._proc_offset_request.call_count, 1)
 
-        # CASE: awaiting_reset during waiting
+        # CASE: awaiting_reset during waiting for committed
         assignment, tp_state = reset_assignment()
         update_task = ensure_future(
             fetcher._update_fetch_positions(assignment, 0, [partition]),
@@ -162,21 +161,23 @@ class TestFetcher(unittest.TestCase):
         self.assertFalse(update_task.done())
 
         tp_state.await_reset(OffsetResetStrategy.LATEST)
-        tp_state.reset_committed(OffsetAndMetadata(4, ""))
+        tp_state.update_committed(OffsetAndMetadata(4, ""))
         yield from update_task
         self.assertEqual(tp_state._position, 12)
         self.assertEqual(fetcher._proc_offset_request.call_count, 2)
 
         # CASE: reset using default strategy if committed offset undefined
         assignment, tp_state = reset_assignment()
-        tp_state.reset_committed(OffsetAndMetadata(-1, ""))
+        self.loop.call_later(
+            0.01, tp_state.update_committed, OffsetAndMetadata(-1, ""))
         yield from fetcher._update_fetch_positions(assignment, 0, [partition])
         self.assertEqual(tp_state._position, 12)
         self.assertEqual(fetcher._records, {})
 
         # CASE: set error if _default_reset_strategy = OffsetResetStrategy.NONE
         assignment, tp_state = reset_assignment()
-        tp_state.reset_committed(OffsetAndMetadata(-1, ""))
+        self.loop.call_later(
+            0.01, tp_state.update_committed, OffsetAndMetadata(-1, ""))
         fetcher._default_reset_strategy = OffsetResetStrategy.NONE
         needs_wakeup = yield from fetcher._update_fetch_positions(
             assignment, 0, [partition])
@@ -193,7 +194,7 @@ class TestFetcher(unittest.TestCase):
         self.assertIsNone(tp_state._position)
         self.assertTrue(tp_state.awaiting_reset)
 
-        # CASE: reset 2 partitions separately, 1 will rese, 1 will get
+        # CASE: reset 2 partitions separately, 1 will raise, 1 will get
         #       committed
         fetcher._proc_offset_request.side_effect = _proc_offset_request
         partition2 = TopicPartition('test', 1)
@@ -202,7 +203,8 @@ class TestFetcher(unittest.TestCase):
         tp_state = assignment.state_value(partition)
         tp_state2 = assignment.state_value(partition2)
         tp_state.await_reset(OffsetResetStrategy.LATEST)
-        tp_state2.reset_committed(OffsetAndMetadata(5, ""))
+        self.loop.call_later(
+            0.01, tp_state2.update_committed, OffsetAndMetadata(5, ""))
         yield from fetcher._update_fetch_positions(
             assignment, 0, [partition, partition2])
         self.assertEqual(tp_state.position, 12)
