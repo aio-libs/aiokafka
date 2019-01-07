@@ -44,9 +44,12 @@ def docker(request):
 
 
 @pytest.fixture(scope='class')
-def acl_manager(kafka_server):
+def acl_manager(kafka_server, request):
+    image = request.config.getoption('--docker-image')
+    tag = image.split(":")[-1].replace('_', '-')
+
     from ._testutil import ACLManager
-    manager = ACLManager(kafka_server[-1])
+    manager = ACLManager(kafka_server[-1], tag)
     return manager
 
 

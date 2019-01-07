@@ -7,8 +7,9 @@ from aiokafka.producer import AIOKafkaProducer
 from aiokafka.consumer import AIOKafkaConsumer
 
 from aiokafka.errors import (
-    TopicAuthorizationFailedError
+    TopicAuthorizationFailedError, GroupAuthorizationFailedError
 )
+from aiokafka.structs import TopicPartition
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
@@ -21,6 +22,10 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     def sasl_hosts(self):
         # Produce/consume by SASL_PLAINTEXT
         return "{}:{}".format(self.kafka_host, self.kafka_sasl_plain_port)
+
+    @property
+    def group_id(self):
+        return self.topic + "_group"
 
     async def producer_factory(self, user="test", **kw):
         producer = AIOKafkaProducer(
@@ -38,7 +43,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     async def consumer_factory(self, user="test", **kw):
         kwargs = dict(
             enable_auto_commit=True,
-            auto_offset_reset="earliest"
+            auto_offset_reset="earliest",
+            group_id=self.group_id
         )
         kwargs.update(kw)
         consumer = AIOKafkaConsumer(
@@ -112,3 +118,33 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(TopicAuthorizationFailedError):
             await producer.send_and_wait(
                 topic=self.topic, value=b"Super sasl msg")
+
+    ##########################################################################
+    # Group Resource
+    ##########################################################################
+
+    @kafka_versions('>=0.10.0')
+    @run_until_complete
+    async def test_sasl_deny_group_describe(self):
+        self.acl_manager.add_acl(
+            allow_principal="test", operation="All", group=self.group_id)
+        self.acl_manager.add_acl(
+            deny_principal="test", operation="DESCRIBE", group=self.group_id)
+
+        # Consumer will require DESCRIBE to perform FindCoordinator
+        with self.assertRaises(GroupAuthorizationFailedError):
+            consumer = await self.consumer_factory()
+            await consumer.getone()
+
+    @kafka_versions('>=0.10.0')
+    @run_until_complete
+    async def test_sasl_deny_group_read(self):
+        self.acl_manager.add_acl(
+            allow_principal="test", operation="All", group=self.group_id)
+        self.acl_manager.add_acl(
+            deny_principal="test", operation="READ", group=self.group_id)
+
+        # Consumer will require READ to perform JoinGroup
+        with self.assertRaises(GroupAuthorizationFailedError):
+            consumer = await self.consumer_factory()
+            await consumer.getone()

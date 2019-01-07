@@ -1643,8 +1643,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             # We still need proper cleanup if this succeeds
             self.add_cleanup(consumer.stop)
 
-        with self.assertRaises(KafkaError):
-            yield from consumer.stop()
+        yield from consumer.stop()
 
     @run_until_complete
     def test_consumer_invalid_session_timeout(self):
@@ -1661,15 +1660,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             auto_offset_reset="earliest",
             group_id="group-" + self.id(), bootstrap_servers=self.hosts,
             session_timeout_ms=200, heartbeat_interval_ms=100)
+        self.add_cleanup(consumer.stop)
         with self.assertRaises(InvalidSessionTimeoutError):
             yield from consumer.start()
-
-            # We still need proper cleanup if this succeeds
-            self.add_cleanup(consumer.stop)
-
-        # In case of success it will need to raise error again on stop
-        with self.assertRaises(InvalidSessionTimeoutError):
-            yield from consumer.stop()
 
     @run_until_complete
     def test_consumer_invalid_crc_in_records(self):

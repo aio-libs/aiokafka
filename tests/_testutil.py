@@ -113,11 +113,14 @@ class StubRebalanceListener(ConsumerRebalanceListener):
 
 class ACLManager:
 
-    cmd = "/opt/kafka_2.12-2.1.0/bin/kafka-acls.sh"
-
-    def __init__(self, docker):
+    def __init__(self, docker, tag):
         self._docker = docker
         self._active_acls = []
+        self._tag = tag
+
+    @property
+    def cmd(self):
+        return "/opt/kafka_{tag}/bin/kafka-acls.sh".format(tag=self._tag)
 
     def _exec(self, *cmd_options):
         cmd = ' '.join(

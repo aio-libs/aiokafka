@@ -393,6 +393,10 @@ class Fetcher:
         self._wait_consume_future = None
         self._fetch_waiters = set()
 
+        # SubscriptionState will pass Coordination critical errors to those
+        # waiters directly
+        self._subscriptions.register_fetch_waiters(self._fetch_waiters)
+
         if client.api_version >= (0, 11):
             req_version = 4
         elif client.api_version >= (0, 10, 1):
@@ -431,6 +435,9 @@ class Fetcher:
             future.set_result(None)
 
     def _create_fetch_waiter(self):
+        # Creating a fetch waiter is usually not that frequent of an operation,
+        # (get methods will return all data first, before a waiter is created)
+
         fut = create_future(loop=self._loop)
         self._fetch_waiters.add(fut)
         fut.add_done_callback(
@@ -487,7 +494,13 @@ class Fetcher:
                     subscription = self._subscriptions.subscription
                     if subscription is None or \
                             subscription.assignment is None:
-                        yield from self._subscriptions.wait_for_assignment()
+                        try:
+                            waiter = self._subscriptions.wait_for_assignment()
+                            yield from waiter
+                        except Errors.KafkaError:
+                            # Critical coordination waiters will be passed
+                            # to user, but fetcher can just ignore those
+                            continue
                     assignment = self._subscriptions.subscription.assignment
                 assert assignment is not None and assignment.active
 
@@ -758,14 +771,10 @@ class Fetcher:
             if tp_state.has_valid_position or tp_state.awaiting_reset:
                 continue
 
-            committed = tp_state.committed
-            # None means the Coordinator has yet to update the offset
-            if committed is None:
-                try:
-                    yield from tp_state.wait_for_committed()
-                except asyncio.CancelledError:
-                    return needs_wakeup
-                committed = tp_state.committed
+            try:
+                committed = yield from tp_state.fetch_committed()
+            except asyncio.CancelledError:
+                return needs_wakeup
             assert committed is not None
 
             # There could have been a seek() call of some sort while
@@ -1084,6 +1093,9 @@ class Fetcher:
             if not done or self._closed:
                 return {}
 
+            if waiter.done():
+                waiter.result()  # Check for authorization errors
+
             # Decrease timeout accordingly
             timeout = timeout - (self._loop.time() - start_time)
             timeout = max(0, timeout)
@@ -1118,7 +1130,6 @@ class Fetcher:
             tp: offset for (tp, (offset, ts)) in offsets.items()
         }
 
-    @asyncio.coroutine
     def request_offset_reset(self, tps, strategy):
         """ Force a position reset. Called from Consumer of `seek_to_*` API's.
         """
@@ -1138,12 +1149,7 @@ class Fetcher:
         # describing the purpose.
         self._notify(self._wait_consume_future)
 
-        yield from asyncio.wait(
-            [asyncio.gather(*waiters, loop=self._loop),
-             assignment.unassign_future],
-            loop=self._loop, return_when=asyncio.FIRST_COMPLETED
-        )
-        return assignment.active
+        return asyncio.gather(*waiters, loop=self._loop)
 
     def seek_to(self, tp, offset):
         """ Force a position change to specific offset. Called from

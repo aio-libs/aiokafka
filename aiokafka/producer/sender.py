@@ -10,7 +10,8 @@ from aiokafka.errors import (
     CoordinatorLoadInProgressError, InvalidProducerEpoch,
     ProducerFenced, InvalidProducerIdMapping, InvalidTxnState,
     ConcurrentTransactions, DuplicateSequenceNumber, RequestTimedOutError,
-    OutOfOrderSequenceNumber, TopicAuthorizationFailedError)
+    OutOfOrderSequenceNumber, TopicAuthorizationFailedError,
+    GroupAuthorizationFailedError, TransactionalIdAuthorizationFailed)
 from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.protocol.transaction import (
     InitProducerIdRequest, AddPartitionsToTxnRequest, EndTxnRequest,
@@ -195,11 +196,20 @@ class Sender:
             try:
                 coordinator_id = yield from self.client.coordinator_lookup(
                     coordinator_type, coordinator_key)
-            except Errors.KafkaError as err:
-                log.error("FindCoordinator Request failed: %s", err)
+            except Errors.TransactionalIdAuthorizationFailed:
+                err = Errors.TransactionalIdAuthorizationFailed(
+                    self._txn_manager.transactional_id)
+                raise err
+            except Errors.GroupAuthorizationFailedError:
+                err = Errors.GroupAuthorizationFailedError(coordinator_key)
+                raise err
+            except Errors.CoordinatorNotAvailableError:
                 yield from self.client.force_metadata_update()
                 yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
                 continue
+            except Errors.KafkaError as err:
+                log.error("FindCoordinator Request failed: %s", err)
+                raise KafkaError(repr(err))
 
             # Try to connect to confirm that the connection can be
             # established.
@@ -523,6 +533,10 @@ class AddOffsetsToTxnHandler(BaseHandler):
             raise ProducerFenced()
         elif error_type is InvalidTxnState:
             raise error_type()
+        elif error_type is TransactionalIdAuthorizationFailed:
+            raise error_type(txn_manager.transactional_id)
+        elif error_type is GroupAuthorizationFailedError:
+            raise error_type(self._group_id)
         else:
             log.error(
                 "Could not add consumer group due to unexpected error: %s",
@@ -586,6 +600,10 @@ class TxnOffsetCommitHandler(BaseHandler):
                     return self._default_backoff
                 elif error_type is InvalidProducerEpoch:
                     raise ProducerFenced()
+                elif error_type is TransactionalIdAuthorizationFailed:
+                    raise error_type(txn_manager.transactional_id)
+                elif error_type is GroupAuthorizationFailedError:
+                    raise error_type(self._group_id)
                 else:
                     log.error(
                         "Could not commit offset for partition %s due to "
