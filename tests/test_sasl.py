@@ -136,6 +136,14 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             consumer = await self.consumer_factory()
             await consumer.getone()
 
+        # Transactional producers will also have the same problem to commit
+        producer = await self.producer_factory(transactional_id="test_id")
+        with self.assertRaises(GroupAuthorizationFailedError):
+            async with producer.transaction():
+                await producer.send_offsets_to_transaction(
+                    {TopicPartition(self.topic, 0): 0},
+                    group_id=self.group_id)
+
     @kafka_versions('>=0.10.0')
     @run_until_complete
     async def test_sasl_deny_group_read(self):
@@ -148,3 +156,11 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(GroupAuthorizationFailedError):
             consumer = await self.consumer_factory()
             await consumer.getone()
+
+        # Transactional producers will also have the same problem to commit
+        producer = await self.producer_factory(transactional_id="test_id")
+        with self.assertRaises(GroupAuthorizationFailedError):
+            async with producer.transaction():
+                await producer.send_offsets_to_transaction(
+                    {TopicPartition(self.topic, 0): 0},
+                    group_id=self.group_id)

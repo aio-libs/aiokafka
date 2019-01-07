@@ -13,8 +13,7 @@ from aiokafka.errors import (
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import TopicPartition
 from aiokafka.util import (
-    INTEGER_MAX_VALUE, PY_341, PY_36, wait_for_reponse_or_error,
-    commit_structure_validate
+    INTEGER_MAX_VALUE, PY_341, PY_36, commit_structure_validate
 )
 
 from .message_accumulator import MessageAccumulator
@@ -363,10 +362,6 @@ class AIOKafkaProducer(object):
         return self._partitioner(
             serialized_key, all_partitions, available)
 
-    def _wait_for_reponse_or_error(self, coro, *, shield):
-        return wait_for_reponse_or_error(
-            coro, [self._sender.sender_task], shield=shield, loop=self._loop)
-
     @asyncio.coroutine
     def send(self, topic, value=None, key=None, partition=None,
              timestamp_ms=None):
@@ -498,9 +493,9 @@ class AIOKafkaProducer(object):
         log.debug(
             "Beginning a new transaction for id %s",
             self._txn_manager.transactional_id)
-        yield from self._wait_for_reponse_or_error(
+        yield from asyncio.shield(
             self._txn_manager.wait_for_pid(),
-            shield=True
+            loop=self._loop
         )
         self._txn_manager.begin_transaction()
 
@@ -511,9 +506,9 @@ class AIOKafkaProducer(object):
             "Committing transaction for id %s",
             self._txn_manager.transactional_id)
         self._txn_manager.committing_transaction()
-        yield from self._wait_for_reponse_or_error(
+        yield from asyncio.shield(
             self._txn_manager.wait_for_transaction_end(),
-            shield=True
+            loop=self._loop
         )
 
     @asyncio.coroutine
@@ -523,9 +518,9 @@ class AIOKafkaProducer(object):
             "Aborting transaction for id %s",
             self._txn_manager.transactional_id)
         self._txn_manager.aborting_transaction()
-        yield from self._wait_for_reponse_or_error(
+        yield from asyncio.shield(
             self._txn_manager.wait_for_transaction_end(),
-            shield=True
+            loop=self._loop
         )
 
     def transaction(self):
@@ -548,7 +543,7 @@ class AIOKafkaProducer(object):
             "Begin adding offsets %s for consumer group %s to transaction",
             formatted_offsets, group_id)
         fut = self._txn_manager.add_offsets_to_txn(formatted_offsets, group_id)
-        yield from self._wait_for_reponse_or_error(fut, shield=True)
+        yield from asyncio.shield(fut, loop=self._loop)
 
 
 class TransactionContext:
