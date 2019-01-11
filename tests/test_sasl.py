@@ -7,7 +7,7 @@ from aiokafka.consumer import AIOKafkaConsumer
 
 from aiokafka.errors import (
     TopicAuthorizationFailedError, GroupAuthorizationFailedError,
-    TransactionalIdAuthorizationFailed
+    TransactionalIdAuthorizationFailed, UnknownTopicOrPartitionError
 )
 from aiokafka.structs import TopicPartition
 
@@ -77,17 +77,28 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @kafka_versions('>=0.10.0')
     @run_until_complete
     async def test_sasl_deny_topic_describe(self):
+        # Before 1.0.0 Kafka if topic does not exist it will not report
+        # Topic authorization errors, so we need to create topic beforehand
+        # See https://kafka.apache.org/documentation/#upgrade_100_notable
+        tmp_producer = await self.producer_factory()
+        await tmp_producer.send_and_wait(self.topic, value=b"Autocreate topic")
+        error_class = TopicAuthorizationFailedError
+        if tmp_producer.client.api_version < (1, 0):
+            error_class = UnknownTopicOrPartitionError
+        del tmp_producer
+
         self.acl_manager.add_acl(
             allow_principal="test", operation="All", topic=self.topic)
         self.acl_manager.add_acl(
             deny_principal="test", operation="DESCRIBE", topic=self.topic)
 
-        producer = await self.producer_factory()
-        with self.assertRaises(TopicAuthorizationFailedError):
+        producer = await self.producer_factory(request_timeout_ms=10000)
+
+        with self.assertRaises(error_class):
             await producer.send_and_wait(self.topic, value=b"Super sasl msg")
 
         # This will check for authorization on start()
-        with self.assertRaises(TopicAuthorizationFailedError):
+        with self.assertRaises(error_class):
             await self.consumer_factory()
 
     @kafka_versions('>=0.10.0')
