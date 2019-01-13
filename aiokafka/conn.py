@@ -207,6 +207,10 @@ class AIOKafkaConnection:
         response = yield from self.send(version_req)
         versions = {}
         for api_key, min_version, max_version in response.api_versions:
+            assert min_version <= max_version, (
+                "{} should be less than or equal to {} for {}".format(
+                    min_version, max_version, api_key)
+            )
             versions[api_key] = (min_version, max_version)
         self._version_info = VersionInfo(versions)
 

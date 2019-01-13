@@ -10,9 +10,10 @@ from kafka.protocol.metadata import (
 from kafka.protocol.commit import (
     GroupCoordinatorRequest_v0 as GroupCoordinatorRequest,
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
+from kafka.protocol.admin import SaslHandShakeRequest
 
-from aiokafka.conn import AIOKafkaConnection, create_conn
-from aiokafka.errors import ConnectionError, CorrelationIdError
+from aiokafka.conn import AIOKafkaConnection, create_conn, VersionInfo
+from aiokafka.errors import ConnectionError, CorrelationIdError, KafkaError
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.util import PY_341
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
@@ -234,3 +235,35 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         self.assertTrue(conn.connected())
         conn.close()
         self.assertFalse(conn.connected())
+
+    def test_connection_version_info(self):
+        # All version supported
+        version_info = VersionInfo({
+            SaslHandShakeRequest[0].API_KEY: [0, 1]
+        })
+        self.assertEqual(
+            version_info.pick_best(SaslHandShakeRequest),
+            SaslHandShakeRequest[1])
+
+        # Broker only supports the lesser version
+        version_info = VersionInfo({
+            SaslHandShakeRequest[0].API_KEY: [0, 0]
+        })
+        self.assertEqual(
+            version_info.pick_best(SaslHandShakeRequest),
+            SaslHandShakeRequest[0])
+
+        # We don't support any version compatible with the broker
+        version_info = VersionInfo({
+            SaslHandShakeRequest[0].API_KEY: [2, 3]
+        })
+        with self.assertRaises(KafkaError):
+            self.assertEqual(
+                version_info.pick_best(SaslHandShakeRequest),
+                SaslHandShakeRequest[1])
+
+        # No information on the supported versions
+        version_info = VersionInfo({})
+        self.assertEqual(
+            version_info.pick_best(SaslHandShakeRequest),
+            SaslHandShakeRequest[0])
