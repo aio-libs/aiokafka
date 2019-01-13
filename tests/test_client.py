@@ -22,6 +22,9 @@ NO_ERROR = 0
 UNKNOWN_TOPIC_OR_PARTITION = 3
 NO_LEADER = 5
 REPLICA_NOT_AVAILABLE = 9
+INVALID_TOPIC = 17
+UNKNOWN_ERROR = -1
+TOPIC_AUTHORIZATION_FAILED = 29
 
 
 @pytest.mark.usefixtures('setup_test_class')
@@ -78,7 +81,11 @@ class TestAIOKafkaClient(unittest.TestCase):
             (NO_ERROR, 'topic_4', [
                 (NO_ERROR, 0, 0, [0, 1], [0, 1]),
                 (REPLICA_NOT_AVAILABLE, 1, 1, [1, 0], [1, 0]),
-            ])
+            ]),
+            (INVALID_TOPIC, 'topic_5', []),  # Just ignored
+            (UNKNOWN_ERROR, 'topic_6', []),  # Just ignored
+            (TOPIC_AUTHORIZATION_FAILED, 'topic_auth_error', []),
+
         ]
 
         @asyncio.coroutine
@@ -122,6 +129,8 @@ class TestAIOKafkaClient(unittest.TestCase):
 
         with self.assertRaises(NodeNotReadyError):
             self.loop.run_until_complete(client.send(0, None))
+
+        self.assertEqual(md.unauthorized_topics, {'topic_auth_error'})
 
     @run_until_complete
     def test_send_timeout_deletes_connection(self):
