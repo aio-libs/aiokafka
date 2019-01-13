@@ -10,10 +10,16 @@ from kafka.protocol.metadata import (
 from kafka.protocol.commit import (
     GroupCoordinatorRequest_v0 as GroupCoordinatorRequest,
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
-from kafka.protocol.admin import SaslHandShakeRequest
+from kafka.protocol.admin import (
+    SaslHandShakeRequest, SaslHandShakeResponse, SaslAuthenticateRequest,
+    SaslAuthenticateResponse
+)
 
 from aiokafka.conn import AIOKafkaConnection, create_conn, VersionInfo
-from aiokafka.errors import ConnectionError, CorrelationIdError, KafkaError
+from aiokafka.errors import (
+    ConnectionError, CorrelationIdError, KafkaError, NoError, UnknownError,
+    UnsupportedSaslMechanismError, IllegalSaslStateError
+)
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.util import PY_341
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
@@ -267,3 +273,112 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         self.assertEqual(
             version_info.pick_best(SaslHandShakeRequest),
             SaslHandShakeRequest[0])
+
+    @run_until_complete
+    def test__do_sasl_handshake_v0(self):
+        host, port = self.kafka_host, self.kafka_port
+
+        # setup connection with mocked send and send_bytes
+        conn = AIOKafkaConnection(
+            host=host, port=port, loop=self.loop,
+            sasl_mechanism="PLAIN",
+            sasl_plain_username="admin",
+            sasl_plain_password="123"
+        )
+        conn.close = close_mock = mock.MagicMock()
+
+        supported_mechanisms = ["PLAIN"]
+        error_class = NoError
+
+        @asyncio.coroutine
+        def mock_send(request, expect_response=True):
+            return SaslHandShakeResponse[0](
+                error_code=error_class.errno,
+                enabled_mechanisms=supported_mechanisms
+            )
+
+        @asyncio.coroutine
+        def mock_sasl_send(payload):
+            return b""
+
+        conn.send = mock.Mock(side_effect=mock_send)
+        conn._send_sasl_token = mock.Mock(side_effect=mock_sasl_send)
+        conn._version_info = VersionInfo({
+            SaslHandShakeRequest[0].API_KEY: [0, 0]
+        })
+
+        yield from conn._do_sasl_handshake()
+
+        supported_mechanisms = ["GSSAPI"]
+        with self.assertRaises(UnsupportedSaslMechanismError):
+            yield from conn._do_sasl_handshake()
+        close_mock.assert_called()
+
+        error_class = UnknownError
+        close_mock.reset()
+
+        with self.assertRaises(UnknownError):
+            yield from conn._do_sasl_handshake()
+        close_mock.assert_called()
+
+    @run_until_complete
+    def test__do_sasl_handshake_v1(self):
+        host, port = self.kafka_host, self.kafka_port
+
+        # setup connection with mocked send and send_bytes
+        conn = AIOKafkaConnection(
+            host=host, port=port, loop=self.loop,
+            sasl_mechanism="PLAIN",
+            sasl_plain_username="admin",
+            sasl_plain_password="123",
+            security_protocol="SASL_PLAINTEXT"
+        )
+        conn.close = close_mock = mock.MagicMock()
+
+        supported_mechanisms = ["PLAIN"]
+        error_class = NoError
+        auth_error_class = NoError
+
+        @asyncio.coroutine
+        def mock_send(request, expect_response=True):
+            if request.API_KEY == SaslHandShakeRequest[0].API_KEY:
+                assert request.API_VERSION == 1
+                return SaslHandShakeResponse[1](
+                    error_code=error_class.errno,
+                    enabled_mechanisms=supported_mechanisms
+                )
+            else:
+                assert request.API_KEY == SaslAuthenticateRequest[0].API_KEY
+                return SaslAuthenticateResponse[0](
+                    error_code=auth_error_class.errno,
+                    error_message="",
+                    sasl_auth_bytes=b""
+                )
+
+        conn.send = mock.Mock(side_effect=mock_send)
+        conn._version_info = VersionInfo({
+            SaslHandShakeRequest[0].API_KEY: [0, 1]
+        })
+
+        yield from conn._do_sasl_handshake()
+
+        supported_mechanisms = ["GSSAPI"]
+        with self.assertRaises(UnsupportedSaslMechanismError):
+            yield from conn._do_sasl_handshake()
+        close_mock.assert_called()
+        supported_mechanisms = ["PLAIN"]
+
+        auth_error_class = IllegalSaslStateError
+        close_mock.reset()
+
+        with self.assertRaises(IllegalSaslStateError):
+            yield from conn._do_sasl_handshake()
+        close_mock.assert_called()
+        auth_error_class = NoError
+
+        error_class = UnknownError
+        close_mock.reset()
+
+        with self.assertRaises(UnknownError):
+            yield from conn._do_sasl_handshake()
+        close_mock.assert_called()

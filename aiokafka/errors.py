@@ -23,6 +23,7 @@ __all__ = [
     "UnsupportedVersionError", "CorruptRecordException", "InvalidMessageError",
     "CoordinatorNotAvailableError", "NotCoordinatorError",
     "CoordinatorLoadInProgressError", "RequestTimedOutError",
+    "IllegalSaslStateError",
     # aiokafka custom errors
     "ConsumerStoppedError", "NoOffsetForPartitionError", "RecordTooLargeError",
     "ProducerClosed"

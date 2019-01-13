@@ -257,7 +257,9 @@ class AIOKafkaConnection:
                 resp = yield from self.send(req)
                 error_type = Errors.for_code(resp.error_code)
                 if error_type is not Errors.NoError:
-                    raise error_type(resp.error_message)
+                    exc = error_type(resp.error_message)
+                    self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
+                    raise exc
                 auth_bytes = resp.sasl_auth_bytes
 
         self.log.info(
