@@ -312,14 +312,14 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         supported_mechanisms = ["GSSAPI"]
         with self.assertRaises(UnsupportedSaslMechanismError):
             yield from conn._do_sasl_handshake()
-        close_mock.assert_called()
+        self.assertTrue(close_mock.call_count)
 
         error_class = UnknownError
         close_mock.reset()
 
         with self.assertRaises(UnknownError):
             yield from conn._do_sasl_handshake()
-        close_mock.assert_called()
+        self.assertTrue(close_mock.call_count)
 
     @run_until_complete
     def test__do_sasl_handshake_v1(self):
@@ -365,7 +365,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         supported_mechanisms = ["GSSAPI"]
         with self.assertRaises(UnsupportedSaslMechanismError):
             yield from conn._do_sasl_handshake()
-        close_mock.assert_called()
+        self.assertTrue(close_mock.call_count)
         supported_mechanisms = ["PLAIN"]
 
         auth_error_class = IllegalSaslStateError
@@ -373,7 +373,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
         with self.assertRaises(IllegalSaslStateError):
             yield from conn._do_sasl_handshake()
-        close_mock.assert_called()
+        self.assertTrue(close_mock.call_count)
         auth_error_class = NoError
 
         error_class = UnknownError
@@ -381,4 +381,4 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
         with self.assertRaises(UnknownError):
             yield from conn._do_sasl_handshake()
-        close_mock.assert_called()
+        self.assertTrue(close_mock.call_count)
