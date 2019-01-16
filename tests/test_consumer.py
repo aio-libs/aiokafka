@@ -1614,38 +1614,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             self.assertEqual(msg.value, str(i).encode())
 
     @run_until_complete
-    def test_consumer_propagates_coordinator_errors(self):
-        # Following issue #344 it seems more critical. There may be
-        # more cases, where aiokafka just does not handle correctly in
-        # coordination (like ConnectionError in said issue).
-        # Original issue #294
-
-        consumer = AIOKafkaConsumer(
-            loop=self.loop,
-            enable_auto_commit=False,
-            auto_offset_reset="earliest",
-            group_id="group-" + self.id(),
-            bootstrap_servers=self.hosts)
-        yield from consumer.start()
-
-        with self.assertRaises(KafkaError):
-            with mock.patch.object(consumer._coordinator, "_send_req") as m:
-                @asyncio.coroutine
-                def mock_send_req(request):
-                    res = mock.Mock()
-                    res.error_code = UnknownError.errno
-                    return res
-                m.side_effect = mock_send_req
-
-                consumer.subscribe([self.topic])  # Force join
-                yield from consumer.getone()
-
-            # We still need proper cleanup if this succeeds
-            self.add_cleanup(consumer.stop)
-
-        yield from consumer.stop()
-
-    @run_until_complete
     def test_consumer_invalid_session_timeout(self):
         # Following issue #344 it seems more critical. There may be
         # more cases, where aiokafka just does not handle correctly in
@@ -1806,3 +1774,46 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         pos = yield from consumer.position(TopicPartition(self.topic, 0))
         self.assertEqual(pos, batch_meta.offset + 10)
+
+    @run_until_complete
+    def test_consumer_propagates_coordinator_errors(self):
+        # Following issue #344 it seems more critical. There may be
+        # more cases, where aiokafka just does not handle correctly in
+        # coordination (like ConnectionError in said issue).
+        # Original issue #294
+
+        consumer = AIOKafkaConsumer(
+            loop=self.loop,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+            group_id="group-" + self.id(),
+            bootstrap_servers=self.hosts)
+        yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        with mock.patch.object(consumer._coordinator, "_send_req") as m:
+            @asyncio.coroutine
+            def mock_send_req(request):
+                res = mock.Mock()
+                res.error_code = UnknownError.errno
+                return res
+            m.side_effect = mock_send_req
+
+            consumer.subscribe([self.topic])  # Force join error
+            with self.assertRaises(KafkaError):
+                yield from consumer.getone()
+
+            # This time we won't kill the fetch waiter, we will check errors
+            # before waiting
+            with self.assertRaises(KafkaError):
+                yield from consumer.getone()
+
+            # Error in aiokafka code case, should be raised to user too
+            m.side_effect = ValueError
+            with self.assertRaises(KafkaError):
+                yield from consumer.getone()
+
+        # Even after error should be stopped we already have a broken
+        # coordination routine
+        with self.assertRaises(KafkaError):
+            yield from consumer.getone()

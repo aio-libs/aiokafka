@@ -1,6 +1,7 @@
 import logging
 from asyncio import AbstractEventLoop as ALoop, shield, Event
 from enum import Enum
+import copy
 
 from typing import Set, Pattern, Dict
 
@@ -256,17 +257,17 @@ class SubscriptionState:
         """
         for waiter in self._subscription_waiters:
             if not waiter.done():
-                waiter.set_exception(exc)
+                waiter.set_exception(copy.copy(exc))
         self._subscription_waiters.clear()
 
         for waiter in self._assignment_waiters:
             if not waiter.done():
-                waiter.set_exception(exc)
+                waiter.set_exception(copy.copy(exc))
         self._subscription_waiters.clear()
 
         for waiter in self._fetch_waiters:
             if not waiter.done():
-                waiter.set_exception(exc)
+                waiter.set_exception(copy.copy(exc))
 
 
 class Subscription:

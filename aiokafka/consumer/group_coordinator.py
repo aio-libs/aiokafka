@@ -1,7 +1,7 @@
 import asyncio
 import collections
 import logging
-from copy import copy
+import copy
 
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from kafka.coordinator.protocol import ConsumerProtocol
@@ -268,17 +268,6 @@ class GroupCoordinator(BaseCoordinator):
         self._coordination_task = ensure_future(
             self._coordination_routine(), loop=loop)
 
-        def _on_coordination_done(fut, self=self):
-            try:
-                fut.result()
-            except asyncio.CancelledError:
-                pass
-            except Exception as exc:  # pragma: no cover
-                log.error(
-                    "Unexpected error in coordinator routine", exc_info=True)
-                self._subscription.abort_waiters(exc)
-        self._coordination_task.add_done_callback(_on_coordination_done)
-
         # Will be started/stopped by coordination task
         self._heartbeat_task = None
         self._commit_refresh_task = None
@@ -330,9 +319,11 @@ class GroupCoordinator(BaseCoordinator):
             self._coordination_task.result()
         if self._error_consumed_fut is not None:
             self._error_consumed_fut.set_result(None)
+            self._error_consumed_fut = None
         if self._pending_exception is not None:
+            exc = self._pending_exception
             self._pending_exception = None
-            raise copy(self._pending_exception)
+            raise exc
 
     def _push_error_to_user(self, exc):
         """ Most critical errors are not something we can continue execution
@@ -345,6 +336,7 @@ class GroupCoordinator(BaseCoordinator):
              permission for the group, would Consumer work right away or would
              still raise exception a few times?
         """
+        exc = copy.copy(exc)
         self._subscription.abort_waiters(exc)
         self._pending_exception = exc
         self._error_consumed_fut = create_future(loop=self._loop)
@@ -363,7 +355,8 @@ class GroupCoordinator(BaseCoordinator):
 
         self._closing.set_result(None)
         # We must let the coordination task properly finish all pending work
-        yield from self._coordination_task
+        if not self._coordination_task.done():
+            yield from self._coordination_task
         yield from self._stop_heartbeat_task()
         yield from self._stop_commit_offsets_refresh_task()
 
@@ -580,6 +573,20 @@ class GroupCoordinator(BaseCoordinator):
 
     @asyncio.coroutine
     def _coordination_routine(self):
+        try:
+            yield from self.__coordination_routine()
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:  # pragma: no cover
+            log.error(
+                "Unexpected error in coordinator routine", exc_info=True)
+            kafka_exc = Errors.KafkaError(
+                "Unexpected error during coordination {!r}".format(exc))
+            self._subscription.abort_waiters(kafka_exc)
+            raise kafka_exc
+
+    @asyncio.coroutine
+    def __coordination_routine(self):
         """ Main background task, that keeps track of changes in group
         coordination. This task will spawn/stop heartbeat task and perform
         autocommit in times it's safe to do so.

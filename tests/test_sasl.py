@@ -13,6 +13,7 @@ from aiokafka.structs import TopicPartition
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
+    TEST_TIMEOUT = 60
 
     # See https://docs.confluent.io/current/kafka/authorization.html
     # for a good list of what Operation can be mapped to what Resource and
