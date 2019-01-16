@@ -879,6 +879,19 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         yield from coordinator.ensure_coordinator_known()
         self.assertEqual(client.force_metadata_update.call_count, 1)
 
+        # CASE: Special case for group authorization
+        coordinator.coordinator_dead()
+        coordinator_lookup = [0, Errors.GroupAuthorizationFailedError()]
+        with self.assertRaises(Errors.GroupAuthorizationFailedError) as cm:
+            yield from coordinator.ensure_coordinator_known()
+        self.assertEqual(cm.exception.args[0], coordinator.group_id)
+
+        # CASE: unretriable errors should be reraised to higher level
+        coordinator.coordinator_dead()
+        coordinator_lookup = [0, Errors.UnknownError()]
+        with self.assertRaises(Errors.UnknownError):
+            yield from coordinator.ensure_coordinator_known()
+
     @run_until_complete
     def test_coordinator__do_heartbeat(self):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
