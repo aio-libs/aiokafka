@@ -298,7 +298,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
             )
 
         @asyncio.coroutine
-        def mock_sasl_send(payload):
+        def mock_sasl_send(payload, expect_response):
             return b""
 
         conn.send = mock.Mock(side_effect=mock_send)
