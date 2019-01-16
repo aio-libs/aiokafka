@@ -382,3 +382,41 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         with self.assertRaises(UnknownError):
             yield from conn._do_sasl_handshake()
         self.assertTrue(close_mock.call_count)
+
+    @run_until_complete
+    def test__send_sasl_token(self):
+        # Before Kafka 1.0.0 SASL was performed on the wire without
+        # KAFKA_HEADER in the protocol. So we needed another private
+        # function to send `raw` data with only length prefixed
+
+        # setup connection with mocked transport and protocol
+        conn = AIOKafkaConnection(
+            host="", port=9999, loop=self.loop
+        )
+        conn.close = mock.MagicMock()
+        conn._writer = mock.MagicMock()
+        out_buffer = []
+        conn._writer.write = mock.Mock(side_effect=out_buffer.append)
+        conn._reader = mock.MagicMock()
+        self.assertEqual(len(conn._requests), 0)
+
+        # Successful send
+        conn._send_sasl_token(b"Super data")
+        self.assertEqual(b''.join(out_buffer), b"\x00\x00\x00\nSuper data")
+        self.assertEqual(len(conn._requests), 1)
+        out_buffer.clear()
+        conn._requests.clear()
+
+        # Broken pipe error
+        conn._writer.write.side_effect = OSError
+        with self.assertRaises(ConnectionError):
+            conn._send_sasl_token(b"Super data")
+        self.assertEqual(out_buffer, [])
+        self.assertEqual(len(conn._requests), 0)
+        self.assertEqual(conn.close.call_count, 1)
+
+        conn._writer = None
+        with self.assertRaises(ConnectionError):
+            conn._send_sasl_token(b"Super data")
+        # We don't need to close 2ce
+        self.assertEqual(conn.close.call_count, 1)
