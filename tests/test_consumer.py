@@ -1817,3 +1817,26 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # coordination routine
         with self.assertRaises(KafkaError):
             yield from consumer.getone()
+
+    @run_until_complete
+    def test_consumer_propagates_heartbeat_errors(self):
+        consumer = AIOKafkaConsumer(
+            loop=self.loop,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+            group_id="group-" + self.id(),
+            bootstrap_servers=self.hosts)
+        yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        with mock.patch.object(consumer._coordinator, "_do_heartbeat") as m:
+            m.side_effect = UnknownError
+
+            consumer.subscribe([self.topic])  # Force join error
+            with self.assertRaises(KafkaError):
+                yield from consumer.getone()
+
+            # This time we won't kill the fetch waiter, we will check errors
+            # before waiting
+            with self.assertRaises(KafkaError):
+                yield from consumer.getone()

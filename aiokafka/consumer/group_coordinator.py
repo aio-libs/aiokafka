@@ -727,7 +727,7 @@ class GroupCoordinator(BaseCoordinator):
         if self._heartbeat_task is not None:
             if not self._heartbeat_task.done():
                 self._heartbeat_task.cancel()
-            yield from self._heartbeat_task
+                yield from self._heartbeat_task
             self._heartbeat_task = None
 
     @asyncio.coroutine
@@ -835,8 +835,9 @@ class GroupCoordinator(BaseCoordinator):
     def _stop_commit_offsets_refresh_task(self):
         # The previous task should end after assinment changed
         if self._commit_refresh_task is not None:
-            self._commit_refresh_task.cancel()
-            yield from self._commit_refresh_task
+            if not self._commit_refresh_task.done():
+                self._commit_refresh_task.cancel()
+                yield from self._commit_refresh_task
             self._commit_refresh_task = None
 
     @asyncio.coroutine
