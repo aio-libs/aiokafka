@@ -7,6 +7,7 @@ import sys
 import traceback
 import warnings
 import weakref
+import io
 
 from kafka.protocol.api import RequestHeader
 from kafka.protocol.admin import (
@@ -18,10 +19,18 @@ from kafka.protocol.commit import (
 import aiokafka.errors as Errors
 from aiokafka.util import ensure_future, create_future, PY_341, PY_36
 
+from kafka.protocol.types import Int8
+
+try:
+    import gssapi
+except ImportError:
+    gssapi = None
+
 __all__ = ['AIOKafkaConnection', 'create_conn']
 
 
 READER_LIMIT = 2 ** 16
+SASL_QOP_AUTH = 1
 
 
 class CloseReason:
@@ -63,6 +72,8 @@ def create_conn(host, port, *, loop=None, client_id='aiokafka',
                 sasl_mechanism=None,
                 sasl_plain_username=None,
                 sasl_plain_password=None,
+                sasl_kerberos_service_name='kafka',
+                sasl_kerberos_domain_name=None,
                 version_hint=None):
     if loop is None:
         loop = asyncio.get_event_loop()
@@ -75,6 +86,8 @@ def create_conn(host, port, *, loop=None, client_id='aiokafka',
         sasl_mechanism=sasl_mechanism,
         sasl_plain_username=sasl_plain_username,
         sasl_plain_password=sasl_plain_password,
+        sasl_kerberos_service_name=sasl_kerberos_service_name,
+        sasl_kerberos_domain_name=sasl_kerberos_domain_name,
         version_hint=version_hint)
     yield from conn.connect()
     return conn
@@ -102,10 +115,15 @@ class AIOKafkaConnection:
 
     def __init__(self, host, port, *, loop, client_id='aiokafka',
                  request_timeout_ms=40000, api_version=(0, 8, 2),
-                 ssl_context=None, security_protocol="PLAINTEXT",
+                 ssl_context=None, security_protocol='PLAINTEXT',
                  max_idle_ms=None, on_close=None, sasl_mechanism=None,
                  sasl_plain_password=None, sasl_plain_username=None,
+                 sasl_kerberos_service_name='kafka',
+                 sasl_kerberos_domain_name=None,
                  version_hint=None):
+        if sasl_mechanism == "GSSAPI":
+            assert gssapi is not None, "gssapi library required"
+
         self._loop = loop
         self._host = host
         self._port = port
@@ -117,6 +135,8 @@ class AIOKafkaConnection:
         self._sasl_mechanism = sasl_mechanism
         self._sasl_plain_username = sasl_plain_username
         self._sasl_plain_password = sasl_plain_password
+        self._sasl_kerberos_service_name = sasl_kerberos_service_name
+        self._sasl_kerberos_domain_name = sasl_kerberos_domain_name
 
         # Version hint is the version determined by initial client bootstrap
         self._version_hint = version_hint
@@ -216,7 +236,10 @@ class AIOKafkaConnection:
 
     @asyncio.coroutine
     def _do_sasl_handshake(self):
-        req_klass = self._version_info.pick_best(SaslHandShakeRequest)
+        if self._sasl_mechanism == "GSSAPI":
+            req_klass = SaslHandShakeRequest[0]
+        else:
+            req_klass = self._version_info.pick_best(SaslHandShakeRequest)
 
         sasl_handshake = req_klass(self._sasl_mechanism)
         response = yield from self.send(sasl_handshake)
@@ -234,22 +257,26 @@ class AIOKafkaConnection:
             self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
             raise exc
 
-        assert self._sasl_mechanism == 'PLAIN'
-        if self._security_protocol == 'SASL_PLAINTEXT':
+        assert self._sasl_mechanism in ('PLAIN', 'GSSAPI')
+        if self._security_protocol == 'SASL_PLAINTEXT' and \
+           self._sasl_mechanism == 'PLAIN':
             self.log.warning(
                 'Sending username and password in the clear')
 
-        authenticator = self.authenticator_plain()
+        authenticator = self.authenticator_gssapi() \
+            if self._sasl_mechanism == 'GSSAPI' \
+            else self.authenticator_plain()
 
         auth_bytes = None
         while True:
             try:
-                payload = authenticator.send(auth_bytes)
+                payload, expect_response = authenticator.send(auth_bytes)
             except StopIteration:
                 break
 
             if req_klass.API_VERSION == 0:
-                auth_bytes = yield from self._send_sasl_token(payload)
+                auth_bytes = yield from self._send_sasl_token(payload,
+                                                              expect_response)
             else:
                 req_klass = self._version_info.pick_best(
                     SaslAuthenticateRequest)
@@ -262,8 +289,39 @@ class AIOKafkaConnection:
                     raise exc
                 auth_bytes = resp.sasl_auth_bytes
 
-        self.log.info(
-            'Authenticated as %s via PLAIN', self._sasl_plain_username)
+        if self._sasl_mechanism == 'GSSAPI':
+            self.log.info('Authenticated as %s via GSSPAI', self.principal)
+        else:
+            self.log.info('Authenticated as %s via PLAIN',
+                          self._sasl_plain_username)
+
+    @property
+    def principal(self):
+        service = self._sasl_kerberos_service_name
+        domain = self._sasl_kerberos_domain_name or self.host
+
+        return "{service}@{domain}".format(service=service, domain=domain)
+
+    def authenticator_gssapi(self):
+        name = gssapi.Name(self.principal,
+                           name_type=gssapi.NameType.hostbased_service)
+        cname = name.canonicalize(gssapi.MechType.kerberos)
+
+        client_ctx = gssapi.SecurityContext(name=cname, usage='initiate')
+
+        server_token = None
+        while not client_ctx.complete:
+            client_token = client_ctx.step(server_token)
+            if client_token:
+                server_token = yield client_token, True
+            else:
+                server_token = yield b'', True
+        msg = client_ctx.unwrap(server_token).message
+
+        iomsg = io.BytesIO(msg[0:1])
+        msg = Int8.encode(SASL_QOP_AUTH & Int8.decode(iomsg)) + msg[1:]
+        msg = client_ctx.wrap(msg + self.principal.encode(), False).message
+        yield msg, False
 
     def authenticator_plain(self):
         """ Automaton to authenticate with SASL tokens
@@ -273,7 +331,7 @@ class AIOKafkaConnection:
             self._sasl_plain_username,
             self._sasl_plain_username,
             self._sasl_plain_password]
-        ).encode("utf-8")
+        ).encode("utf-8"), True
         assert resp == b"", (
             "Server should either close or send an empty response"
         )
@@ -352,7 +410,7 @@ class AIOKafkaConnection:
         self._requests.append((correlation_id, request.RESPONSE_TYPE, fut))
         return asyncio.wait_for(fut, self._request_timeout, loop=self._loop)
 
-    def _send_sasl_token(self, payload):
+    def _send_sasl_token(self, payload, expect_response=True):
         if self._writer is None:
             raise Errors.ConnectionError(
                 "No connection to broker at {0}:{1}"
@@ -366,6 +424,10 @@ class AIOKafkaConnection:
             raise Errors.ConnectionError(
                 "Connection at {0}:{1} broken: {2}".format(
                     self._host, self._port, err))
+
+        if not expect_response:
+            return self._writer.drain()
+
         fut = create_future(loop=self._loop)
         self._requests.append((None, None, fut))
         return asyncio.wait_for(fut, self._request_timeout, loop=self._loop)

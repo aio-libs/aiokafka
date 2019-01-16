@@ -244,7 +244,9 @@ class AIOKafkaConsumer(object):
                  isolation_level="read_uncommitted",
                  sasl_mechanism="PLAIN",
                  sasl_plain_password=None,
-                 sasl_plain_username=None):
+                 sasl_plain_username=None,
+                 sasl_kerberos_service_name='kafka',
+                 sasl_kerberos_domain_name=None):
         if max_poll_records is not None and (
                 not isinstance(max_poll_records, int) or max_poll_records < 1):
             raise ValueError("`max_poll_records` should be positive Integer")
@@ -263,7 +265,9 @@ class AIOKafkaConsumer(object):
             connections_max_idle_ms=connections_max_idle_ms,
             sasl_mechanism=sasl_mechanism,
             sasl_plain_username=sasl_plain_username,
-            sasl_plain_password=sasl_plain_password)
+            sasl_plain_password=sasl_plain_password,
+            sasl_kerberos_service_name=sasl_kerberos_service_name,
+            sasl_kerberos_domain_name=sasl_kerberos_domain_name)
 
         self._group_id = group_id
         self._heartbeat_interval_ms = heartbeat_interval_ms
