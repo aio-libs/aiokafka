@@ -905,7 +905,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             yield from coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        coordinator._coordination_task = self.loop.create_task(
+            asyncio.sleep(0.1, loop=self.loop)
+        )
         self.add_cleanup(coordinator.close)
 
         _orig_send_req = coordinator._send_req
@@ -953,6 +955,11 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertFalse(success)
         self.assertTrue(coordinator._rejoin_needed_fut.done())
         self.assertEqual(coordinator.member_id, UNKNOWN_MEMBER_ID)
+
+        heartbeat_error = Errors.GroupAuthorizationFailedError()
+        with self.assertRaises(Errors.GroupAuthorizationFailedError) as cm:
+            yield from coordinator._do_heartbeat()
+        self.assertEqual(cm.exception.args[0], coordinator.group_id)
 
         heartbeat_error = Errors.UnknownError()
         with self.assertRaises(Errors.KafkaError):
