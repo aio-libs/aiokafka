@@ -165,7 +165,7 @@ class NoGroupCoordinator(BaseCoordinator):
         self._reset_committed_task = None
 
     def check_errors(self):
-        if self._reset_committed_task.done():
+        if self._reset_committed_task.done():  # pragma: no cover
             self._reset_committed_task.result()
 
 
@@ -575,9 +575,9 @@ class GroupCoordinator(BaseCoordinator):
     def _coordination_routine(self):
         try:
             yield from self.__coordination_routine()
-        except asyncio.CancelledError:
-            pass
-        except Exception as exc:  # pragma: no cover
+        except asyncio.CancelledError:  # pragma: no cover
+            raise
+        except Exception as exc:
             log.error(
                 "Unexpected error in coordinator routine", exc_info=True)
             kafka_exc = Errors.KafkaError(

@@ -255,11 +255,6 @@ class SubscriptionState:
     def abort_waiters(self, exc):
         """ Critical error occured, we will abort any pending waiter
         """
-        for waiter in self._subscription_waiters:
-            if not waiter.done():
-                waiter.set_exception(copy.copy(exc))
-        self._subscription_waiters.clear()
-
         for waiter in self._assignment_waiters:
             if not waiter.done():
                 waiter.set_exception(copy.copy(exc))

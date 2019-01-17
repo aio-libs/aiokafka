@@ -744,7 +744,24 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.topic, loop=self.loop,
                 bootstrap_servers=self.hosts,
                 isolation_level="READ_CCC")
+            self.add_cleanup(consumer.stop)
             yield from consumer.start()
+        with self.assertRaisesRegex(
+                ValueError,
+                "sasl_plain_username and sasl_plain_password required for "
+                "PLAIN sasl"):
+            consumer = AIOKafkaConsumer(
+                self.topic, loop=self.loop,
+                bootstrap_servers=self.hosts,
+                security_protocol="SASL_PLAINTEXT")
+        with self.assertRaisesRegex(
+                ValueError,
+                "only `PLAIN` sasl_mechanism is supported at the moment"):
+            consumer = AIOKafkaConsumer(
+                self.topic, loop=self.loop,
+                bootstrap_servers=self.hosts,
+                security_protocol="SASL_PLAINTEXT",
+                sasl_mechanism="GSSAPI")
 
     @run_until_complete
     def test_consumer_commit_validation(self):

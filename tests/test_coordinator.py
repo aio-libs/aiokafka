@@ -299,6 +299,12 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             yield from do_sync_group()
         self.assertEqual(coordinator.need_rejoin(subsc), True)
 
+        error_type = Errors.GroupAuthorizationFailedError()
+        with self.assertRaises(Errors.GroupAuthorizationFailedError) as cm:
+            yield from do_sync_group()
+        self.assertEqual(coordinator.need_rejoin(subsc), True)
+        self.assertEqual(cm.exception.args[0], coordinator.group_id)
+
         # If ``send()`` itself raises an error
         mocked.send.side_effect = Errors.GroupCoordinatorNotAvailableError()
         yield from do_sync_group()
@@ -507,6 +513,11 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             ]
             r = yield from coordinator.fetch_committed_offsets(partitions)
             self.assertEqual(r, {tp: OffsetAndMetadata(10, "")})
+
+            fetch_error = Errors.GroupAuthorizationFailedError
+            with self.assertRaises(Errors.GroupAuthorizationFailedError) as cm:
+                yield from coordinator.fetch_committed_offsets(partitions)
+            self.assertEqual(cm.exception.args[0], coordinator.group_id)
 
             fetch_error = Errors.UnknownError
             with self.assertRaises(Errors.KafkaError):
