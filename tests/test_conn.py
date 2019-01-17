@@ -125,10 +125,13 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
             topics=[(b'foo', [(0, bytes(builder.build()))])])
 
         # produce messages without acknowledge
+        req = []
         for i in range(100):
-            conn.send(request, expect_response=False)
+            req.append(conn.send(request, expect_response=False))
         # make sure futures no stuck in queue
         self.assertEqual(len(conn._requests), 0)
+        for x in req:
+            yield from x
         conn.close()
 
     @run_until_complete
@@ -401,11 +404,15 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         self.assertEqual(len(conn._requests), 0)
 
         # Successful send
-        conn._send_sasl_token(b"Super data")
+        fut = conn._send_sasl_token(b"Super data")
         self.assertEqual(b''.join(out_buffer), b"\x00\x00\x00\nSuper data")
         self.assertEqual(len(conn._requests), 1)
         out_buffer.clear()
+
+        # Resolve the request
+        conn._requests[0][2].set_result(None)
         conn._requests.clear()
+        yield from fut
 
         # Broken pipe error
         conn._writer.write.side_effect = OSError
