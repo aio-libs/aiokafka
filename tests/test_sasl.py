@@ -187,11 +187,19 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         # Transactional producers will also have the same problem to commit
         producer = await self.producer_factory(transactional_id="test_id")
+        await producer.begin_transaction()
         with self.assertRaises(GroupAuthorizationFailedError):
-            async with producer.transaction():
-                await producer.send_offsets_to_transaction(
-                    {TopicPartition(self.topic, 0): 0},
-                    group_id=self.group_id)
+            await producer.send_offsets_to_transaction(
+                {TopicPartition(self.topic, 0): 0},
+                group_id=self.group_id)
+
+        with self.assertRaises(GroupAuthorizationFailedError):
+            await producer.commit_transaction()
+        await producer.abort_transaction()
+
+        # We can continue using producer after this error
+        async with producer.transaction():
+            await producer.send_and_wait(self.topic, b"TTTT")
 
     ##########################################################################
     # Transactional ID resource
@@ -226,3 +234,22 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # FindCoordinator
         with self.assertRaises(TransactionalIdAuthorizationFailed):
             await self.producer_factory(transactional_id="test_id")
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_sasl_deny_txnid_during_transaction(self):
+        self.acl_manager.add_acl(
+            allow_principal="test", operation="All",
+            transactional_id="test_id")
+
+        # Transactional producers will require DESCRIBE to perform
+        # FindCoordinator
+        producer = await self.producer_factory(transactional_id="test_id")
+        await producer.begin_transaction()
+        await producer.send_and_wait(self.topic, b"123", partition=0)
+
+        self.acl_manager.add_acl(
+            deny_principal="test", operation="WRITE",
+            transactional_id="test_id")
+        with self.assertRaises(TransactionalIdAuthorizationFailed):
+            await producer.send_and_wait(self.topic, b"123", partition=1)

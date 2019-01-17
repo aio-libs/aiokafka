@@ -130,6 +130,10 @@ class TransactionManager:
 
     def aborting_transaction(self):
         self._transition_to(TransactionState.ABORTING_TRANSACTION)
+
+        # If we had an abortable error we need to create a new waiter
+        if self._transaction_waiter.done():
+            self._transaction_waiter = create_future(loop=self._loop)
         self.notify_task_waiter()
 
     def complete_transaction(self):
