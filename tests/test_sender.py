@@ -9,7 +9,9 @@ from aiokafka.producer.sender import (
     AddOffsetsToTxnHandler, TxnOffsetCommitHandler, EndTxnHandler,
     BaseHandler, SendProduceReqHandler
 )
-from aiokafka.producer.transaction_manager import TransactionManager
+from aiokafka.producer.transaction_manager import (
+    TransactionManager, TransactionState
+)
 from aiokafka.protocol.transaction import (
     InitProducerIdRequest, InitProducerIdResponse,
     AddPartitionsToTxnRequest, AddPartitionsToTxnResponse,
@@ -30,7 +32,9 @@ from aiokafka.errors import (
     CoordinatorLoadInProgressError, ConcurrentTransactions,
     UnknownTopicOrPartitionError, InvalidProducerEpoch,
     ProducerFenced, InvalidProducerIdMapping, InvalidTxnState,
-    RequestTimedOutError, DuplicateSequenceNumber
+    RequestTimedOutError, DuplicateSequenceNumber, KafkaError,
+    TopicAuthorizationFailedError, OperationNotAttempted,
+    TransactionalIdAuthorizationFailed, GroupAuthorizationFailedError
 )
 
 from kafka.protocol.metadata import MetadataRequest
@@ -162,6 +166,14 @@ class TestSender(KafkaIntegrationTestCase):
             coordinator_key="key")
         self.assertEqual(node_id, 1)
         self.assertEqual(sender.client.coordinator_lookup.call_count, 4)
+
+        # On error
+        sender._coordinator_dead(CoordinationType.TRANSACTION)
+        sender.client.coordinator_lookup.side_effect = UnknownError
+        with self.assertRaises(KafkaError):
+            await sender._find_coordinator(
+                coordinator_type=CoordinationType.TRANSACTION,
+                coordinator_key="key")
 
     @run_until_complete
     async def test_sender__handler_base_do(self):
@@ -335,6 +347,7 @@ class TestSender(KafkaIntegrationTestCase):
         ]
         add_handler = AddPartitionsToTxnHandler(sender, tps)
         tm = sender._txn_manager
+        tm.begin_transaction()
         tm.partition_added = mock.Mock()
 
         def create_response(error_type):
@@ -401,6 +414,27 @@ class TestSender(KafkaIntegrationTestCase):
             add_handler.handle_response(resp)
         tm.partition_added.assert_not_called()
 
+        # Handle TransactionalIdAuthorizationFailed
+        resp = create_response(TransactionalIdAuthorizationFailed)
+        with self.assertRaises(TransactionalIdAuthorizationFailed) as cm:
+            add_handler.handle_response(resp)
+        tm.partition_added.assert_not_called()
+        self.assertEqual(cm.exception.args[0], "test_tid")
+
+        # TopicAuthorizationFailedError case
+        resp = create_response(OperationNotAttempted)
+        backoff = add_handler.handle_response(resp)
+        self.assertIsNone(backoff)
+        tm.partition_added.assert_not_called()
+
+        # TopicAuthorizationFailedError case
+        self.assertNotEqual(tm.state, TransactionState.ABORTABLE_ERROR)
+        resp = create_response(TopicAuthorizationFailedError)
+        backoff = add_handler.handle_response(resp)
+        self.assertIsNone(backoff)
+        tm.partition_added.assert_not_called()
+        self.assertEqual(tm.state, TransactionState.ABORTABLE_ERROR)
+
     @run_until_complete
     async def test_sender__do_add_offsets_to_txn_create(self):
         sender = await self._setup_sender()
@@ -436,6 +470,7 @@ class TestSender(KafkaIntegrationTestCase):
         sender = await self._setup_sender()
         add_handler = AddOffsetsToTxnHandler(sender, "some_group")
         tm = sender._txn_manager
+        tm.begin_transaction()
         tm.consumer_group_added = mock.Mock()
 
         def create_response(error_type):
@@ -480,6 +515,21 @@ class TestSender(KafkaIntegrationTestCase):
         with self.assertRaises(UnknownError):
             add_handler.handle_response(resp)
         tm.consumer_group_added.assert_not_called()
+
+        # Handle authorization error
+        resp = create_response(TransactionalIdAuthorizationFailed)
+        with self.assertRaises(TransactionalIdAuthorizationFailed) as cm:
+            add_handler.handle_response(resp)
+        tm.consumer_group_added.assert_not_called()
+        self.assertEqual(cm.exception.args[0], "test_tid")
+
+        # Handle group error
+        self.assertNotEqual(tm.state, TransactionState.ABORTABLE_ERROR)
+        resp = create_response(GroupAuthorizationFailedError)
+        backoff = add_handler.handle_response(resp)
+        self.assertIsNone(backoff)
+        tm.consumer_group_added.assert_not_called()
+        self.assertEqual(tm.state, TransactionState.ABORTABLE_ERROR)
 
     @run_until_complete
     async def test_sender__do_txn_offset_commit_create(self):
