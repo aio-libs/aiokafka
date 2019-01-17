@@ -7,7 +7,6 @@ import sys
 import traceback
 import warnings
 import weakref
-import io
 
 from kafka.protocol.api import RequestHeader
 from kafka.protocol.admin import (
@@ -18,8 +17,6 @@ from kafka.protocol.commit import (
 
 import aiokafka.errors as Errors
 from aiokafka.util import ensure_future, create_future, PY_341, PY_36
-
-from kafka.protocol.types import Int8
 
 try:
     import gssapi
@@ -237,6 +234,7 @@ class AIOKafkaConnection:
     @asyncio.coroutine
     def _do_sasl_handshake(self):
         if self._sasl_mechanism == "GSSAPI":
+            # v1 is unsupported, trigger a infinite auth loop
             req_klass = SaslHandShakeRequest[0]
         else:
             req_klass = self._version_info.pick_best(SaslHandShakeRequest)
@@ -318,8 +316,8 @@ class AIOKafkaConnection:
                 server_token = yield b'', True
         msg = client_ctx.unwrap(server_token).message
 
-        iomsg = io.BytesIO(msg[0:1])
-        msg = Int8.encode(SASL_QOP_AUTH & Int8.decode(iomsg)) + msg[1:]
+        qop = struct.pack('b', SASL_QOP_AUTH & msg[0])
+        msg = qop + msg[1:]
         msg = client_ctx.wrap(msg + self.principal.encode(), False).message
         yield msg, False
 
