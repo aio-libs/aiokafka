@@ -1840,3 +1840,32 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             # before waiting
             with self.assertRaises(KafkaError):
                 yield from consumer.getone()
+
+    @run_until_complete
+    def test_consumer_propagates_commit_refresh_errors(self):
+        consumer = AIOKafkaConsumer(
+            loop=self.loop,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+            group_id="group-" + self.id(),
+            bootstrap_servers=self.hosts,
+            metadata_max_age_ms=500)
+        yield from consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        with mock.patch.object(
+                consumer._coordinator, "_do_fetch_commit_offsets") as m:
+            m.side_effect = UnknownError
+
+            consumer.subscribe([self.topic])  # Force join error
+            subscription = consumer._subscription.subscription
+            with self.assertRaises(KafkaError):
+                yield from consumer.getone()
+
+            # This time we won't kill the fetch waiter, we will check errors
+            # before waiting
+            with self.assertRaises(KafkaError):
+                yield from consumer.getone()
+
+            refresh_event = subscription.assignment.commit_refresh_needed
+            self.assertTrue(refresh_event.is_set())

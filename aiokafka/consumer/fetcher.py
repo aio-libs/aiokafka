@@ -509,6 +509,7 @@ class Fetcher:
                 # Determine what action to take per node
                 fetch_requests, reset_requests, timeout, invalid_metadata = \
                     self._get_actions_per_node(assignment)
+
                 # Start fetch tasks
                 for node_id, request in fetch_requests:
                     start_pending_task(

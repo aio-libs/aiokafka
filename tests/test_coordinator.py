@@ -128,7 +128,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             yield from coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        coordinator._coordination_task = self.loop.create_task(
+            asyncio.sleep(0.1, loop=self.loop)
+        )
         coordinator.coordinator_id = 15
         self.add_cleanup(coordinator.close)
 
@@ -242,7 +244,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             yield from coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        coordinator._coordination_task = self.loop.create_task(
+            asyncio.sleep(0.1, loop=self.loop)
+        )
         coordinator.coordinator_id = 15
         self.add_cleanup(coordinator.close)
 
@@ -837,7 +841,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             yield from coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        coordinator._coordination_task = self.loop.create_task(
+            asyncio.sleep(0.1, loop=self.loop)
+        )
         self.add_cleanup(coordinator.close)
 
         client.ready = mock.Mock()
@@ -990,7 +996,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             yield from coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        coordinator._coordination_task = self.loop.create_task(
+            asyncio.sleep(0.1, loop=self.loop)
+        )
         self.add_cleanup(coordinator.close)
 
         coordinator._do_heartbeat = mocked = mock.Mock()
@@ -1051,7 +1059,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             yield from coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        coordinator._coordination_task = self.loop.create_task(
+            asyncio.sleep(0.1, loop=self.loop)
+        )
         self.add_cleanup(coordinator.close)
 
         coordinator._do_fetch_commit_offsets = mocked = mock.Mock()
@@ -1114,7 +1124,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             yield from coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = asyncio.sleep(0.1, loop=self.loop)
+        coordinator._coordination_task = self.loop.create_task(
+            asyncio.sleep(0.1, loop=self.loop)
+        )
         self.add_cleanup(coordinator.close)
 
         coordinator._do_commit_offsets = mocked = mock.Mock()
