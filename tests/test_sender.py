@@ -593,6 +593,7 @@ class TestSender(KafkaIntegrationTestCase):
         }
         add_handler = TxnOffsetCommitHandler(sender, offsets, "some_group")
         tm = sender._txn_manager
+        tm.begin_transaction()
         tm.offset_committed = mock.Mock()
 
         def create_response(error_type):
@@ -633,11 +634,29 @@ class TestSender(KafkaIntegrationTestCase):
             add_handler.handle_response(resp)
         tm.offset_committed.assert_not_called()
 
+        # TransactionalIdAuthorizationFailed case
+        resp = create_response(TransactionalIdAuthorizationFailed)
+        with self.assertRaises(TransactionalIdAuthorizationFailed) as cm:
+            add_handler.handle_response(resp)
+        tm.offset_committed.assert_not_called()
+        self.assertEqual(cm.exception.args[0], "test_tid")
+
         # Handle unknown error
         resp = create_response(UnknownError)
         with self.assertRaises(UnknownError):
             add_handler.handle_response(resp)
         tm.offset_committed.assert_not_called()
+
+        # GroupAuthorizationFailedError case
+        self.assertNotEqual(tm.state, TransactionState.ABORTABLE_ERROR)
+        resp = create_response(GroupAuthorizationFailedError)
+        backoff = add_handler.handle_response(resp)
+        self.assertIsNone(backoff)
+        tm.offset_committed.assert_not_called()
+        with self.assertRaises(GroupAuthorizationFailedError) as cm:
+            tm.committing_transaction()
+        self.assertEqual(cm.exception.args[0], "some_group")
+        self.assertEqual(tm.state, TransactionState.ABORTABLE_ERROR)
 
     @run_until_complete
     async def test_sender__do_end_txn_create(self):
