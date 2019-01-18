@@ -5,6 +5,7 @@ import random
 from kafka.conn import collect_hosts
 from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.commit import OffsetFetchRequest
+from kafka.protocol.fetch import FetchRequest
 
 import aiokafka.errors as Errors
 from aiokafka import __version__
@@ -86,12 +87,24 @@ class AIOKafkaClient:
                  ssl_context=None,
                  security_protocol='PLAINTEXT',
                  api_version='auto',
-                 connections_max_idle_ms=540000):
-        if security_protocol not in ('SSL', 'PLAINTEXT'):
+                 connections_max_idle_ms=540000,
+                 sasl_mechanism="PLAIN",
+                 sasl_plain_username=None,
+                 sasl_plain_password=None):
+        if security_protocol not in (
+                'SSL', 'PLAINTEXT', 'SASL_PLAINTEXT', 'SASL_SSL'):
             raise ValueError("`security_protocol` should be SSL or PLAINTEXT")
-        if security_protocol == "SSL" and ssl_context is None:
+        if security_protocol in ["SSL", "SASL_SSL"] and ssl_context is None:
             raise ValueError(
                 "`ssl_context` is mandatory if security_protocol=='SSL'")
+        if security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
+            if sasl_mechanism != "PLAIN":
+                raise ValueError(
+                    "only `PLAIN` sasl_mechanism is supported at the moment")
+            elif sasl_plain_username is None or sasl_plain_password is None:
+                raise ValueError(
+                    "sasl_plain_username and sasl_plain_password required for "
+                    "PLAIN sasl")
 
         self._bootstrap_servers = bootstrap_servers
         self._client_id = client_id
@@ -104,6 +117,9 @@ class AIOKafkaClient:
         self._ssl_context = ssl_context
         self._retry_backoff = retry_backoff_ms / 1000
         self._connections_max_idle_ms = connections_max_idle_ms
+        self._sasl_mechanism = sasl_mechanism
+        self._sasl_plain_username = sasl_plain_username
+        self._sasl_plain_password = sasl_plain_password
 
         self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
 
@@ -161,7 +177,10 @@ class AIOKafkaClient:
                     request_timeout_ms=self._request_timeout_ms,
                     ssl_context=self._ssl_context,
                     security_protocol=self._security_protocol,
-                    max_idle_ms=self._connections_max_idle_ms)
+                    max_idle_ms=self._connections_max_idle_ms,
+                    sasl_mechanism=self._sasl_mechanism,
+                    sasl_plain_username=self._sasl_plain_username,
+                    sasl_plain_password=self._sasl_plain_password)
             except (OSError, asyncio.TimeoutError) as err:
                 log.error('Unable connect to "%s:%s": %s', host, port, err)
                 continue
@@ -350,7 +369,8 @@ class AIOKafkaClient:
             self.force_metadata_update()
 
     @asyncio.coroutine
-    def _get_conn(self, node_id, *, group=ConnectionGroup.DEFAULT):
+    def _get_conn(self, node_id, *, group=ConnectionGroup.DEFAULT,
+                  no_hint=False):
         "Get or create a connection to a broker using host and port"
         conn_id = (node_id, group)
         if conn_id in self._conns:
@@ -381,6 +401,10 @@ class AIOKafkaClient:
                 if conn_id in self._conns:
                     return self._conns[conn_id]
 
+                version_hint = self._api_version
+                if version_hint == "auto" or no_hint:
+                    version_hint = None
+
                 self._conns[conn_id] = yield from create_conn(
                     broker.host, broker.port, loop=self._loop,
                     client_id=self._client_id,
@@ -388,7 +412,12 @@ class AIOKafkaClient:
                     ssl_context=self._ssl_context,
                     security_protocol=self._security_protocol,
                     on_close=self._on_connection_closed,
-                    max_idle_ms=self._connections_max_idle_ms)
+                    max_idle_ms=self._connections_max_idle_ms,
+                    sasl_mechanism=self._sasl_mechanism,
+                    sasl_plain_username=self._sasl_plain_username,
+                    sasl_plain_password=self._sasl_plain_password,
+                    version_hint=version_hint
+                )
         except (OSError, asyncio.TimeoutError) as err:
             log.error('Unable connect to node with id %s: %s', node_id, err)
             if group == ConnectionGroup.DEFAULT:
@@ -478,7 +507,7 @@ class AIOKafkaClient:
         # vanilla MetadataRequest. If the server did not recognize the first
         # request, both will be failed with a ConnectionError that wraps
         # socket.error (32, 54, or 104)
-        conn = yield from self._get_conn(node_id)
+        conn = yield from self._get_conn(node_id, no_hint=True)
         if conn is None:
             raise ConnectionError(
                 "No connection to node with id {}".format(node_id))
@@ -517,6 +546,8 @@ class AIOKafkaClient:
         # in descending order. As soon as we find one that works, return it
         test_cases = [
             # format (<broker verion>, <needed struct>)
+            ((2, 1, 0), MetadataRequest[0].API_KEY, 7),
+            ((1, 1, 0), FetchRequest[0].API_KEY, 7),
             ((1, 0, 0), MetadataRequest[0].API_KEY, 5),
             ((0, 11, 0), MetadataRequest[0].API_KEY, 4),
             ((0, 10, 2), OffsetFetchRequest[0].API_KEY, 2),
@@ -567,6 +598,8 @@ class AIOKafkaClient:
                 break
             if (self._loop.time() - t0) > (self._request_timeout_ms / 1000):
                 raise UnknownTopicOrPartitionError()
+            if topic in self.cluster.unauthorized_topics:
+                raise Errors.TopicAuthorizationFailedError(topic)
             yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
 
         return self.cluster.partitions_for_topic(topic)

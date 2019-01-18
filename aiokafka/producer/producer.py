@@ -13,8 +13,7 @@ from aiokafka.errors import (
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import TopicPartition
 from aiokafka.util import (
-    INTEGER_MAX_VALUE, PY_341, PY_36, wait_for_reponse_or_error,
-    commit_structure_validate
+    INTEGER_MAX_VALUE, PY_341, PY_36, commit_structure_validate
 )
 
 from .message_accumulator import MessageAccumulator
@@ -148,6 +147,13 @@ class AIOKafkaProducer(object):
             explicitly set by the user it will be chosen. If incompatible
             values are set, a ``ValueError`` will be thrown.
             New in version 0.5.0.
+        sasl_mechanism (str): Authentication mechanism when security_protocol
+            is configured for SASL_PLAINTEXT or SASL_SSL. Valid values are:
+            PLAIN, GSSAPI. Default: PLAIN
+        sasl_plain_username (str): username for sasl PLAIN authentication.
+            Default: None
+        sasl_plain_password (str): password for sasl PLAIN authentication.
+            Default: None
 
     Note:
         Many configuration parameters are taken from the Java client:
@@ -175,7 +181,8 @@ class AIOKafkaProducer(object):
                  retry_backoff_ms=100, security_protocol="PLAINTEXT",
                  ssl_context=None, connections_max_idle_ms=540000,
                  enable_idempotence=False, transactional_id=None,
-                 transaction_timeout_ms=60000):
+                 transaction_timeout_ms=60000, sasl_mechanism="PLAIN",
+                 sasl_plain_password=None, sasl_plain_username=None):
         if acks not in (0, 1, -1, 'all', _missing):
             raise ValueError("Invalid ACKS parameter")
         if compression_type not in ('gzip', 'snappy', 'lz4', None):
@@ -229,7 +236,10 @@ class AIOKafkaProducer(object):
             retry_backoff_ms=retry_backoff_ms,
             api_version=api_version, security_protocol=security_protocol,
             ssl_context=ssl_context,
-            connections_max_idle_ms=connections_max_idle_ms)
+            connections_max_idle_ms=connections_max_idle_ms,
+            sasl_mechanism=sasl_mechanism,
+            sasl_plain_username=sasl_plain_username,
+            sasl_plain_password=sasl_plain_password)
         self._metadata = self.client.cluster
         self._message_accumulator = MessageAccumulator(
             self._metadata, max_batch_size, compression_attrs,
@@ -351,10 +361,6 @@ class AIOKafkaProducer(object):
         available = list(self._metadata.available_partitions_for_topic(topic))
         return self._partitioner(
             serialized_key, all_partitions, available)
-
-    def _wait_for_reponse_or_error(self, coro, *, shield):
-        return wait_for_reponse_or_error(
-            coro, [self._sender.sender_task], shield=shield, loop=self._loop)
 
     @asyncio.coroutine
     def send(self, topic, value=None, key=None, partition=None,
@@ -487,9 +493,9 @@ class AIOKafkaProducer(object):
         log.debug(
             "Beginning a new transaction for id %s",
             self._txn_manager.transactional_id)
-        yield from self._wait_for_reponse_or_error(
+        yield from asyncio.shield(
             self._txn_manager.wait_for_pid(),
-            shield=True
+            loop=self._loop
         )
         self._txn_manager.begin_transaction()
 
@@ -500,9 +506,9 @@ class AIOKafkaProducer(object):
             "Committing transaction for id %s",
             self._txn_manager.transactional_id)
         self._txn_manager.committing_transaction()
-        yield from self._wait_for_reponse_or_error(
+        yield from asyncio.shield(
             self._txn_manager.wait_for_transaction_end(),
-            shield=True
+            loop=self._loop
         )
 
     @asyncio.coroutine
@@ -512,9 +518,9 @@ class AIOKafkaProducer(object):
             "Aborting transaction for id %s",
             self._txn_manager.transactional_id)
         self._txn_manager.aborting_transaction()
-        yield from self._wait_for_reponse_or_error(
+        yield from asyncio.shield(
             self._txn_manager.wait_for_transaction_end(),
-            shield=True
+            loop=self._loop
         )
 
     def transaction(self):
@@ -537,7 +543,7 @@ class AIOKafkaProducer(object):
             "Begin adding offsets %s for consumer group %s to transaction",
             formatted_offsets, group_id)
         fut = self._txn_manager.add_offsets_to_txn(formatted_offsets, group_id)
-        yield from self._wait_for_reponse_or_error(fut, shield=True)
+        yield from asyncio.shield(fut, loop=self._loop)
 
 
 class TransactionContext:
@@ -553,6 +559,10 @@ class TransactionContext:
     @asyncio.coroutine
     def __aexit__(self, exc_type, exc_value, traceback):
         if exc_type is not None:
+            # If called directly we want the API to raise a InvalidState error,
+            # but when exiting a context manager we should just let it out
+            if self._producer._txn_manager.is_fatal_error():
+                return
             yield from self._producer.abort_transaction()
         else:
             yield from self._producer.commit_transaction()

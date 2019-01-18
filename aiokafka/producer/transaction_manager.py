@@ -32,6 +32,8 @@ class TransactionState(Enum):
     IN_TRANSACTION = 3
     COMMITTING_TRANSACTION = 4
     ABORTING_TRANSACTION = 5
+    ABORTABLE_ERROR = 6
+    FATAL_ERROR = 7
 
     @classmethod
     def is_transition_valid(cls, source, target):
@@ -44,7 +46,10 @@ class TransactionState(Enum):
         elif target == cls.COMMITTING_TRANSACTION:
             return source == cls.IN_TRANSACTION
         elif target == cls.ABORTING_TRANSACTION:
-            return source == cls.IN_TRANSACTION
+            return source == cls.IN_TRANSACTION or \
+                source == cls.ABORTABLE_ERROR
+        elif target == cls.ABORTABLE_ERROR or target == cls.FATAL_ERROR:
+            return True
 
 
 class TransactionManager:
@@ -116,11 +121,19 @@ class TransactionManager:
         self._transaction_waiter = create_future(loop=self._loop)
 
     def committing_transaction(self):
+        if self.state == TransactionState.ABORTABLE_ERROR:
+            # Raise error to user, we can only abort at this point
+            self._transaction_waiter.result()
+
         self._transition_to(TransactionState.COMMITTING_TRANSACTION)
         self.notify_task_waiter()
 
     def aborting_transaction(self):
         self._transition_to(TransactionState.ABORTING_TRANSACTION)
+
+        # If we had an abortable error we need to create a new waiter
+        if self._transaction_waiter.done():
+            self._transaction_waiter = create_future(loop=self._loop)
         self.notify_task_waiter()
 
     def complete_transaction(self):
@@ -129,7 +142,31 @@ class TransactionManager:
         self._transition_to(TransactionState.READY)
         self._txn_partitions.clear()
         self._txn_consumer_group = None
-        self._transaction_waiter.set_result(None)
+        if not self._transaction_waiter.done():
+            self._transaction_waiter.set_result(None)
+
+    def error_transaction(self, exc):
+        self._transition_to(TransactionState.ABORTABLE_ERROR)
+        self._txn_partitions.clear()
+        self._txn_consumer_group = None
+        self._pending_txn_partitions.clear()
+        for _, _, fut in self._pending_txn_offsets:
+            fut.set_exception(exc)
+        self._pending_txn_offsets.clear()
+        self._transaction_waiter.set_exception(exc)
+
+    def fatal_error(self, exc):
+        self._transition_to(TransactionState.FATAL_ERROR)
+        self._txn_partitions.clear()
+        self._txn_consumer_group = None
+        self._pending_txn_partitions.clear()
+        for _, _, fut in self._pending_txn_offsets:
+            fut.set_exception(exc)
+        self._pending_txn_offsets.clear()
+        # There may be an abortable error. We just override it
+        if self._transaction_waiter.done():
+            self._transaction_waiter = create_future(loop=self._loop)
+        self._transaction_waiter.set_exception(exc)
 
     def maybe_add_partition_to_txn(self, tp: TopicPartition):
         if self.transactional_id is None:
@@ -202,6 +239,9 @@ class TransactionManager:
             len(self.txn_partitions) == 0 and
             self._txn_consumer_group is None
         )
+
+    def is_fatal_error(self):
+        return self.state == TransactionState.FATAL_ERROR
 
     def wait_for_transaction_end(self):
         return self._transaction_waiter

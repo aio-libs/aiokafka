@@ -10,9 +10,16 @@ from kafka.protocol.metadata import (
 from kafka.protocol.commit import (
     GroupCoordinatorRequest_v0 as GroupCoordinatorRequest,
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
+from kafka.protocol.admin import (
+    SaslHandShakeRequest, SaslHandShakeResponse, SaslAuthenticateRequest,
+    SaslAuthenticateResponse
+)
 
-from aiokafka.conn import AIOKafkaConnection, create_conn
-from aiokafka.errors import ConnectionError, CorrelationIdError
+from aiokafka.conn import AIOKafkaConnection, create_conn, VersionInfo
+from aiokafka.errors import (
+    ConnectionError, CorrelationIdError, KafkaError, NoError, UnknownError,
+    UnsupportedSaslMechanismError, IllegalSaslStateError
+)
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.util import PY_341
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
@@ -118,10 +125,13 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
             topics=[(b'foo', [(0, bytes(builder.build()))])])
 
         # produce messages without acknowledge
-        for i in range(100):
-            conn.send(request, expect_response=False)
+        req = []
+        for i in range(10):
+            req.append(conn.send(request, expect_response=False))
         # make sure futures no stuck in queue
         self.assertEqual(len(conn._requests), 0)
+        for x in req:
+            yield from x
         conn.close()
 
     @run_until_complete
@@ -234,3 +244,186 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         self.assertTrue(conn.connected())
         conn.close()
         self.assertFalse(conn.connected())
+
+    def test_connection_version_info(self):
+        # All version supported
+        version_info = VersionInfo({
+            SaslHandShakeRequest[0].API_KEY: [0, 1]
+        })
+        self.assertEqual(
+            version_info.pick_best(SaslHandShakeRequest),
+            SaslHandShakeRequest[1])
+
+        # Broker only supports the lesser version
+        version_info = VersionInfo({
+            SaslHandShakeRequest[0].API_KEY: [0, 0]
+        })
+        self.assertEqual(
+            version_info.pick_best(SaslHandShakeRequest),
+            SaslHandShakeRequest[0])
+
+        # We don't support any version compatible with the broker
+        version_info = VersionInfo({
+            SaslHandShakeRequest[0].API_KEY: [2, 3]
+        })
+        with self.assertRaises(KafkaError):
+            self.assertEqual(
+                version_info.pick_best(SaslHandShakeRequest),
+                SaslHandShakeRequest[1])
+
+        # No information on the supported versions
+        version_info = VersionInfo({})
+        self.assertEqual(
+            version_info.pick_best(SaslHandShakeRequest),
+            SaslHandShakeRequest[0])
+
+    @run_until_complete
+    def test__do_sasl_handshake_v0(self):
+        host, port = self.kafka_host, self.kafka_port
+
+        # setup connection with mocked send and send_bytes
+        conn = AIOKafkaConnection(
+            host=host, port=port, loop=self.loop,
+            sasl_mechanism="PLAIN",
+            sasl_plain_username="admin",
+            sasl_plain_password="123"
+        )
+        conn.close = close_mock = mock.MagicMock()
+
+        supported_mechanisms = ["PLAIN"]
+        error_class = NoError
+
+        @asyncio.coroutine
+        def mock_send(request, expect_response=True):
+            return SaslHandShakeResponse[0](
+                error_code=error_class.errno,
+                enabled_mechanisms=supported_mechanisms
+            )
+
+        @asyncio.coroutine
+        def mock_sasl_send(payload):
+            return b""
+
+        conn.send = mock.Mock(side_effect=mock_send)
+        conn._send_sasl_token = mock.Mock(side_effect=mock_sasl_send)
+        conn._version_info = VersionInfo({
+            SaslHandShakeRequest[0].API_KEY: [0, 0]
+        })
+
+        yield from conn._do_sasl_handshake()
+
+        supported_mechanisms = ["GSSAPI"]
+        with self.assertRaises(UnsupportedSaslMechanismError):
+            yield from conn._do_sasl_handshake()
+        self.assertTrue(close_mock.call_count)
+
+        error_class = UnknownError
+        close_mock.reset()
+
+        with self.assertRaises(UnknownError):
+            yield from conn._do_sasl_handshake()
+        self.assertTrue(close_mock.call_count)
+
+    @run_until_complete
+    def test__do_sasl_handshake_v1(self):
+        host, port = self.kafka_host, self.kafka_port
+
+        # setup connection with mocked send and send_bytes
+        conn = AIOKafkaConnection(
+            host=host, port=port, loop=self.loop,
+            sasl_mechanism="PLAIN",
+            sasl_plain_username="admin",
+            sasl_plain_password="123",
+            security_protocol="SASL_PLAINTEXT"
+        )
+        conn.close = close_mock = mock.MagicMock()
+
+        supported_mechanisms = ["PLAIN"]
+        error_class = NoError
+        auth_error_class = NoError
+
+        @asyncio.coroutine
+        def mock_send(request, expect_response=True):
+            if request.API_KEY == SaslHandShakeRequest[0].API_KEY:
+                assert request.API_VERSION == 1
+                return SaslHandShakeResponse[1](
+                    error_code=error_class.errno,
+                    enabled_mechanisms=supported_mechanisms
+                )
+            else:
+                assert request.API_KEY == SaslAuthenticateRequest[0].API_KEY
+                return SaslAuthenticateResponse[0](
+                    error_code=auth_error_class.errno,
+                    error_message="",
+                    sasl_auth_bytes=b""
+                )
+
+        conn.send = mock.Mock(side_effect=mock_send)
+        conn._version_info = VersionInfo({
+            SaslHandShakeRequest[0].API_KEY: [0, 1]
+        })
+
+        yield from conn._do_sasl_handshake()
+
+        supported_mechanisms = ["GSSAPI"]
+        with self.assertRaises(UnsupportedSaslMechanismError):
+            yield from conn._do_sasl_handshake()
+        self.assertTrue(close_mock.call_count)
+        supported_mechanisms = ["PLAIN"]
+
+        auth_error_class = IllegalSaslStateError
+        close_mock.reset()
+
+        with self.assertRaises(IllegalSaslStateError):
+            yield from conn._do_sasl_handshake()
+        self.assertTrue(close_mock.call_count)
+        auth_error_class = NoError
+
+        error_class = UnknownError
+        close_mock.reset()
+
+        with self.assertRaises(UnknownError):
+            yield from conn._do_sasl_handshake()
+        self.assertTrue(close_mock.call_count)
+
+    @run_until_complete
+    def test__send_sasl_token(self):
+        # Before Kafka 1.0.0 SASL was performed on the wire without
+        # KAFKA_HEADER in the protocol. So we needed another private
+        # function to send `raw` data with only length prefixed
+
+        # setup connection with mocked transport and protocol
+        conn = AIOKafkaConnection(
+            host="", port=9999, loop=self.loop
+        )
+        conn.close = mock.MagicMock()
+        conn._writer = mock.MagicMock()
+        out_buffer = []
+        conn._writer.write = mock.Mock(side_effect=out_buffer.append)
+        conn._reader = mock.MagicMock()
+        self.assertEqual(len(conn._requests), 0)
+
+        # Successful send
+        fut = conn._send_sasl_token(b"Super data")
+        self.assertEqual(b''.join(out_buffer), b"\x00\x00\x00\nSuper data")
+        self.assertEqual(len(conn._requests), 1)
+        out_buffer.clear()
+
+        # Resolve the request
+        conn._requests[0][2].set_result(None)
+        conn._requests.clear()
+        yield from fut
+
+        # Broken pipe error
+        conn._writer.write.side_effect = OSError
+        with self.assertRaises(ConnectionError):
+            conn._send_sasl_token(b"Super data")
+        self.assertEqual(out_buffer, [])
+        self.assertEqual(len(conn._requests), 0)
+        self.assertEqual(conn.close.call_count, 1)
+
+        conn._writer = None
+        with self.assertRaises(ConnectionError):
+            conn._send_sasl_token(b"Super data")
+        # We don't need to close 2ce
+        self.assertEqual(conn.close.call_count, 1)

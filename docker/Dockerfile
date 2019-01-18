@@ -19,6 +19,7 @@ RUN apt-get update && \
     rm /tmp/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION".tgz
 
 ADD scripts/start-kafka.sh /usr/bin/start-kafka.sh
+ADD scripts/kafka_server_jaas.conf /etc/kafka/kafka_server_jaas.conf
 
 # Supervisor config
 ADD supervisor/kafka.conf supervisor/zookeeper.conf /etc/supervisor/conf.d/

@@ -10,7 +10,9 @@ from aiokafka.errors import (
     CoordinatorLoadInProgressError, InvalidProducerEpoch,
     ProducerFenced, InvalidProducerIdMapping, InvalidTxnState,
     ConcurrentTransactions, DuplicateSequenceNumber, RequestTimedOutError,
-    OutOfOrderSequenceNumber)
+    OutOfOrderSequenceNumber, TopicAuthorizationFailedError,
+    GroupAuthorizationFailedError, TransactionalIdAuthorizationFailed,
+    OperationNotAttempted)
 from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.protocol.transaction import (
     InitProducerIdRequest, AddPartitionsToTxnRequest, EndTxnRequest,
@@ -53,14 +55,16 @@ class Sender:
         yield from self._maybe_wait_for_pid()
         self._sender_task = ensure_future(
             self._sender_routine(), loop=self._loop)
-        self._sender_task.add_done_callback(self._fail_all_batches)
+        self._sender_task.add_done_callback(self._fail_all)
 
-    def _fail_all_batches(self, task):
+    def _fail_all(self, task):
         """ Called when sender fails. Will fail all pending batches, as they
-        will never be delivered.
+        will never be delivered as well as fail transaction
         """
         if task.exception() is not None:
             self._message_accumulator.fail_all(task.exception())
+            if self._txn_manager is not None:
+                self._txn_manager.fatal_error(task.exception())
 
     @property
     def sender_task(self):
@@ -157,7 +161,8 @@ class Sender:
             # done tasks should never produce errors, if they are it's a bug
             for task in tasks:
                 yield from task
-        except (ProducerFenced, OutOfOrderSequenceNumber):
+        except (ProducerFenced, OutOfOrderSequenceNumber,
+                TransactionalIdAuthorizationFailed):
             raise
         except Exception:  # pragma: no cover
             log.error("Unexpected error in sender routine", exc_info=True)
@@ -195,11 +200,20 @@ class Sender:
             try:
                 coordinator_id = yield from self.client.coordinator_lookup(
                     coordinator_type, coordinator_key)
-            except Errors.KafkaError as err:
-                log.error("FindCoordinator Request failed: %s", err)
+            except Errors.TransactionalIdAuthorizationFailed:
+                err = Errors.TransactionalIdAuthorizationFailed(
+                    self._txn_manager.transactional_id)
+                raise err
+            except Errors.GroupAuthorizationFailedError:
+                err = Errors.GroupAuthorizationFailedError(coordinator_key)
+                raise err
+            except Errors.CoordinatorNotAvailableError:
                 yield from self.client.force_metadata_update()
                 yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
                 continue
+            except Errors.KafkaError as err:
+                log.error("FindCoordinator Request failed: %s", err)
+                raise KafkaError(repr(err))
 
             # Try to connect to confirm that the connection can be
             # established.
@@ -318,8 +332,12 @@ class Sender:
         if not offsets:
             return
         # NOTE: We send this one to GROUP coordinator, not TRANSACTION
-        node_id = yield from self._find_coordinator(
-            CoordinationType.GROUP, group_id)
+        try:
+            node_id = yield from self._find_coordinator(
+                CoordinationType.GROUP, group_id)
+        except GroupAuthorizationFailedError as exc:
+            self._txn_manager.error_transaction(exc)
+            return
         log.debug(
             "Sending offset-commit request with %s for group %s to %s",
             offsets, group_id, node_id
@@ -397,6 +415,7 @@ class InitPIDHandler(BaseHandler):
             transaction_timeout_ms=txn_manager.transaction_timeout_ms)
 
     def handle_response(self, resp):
+        txn_manager = self._sender._txn_manager
         error_type = Errors.for_code(resp.error_code)
         if error_type is Errors.NoError:
             log.debug(
@@ -412,6 +431,8 @@ class InitPIDHandler(BaseHandler):
         elif (error_type is CoordinatorLoadInProgressError or
                 error_type is ConcurrentTransactions):
             pass
+        elif error_type is TransactionalIdAuthorizationFailed:
+            raise error_type(txn_manager.transactional_id)
         else:
             log.error(
                 "Unexpected error during InitProducerIdRequest: %s",
@@ -445,6 +466,7 @@ class AddPartitionsToTxnHandler(BaseHandler):
     def handle_response(self, resp):
         txn_manager = self._sender._txn_manager
 
+        unauthorized_topics = set()
         for topic, partitions in resp.errors:
             for partition, error_code in partitions:
                 tp = TopicPartition(topic, partition)
@@ -475,11 +497,20 @@ class AddPartitionsToTxnHandler(BaseHandler):
                 elif (error_type is InvalidProducerIdMapping or
                         error_type is InvalidTxnState):
                     raise error_type()
+                elif error_type is TopicAuthorizationFailedError:
+                    unauthorized_topics.add(topic)
+                elif error_type is OperationNotAttempted:
+                    pass
+                elif error_type is TransactionalIdAuthorizationFailed:
+                    raise error_type(txn_manager.transactional_id)
                 else:
                     log.error(
                         "Could not add partition %s due to unexpected error:"
                         " %s", partition, error_type)
                     raise error_type()
+        if unauthorized_topics:
+            txn_manager.error_transaction(
+                TopicAuthorizationFailedError(unauthorized_topics))
         return
 
 
@@ -523,6 +554,11 @@ class AddOffsetsToTxnHandler(BaseHandler):
             raise ProducerFenced()
         elif error_type is InvalidTxnState:
             raise error_type()
+        elif error_type is TransactionalIdAuthorizationFailed:
+            raise error_type(txn_manager.transactional_id)
+        elif error_type is GroupAuthorizationFailedError:
+            txn_manager.error_transaction(error_type(self._group_id))
+            return
         else:
             log.error(
                 "Could not add consumer group due to unexpected error: %s",
@@ -586,6 +622,12 @@ class TxnOffsetCommitHandler(BaseHandler):
                     return self._default_backoff
                 elif error_type is InvalidProducerEpoch:
                     raise ProducerFenced()
+                elif error_type is TransactionalIdAuthorizationFailed:
+                    raise error_type(txn_manager.transactional_id)
+                elif error_type is GroupAuthorizationFailedError:
+                    exc = error_type(self._group_id)
+                    txn_manager.error_transaction(exc)
+                    return
                 else:
                     log.error(
                         "Could not commit offset for partition %s due to "
@@ -739,8 +781,12 @@ class SendProduceReqHandler(BaseHandler):
                     batch.done(offset, timestamp)
                 elif not self._can_retry(error(), batch):
                     if error is InvalidProducerEpoch:
-                        error = ProducerFenced
-                    batch.failure(exception=error())
+                        exc = ProducerFenced()
+                    elif error is TopicAuthorizationFailedError:
+                        exc = error(topic)
+                    else:
+                        exc = error()
+                    batch.failure(exception=exc)
                 else:
                     log.warning(
                         "Got error produce response on topic-partition"

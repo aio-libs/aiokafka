@@ -9,14 +9,15 @@ if [ ! -z "$NUM_PARTITIONS" ]; then
     OPTIONS="$OPTIONS --override num.partitions=$NUM_PARTITIONS"
 fi
 
+# Set the external host and port
+echo "advertised host: $ADVERTISED_HOST"
+echo "advertised port: $ADVERTISED_PORT"
 
-# Configure the default number of log partitions per topic
+LISTENERS="PLAINTEXT://:$ADVERTISED_PORT"
+ADVERTISED_LISTENERS="PLAINTEXT://$ADVERTISED_HOST:$ADVERTISED_PORT"
+
 if [ ! -z "$ADVERTISED_SSL_PORT" ]; then
-    # Set the external host and port
-    echo "advertised host: $ADVERTISED_HOST"
-    echo "advertised port: $ADVERTISED_PORT"
     echo "advertised ssl port: $ADVERTISED_SSL_PORT"
-    OPTIONS="$OPTIONS --override advertised.listeners=PLAINTEXT://$ADVERTISED_HOST:$ADVERTISED_PORT,SSL://$ADVERTISED_HOST:$ADVERTISED_SSL_PORT"
 
     # SSL options
     OPTIONS="$OPTIONS --override ssl.protocol=TLS"
@@ -30,20 +31,35 @@ if [ ! -z "$ADVERTISED_SSL_PORT" ]; then
     OPTIONS="$OPTIONS --override ssl.truststore.password=abcdefgh"
     OPTIONS="$OPTIONS --override ssl.client.auth=required"
     OPTIONS="$OPTIONS --override security.inter.broker.protocol=SSL"
-    OPTIONS="$OPTIONS --override listeners=PLAINTEXT://:$ADVERTISED_PORT,SSL://:$ADVERTISED_SSL_PORT"
+    OPTIONS="$OPTIONS --override ssl.endpoint.identification.algorithm="
 
-else
+    LISTENERS="$LISTENERS,SSL://:$ADVERTISED_SSL_PORT"
+    ADVERTISED_LISTENERS="$ADVERTISED_LISTENERS,SSL://$ADVERTISED_HOST:$ADVERTISED_SSL_PORT"
+fi
 
-    # Set the external host and port
-    echo "advertised host: $ADVERTISED_HOST"
-    echo "advertised port: $ADVERTISED_PORT"
-    OPTIONS="$OPTIONS --override advertised.listeners=PLAINTEXT://$ADVERTISED_HOST:$ADVERTISED_PORT"    
-    OPTIONS="$OPTIONS --override listeners=PLAINTEXT://:$ADVERTISED_PORT"
+if [ ! -z "$SASL_MECHANISMS" ]; then
+    echo "sasl mechanisms: $SASL_MECHANISMS"
+    echo "advertised sasl plaintext port: $ADVERTISED_SASL_PLAINTEXT_PORT"
+    echo "advertised sasl ssl port: $ADVERTISED_SASL_SSL_PORT"
 
+    OPTIONS="$OPTIONS --override sasl.enabled.mechanisms=$SASL_MECHANISMS"
+    OPTIONS="$OPTIONS --override authorizer.class.name=kafka.security.auth.SimpleAclAuthorizer"
+    OPTIONS="$OPTIONS --override allow.everyone.if.no.acl.found=true"
+    export KAFKA_OPTS="-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
+    
+    LISTENERS="$LISTENERS,SASL_PLAINTEXT://:$ADVERTISED_SASL_PLAINTEXT_PORT"
+    ADVERTISED_LISTENERS="$ADVERTISED_LISTENERS,SASL_PLAINTEXT://$ADVERTISED_HOST:$ADVERTISED_SASL_PLAINTEXT_PORT"
+
+    LISTENERS="$LISTENERS,SASL_SSL://:$ADVERTISED_SASL_SSL_PORT"
+    ADVERTISED_LISTENERS="$ADVERTISED_LISTENERS,SASL_SSL://$ADVERTISED_HOST:$ADVERTISED_SASL_SSL_PORT"
 fi
 
 # Enable auto creation of topics
 OPTIONS="$OPTIONS --override auto.create.topics.enable=true"
+OPTIONS="$OPTIONS --override listeners=$LISTENERS"
+OPTIONS="$OPTIONS --override advertised.listeners=$ADVERTISED_LISTENERS"
+OPTIONS="$OPTIONS --override super.users=User:admin"
+
 
 # Run Kafka
 echo "$KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server.properties $OPTIONS"

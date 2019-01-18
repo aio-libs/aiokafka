@@ -15,6 +15,9 @@ from aiokafka.errors import ConnectionError
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.helpers import create_ssl_context
 
+import logging
+log = logging.getLogger(__name__)
+
 
 __all__ = ['KafkaIntegrationTestCase', 'random_string']
 
@@ -26,8 +29,9 @@ def run_until_complete(fun):
     @wraps(fun)
     def wrapper(test, *args, **kw):
         loop = test.loop
+        timeout = getattr(test, "TEST_TIMEOUT", 30)
         ret = loop.run_until_complete(
-            asyncio.wait_for(fun(test, *args, **kw), 30, loop=loop))
+            asyncio.wait_for(fun(test, *args, **kw), timeout, loop=loop))
         return ret
     return wrapper
 
@@ -106,6 +110,84 @@ class StubRebalanceListener(ConsumerRebalanceListener):
 
     def on_partitions_assigned(self, assigned):
         self.assigns.put_nowait(assigned)
+
+
+class ACLManager:
+
+    def __init__(self, docker, tag):
+        self._docker = docker
+        self._active_acls = []
+        self._tag = tag
+
+    @property
+    def cmd(self):
+        return "/opt/kafka_{tag}/bin/kafka-acls.sh".format(tag=self._tag)
+
+    def _exec(self, *cmd_options):
+        cmd = ' '.join(
+            [self.cmd, "--force",
+              '--authorizer-properties zookeeper.connect=localhost:2181'
+             ] + list(cmd_options))
+        exit_code, output = self._docker.exec_run(cmd)
+        if exit_code != 0:
+            for line in output.split(b'\n'):
+                log.warning(line)
+            raise RuntimeError("Failed to apply ACL")
+        else:
+            for line in output.split(b'\n'):
+                log.debug(line)
+            return output
+
+    def add_acl(self, **acl_params):
+        params = self._format_params(**acl_params)
+        self._exec("--add", *params)
+        self._active_acls.append(acl_params)
+
+    def remove_acl(self, **acl_params):
+        params = self._format_params(**acl_params)
+        self._exec("--remove", *params)
+        self._active_acls.remove(acl_params)
+
+    def list_acl(self, principal=None):
+        opts = []
+        if principal:
+            opts.append("--principal User:{}".format(principal))
+        return self._exec('--list', *opts)
+
+    def _format_params(
+            self, cluster=None, topic=None, group=None,
+            transactional_id=None,
+            allow_principal=None, deny_principal=None,
+            allow_host=None, deny_host=None,
+            operation=None, producer=None, consumer=None):
+        options = []
+        if cluster:
+            options.append("--cluster")
+        if topic is not None:
+            options.append("--topic {}".format(topic))
+        if group is not None:
+            options.append("--group {}".format(group))
+        if transactional_id is not None:
+            options.append("--transactional-id {}".format(transactional_id))
+        if allow_principal is not None:
+            options.append("--allow-principal User:{}".format(allow_principal))
+        if deny_principal is not None:
+            options.append("--deny-principal User:{}".format(deny_principal))
+        if allow_host is not None:
+            options.append("--allow-host {}".format(allow_host))
+        if deny_host is not None:
+            options.append("--deny-host {}".format(deny_host))
+        if operation is not None:
+            options.append("--operation {}".format(operation))
+        if producer is not None:
+            options.append("--producer")
+        if consumer is not None:
+            options.append("--consumer")
+        return options
+
+    def cleanup(self):
+        for acl_params in self._active_acls:
+            self.remove_acl(**acl_params)
 
 
 @pytest.mark.usefixtures('setup_test_class')

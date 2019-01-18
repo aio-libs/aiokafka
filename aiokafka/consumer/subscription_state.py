@@ -1,6 +1,7 @@
 import logging
 from asyncio import AbstractEventLoop as ALoop, shield, Event
 from enum import Enum
+import copy
 
 from typing import Set, Pattern, Dict
 
@@ -248,6 +249,21 @@ class SubscriptionState:
         self._assignment_waiters.append(fut)
         return fut
 
+    def register_fetch_waiters(self, waiters):
+        self._fetch_waiters = waiters
+
+    def abort_waiters(self, exc):
+        """ Critical error occured, we will abort any pending waiter
+        """
+        for waiter in self._assignment_waiters:
+            if not waiter.done():
+                waiter.set_exception(copy.copy(exc))
+        self._subscription_waiters.clear()
+
+        for waiter in self._fetch_waiters:
+            if not waiter.done():
+                waiter.set_exception(copy.copy(exc))
+
 
 class Subscription:
     """ Describes current subscription to a list of topics. In case of pattern
@@ -366,26 +382,25 @@ class Assignment:
         all_consumed = {}
         for tp in self._topic_partitions:
             state = self.state_value(tp)
-            if state.has_valid_position and state.position != state.committed:
+            if state.has_valid_position:
                 all_consumed[tp] = OffsetAndMetadata(state.position, '')
         return all_consumed
 
-    def missing_commit_cache(self):
-        """ Return all partitions that don't have a commit point cache """
-        missing = []
+    def requesting_committed(self):
+        """ Return all partitions that are requesting commit point fetch """
+        requesting = []
         for tp in self._topic_partitions:
             tp_state = self.state_value(tp)
-            if tp_state.committed is None:
-                missing.append(tp)
-        return missing
+            if tp_state._committed_futs:
+                requesting.append(tp)
+        return requesting
 
 
 class PartitionStatus(Enum):
 
-    ASSIGNED = 0
-    AWAITING_RESET = 1
-    CONSUMING = 2
-    UNASSIGNED = 3
+    AWAITING_RESET = 0
+    CONSUMING = 1
+    UNASSIGNED = 2
 
 
 class TopicPartitionState(object):
@@ -393,9 +408,7 @@ class TopicPartitionState(object):
 
     After creation the workflow is similar to:
 
-        * Partition assigned to this consumer (ASSIGNED)
-        * Coordinator checks the latest commit offset for partition (
-          ASSIGNED -> AWAITING_RESET)
+        * Partition assigned to this consumer (AWAITING_RESET)
         * Fetcher either uses commit save point or resets position in respect
           to defined reset policy (AWAITING_RESET -> CONSUMING)
         * Fetcher loads a new batch of records, yields results to consumer
@@ -406,8 +419,7 @@ class TopicPartitionState(object):
 
     def __init__(self, assignment, *, loop):
         # Synchronized values
-        self._committed = None  # Last committed position and metadata
-        self._committed_fut = create_future(loop=loop)
+        self._committed_futs = []
 
         self.highwater = None  # Last fetched highwater mark
         self.lso = None  # Last fetched stable offset mark
@@ -418,14 +430,10 @@ class TopicPartitionState(object):
         # or by Fetcher after confirming that current position is no longer
         # reachable.
         self._reset_strategy = None  # type: int
-        self._status = PartitionStatus.ASSIGNED  # type: PartitionStatus
+        self._status = PartitionStatus.AWAITING_RESET  # type: PartitionStatus
 
         self._loop = loop
         self._assignment = assignment
-
-    @property
-    def committed(self) -> OffsetAndMetadata:
-        return self._committed
 
     @property
     def has_valid_position(self) -> bool:
@@ -456,34 +464,19 @@ class TopicPartitionState(object):
 
     # Committed manipulation
 
-    def reset_committed(self, offset_meta: OffsetAndMetadata):
-        """ Called by Coordinator on initial commit query after assignment.
-        """
-        self._committed = offset_meta
-        self._committed_fut.set_result(None)
-        if self._status == PartitionStatus.ASSIGNED:
-            self._status = PartitionStatus.AWAITING_RESET
-
-    def begin_commit(self):
-        """ Signal that currently we started committing offset for this
-        partition, so we can't rely on commit cache. It can be bad if we
-        reset offset to previous commit point.
-        """
-        self._committed = None
-        if self._committed_fut.done():
-            self._committed_fut = create_future(loop=self._loop)
+    def fetch_committed(self):
+        fut = create_future(loop=self._loop)
+        self._committed_futs.append(fut)
+        self._assignment.commit_refresh_needed.set()
+        return fut
 
     def update_committed(self, offset_meta: OffsetAndMetadata):
         """ Called by Coordinator on successfull commit to update commit cache.
         """
-        self._committed = offset_meta
-        if not self._committed_fut.done():
-            self._committed_fut.set_result(None)
-
-    def wait_for_committed(self):
-        assert self._committed is None
-        self._assignment.commit_refresh_needed.set()
-        return shield(self._committed_fut, loop=self._loop)
+        for fut in self._committed_futs:
+            if not fut.done():
+                fut.set_result(offset_meta)
+        self._committed_futs.clear()
 
     # Position manipulation
 

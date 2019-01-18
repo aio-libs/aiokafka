@@ -28,31 +28,6 @@ def parse_kafka_version(api_version):
     return version
 
 
-@asyncio.coroutine
-def wait_for_reponse_or_error(coro, error_tasks, *, shield=False, loop):
-    """ Common pattern for Facade classes to run some coroutine but still proxy
-    any other critical exception happening in background tasks.
-    """
-    data_task = ensure_future(coro, loop=loop)
-
-    try:
-        yield from asyncio.wait(
-            [data_task] + error_tasks,
-            return_when=asyncio.FIRST_COMPLETED,
-            loop=loop)
-    except asyncio.CancelledError:
-        if not shield:
-            data_task.cancel()
-        raise
-
-    # Check for errors in other tasks
-    for error_task in error_tasks:
-        if error_task.done():
-            error_task.result()  # Raises set exception if any
-
-    return (yield from data_task)
-
-
 def commit_structure_validate(offsets):
     # validate `offsets` structure
     if not offsets or not isinstance(offsets, dict):

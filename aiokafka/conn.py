@@ -9,6 +9,9 @@ import warnings
 import weakref
 
 from kafka.protocol.api import RequestHeader
+from kafka.protocol.admin import (
+    SaslHandShakeRequest, SaslAuthenticateRequest, ApiVersionRequest
+)
 from kafka.protocol.commit import (
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
@@ -28,13 +31,39 @@ class CloseReason:
     OUT_OF_SYNC = 2
     IDLE_DROP = 3
     SHUTDOWN = 4
+    AUTH_FAILURE = 5
+
+
+class VersionInfo:
+
+    def __init__(self, versions):
+        self._versions = versions
+
+    def pick_best(self, request_versions):
+        api_key = request_versions[0].API_KEY
+        supported_versions = self._versions.get(api_key)
+        if supported_versions is None:
+            return request_versions[0]
+        else:
+            for req_klass in reversed(request_versions):
+                if supported_versions[0] <= req_klass.API_VERSION and \
+                        req_klass.API_VERSION <= supported_versions[1]:
+                    return req_klass
+        raise Errors.KafkaError(
+            "Could not pick a version for API_KEY={} from {}. ".format(
+                api_key, supported_versions)
+        )
 
 
 @asyncio.coroutine
 def create_conn(host, port, *, loop=None, client_id='aiokafka',
                 request_timeout_ms=40000, api_version=(0, 8, 2),
                 ssl_context=None, security_protocol="PLAINTEXT",
-                max_idle_ms=None, on_close=None):
+                max_idle_ms=None, on_close=None,
+                sasl_mechanism=None,
+                sasl_plain_username=None,
+                sasl_plain_password=None,
+                version_hint=None):
     if loop is None:
         loop = asyncio.get_event_loop()
     conn = AIOKafkaConnection(
@@ -42,7 +71,11 @@ def create_conn(host, port, *, loop=None, client_id='aiokafka',
         request_timeout_ms=request_timeout_ms,
         api_version=api_version,
         ssl_context=ssl_context, security_protocol=security_protocol,
-        max_idle_ms=max_idle_ms, on_close=on_close)
+        max_idle_ms=max_idle_ms, on_close=on_close,
+        sasl_mechanism=sasl_mechanism,
+        sasl_plain_username=sasl_plain_username,
+        sasl_plain_password=sasl_plain_password,
+        version_hint=version_hint)
     yield from conn.connect()
     return conn
 
@@ -70,7 +103,9 @@ class AIOKafkaConnection:
     def __init__(self, host, port, *, loop, client_id='aiokafka',
                  request_timeout_ms=40000, api_version=(0, 8, 2),
                  ssl_context=None, security_protocol="PLAINTEXT",
-                 max_idle_ms=None, on_close=None):
+                 max_idle_ms=None, on_close=None, sasl_mechanism=None,
+                 sasl_plain_password=None, sasl_plain_username=None,
+                 version_hint=None):
         self._loop = loop
         self._host = host
         self._port = port
@@ -78,7 +113,14 @@ class AIOKafkaConnection:
         self._api_version = api_version
         self._client_id = client_id
         self._ssl_context = ssl_context
-        self._secutity_protocol = security_protocol
+        self._security_protocol = security_protocol
+        self._sasl_mechanism = sasl_mechanism
+        self._sasl_plain_username = sasl_plain_username
+        self._sasl_plain_password = sasl_plain_password
+
+        # Version hint is the version determined by initial client bootstrap
+        self._version_hint = version_hint
+        self._version_info = VersionInfo({})
 
         self._reader = self._writer = self._protocol = None
         # Even on small size seems to be a bit faster than list.
@@ -127,10 +169,10 @@ class AIOKafkaConnection:
     def connect(self):
         loop = self._loop
         self._closed_fut = create_future(loop=loop)
-        if self._secutity_protocol == "PLAINTEXT":
+        if self._security_protocol in ["PLAINTEXT", "SASL_PLAINTEXT"]:
             ssl = None
         else:
-            assert self._secutity_protocol == "SSL"
+            assert self._security_protocol in ["SSL", "SASL_SSL"]
             assert self._ssl_context is not None
             ssl = self._ssl_context
         # Create streams same as `open_connection`, but using custom protocol
@@ -142,13 +184,99 @@ class AIOKafkaConnection:
             loop=loop, timeout=self._request_timeout)
         writer = asyncio.StreamWriter(transport, protocol, reader, loop)
         self._reader, self._writer, self._protocol = reader, writer, protocol
+
         # Start reader task.
         self._read_task = self._create_reader_task()
+
         # Start idle checker
         if self._max_idle_ms is not None:
             self._idle_handle = self._loop.call_soon(
                 self._idle_check, weakref.ref(self))
+
+        if self._version_hint and self._version_hint >= (0, 10):
+            yield from self._do_version_lookup()
+
+        if self._security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
+            yield from self._do_sasl_handshake()
+
         return reader, writer
+
+    @asyncio.coroutine
+    def _do_version_lookup(self):
+        version_req = ApiVersionRequest[0]()
+        response = yield from self.send(version_req)
+        versions = {}
+        for api_key, min_version, max_version in response.api_versions:
+            assert min_version <= max_version, (
+                "{} should be less than or equal to {} for {}".format(
+                    min_version, max_version, api_key)
+            )
+            versions[api_key] = (min_version, max_version)
+        self._version_info = VersionInfo(versions)
+
+    @asyncio.coroutine
+    def _do_sasl_handshake(self):
+        req_klass = self._version_info.pick_best(SaslHandShakeRequest)
+
+        sasl_handshake = req_klass(self._sasl_mechanism)
+        response = yield from self.send(sasl_handshake)
+        error_type = Errors.for_code(response.error_code)
+        if error_type is not Errors.NoError:
+            error = error_type(self)
+            self.close(reason=CloseReason.AUTH_FAILURE, exc=error)
+            raise error
+
+        if self._sasl_mechanism not in response.enabled_mechanisms:
+            exc = Errors.UnsupportedSaslMechanismError(
+                'Kafka broker does not support %s sasl mechanism. '
+                'Enabled mechanisms are: %s'
+                % (self._sasl_mechanism, response.enabled_mechanisms))
+            self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
+            raise exc
+
+        assert self._sasl_mechanism == 'PLAIN'
+        if self._security_protocol == 'SASL_PLAINTEXT':
+            self.log.warning(
+                'Sending username and password in the clear')
+
+        authenticator = self.authenticator_plain()
+
+        auth_bytes = None
+        while True:
+            try:
+                payload = authenticator.send(auth_bytes)
+            except StopIteration:
+                break
+
+            if req_klass.API_VERSION == 0:
+                auth_bytes = yield from self._send_sasl_token(payload)
+            else:
+                req_klass = self._version_info.pick_best(
+                    SaslAuthenticateRequest)
+                req = req_klass(payload)
+                resp = yield from self.send(req)
+                error_type = Errors.for_code(resp.error_code)
+                if error_type is not Errors.NoError:
+                    exc = error_type(resp.error_message)
+                    self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
+                    raise exc
+                auth_bytes = resp.sasl_auth_bytes
+
+        self.log.info(
+            'Authenticated as %s via PLAIN', self._sasl_plain_username)
+
+    def authenticator_plain(self):
+        """ Automaton to authenticate with SASL tokens
+        """
+        # Send PLAIN credentials per RFC-4616
+        resp = yield '\0'.join([
+            self._sasl_plain_username,
+            self._sasl_plain_username,
+            self._sasl_plain_password]
+        ).encode("utf-8")
+        assert resp == b"", (
+            "Server should either close or send an empty response"
+        )
 
     @staticmethod
     def _on_read_task_error(self_ref, read_task):
@@ -221,6 +349,24 @@ class AIOKafkaConnection:
         self._requests.append((correlation_id, request.RESPONSE_TYPE, fut))
         return asyncio.wait_for(fut, self._request_timeout, loop=self._loop)
 
+    def _send_sasl_token(self, payload):
+        if self._writer is None:
+            raise Errors.ConnectionError(
+                "No connection to broker at {0}:{1}"
+                .format(self._host, self._port))
+
+        size = struct.pack(">i", len(payload))
+        try:
+            self._writer.write(size + payload)
+        except OSError as err:
+            self.close(reason=CloseReason.CONNECTION_BROKEN)
+            raise Errors.ConnectionError(
+                "Connection at {0}:{1} broken: {2}".format(
+                    self._host, self._port, err))
+        fut = create_future(loop=self._loop)
+        self._requests.append((None, None, fut))
+        return asyncio.wait_for(fut, self._request_timeout, loop=self._loop)
+
     def connected(self):
         return bool(self._reader is not None and not self._reader.at_eof())
 
@@ -276,32 +422,39 @@ class AIOKafkaConnection:
             self_ref()._handle_frame(resp)
 
     def _handle_frame(self, resp):
-        recv_correlation_id, = struct.unpack_from(">i", resp, 0)
-
         correlation_id, resp_type, fut = self._requests[0]
-        if (self._api_version == (0, 8, 2) and
-                resp_type is GroupCoordinatorResponse and
-                correlation_id != 0 and recv_correlation_id == 0):
-            self.log.warning(
-                'Kafka 0.8.2 quirk -- GroupCoordinatorResponse'
-                ' coorelation id does not match request. This'
-                ' should go away once at least one topic has been'
-                ' initialized on the broker')
 
-        elif correlation_id != recv_correlation_id:
-            error = Errors.CorrelationIdError(
-                'Correlation ids do not match: sent {}, recv {}'
-                .format(correlation_id, recv_correlation_id))
+        if correlation_id is None:  # Is a SASL packet, just pass it though
             if not fut.done():
-                fut.set_exception(error)
-            self.close(reason=CloseReason.OUT_OF_SYNC)
-            return
+                fut.set_result(resp)
+        else:
 
-        if not fut.done():
-            response = resp_type.decode(resp[4:])
-            self.log.debug(
-                '%s Response %d: %s', self, correlation_id, response)
-            fut.set_result(response)
+            recv_correlation_id, = struct.unpack_from(">i", resp, 0)
+
+            if (self._api_version == (0, 8, 2) and
+                    resp_type is GroupCoordinatorResponse and
+                    correlation_id != 0 and recv_correlation_id == 0):
+                self.log.warning(
+                    'Kafka 0.8.2 quirk -- GroupCoordinatorResponse'
+                    ' coorelation id does not match request. This'
+                    ' should go away once at least one topic has been'
+                    ' initialized on the broker')
+
+            elif correlation_id != recv_correlation_id:
+                error = Errors.CorrelationIdError(
+                    'Correlation ids do not match: sent {}, recv {}'
+                    .format(correlation_id, recv_correlation_id))
+                if not fut.done():
+                    fut.set_exception(error)
+                self.close(reason=CloseReason.OUT_OF_SYNC)
+                return
+
+            if not fut.done():
+                response = resp_type.decode(resp[4:])
+                self.log.debug(
+                    '%s Response %d: %s', self, correlation_id, response)
+                fut.set_result(response)
+
         # Update idle timer.
         self._last_action = self._loop.time()
         # We should clear the request future only after all code is done and

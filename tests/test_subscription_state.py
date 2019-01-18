@@ -173,8 +173,10 @@ def test_assigned_state(subscription_state):
     tp_state = subscription_state._assigned_state(tp1)
     assert tp_state is not None
 
-    assert repr(tp_state) == \
-        "TopicPartitionState<Status=PartitionStatus.ASSIGNED position=None>"
+    assert repr(tp_state) == (
+        "TopicPartitionState<Status=PartitionStatus.AWAITING_RESET"
+        " position=None>"
+    )
 
 
 def test_begin_reassignment(subscription_state):

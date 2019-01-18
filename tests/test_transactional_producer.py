@@ -475,7 +475,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         await producer.begin_transaction()
         await producer.send(self.topic, value=b"1", partition=0)
         commit_task = ensure_future(producer.commit_transaction())
-        await asyncio.sleep(0.01, loop=self.loop)
+        await asyncio.sleep(0.001, loop=self.loop)
         self.assertFalse(commit_task.done())
 
         # Already not in transaction
