@@ -423,6 +423,9 @@ class AIOKafkaProducer(object):
             if self.client.api_version < (0, 11):
                 raise UnsupportedVersionError(
                     "Headers not supported before Kafka 0.11")
+        else:
+            # Record parser/builder support only list type, no explicit None
+            headers = []
 
         key_bytes, value_bytes = self._serialize(topic, key, value)
         partition = self._partition(topic, partition, key, value,
