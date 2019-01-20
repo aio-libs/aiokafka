@@ -738,7 +738,9 @@ class GroupCoordinator(BaseCoordinator):
         retry_backoff = self._retry_backoff_ms / 1000
         sleep_time = hb_interval
 
-        while True:
+        # There is no point to heartbeat after Broker stopped recognizing
+        # this consumer, so we stop after resetting generation.
+        while self.member_id != JoinGroupRequest.UNKNOWN_MEMBER_ID:
             try:
                 yield from asyncio.sleep(sleep_time, loop=self._loop)
                 yield from self.ensure_coordinator_known()
@@ -746,7 +748,7 @@ class GroupCoordinator(BaseCoordinator):
                 t0 = self._loop.time()
                 success = yield from self._do_heartbeat()
             except asyncio.CancelledError:
-                return
+                break
 
             # NOTE: We let all other errors propagate up to coordination
             # routine
@@ -765,6 +767,8 @@ class GroupCoordinator(BaseCoordinator):
                 log.error(
                     "Heartbeat session expired - marking coordinator dead")
                 self.coordinator_dead()
+
+        log.debug("Stopping heartbeat task")
 
     @asyncio.coroutine
     def _do_heartbeat(self):
