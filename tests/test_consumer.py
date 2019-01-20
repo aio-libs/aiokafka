@@ -1897,4 +1897,4 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         message = yield from consumer.getone()
         self.assertEqual(message.value, b"0")
-        self.assertEqual(message.headers, [("header1", b"17")])
+        self.assertEqual(message.headers, (("header1", b"17"), ))
