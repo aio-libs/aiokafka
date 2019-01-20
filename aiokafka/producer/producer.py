@@ -364,7 +364,7 @@ class AIOKafkaProducer(object):
 
     @asyncio.coroutine
     def send(self, topic, value=None, key=None, partition=None,
-             timestamp_ms=None):
+             timestamp_ms=None, headers=None):
         """Publish a message to a topic.
 
         Arguments:
@@ -419,6 +419,14 @@ class AIOKafkaProducer(object):
                 raise IllegalOperation(
                     "Can't send messages while not in transaction")
 
+        if headers is not None:
+            if self.client.api_version < (0, 11):
+                raise UnsupportedVersionError(
+                    "Headers not supported before Kafka 0.11")
+        else:
+            # Record parser/builder support only list type, no explicit None
+            headers = []
+
         key_bytes, value_bytes = self._serialize(topic, key, value)
         partition = self._partition(topic, partition, key, value,
                                     key_bytes, value_bytes)
@@ -428,7 +436,7 @@ class AIOKafkaProducer(object):
 
         fut = yield from self._message_accumulator.add_message(
             tp, key_bytes, value_bytes, self._request_timeout_ms / 1000,
-            timestamp_ms=timestamp_ms)
+            timestamp_ms=timestamp_ms, headers=headers)
         return fut
 
     @asyncio.coroutine

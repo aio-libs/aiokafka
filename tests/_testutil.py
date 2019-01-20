@@ -259,7 +259,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 
     @asyncio.coroutine
     def send_messages(self, partition, messages, *, topic=None,
-                      timestamp_ms=None, return_inst=False):
+                      timestamp_ms=None, return_inst=False, headers=None):
         topic = topic or self.topic
         ret = []
         producer = AIOKafkaProducer(
@@ -275,7 +275,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
                     msg = str(msg).encode()
                 future = yield from producer.send(
                     topic, msg, partition=partition,
-                    timestamp_ms=timestamp_ms)
+                    timestamp_ms=timestamp_ms, headers=headers)
                 resp = yield from future
                 self.assertEqual(resp.topic, topic)
                 self.assertEqual(resp.partition, partition)

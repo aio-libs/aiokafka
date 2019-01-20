@@ -292,7 +292,7 @@ class PartitionRecords:
         return ConsumerRecord(
             tp.topic, tp.partition, record.offset, record.timestamp,
             record.timestamp_type, key, value, record.checksum,
-            key_size, value_size)
+            key_size, value_size, tuple(record.headers))
 
 
 class Fetcher:

@@ -353,7 +353,7 @@ class TestFetcher(unittest.TestCase):
         messages = [ConsumerRecord(
             topic="some_topic", partition=1, offset=0, timestamp=0,
             timestamp_type=0, key=None, value=b"some", checksum=None,
-            serialized_key_size=0, serialized_value_size=4)]
+            serialized_key_size=0, serialized_value_size=4, headers=[])]
         partition_records = PartitionRecords(
             tp2, mock.Mock(), [], 0,
             None, None, False, READ_UNCOMMITTED)

@@ -1886,3 +1886,15 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
             refresh_event = subscription.assignment.commit_refresh_needed
             self.assertTrue(refresh_event.is_set())
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    def test_consumer_with_headers(self):
+        yield from self.send_messages(
+            0, [0], headers=[("header1", b"17")])
+        # Start a consumer_factory
+        consumer = yield from self.consumer_factory()
+
+        message = yield from consumer.getone()
+        self.assertEqual(message.value, b"0")
+        self.assertEqual(message.headers, (("header1", b"17"), ))
