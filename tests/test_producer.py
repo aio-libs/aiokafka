@@ -713,3 +713,29 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 KafkaError, "Unexpected error during batch delivery"):
             yield from producer.send_and_wait(
                 self.topic, b'hello, Kafka!')
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    def test_producer_send_with_headers(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        yield from producer.start()
+        self.add_cleanup(producer.stop)
+
+        fut = yield from producer.send(
+            self.topic, b'msg', partition=0, headers=[("type", b"Normal")])
+        resp = yield from fut
+        self.assertEqual(resp.partition, 0)
+
+    @kafka_versions('<0.11.0')
+    @run_until_complete
+    def test_producer_send_with_headers_raise_error(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        yield from producer.start()
+        self.add_cleanup(producer.stop)
+
+        with self.assertRaises(UnsupportedVersionError):
+            yield from producer.send(
+                self.topic, b'msg', partition=0,
+                headers=[("type", b"Normal")])

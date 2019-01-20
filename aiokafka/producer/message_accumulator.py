@@ -28,7 +28,7 @@ class BatchBuilder:
         self._buffer = None
         self._closed = False
 
-    def append(self, *, timestamp, key, value):
+    def append(self, *, timestamp, key, value, headers=[]):
         """Add a message to the batch.
 
         Arguments:
@@ -49,7 +49,8 @@ class BatchBuilder:
             return None
 
         metadata = self._builder.append(
-            self._relative_offset, timestamp, key, value, headers=[])
+            self._relative_offset, timestamp, key, value,
+            headers=headers)
 
         # Check if we could add the message
         if metadata is None:
@@ -124,7 +125,8 @@ class MessageBatch:
     def record_count(self):
         return self._builder.record_count()
 
-    def append(self, key, value, timestamp_ms, _create_future=create_future):
+    def append(self, key, value, timestamp_ms, _create_future=create_future,
+               headers=[]):
         """Append message (key and value) to batch
 
         Returns:
@@ -133,7 +135,7 @@ class MessageBatch:
             asyncio.Future that will resolved when message is delivered
         """
         metadata = self._builder.append(
-            timestamp=timestamp_ms, key=key, value=value)
+            timestamp=timestamp_ms, key=key, value=value, headers=headers)
         if metadata is None:
             return None
 
@@ -310,7 +312,8 @@ class MessageAccumulator:
         yield from self.flush()
 
     @asyncio.coroutine
-    def add_message(self, tp, key, value, timeout, timestamp_ms=None):
+    def add_message(self, tp, key, value, timeout, timestamp_ms=None,
+                    headers=[]):
         """ Add message to batch by topic-partition
         If batch is already full this method waits (`timeout` seconds maximum)
         until batch is drained by send task
@@ -329,7 +332,7 @@ class MessageAccumulator:
         else:
             batch = pending_batches[-1]
 
-        future = batch.append(key, value, timestamp_ms)
+        future = batch.append(key, value, timestamp_ms, headers=headers)
         if future is None:
             # Batch is full, can't append data atm,
             # waiting until batch per topic-partition is drained
