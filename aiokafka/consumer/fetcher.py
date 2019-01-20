@@ -84,9 +84,13 @@ class FetchResult:
         return_result = True
         if assignment.active:
             tp = self._topic_partition
-            position = assignment.state_value(tp).position
-            if position != self._partition_records.next_fetch_offset:
+            tp_state = assignment.state_value(tp)
+            if tp_state.paused:
                 return_result = False
+            else:
+                position = tp_state.position
+                if position != self._partition_records.next_fetch_offset:
+                    return_result = False
         else:
             return_result = False
 
@@ -507,8 +511,8 @@ class Fetcher:
                 # Reset consuming signal future.
                 self._wait_consume_future = create_future(loop=self._loop)
                 # Determine what action to take per node
-                fetch_requests, reset_requests, timeout, invalid_metadata = \
-                    self._get_actions_per_node(assignment)
+                (fetch_requests, reset_requests, timeout, invalid_metadata,
+                 resume_futures) = self._get_actions_per_node(assignment)
 
                 # Start fetch tasks
                 for node_id, request in fetch_requests:
@@ -529,7 +533,7 @@ class Fetcher:
                     other_futs.append(fut)
 
                 done_set, _ = yield from asyncio.wait(
-                    chain(self._pending_tasks, other_futs),
+                    chain(self._pending_tasks, other_futs, resume_futures),
                     loop=self._loop,
                     timeout=timeout,
                     return_when=asyncio.FIRST_COMPLETED)
@@ -559,10 +563,12 @@ class Fetcher:
         fetchable = collections.defaultdict(list)
         awaiting_reset = collections.defaultdict(list)
         backoff_by_nodes = collections.defaultdict(list)
+        resume_futures = []
         invalid_metadata = False
 
         for tp in assignment.tps:
             tp_state = assignment.state_value(tp)
+
             node_id = self._client.cluster.leader_for_partition(tp)
             backoff = 0
             if tp in self._records:
@@ -582,6 +588,8 @@ class Fetcher:
                 invalid_metadata = True
             elif not tp_state.has_valid_position:
                 awaiting_reset[node_id].append(tp)
+            elif tp_state.paused:
+                resume_futures.append(tp_state.resume_fut)
             else:
                 position = tp_state.position
                 fetchable[node_id].append((tp, position))
@@ -639,7 +647,10 @@ class Fetcher:
             backoff = min(map(max, backoff_by_nodes.values()))
         else:
             backoff = self._fetcher_timeout
-        return fetch_requests, awaiting_reset, backoff, invalid_metadata
+        return (
+            fetch_requests, awaiting_reset, backoff, invalid_metadata,
+            resume_futures
+        )
 
     @asyncio.coroutine
     def _proc_fetch_request(self, assignment, node_id, request):

@@ -1898,3 +1898,49 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         message = yield from consumer.getone()
         self.assertEqual(message.value, b"0")
         self.assertEqual(message.headers, (("header1", b"17"), ))
+
+    @run_until_complete
+    def test_consumer_pause_resume(self):
+        yield from self.send_messages(0, range(5))
+        yield from self.send_messages(1, range(5))
+
+        consumer = yield from self.consumer_factory()
+        tp0 = TopicPartition(self.topic, 0)
+
+        self.assertEqual(consumer.paused(), set())
+        seen_partitions = set()
+        for _ in range(10):
+            msg = yield from consumer.getone()
+            seen_partitions.add(msg.partition)
+        self.assertEqual(seen_partitions, {0, 1})
+
+        yield from consumer.seek_to_beginning()
+        consumer.pause(tp0)
+        self.assertEqual(consumer.paused(), {tp0})
+        seen_partitions = set()
+        for _ in range(5):
+            msg = yield from consumer.getone()
+            seen_partitions.add(msg.partition)
+        self.assertEqual(seen_partitions, {1})
+
+        yield from consumer.seek_to_beginning()
+        consumer.resume(tp0)
+        self.assertEqual(consumer.paused(), set())
+        seen_partitions = set()
+        for _ in range(10):
+            msg = yield from consumer.getone()
+            seen_partitions.add(msg.partition)
+        self.assertEqual(seen_partitions, {0, 1})
+
+        # Message send in fetch process
+        get_task = ensure_future(consumer.getone(), loop=self.loop)
+        asyncio.sleep(0.1, loop=self.loop)
+        self.assertFalse(get_task.done())
+
+        # NOTE: we pause after sending fetch requests. We just don't return
+        # message to the user
+        consumer.pause(tp0)
+        yield from self.send_messages(0, [10])
+
+        with self.assertRaises(asyncio.TimeoutError):
+            yield from asyncio.wait_for(get_task, timeout=0.5, loop=self.loop)
