@@ -1014,6 +1014,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         coordinator._do_heartbeat = mocked = mock.Mock()
         coordinator.coordinator_id = 15
+        coordinator.member_id = 17
+        coordinator.generation = 0
         success = None
 
         @asyncio.coroutine
