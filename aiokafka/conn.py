@@ -261,16 +261,30 @@ class AIOKafkaConnection:
             self.log.warning(
                 'Sending username and password in the clear')
 
-        authenticator = self.authenticator_gssapi() \
+        q_req = asyncio.Queue(maxsize=1)
+        q_resp = asyncio.Queue(maxsize=1)
+
+        authenticator = self.authenticator_gssapi(q_req, q_resp) \
             if self._sasl_mechanism == 'GSSAPI' \
-            else self.authenticator_plain()
+            else self.authenticator_plain(q_req, q_resp)
+
+        task = self._loop.create_task(authenticator)
+
+        def exception_handler(fut):
+            exc = fut.exception()
+            if exc:
+                q_resp.put_nowait((exc, False))
+
+        task.add_done_callback(exception_handler)
 
         auth_bytes = None
-        while True:
-            try:
-                payload, expect_response = authenticator.send(auth_bytes)
-            except StopIteration:
-                break
+        expect_response = True
+
+        while not task.done():
+            q_req.put_nowait(auth_bytes)
+            payload, expect_response = yield from q_resp.get()
+            if isinstance(payload, Exception):
+                raise payload
 
             if req_klass.API_VERSION == 0:
                 auth_bytes = yield from self._send_sasl_token(payload,
@@ -286,9 +300,10 @@ class AIOKafkaConnection:
                     self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
                     raise exc
                 auth_bytes = resp.sasl_auth_bytes
+            q_resp.task_done()
 
         if self._sasl_mechanism == 'GSSAPI':
-            self.log.info('Authenticated as %s via GSSPAI', self.principal)
+            self.log.info('Authenticated as %s via GSSAPI', self.principal)
         else:
             self.log.info('Authenticated as %s via PLAIN',
                           self._sasl_plain_username)
@@ -300,36 +315,48 @@ class AIOKafkaConnection:
 
         return "{service}@{domain}".format(service=service, domain=domain)
 
-    def authenticator_gssapi(self):
+    @asyncio.coroutine
+    def authenticator_gssapi(self, q_req, q_resp):
         name = gssapi.Name(self.principal,
                            name_type=gssapi.NameType.hostbased_service)
         cname = name.canonicalize(gssapi.MechType.kerberos)
 
         client_ctx = gssapi.SecurityContext(name=cname, usage='initiate')
 
-        server_token = None
         while not client_ctx.complete:
-            client_token = client_ctx.step(server_token)
-            if client_token:
-                server_token = yield client_token, True
-            else:
-                server_token = yield b'', True
+            server_token = yield from q_req.get()
+            client_token = yield from self._loop.run_in_executor(
+                None, client_ctx.step, server_token)
+
+            client_token = client_token or b''
+
+            q_resp.put_nowait((client_token, True))
+            q_req.task_done()
+
+        server_token = yield from q_req.get()
+        q_req.task_done()
+
         msg = client_ctx.unwrap(server_token).message
 
         qop = struct.pack('b', SASL_QOP_AUTH & msg[0])
         msg = qop + msg[1:]
         msg = client_ctx.wrap(msg + self.principal.encode(), False).message
-        yield msg, False
 
-    def authenticator_plain(self):
+        yield from q_resp.put((msg, False))
+
+    def authenticator_plain(self, q_req, q_resp):
         """ Automaton to authenticate with SASL tokens
         """
         # Send PLAIN credentials per RFC-4616
-        resp = yield '\0'.join([
+        data = '\0'.join([
             self._sasl_plain_username,
             self._sasl_plain_username,
             self._sasl_plain_password]
-        ).encode("utf-8"), True
+        ).encode("utf-8")
+
+        q_resp.put_nowait((data, True))
+
+        resp = yield from q_req.get()
         assert resp == b"", (
             "Server should either close or send an empty response"
         )
