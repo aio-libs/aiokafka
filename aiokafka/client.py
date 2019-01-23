@@ -424,6 +424,8 @@ class AIOKafkaClient:
                     sasl_mechanism=self._sasl_mechanism,
                     sasl_plain_username=self._sasl_plain_username,
                     sasl_plain_password=self._sasl_plain_password,
+                    sasl_kerberos_service_name=self._sasl_kerberos_service_name,  # noqa: ignore=E501
+                    sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     version_hint=version_hint
                 )
         except (OSError, asyncio.TimeoutError) as err:
