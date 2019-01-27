@@ -264,6 +264,20 @@ class SubscriptionState:
             if not waiter.done():
                 waiter.set_exception(copy.copy(exc))
 
+    # Pause/Resume API
+    def pause(self, tp: TopicPartition) -> None:
+        self._assigned_state(tp).pause()
+
+    def paused_partitions(self) -> Set[TopicPartition]:
+        res = set([])
+        for tp in self.assigned_partitions():
+            if self._assigned_state(tp).paused:
+                res.add(tp)
+        return res
+
+    def resume(self, tp: TopicPartition) -> None:
+        self._assigned_state(tp).resume()
+
 
 class Subscription:
     """ Describes current subscription to a list of topics. In case of pattern
@@ -435,6 +449,17 @@ class TopicPartitionState(object):
         self._loop = loop
         self._assignment = assignment
 
+        self._paused = False
+        self._resume_fut = None
+
+    @property
+    def paused(self):
+        return self._paused
+
+    @property
+    def resume_fut(self):
+        return self._resume_fut
+
     @property
     def has_valid_position(self) -> bool:
         return self._position is not None
@@ -508,6 +533,19 @@ class TopicPartitionState(object):
 
     def wait_for_position(self):
         return shield(self._position_fut, loop=self._loop)
+
+    # Pause/Unpause
+    def pause(self):
+        if not self._paused:
+            self._paused = True
+            assert self._resume_fut is None
+            self._resume_fut = create_future(loop=self._loop)
+
+    def resume(self):
+        if self._paused:
+            self._paused = False
+            self._resume_fut.set_result(None)
+            self._resume_fut = None
 
     def __repr__(self):
         return "TopicPartitionState<Status={} position={}>".format(

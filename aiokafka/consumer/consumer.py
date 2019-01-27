@@ -1113,6 +1113,49 @@ class AIOKafkaConsumer(object):
             max_records=max_records or self._max_poll_records)
         return records
 
+    def pause(self, *partitions):
+        """Suspend fetching from the requested partitions.
+
+        Future calls to :meth:`~aiokafka.AIOKafkaConsumer.getmany` will not
+        return any records from these partitions until they have been resumed
+        using :meth:`~aiokafka.AIOKafkaConsumer.resume`.
+
+        Note: This method does not affect partition subscription.
+        In particular, it does not cause a group rebalance when automatic
+        assignment is used.
+
+        Arguments:
+            *partitions (TopicPartition): Partitions to pause.
+        """
+        if not all([isinstance(p, TopicPartition) for p in partitions]):
+            raise TypeError('partitions must be TopicPartition namedtuples')
+
+        for partition in partitions:
+            log.debug("Pausing partition %s", partition)
+            self._subscription.pause(partition)
+
+    def paused(self):
+        """Get the partitions that were previously paused using
+        :meth:`~aiokafka.AIOKafkaConsumer.pause`.
+
+        Returns:
+            set: {partition (TopicPartition), ...}
+        """
+        return self._subscription.paused_partitions()
+
+    def resume(self, *partitions):
+        """Resume fetching from the specified (paused) partitions.
+
+        Arguments:
+            *partitions (TopicPartition): Partitions to resume.
+        """
+        if not all([isinstance(p, TopicPartition) for p in partitions]):
+            raise TypeError('partitions must be TopicPartition namedtuples')
+
+        for partition in partitions:
+            log.debug("Resuming partition %s", partition)
+            self._subscription.resume(partition)
+
     if PY_35:
         def __aiter__(self):
             if self._closed:
