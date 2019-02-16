@@ -166,8 +166,12 @@ class AIOKafkaClient:
     @asyncio.coroutine
     def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
-        # using request v0 for bootstap (bcs api version is not detected yet)
-        metadata_request = MetadataRequest[0]([])
+        # using request v0 for bootstap if not sure v1 is available
+        if self.api_version == "auto" or self.api_version < (0, 10):
+            metadata_request = MetadataRequest[0]([])
+        else:
+            metadata_request = MetadataRequest[1]([])
+
         for host, port, _ in self.hosts:
             log.debug("Attempting to bootstrap via node at %s:%s", host, port)
 
