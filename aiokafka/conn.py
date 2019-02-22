@@ -343,6 +343,9 @@ class AIOKafkaConnection:
                 "Connection at {0}:{1} broken: {2}".format(
                     self._host, self._port, err))
 
+        self.log.debug(
+            '%s Request %d: %s', self, correlation_id, request)
+
         if not expect_response:
             return self._writer.drain()
         fut = create_future(loop=self._loop)
