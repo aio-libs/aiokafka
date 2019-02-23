@@ -1093,7 +1093,8 @@ class AIOKafkaConsumer(object):
         # Raise coordination errors if any
         self._coordinator.check_errors()
 
-        msg = yield from self._fetcher.next_record(partitions)
+        with self._subscription.fetch_context():
+            msg = yield from self._fetcher.next_record(partitions)
         return msg
 
     @asyncio.coroutine
@@ -1142,9 +1143,10 @@ class AIOKafkaConsumer(object):
         self._coordinator.check_errors()
 
         timeout = timeout_ms / 1000
-        records = yield from self._fetcher.fetched_records(
-            partitions, timeout,
-            max_records=max_records or self._max_poll_records)
+        with self._subscription.fetch_context():
+            records = yield from self._fetcher.fetched_records(
+                partitions, timeout,
+                max_records=max_records or self._max_poll_records)
         return records
 
     def pause(self, *partitions):

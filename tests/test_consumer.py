@@ -1950,9 +1950,10 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         yield from self.send_messages(1, list(range(10, 20)))
         # Start a consumer_factory
         consumer1 = yield from self.consumer_factory(
-            max_poll_interval_ms=3000)
+            max_poll_interval_ms=3000, client_id="c1",
+            heartbeat_interval_ms=100)
         consumer2 = yield from self.consumer_factory(
-            max_poll_interval_ms=3000)
+            heartbeat_interval_ms=100, client_id="c2")
 
         class MyListener(ConsumerRebalanceListener):
             def __init__(self, loop):
@@ -1992,4 +1993,13 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(set(seen), set(range(0, 20)))
 
         took = self.loop.time() - start_time
-        self.assertAlmostEqual(took, 3, places=1)
+        self.assertAlmostEqual(took, 3, delta=1)
+
+        # The first consumer should be able to consume messages if it's
+        # unstuck later on
+        yield from self.send_messages(0, list(range(20, 30)))
+        yield from self.send_messages(1, list(range(30, 40)))
+
+        for i in range(10):
+            msg = yield from consumer1.getone()
+            self.assertGreaterEqual(int(msg.value), 20)

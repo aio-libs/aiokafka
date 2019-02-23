@@ -615,18 +615,6 @@ class GroupCoordinator(BaseCoordinator):
                 yield from self._push_error_to_user(exc)
                 continue
 
-            # If consumer is auto assigned and is idle (no records consumed)
-            # for too long we need to leave the group
-            if auto_assigned:
-                idle_time = assignment.assignment_idle_time
-                if idle_time > self._max_poll_interval:
-                    yield from self._maybe_leave_group()
-                    continue
-                else:
-                    wait_timeout = min(
-                        wait_timeout,
-                        self._max_poll_interval - idle_time)
-
             futures = [
                 self._closing,  # Will exit fast if close() called
                 self._coordinator_dead_fut,
@@ -690,6 +678,12 @@ class GroupCoordinator(BaseCoordinator):
         # See the ``RebalanceInProgressError`` case in heartbeat
         # handling.
         yield from self._stop_heartbeat_task()
+
+        # We will not attempt rejoin if there is no activity on consumer
+        idle_time = self._subscription.fetcher_idle_time
+        if idle_time >= self._max_poll_interval:
+            yield from asyncio.sleep(self._retry_backoff_ms / 1000)
+            return None
 
         # We will only try to perform the rejoin once. If it fails,
         # we will spin this loop another time, checking for coordinator
@@ -755,6 +749,16 @@ class GroupCoordinator(BaseCoordinator):
                 log.error(
                     "Heartbeat session expired - marking coordinator dead")
                 self.coordinator_dead()
+
+            # If consumer is idle (no records consumed) for too long we need
+            # to leave the group
+            idle_time = self._subscription.fetcher_idle_time
+            if idle_time < self._max_poll_interval:
+                sleep_time = min(
+                    sleep_time,
+                    self._max_poll_interval - idle_time)
+            else:
+                yield from self._maybe_leave_group()
 
         log.debug("Stopping heartbeat task")
 
