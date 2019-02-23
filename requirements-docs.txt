@@ -1,5 +1,5 @@
-Sphinx==1.8.3
+Sphinx==1.8.4
 sphinxcontrib-asyncio==0.2.0
 sphinxcontrib-spelling==4.2.0
 alabaster==0.7.12
-Cython==0.29.3
+Cython==0.29.5
