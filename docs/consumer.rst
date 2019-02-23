@@ -534,5 +534,9 @@ It's not the same for ``aiokafka``, for more details read
 :ref:`Difference between aiokafka and kafka-python <kafka_python_difference>`.
 
 ``aiokafka`` will join the group on ``consumer.start()`` and will send
-heartbeats in the background even if the consumer makes no progress. It will
-also commit offsets in autocommit mode strictly by time in the background.
+heartbeats in the background, keeping the group alive, same as Java Client.
+But in the case of a rebalance it will also done in the background.
+
+Offset commits in autocommit mode is done strictly by time in the background
+(in Java client autocommit will not be done if you don't call ``poll()``
+another time).

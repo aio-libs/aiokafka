@@ -409,6 +409,13 @@ class Assignment:
                 requesting.append(tp)
         return requesting
 
+    @property
+    def assignment_idle_time(self):
+        """ How much time (in seconds) spent without consuming any records """
+        last_consumed_time = max(
+            state._last_consumed_ts for state in self._tp_state.values())
+        return self._loop.time() - last_consumed_time
+
 
 class PartitionStatus(Enum):
 
@@ -451,6 +458,8 @@ class TopicPartitionState(object):
 
         self._paused = False
         self._resume_fut = None
+
+        self._last_consumed_ts = loop.time()
 
     @property
     def paused(self):
@@ -510,6 +519,7 @@ class TopicPartitionState(object):
         """
         assert self._status == PartitionStatus.CONSUMING
         self._position = position
+        self._last_consumed_ts = self._loop.time()
 
     def reset_to(self, position: int):
         """ Called by Fetcher after performing a reset to force position to

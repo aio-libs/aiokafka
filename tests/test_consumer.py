@@ -1944,3 +1944,52 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         with self.assertRaises(asyncio.TimeoutError):
             yield from asyncio.wait_for(get_task, timeout=0.5, loop=self.loop)
+
+    def test_max_poll_interval_ms(self):
+        yield from self.send_messages(0, list(range(0, 10)))
+        yield from self.send_messages(1, list(range(10, 20)))
+        # Start a consumer_factory
+        consumer1 = yield from self.consumer_factory(
+            max_poll_interval_ms=3000)
+        consumer2 = yield from self.consumer_factory(
+            max_poll_interval_ms=3000)
+
+        class MyListener(ConsumerRebalanceListener):
+            def __init__(self, loop):
+                self.revoked = []
+                self.assigned = []
+                self.assignment_ready = asyncio.Event(loop=loop)
+
+            @asyncio.coroutine
+            def on_partitions_revoked(self, revoked):
+                self.revoked.append(revoked)
+                self.assignment_ready.clear()
+
+            @asyncio.coroutine
+            def on_partitions_assigned(self, assigned):
+                self.assigned.append(assigned)
+                self.assignment_ready.set()
+
+        listener1 = MyListener(self.loop)
+        listener2 = MyListener(self.loop)
+        consumer1.subscribe([self.topic], listener=listener1)
+        consumer2.subscribe([self.topic], listener=listener2)
+
+        # Make sure we rebalanced and ready for processing each of it's part
+        yield from listener1.assignment_ready.wait()
+        yield from listener2.assignment_ready.wait()
+        self.assertTrue(consumer1.assignment())
+        self.assertTrue(consumer2.assignment())
+
+        # After 3 seconds the first consumer should be considered stuck and
+        # leave the group as per configuration.
+        start_time = self.loop.time()
+        seen = []
+        for i in range(20):
+            msg = yield from consumer2.getone()
+            seen.append(int(msg.value))
+
+        self.assertEqual(set(seen), set(range(0, 20)))
+
+        took = self.loop.time() - start_time
+        self.assertAlmostEqual(took, 3, places=1)
