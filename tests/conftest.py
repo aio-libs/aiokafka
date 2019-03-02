@@ -136,13 +136,14 @@ if sys.platform != 'win32':
         }
         kafka_version = image.split(":")[-1].split("_")[-1]
         if not kafka_version == "0.9.0.1":
-            environment['SASL_MECHANISMS'] = "PLAIN"
+            environment['SASL_MECHANISMS'] = "PLAIN,GSSAPI"
 
         container = docker.containers.run(
             image=image,
             name='aiokafka-tests',
             ports={
                 2181: 2181,
+                "88/udp": 88,
                 kafka_port: kafka_port,
                 kafka_ssl_port: kafka_ssl_port,
                 kafka_sasl_plain_port: kafka_sasl_plain_port,

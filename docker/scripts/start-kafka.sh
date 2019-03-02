@@ -43,10 +43,11 @@ if [ ! -z "$SASL_MECHANISMS" ]; then
     echo "advertised sasl ssl port: $ADVERTISED_SASL_SSL_PORT"
 
     OPTIONS="$OPTIONS --override sasl.enabled.mechanisms=$SASL_MECHANISMS"
+    OPTIONS="$OPTIONS --override sasl.kerberos.service.name=kafka"
     OPTIONS="$OPTIONS --override authorizer.class.name=kafka.security.auth.SimpleAclAuthorizer"
     OPTIONS="$OPTIONS --override allow.everyone.if.no.acl.found=true"
     export KAFKA_OPTS="-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
-    
+
     LISTENERS="$LISTENERS,SASL_PLAINTEXT://:$ADVERTISED_SASL_PLAINTEXT_PORT"
     ADVERTISED_LISTENERS="$ADVERTISED_LISTENERS,SASL_PLAINTEXT://$ADVERTISED_HOST:$ADVERTISED_SASL_PLAINTEXT_PORT"
 
