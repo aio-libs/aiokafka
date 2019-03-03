@@ -10,8 +10,11 @@ from aiokafka.errors import (
     TransactionalIdAuthorizationFailed, UnknownTopicOrPartitionError
 )
 from aiokafka.structs import TopicPartition
+import os
+import pytest
 
 
+@pytest.mark.usefixtures('setup_test_class')
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     TEST_TIMEOUT = 60
 
@@ -60,6 +63,42 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         await consumer.start()
         return consumer
 
+    async def gssapi_producer_factory(self, **kw):
+        import asyncio
+        await asyncio.sleep(10)
+
+        producer = AIOKafkaProducer(
+            loop=self.loop,
+            bootstrap_servers=[self.sasl_hosts],
+            security_protocol="SASL_PLAINTEXT",
+            sasl_mechanism="GSSAPI",
+            sasl_kerberos_domain_name="localhost",
+            **kw)
+        self.add_cleanup(producer.stop)
+        await producer.start()
+        return producer
+
+    async def gssapi_consumer_factory(self, **kw):
+        import asyncio
+        await asyncio.sleep(10)
+
+        kwargs = dict(
+            enable_auto_commit=True,
+            auto_offset_reset="earliest",
+            group_id=self.group_id
+        )
+        kwargs.update(kw)
+        consumer = AIOKafkaConsumer(
+            self.topic, loop=self.loop,
+            bootstrap_servers=[self.sasl_hosts],
+            security_protocol="SASL_PLAINTEXT",
+            sasl_mechanism="GSSAPI",
+            sasl_kerberos_domain_name="localhost",
+            **kwargs)
+        self.add_cleanup(consumer.stop)
+        await consumer.start()
+        return consumer
+
     @kafka_versions('>=0.10.0')
     @run_until_complete
     async def test_sasl_plaintext_basic(self):
@@ -70,6 +109,25 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         consumer = await self.consumer_factory()
         msg = await consumer.getone()
         self.assertEqual(msg.value, b"Super sasl msg")
+
+    @kafka_versions('>=0.10.0')
+    @run_until_complete
+    async def test_sasl_plaintext_gssapi(self):
+        ret = os.system(
+            "kinit -kt {} client/localhost".format(self.keytab.absolute()))
+        self.assertEqual(ret, 0, "wrong keytab")
+
+        try:
+            # Produce/consume by SASL_PLAINTEXT
+            producer = await self.gssapi_producer_factory()
+            await producer.send_and_wait(topic=self.topic,
+                                         value=b"Super sasl msg")
+
+            consumer = await self.gssapi_consumer_factory()
+            msg = await consumer.getone()
+            self.assertEqual(msg.value, b"Super sasl msg")
+        finally:
+            os.system("kdestroy -A")
 
     ##########################################################################
     # Topic Resource
