@@ -1934,7 +1934,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # Message send in fetch process
         get_task = ensure_future(consumer.getone(), loop=self.loop)
-        asyncio.sleep(0.1, loop=self.loop)
+        yield from asyncio.sleep(0.1, loop=self.loop)
         self.assertFalse(get_task.done())
 
         # NOTE: we pause after sending fetch requests. We just don't return

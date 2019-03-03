@@ -1,10 +1,10 @@
 import logging
 import contextlib
 import copy
-from asyncio import AbstractEventLoop as ALoop, shield, Event
+from asyncio import AbstractEventLoop as ALoop, shield, Event, Future
 from enum import Enum
 
-from typing import Set, Pattern, Dict
+from typing import Set, Pattern, Dict, List
 
 from aiokafka.errors import IllegalStateError
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
@@ -12,6 +12,8 @@ from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.util import create_future
 
 log = logging.getLogger(__name__)
+
+(List, Future)
 
 
 class SubscriptionType(Enum):
