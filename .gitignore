@@ -64,6 +64,7 @@ target/
 kafka_2*
 
 tests/ssl_cert
+tests/keytab
 
 # Cython extensions
 aiokafka/record/_crecords/default_records.c

@@ -26,7 +26,9 @@ ADD scripts/krb5.conf /etc/krb5.conf
 ADD supervisor/kdc.conf supervisor/kafka.conf supervisor/zookeeper.conf /etc/supervisor/conf.d/
 
 RUN kdb5_util create -r AIOLIBS -s -P aiokafka
-RUN kadmin.local -q "add_principal -pw aiokafka kafka"
-RUN kadmin.local -q "ktadd -k /etc/krb5.keytab kadmin/admin"
+
+RUN kadmin.local -q "add_principal -pw aiokafka client/localhost@AIOLIBS"
+RUN kadmin.local -q "add_principal -randkey kafka/localhost@AIOLIBS"
+RUN kadmin.local -q "ktadd -k /server.keytab kafka/localhost@AIOLIBS"
 
 CMD ["supervisord", "-n"]
