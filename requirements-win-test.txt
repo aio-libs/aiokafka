@@ -1,4 +1,4 @@
-flake8==3.7.6
+flake8==3.7.7
 pytest==4.3.0
 pytest-cov==2.6.1
 pytest-catchlog==1.2.2
