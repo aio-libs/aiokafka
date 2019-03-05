@@ -8,7 +8,6 @@ import sys
 import pathlib
 import shutil
 import subprocess
-import os
 
 from aiokafka.record.legacy_records import (
     LegacyRecordBatchBuilder, _LegacyRecordBatchBuilderPy)
@@ -62,6 +61,22 @@ def clean_acl(acl_manager):
     acl_manager.cleanup()
 
 
+if sys.platform != 'win32':
+
+    @pytest.fixture(scope='class')
+    def kerberos_utils(kafka_server):
+        from ._testutil import KerberosUtils
+        utils = KerberosUtils(kafka_server[-1])
+        utils.create_keytab()
+        return utils
+else:
+
+    @pytest.fixture()
+    def kerberos_utils():
+        pytest.skip("Only unit tests on windows for now =(")
+        return
+
+
 @pytest.fixture(scope='session')
 def ssl_folder(docker_ip_address):
     ssl_dir = pathlib.Path('tests/ssl_cert')
@@ -88,36 +103,6 @@ def ssl_folder(docker_ip_address):
     p.wait()
 
     return ssl_dir
-
-
-@pytest.fixture(scope='session')
-def keytab(docker_ip_address):
-    scripts_dir = pathlib.Path("docker/scripts/krb5.conf")
-    os.environ["KRB5_CONFIG"] = str(scripts_dir.absolute())
-
-    principal = "client/localhost"
-    password = "aiokafka"
-    keytab_file = "client.keytab"
-    command = "echo \"add_entry -password -p {principal} -k 1 " \
-        "-e aes256-cts-hmac-sha1-96\n{password}\nwrite_kt {keytab_file}\"" \
-        " | ktutil"
-
-    keytab_dir = pathlib.Path('tests/keytab')
-    if keytab_dir.exists():
-        shutil.rmtree(str(keytab_dir))
-
-    keytab_dir.mkdir()
-    p = subprocess.Popen(command.format(principal=principal,
-                                        password=password,
-                                        keytab_file=keytab_file),
-                         shell=True,
-                         stdin=subprocess.PIPE,
-                         stdout=subprocess.DEVNULL,
-                         cwd=str(keytab_dir.absolute()),
-                         stderr=subprocess.DEVNULL)
-    p.wait()
-
-    return keytab_dir.joinpath(keytab_file)
 
 
 @pytest.fixture(scope='session')
@@ -235,7 +220,7 @@ def setup_test_class_serverless(request, loop, ssl_folder):
 
 @pytest.fixture(scope='class')
 def setup_test_class(request, loop, kafka_server, ssl_folder, acl_manager,
-                     keytab):
+                     kerberos_utils):
     request.cls.loop = loop
     request.cls.kafka_host = kafka_server[0]
     request.cls.kafka_port = kafka_server[1]
@@ -244,7 +229,7 @@ def setup_test_class(request, loop, kafka_server, ssl_folder, acl_manager,
     request.cls.kafka_sasl_ssl_port = kafka_server[4]
     request.cls.ssl_folder = ssl_folder
     request.cls.acl_manager = acl_manager
-    request.cls.keytab = keytab
+    request.cls.kerberos_utils = kerberos_utils
 
     docker_image = request.config.getoption('--docker-image')
     kafka_version = docker_image.split(":")[-1].split("_")[-1]

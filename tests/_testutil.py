@@ -5,6 +5,11 @@ import time
 import unittest
 import pytest
 import operator
+import subprocess
+import pathlib
+import shutil
+import sys
+import os
 
 from contextlib import contextmanager
 from functools import wraps
@@ -188,6 +193,66 @@ class ACLManager:
     def cleanup(self):
         for acl_params in self._active_acls:
             self.remove_acl(**acl_params)
+
+
+class KerberosUtils:
+
+    def __init__(self, docker):
+        self._docker = docker
+
+    def create_keytab(
+            self, principal="client/localhost",
+            password="aiokafka",
+            keytab_file="client.keytab"):
+
+        scripts_dir = pathlib.Path("docker/scripts/krb5.conf")
+        os.environ["KRB5_CONFIG"] = str(scripts_dir.absolute())
+
+        keytab_dir = pathlib.Path('tests/keytab')
+        if keytab_dir.exists():
+            shutil.rmtree(str(keytab_dir))
+
+        keytab_dir.mkdir()
+
+        if sys.platform == 'darwin':
+            subprocess.run(
+                ['ktutil', '-k', keytab_file,
+                 'add',
+                 '-p', principal,
+                 '-V', '1',
+                 '-e', 'aes256-cts-hmac-sha1-96',
+                 '-w', password],
+                cwd=str(keytab_dir.absolute()), check=True)
+        elif sys.platform != 'win32':
+            input_data = (
+                "add_entry -password -p {principal} -k 1 "
+                "-e aes256-cts-hmac-sha1-96\n"
+                "{password}\n"
+                "write_kt {keytab_file}\n"
+            ).format(
+                principal=principal,
+                password=password,
+                keytab_file=keytab_file)
+            subprocess.run(
+                ['ktutil'],
+                cwd=str(keytab_dir.absolute()),
+                input=input_data, check=True)
+        else:
+            raise NotImplementedError
+
+        self.keytab = keytab_dir / keytab_file
+
+    def kinit(self, principal):
+        assert self.keytab
+        subprocess.run(
+            ['kinit', '-kt', self.keytab.absolute(), principal],
+            check=True)
+
+    def kdestroy(self):
+        assert self.keytab
+        subprocess.run(
+            ['kdestroy', '-A'],
+            check=True)
 
 
 @pytest.mark.usefixtures('setup_test_class')

@@ -10,7 +10,6 @@ from aiokafka.errors import (
     TransactionalIdAuthorizationFailed, UnknownTopicOrPartitionError
 )
 from aiokafka.structs import TopicPartition
-import os
 import pytest
 
 
@@ -113,9 +112,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @kafka_versions('>=0.10.0')
     @run_until_complete
     async def test_sasl_plaintext_gssapi(self):
-        ret = os.system(
-            "kinit -kt {} client/localhost".format(self.keytab.absolute()))
-        self.assertEqual(ret, 0, "wrong keytab")
+        self.kerberos_utils.kinit("client/localhost")
 
         try:
             # Produce/consume by SASL_PLAINTEXT
@@ -127,7 +124,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             msg = await consumer.getone()
             self.assertEqual(msg.value, b"Super sasl msg")
         finally:
-            os.system("kdestroy -A")
+            self.kerberos_utils.kdestroy()
 
     ##########################################################################
     # Topic Resource

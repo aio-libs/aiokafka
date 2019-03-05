@@ -8,3 +8,4 @@ python-snappy==0.5.3
 Cython==0.29.6
 docutils==0.14
 Pygments==2.3.1
+gssapi==1.5.1
