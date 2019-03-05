@@ -1212,7 +1212,7 @@ class CoordinatorGroupRebalance:
             metadata_list.append(group_protocol)
 
         if self._api_version < (0, 10, 1):
-            request = JoinGroupRequest(
+            request = JoinGroupRequest[0](
                 self.group_id,
                 self._session_timeout_ms,
                 self._coordinator.member_id,
