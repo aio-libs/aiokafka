@@ -38,7 +38,7 @@ class TestHelpers(unittest.TestCase):
 
         # Same with `cadata` argument
         with cafile.open("rb") as f:
-                data = f.read()
+            data = f.read()
         context = create_ssl_context(cadata=data.decode("ascii"))
         self.assertEqual(context.get_ca_certs(binary_form=True), der_ca)
         # And with DER encoded binary form

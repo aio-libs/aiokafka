@@ -9,10 +9,7 @@ from kafka.protocol.commit import (
     OffsetCommitRequest_v2 as OffsetCommitRequest,
     OffsetFetchRequest_v1 as OffsetFetchRequest)
 from kafka.protocol.group import (
-    HeartbeatRequest_v0 as HeartbeatRequest,
-    JoinGroupRequest_v0 as JoinGroupRequest,
-    LeaveGroupRequest_v0 as LeaveGroupRequest,
-    SyncGroupRequest_v0 as SyncGroupRequest)
+    HeartbeatRequest, JoinGroupRequest, LeaveGroupRequest, SyncGroupRequest)
 
 import aiokafka.errors as Errors
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
@@ -205,41 +202,17 @@ class GroupCoordinator(BaseCoordinator):
 
     def __init__(self, client, subscription, *, loop,
                  group_id='aiokafka-default-group',
-                 session_timeout_ms=30000, heartbeat_interval_ms=3000,
+                 session_timeout_ms=10000, heartbeat_interval_ms=3000,
                  retry_backoff_ms=100,
                  enable_auto_commit=True, auto_commit_interval_ms=5000,
                  assignors=(RoundRobinPartitionAssignor,),
-                 exclude_internal_topics=True
+                 exclude_internal_topics=True,
+                 max_poll_interval_ms=300000,
+                 rebalance_timeout_ms=30000
                  ):
         """Initialize the coordination manager.
 
-        Parameters:
-            client (AIOKafkaClient): kafka client
-            subscription (SubscriptionState): instance of SubscriptionState
-                located in kafka.consumer.subscription_state
-            group_id (str): name of the consumer group to join for dynamic
-                partition assignment (if enabled), and to use for fetching and
-                committing offsets. Default: 'aiokafka-default-group'
-            enable_auto_commit (bool): If true the consumer's offset will be
-                periodically committed in the background. Default: True.
-            auto_commit_interval_ms (int): milliseconds between automatic
-                offset commits, if enable_auto_commit is True. Default: 5000.
-            assignors (list): List of objects to use to distribute partition
-                ownership amongst consumer instances when group management is
-                used. Default: [RoundRobinPartitionAssignor]
-            heartbeat_interval_ms (int): The expected time in milliseconds
-                between heartbeats to the consumer coordinator when using
-                Kafka's group management feature. Heartbeats are used to ensure
-                that the consumer's session stays active and to facilitate
-                rebalancing when new consumers join or leave the group. The
-                value must be set lower than session_timeout_ms, but typically
-                should be set no higher than 1/3 of that value. It can be
-                adjusted even lower to control the expected time for normal
-                rebalances. Default: 3000
-            session_timeout_ms (int): The timeout used to detect failures when
-                using Kafka's group managementment facilities. Default: 30000
-            retry_backoff_ms (int): Milliseconds to backoff when retrying on
-                errors. Default: 100.
+        Parameters (see AIOKafkaConsumer)
         """
         # Leader node will keep track of the whole group's metadata.
         self._group_subscription = None
@@ -250,13 +223,15 @@ class GroupCoordinator(BaseCoordinator):
 
         self._session_timeout_ms = session_timeout_ms
         self._heartbeat_interval_ms = heartbeat_interval_ms
+        self._max_poll_interval = max_poll_interval_ms / 1000
+        self._rebalance_timeout_ms = rebalance_timeout_ms
         self._retry_backoff_ms = retry_backoff_ms
         self._assignors = assignors
         self._enable_auto_commit = enable_auto_commit
         self._auto_commit_interval_ms = auto_commit_interval_ms
 
         self.generation = OffsetCommitRequest.DEFAULT_GENERATION_ID
-        self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
+        self.member_id = JoinGroupRequest[0].UNKNOWN_MEMBER_ID
         self.group_id = group_id
         self.coordinator_id = None
 
@@ -371,7 +346,8 @@ class GroupCoordinator(BaseCoordinator):
         if self.generation > 0:
             # this is a minimal effort attempt to leave the group. we do not
             # attempt any resending if the request fails or times out.
-            request = LeaveGroupRequest(self.group_id, self.member_id)
+            version = 0 if self._client.api_version < (0, 11, 0) else 1
+            request = LeaveGroupRequest[version](self.group_id, self.member_id)
             try:
                 yield from self._send_req(request)
             except Errors.KafkaError as err:
@@ -513,7 +489,7 @@ class GroupCoordinator(BaseCoordinator):
         need to re-join the group.
         """
         self.generation = OffsetCommitRequest.DEFAULT_GENERATION_ID
-        self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
+        self.member_id = JoinGroupRequest[0].UNKNOWN_MEMBER_ID
         self.request_rejoin()
 
     def request_rejoin(self):
@@ -703,6 +679,12 @@ class GroupCoordinator(BaseCoordinator):
         # handling.
         yield from self._stop_heartbeat_task()
 
+        # We will not attempt rejoin if there is no activity on consumer
+        idle_time = self._subscription.fetcher_idle_time
+        if idle_time >= self._max_poll_interval:
+            yield from asyncio.sleep(self._retry_backoff_ms / 1000)
+            return None
+
         # We will only try to perform the rejoin once. If it fails,
         # we will spin this loop another time, checking for coordinator
         # and subscription changes.
@@ -740,7 +722,7 @@ class GroupCoordinator(BaseCoordinator):
 
         # There is no point to heartbeat after Broker stopped recognizing
         # this consumer, so we stop after resetting generation.
-        while self.member_id != JoinGroupRequest.UNKNOWN_MEMBER_ID:
+        while self.member_id != JoinGroupRequest[0].UNKNOWN_MEMBER_ID:
             try:
                 yield from asyncio.sleep(sleep_time, loop=self._loop)
                 yield from self.ensure_coordinator_known()
@@ -768,11 +750,22 @@ class GroupCoordinator(BaseCoordinator):
                     "Heartbeat session expired - marking coordinator dead")
                 self.coordinator_dead()
 
+            # If consumer is idle (no records consumed) for too long we need
+            # to leave the group
+            idle_time = self._subscription.fetcher_idle_time
+            if idle_time < self._max_poll_interval:
+                sleep_time = min(
+                    sleep_time,
+                    self._max_poll_interval - idle_time)
+            else:
+                yield from self._maybe_leave_group()
+
         log.debug("Stopping heartbeat task")
 
     @asyncio.coroutine
     def _do_heartbeat(self):
-        request = HeartbeatRequest(
+        version = 0 if self._client.api_version < (0, 11, 0) else 1
+        request = HeartbeatRequest[version](
             self.group_id, self.generation, self.member_id)
         log.debug("Heartbeat: %s[%s] %s",
                   self.group_id, self.generation, self.member_id)
@@ -1194,6 +1187,8 @@ class CoordinatorGroupRebalance:
         self._assignors = assignors
         self._session_timeout_ms = session_timeout_ms
         self._retry_backoff_ms = retry_backoff_ms
+        self._api_version = self._coordinator._client.api_version
+        self._rebalance_timeout_ms = self._coordinator._rebalance_timeout_ms
 
     @asyncio.coroutine
     def perform_group_join(self):
@@ -1216,12 +1211,29 @@ class CoordinatorGroupRebalance:
             group_protocol = (assignor.name, metadata)
             metadata_list.append(group_protocol)
 
-        request = JoinGroupRequest(
-            self.group_id,
-            self._session_timeout_ms,
-            self._coordinator.member_id,
-            ConsumerProtocol.PROTOCOL_TYPE,
-            metadata_list)
+        if self._api_version < (0, 10, 1):
+            request = JoinGroupRequest[0](
+                self.group_id,
+                self._session_timeout_ms,
+                self._coordinator.member_id,
+                ConsumerProtocol.PROTOCOL_TYPE,
+                metadata_list)
+        elif self._api_version < (0, 11, 0):
+            request = JoinGroupRequest[1](
+                self.group_id,
+                self._session_timeout_ms,
+                self._rebalance_timeout_ms,
+                self._coordinator.member_id,
+                ConsumerProtocol.PROTOCOL_TYPE,
+                metadata_list)
+        else:
+            request = JoinGroupRequest[2](
+                self.group_id,
+                self._session_timeout_ms,
+                self._rebalance_timeout_ms,
+                self._coordinator.member_id,
+                ConsumerProtocol.PROTOCOL_TYPE,
+                metadata_list)
 
         # create the request for the coordinator
         log.debug("Sending JoinGroup (%s) to coordinator %s",
@@ -1297,11 +1309,12 @@ class CoordinatorGroupRebalance:
     @asyncio.coroutine
     def _on_join_follower(self):
         # send follower's sync group with an empty assignment
-        request = SyncGroupRequest(
+        version = 0 if self._api_version < (0, 11, 0) else 1
+        request = SyncGroupRequest[version](
             self.group_id,
             self._coordinator.generation,
             self._coordinator.member_id,
-            {})
+            [])
         log.debug(
             "Sending follower SyncGroup for group %s to coordinator %s: %s",
             self.group_id, self.coordinator_id, request)
@@ -1334,7 +1347,8 @@ class CoordinatorGroupRebalance:
                 assignment = assignment.encode()
             assignment_req.append((member_id, assignment))
 
-        request = SyncGroupRequest(
+        version = 0 if self._api_version < (0, 11, 0) else 1
+        request = SyncGroupRequest[version](
             self.group_id,
             self._coordinator.generation,
             self._coordinator.member_id,

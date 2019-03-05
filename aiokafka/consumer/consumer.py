@@ -120,6 +120,30 @@ class AIOKafkaConsumer(object):
             one. The coordinator will choose the old assignment strategy until
             all members have been updated. Then it will choose the new
             strategy. Default: [RoundRobinPartitionAssignor]
+
+        max_poll_interval_ms (int): Maximum allowed time between calls to
+            consume messages (e.g., ``consumer.getmany()``). If this interval
+            is exceeded the consumer is considered failed and the group will
+            rebalance in order to reassign the partitions to another consumer
+            group member. If API methods block waiting for messages, that time
+            does not count against this timeout. See KIP-62 for more
+            information. Default 300000
+        rebalance_timeout_ms (int): The maximum time server will wait for this
+            consumer to rejoin the group in a case of rebalance. In Java client
+            this behaviour is bound to `max.poll.interval.ms` configuration,
+            but as ``aiokafka`` will rejoin the group in the background, we
+            decouple this setting to allow finer tuning by users that use
+            ConsumerRebalanceListener to delay rebalacing. Defaults
+            to ``session_timeout_ms``
+        session_timeout_ms (int): Client group session and failure detection
+            timeout. The consumer sends periodic heartbeats
+            (heartbeat.interval.ms) to indicate its liveness to the broker.
+            If no hearts are received by the broker for a group member within
+            the session timeout, the broker will remove the consumer from the
+            group and trigger a rebalance. The allowed range is configured with
+            the **broker** configuration properties
+            `group.min.session.timeout.ms` and `group.max.session.timeout.ms`.
+            Default: 10000
         heartbeat_interval_ms (int): The expected time in milliseconds
             between heartbeats to the consumer coordinator when using
             Kafka's group management feature. Heartbeats are used to ensure
@@ -129,8 +153,7 @@ class AIOKafkaConsumer(object):
             should be set no higher than 1/3 of that value. It can be
             adjusted even lower to control the expected time for normal
             rebalances. Default: 3000
-        session_timeout_ms (int): The timeout used to detect failures when
-            using Kafka's group managementment facilities. Default: 30000
+
         consumer_timeout_ms (int): maximum wait timeout for background fetching
             routine. Mostly defines how fast the system will see rebalance and
             request new data for new partitions. Default: 200
@@ -180,6 +203,7 @@ class AIOKafkaConsumer(object):
             Default: None
         sasl_plain_password (str): password for sasl PLAIN authentication.
             Default: None
+
     Note:
         Many configuration parameters are taken from Java Client:
         https://kafka.apache.org/documentation.html#newconsumerconfigs
@@ -206,8 +230,10 @@ class AIOKafkaConsumer(object):
                  check_crcs=True,
                  metadata_max_age_ms=5 * 60 * 1000,
                  partition_assignment_strategy=(RoundRobinPartitionAssignor,),
+                 max_poll_interval_ms=300000,
+                 rebalance_timeout_ms=None,
+                 session_timeout_ms=10000,
                  heartbeat_interval_ms=3000,
-                 session_timeout_ms=30000,
                  consumer_timeout_ms=200,
                  max_poll_records=None,
                  ssl_context=None,
@@ -222,6 +248,9 @@ class AIOKafkaConsumer(object):
         if max_poll_records is not None and (
                 not isinstance(max_poll_records, int) or max_poll_records < 1):
             raise ValueError("`max_poll_records` should be positive Integer")
+
+        if rebalance_timeout_ms is None:
+            rebalance_timeout_ms = session_timeout_ms
 
         self._client = AIOKafkaClient(
             loop=loop, bootstrap_servers=bootstrap_servers,
@@ -255,6 +284,8 @@ class AIOKafkaConsumer(object):
         self._max_poll_records = max_poll_records
         self._consumer_timeout = consumer_timeout_ms / 1000
         self._isolation_level = isolation_level
+        self._rebalance_timeout_ms = rebalance_timeout_ms
+        self._max_poll_interval_ms = max_poll_interval_ms
 
         self._check_crcs = check_crcs
         self._subscription = SubscriptionState(loop=loop)
@@ -336,7 +367,10 @@ class AIOKafkaConsumer(object):
                 enable_auto_commit=self._enable_auto_commit,
                 auto_commit_interval_ms=self._auto_commit_interval_ms,
                 assignors=self._partition_assignment_strategy,
-                exclude_internal_topics=self._exclude_internal_topics)
+                exclude_internal_topics=self._exclude_internal_topics,
+                rebalance_timeout_ms=self._rebalance_timeout_ms,
+                max_poll_interval_ms=self._max_poll_interval_ms
+            )
             if self._subscription.subscription is not None:
                 if self._subscription.partitions_auto_assigned():
                     # Either we passed `topics` to constructor or `subscribe`
@@ -1059,7 +1093,8 @@ class AIOKafkaConsumer(object):
         # Raise coordination errors if any
         self._coordinator.check_errors()
 
-        msg = yield from self._fetcher.next_record(partitions)
+        with self._subscription.fetch_context():
+            msg = yield from self._fetcher.next_record(partitions)
         return msg
 
     @asyncio.coroutine
@@ -1108,9 +1143,10 @@ class AIOKafkaConsumer(object):
         self._coordinator.check_errors()
 
         timeout = timeout_ms / 1000
-        records = yield from self._fetcher.fetched_records(
-            partitions, timeout,
-            max_records=max_records or self._max_poll_records)
+        with self._subscription.fetch_context():
+            records = yield from self._fetcher.fetched_records(
+                partitions, timeout,
+                max_records=max_records or self._max_poll_records)
         return records
 
     def pause(self, *partitions):

@@ -151,6 +151,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         mocked = mock.MagicMock()
         coordinator._client = mocked
+        coordinator._client.api_version = (0, 10, 1)
         error_type = Errors.NoError
 
         @asyncio.coroutine
@@ -262,6 +263,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         mocked = mock.MagicMock()
         coordinator._client = mocked
+        coordinator._client.api_version = (0, 10, 1)
         subsc = subscription.subscription
         error_type = None
 

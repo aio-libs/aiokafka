@@ -1,9 +1,10 @@
 import logging
-from asyncio import AbstractEventLoop as ALoop, shield, Event
-from enum import Enum
+import contextlib
 import copy
+from asyncio import AbstractEventLoop as ALoop, shield, Event, Future
+from enum import Enum
 
-from typing import Set, Pattern, Dict
+from typing import Set, Pattern, Dict, List
 
 from aiokafka.errors import IllegalStateError
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
@@ -11,6 +12,8 @@ from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.util import create_future
 
 log = logging.getLogger(__name__)
+
+(List, Future)
 
 
 class SubscriptionType(Enum):
@@ -42,6 +45,10 @@ class SubscriptionState:
         self._subscription_waiters = []  # type: List[Future]
         self._assignment_waiters = []  # type: List[Future]
         self._loop = loop  # type: ALoop
+
+        # Fetch contexts
+        self._fetch_count = 0
+        self._last_fetch_ended = loop.time()
 
     @property
     def subscription(self) -> "Subscription":
@@ -265,6 +272,7 @@ class SubscriptionState:
                 waiter.set_exception(copy.copy(exc))
 
     # Pause/Resume API
+
     def pause(self, tp: TopicPartition) -> None:
         self._assigned_state(tp).pause()
 
@@ -277,6 +285,24 @@ class SubscriptionState:
 
     def resume(self, tp: TopicPartition) -> None:
         self._assigned_state(tp).resume()
+
+    # Fetch context
+
+    @contextlib.contextmanager
+    def fetch_context(self):
+        self._fetch_count += 1
+        yield
+        self._fetch_count -= 1
+        if self._fetch_count == 0:
+            self._last_fetch_ended = self._loop.time()
+
+    @property
+    def fetcher_idle_time(self):
+        """ How much time (in seconds) spent without consuming any records """
+        if self._fetch_count == 0:
+            return self._loop.time() - self._last_fetch_ended
+        else:
+            return 0
 
 
 class Subscription:

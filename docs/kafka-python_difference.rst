@@ -55,7 +55,8 @@ In ``kafka-python`` ``KafkaConsumer.poll()`` is a blocking call that performs
 not only message fetching, but also:
 
   * Socket polling using `epoll`, `kqueue` or other available API of your OS.
-  * Sending Heartbeats
+  * Ensures liveliness of a Consumer Group
+  * Does autocommit
 
 This will never be a case where you own the IO loop, at least not with socket
 polling. To avoid misunderstandings as to why does those methods behave in a
@@ -63,20 +64,34 @@ different way :ref:`aiokafka-consumer` exposes this interface under the name
 ``getmany()`` with some other differences described below.
 
 
-Heartbeats are sent between `getmany()` calls
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Rebalances are happening in the background
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In original Kafka Java Client heartbeats aren't sent if ``poll()`` is not
-called. This can lead to a lot of issues (leading to `KIP-41`_ and `KIP-62`_
-proposals) and workarounds using `pause()` and `poll(0)` for heartbeats.
+In original Kafka Java Client before 0.10.1 heartbeats were only sent if
+``poll()`` was called. This lead to a lot of issues (reasons for `KIP-41`_ and
+`KIP-62`_ proposals) and workarounds using `pause()` and `poll(0)` for
+heartbeats. After Java client and kafka-python also changed the behaviour to
+a background Thread sending, that mitigated most issues.
 
 ``aiokafka`` delegates heartbeating to a background *Task* and will send
-heartbeats to Coordinator as long as the *event loop* is running.
+heartbeats to Coordinator as long as the *event loop* is running. This
+behaviour is very similar to Java client, with the exception of no heartbeats
+on long CPU bound methods.
 
-``aiokafka`` also performs rebalance in the same background Task, so it is
-quite critical to provide 
+But ``aiokafka`` also performs rebalance in the same background Task. This
+means, that the processing time between ``getmany`` calls actually does not
+effect rebalancing. ``KIP-62`` proposed to provide ``max.poll.interval.ms`` as
+the configuration for both *rebalance timeout* and *consumer processing
+timeout*. In ``aiokafka`` it does not make much sense, as those 2 are not
+related, so we added both configurations (``rebalance_timeout_ms`` and
+``max_poll_interval_ms``).
+It is quite critical to provide 
 :ref:`ConsumerRebalanceListener <consumer-rebalance-listener>` if you need
-to control rebalance start and end moments.
+to control rebalance start and end moments. In that case set the
+``rebalance_timeout_ms`` to the maximum time your application can spend
+waiting in the callback. If your callback waits for last ``getmany`` result to
+be processed, it is safe to set this value to ``max_poll_interval_ms``, same
+as in Java client.
 
 
 Prefetching is more sophisticated

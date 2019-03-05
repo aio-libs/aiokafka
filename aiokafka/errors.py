@@ -1,37 +1,150 @@
 import inspect
 import sys
 
-from kafka.errors import *  # noqa
 from kafka.errors import (
-    KafkaError, InvalidMessageError, BrokerResponseError,
-    GroupCoordinatorNotAvailableError, NotCoordinatorForGroupError,
-    GroupLoadInProgressError, UnknownError
+    KafkaError,
+    IllegalStateError,
+    IllegalArgumentError,
+    NoBrokersAvailable,
+    NodeNotReadyError,
+    KafkaProtocolError,
+    CorrelationIdError,
+    Cancelled,
+    TooManyInFlightRequests,
+    StaleMetadata,
+    UnrecognizedBrokerVersion,
+    CommitFailedError,
+    AuthenticationMethodNotSupported,
+    AuthenticationFailedError,
+    BrokerResponseError,
+
+    # Numbered errors
+    NoError,  # 0
+    UnknownError,  # -1
+    OffsetOutOfRangeError,  # 1
+    CorruptRecordException,  # 2
+    UnknownTopicOrPartitionError,  # 3
+    InvalidFetchRequestError,  # 4
+    LeaderNotAvailableError,  # 5
+    NotLeaderForPartitionError,  # 6
+    RequestTimedOutError,  # 7
+    BrokerNotAvailableError,  # 8
+    ReplicaNotAvailableError,  # 9
+    MessageSizeTooLargeError,  # 10
+    StaleControllerEpochError,  # 11
+    OffsetMetadataTooLargeError,  # 12
+    StaleLeaderEpochCodeError,  # 13
+    GroupLoadInProgressError,  # 14
+    GroupCoordinatorNotAvailableError,  # 15
+    NotCoordinatorForGroupError,  # 16
+    InvalidTopicError,  # 17
+    RecordListTooLargeError,  # 18
+    NotEnoughReplicasError,  # 19
+    NotEnoughReplicasAfterAppendError,  # 20
+    InvalidRequiredAcksError,  # 21
+    IllegalGenerationError,  # 22
+    InconsistentGroupProtocolError,  # 23
+    InvalidGroupIdError,  # 24
+    UnknownMemberIdError,  # 25
+    InvalidSessionTimeoutError,  # 26
+    RebalanceInProgressError,  # 27
+    InvalidCommitOffsetSizeError,  # 28
+    TopicAuthorizationFailedError,  # 29
+    GroupAuthorizationFailedError,  # 30
+    ClusterAuthorizationFailedError,  # 31
+    InvalidTimestampError,  # 32
+    UnsupportedSaslMechanismError,  # 33
+    IllegalSaslStateError,  # 34
+    UnsupportedVersionError,  # 35
+    TopicAlreadyExistsError,  # 36
+    InvalidPartitionsError,  # 37
+    InvalidReplicationFactorError,  # 38
+    InvalidReplicationAssignmentError,  # 39
+    InvalidConfigurationError,  # 40
+    NotControllerError,  # 41
+    InvalidRequestError,  # 42
+    UnsupportedForMessageFormatError,  # 43
+    PolicyViolationError,  # 44
+
+    KafkaUnavailableError,
+    KafkaTimeoutError,
+    ConnectionError,
 )
 
 __all__ = [
-    # kafka-python errors
-    "KafkaError", "ConnectionError", "NodeNotReadyError",
-    "KafkaTimeoutError", "UnknownTopicOrPartitionError",
-    "UnrecognizedBrokerVersion", "NotLeaderForPartitionError",
-    "LeaderNotAvailableError", "TopicAuthorizationFailedError",
-    "OffsetOutOfRangeError", "MessageSizeTooLargeError", "for_code", "NoError",
-    "StaleMetadata", "CorrelationIdError", "NoBrokersAvailable",
-    "RebalanceInProgressError", "IllegalGenerationError",
-    "UnknownMemberIdError", "GroupLoadInProgressError",
-    "GroupCoordinatorNotAvailableError", "NotCoordinatorForGroupError",
-    "GroupAuthorizationFailedError", "IllegalStateError",
-    "UnsupportedVersionError", "CorruptRecordException", "InvalidMessageError",
-    "CoordinatorNotAvailableError", "NotCoordinatorError",
-    "CoordinatorLoadInProgressError", "RequestTimedOutError",
-    "IllegalSaslStateError",
     # aiokafka custom errors
     "ConsumerStoppedError", "NoOffsetForPartitionError", "RecordTooLargeError",
-    "ProducerClosed"
+    "ProducerClosed",
+
+    # Kafka Python errors
+    "KafkaError",
+    "IllegalStateError",
+    "IllegalArgumentError",
+    "NoBrokersAvailable",
+    "NodeNotReadyError",
+    "KafkaProtocolError",
+    "CorrelationIdError",
+    "Cancelled",
+    "TooManyInFlightRequests",
+    "StaleMetadata",
+    "UnrecognizedBrokerVersion",
+    "CommitFailedError",
+    "AuthenticationMethodNotSupported",
+    "AuthenticationFailedError",
+    "BrokerResponseError",
+
+    # Numbered errors
+    "NoError",  # 0
+    "UnknownError",  # -1
+    "OffsetOutOfRangeError",  # 1
+    "CorruptRecordException",  # 2
+    "UnknownTopicOrPartitionError",  # 3
+    "InvalidFetchRequestError",  # 4
+    "LeaderNotAvailableError",  # 5
+    "NotLeaderForPartitionError",  # 6
+    "RequestTimedOutError",  # 7
+    "BrokerNotAvailableError",  # 8
+    "ReplicaNotAvailableError",  # 9
+    "MessageSizeTooLargeError",  # 10
+    "StaleControllerEpochError",  # 11
+    "OffsetMetadataTooLargeError",  # 12
+    "StaleLeaderEpochCodeError",  # 13
+    "GroupLoadInProgressError",  # 14
+    "GroupCoordinatorNotAvailableError",  # 15
+    "NotCoordinatorForGroupError",  # 16
+    "InvalidTopicError",  # 17
+    "RecordListTooLargeError",  # 18
+    "NotEnoughReplicasError",  # 19
+    "NotEnoughReplicasAfterAppendError",  # 20
+    "InvalidRequiredAcksError",  # 21
+    "IllegalGenerationError",  # 22
+    "InconsistentGroupProtocolError",  # 23
+    "InvalidGroupIdError",  # 24
+    "UnknownMemberIdError",  # 25
+    "InvalidSessionTimeoutError",  # 26
+    "RebalanceInProgressError",  # 27
+    "InvalidCommitOffsetSizeError",  # 28
+    "TopicAuthorizationFailedError",  # 29
+    "GroupAuthorizationFailedError",  # 30
+    "ClusterAuthorizationFailedError",  # 31
+    "InvalidTimestampError",  # 32
+    "UnsupportedSaslMechanismError",  # 33
+    "IllegalSaslStateError",  # 34
+    "UnsupportedVersionError",  # 35
+    "TopicAlreadyExistsError",  # 36
+    "InvalidPartitionsError",  # 37
+    "InvalidReplicationFactorError",  # 38
+    "InvalidReplicationAssignmentError",  # 39
+    "InvalidConfigurationError",  # 40
+    "NotControllerError",  # 41
+    "InvalidRequestError",  # 42
+    "UnsupportedForMessageFormatError",  # 43
+    "PolicyViolationError",  # 44
+
+    "KafkaUnavailableError",
+    "KafkaTimeoutError",
+    "ConnectionError",
 ]
-
-
-class CorruptRecordException(InvalidMessageError):
-    message = "CORRUPT_MESSAGE"
 
 
 class CoordinatorNotAvailableError(GroupCoordinatorNotAvailableError):
