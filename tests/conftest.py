@@ -153,6 +153,10 @@ if sys.platform != 'win32':
         kafka_version = image.split(":")[-1].split("_")[-1]
         if not kafka_version == "0.9.0.1":
             environment['SASL_MECHANISMS'] = "PLAIN,GSSAPI"
+            environment['SASL_JAAS_FILE'] = "kafka_server_jaas.conf"
+        else:
+            environment['SASL_MECHANISMS'] = "GSSAPI"
+            environment['SASL_JAAS_FILE'] = "kafka_server_gssapi_jaas.conf"
 
         container = docker.containers.run(
             image=image,

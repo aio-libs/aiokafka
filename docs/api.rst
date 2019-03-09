@@ -69,6 +69,17 @@ another password. Just look the internet on how to extract `CARoot`,
 See also the :ref:`ssl_example` example.
 
 
+SASL Authentication
+-------------------
+
+As of version 0.5.1 aiokafka supports SASL authentication using both PLAIN and
+GSSAPI sasl methods. Be sure to install ``gssapi`` python module to use GSSAPI.
+Please consult the `official documentation <http://kafka.apache.org/documentation.html#security_sasl>`_
+for setup instructions on Broker side. Client configuration is pretty much the
+same as JAVA's, consult the ``sasl_*`` options in Consumer and Producer API
+Referense for more details.
+
+
 Error handling
 --------------
 

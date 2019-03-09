@@ -63,8 +63,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         return consumer
 
     async def gssapi_producer_factory(self, **kw):
-        import asyncio
-        await asyncio.sleep(10)
+        if self.kafka_version == "0.9.0.1":
+            kw['api_version'] = "0.9"
 
         producer = AIOKafkaProducer(
             loop=self.loop,
@@ -78,8 +78,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         return producer
 
     async def gssapi_consumer_factory(self, **kw):
-        import asyncio
-        await asyncio.sleep(10)
+        if self.kafka_version == "0.9.0.1":
+            kw['api_version'] = "0.9"
 
         kwargs = dict(
             enable_auto_commit=True,
@@ -109,7 +109,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         msg = await consumer.getone()
         self.assertEqual(msg.value, b"Super sasl msg")
 
-    @kafka_versions('>=0.10.0')
     @run_until_complete
     async def test_sasl_plaintext_gssapi(self):
         self.kerberos_utils.kinit("client/localhost")

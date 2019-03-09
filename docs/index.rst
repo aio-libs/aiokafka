@@ -151,6 +151,13 @@ For **Windows** the easiest way is to fetch a precompiled wheel from
 http://www.lfd.uci.edu/~gohlke/pythonlibs/#python-snappy
 
 
+Optional GSSAPI install
++++++++++++++++++++++++
+
+To enable SASL authentication with GSSAPI you need to install ``gssapi``:
+
+>>> pip3 install gssapi
+
 
 Source code
 -----------

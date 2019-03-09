@@ -14,12 +14,13 @@ RUN apt-get update && \
     apt-get install -y zookeeper wget supervisor dnsutils krb5-admin-server krb5-kdc && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean && \
-    wget -q http://apache.mirrors.spacedump.net/kafka/"$KAFKA_VERSION"/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION".tgz -O /tmp/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION".tgz && \
+    wget -q https://archive.apache.org/dist/kafka/"$KAFKA_VERSION"/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION".tgz -O /tmp/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION".tgz && \
     tar xfz /tmp/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION".tgz -C /opt && \
     rm /tmp/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION".tgz
 
 ADD scripts/start-kafka.sh /usr/bin/start-kafka.sh
 ADD scripts/kafka_server_jaas.conf /etc/kafka/kafka_server_jaas.conf
+ADD scripts/kafka_server_gssapi_jaas.conf /etc/kafka/kafka_server_gssapi_jaas.conf
 ADD scripts/krb5.conf /etc/krb5.conf
 
 # Supervisor config

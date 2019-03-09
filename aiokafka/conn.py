@@ -233,23 +233,32 @@ class AIOKafkaConnection:
 
     @asyncio.coroutine
     def _do_sasl_handshake(self):
-        handshake_klass = self._version_info.pick_best(SaslHandShakeRequest)
+        # NOTE: We will only fallback to v0.9 gssapi scheme if user explicitly
+        #       stated, that api_version is "0.9"
+        if self._version_hint and self._version_hint < (0, 10):
+            handshake_klass = None
+            assert self._sasl_mechanism == 'GSSAPI', (
+                "Only GSSAPI supported for v0.9"
+            )
+        else:
+            handshake_klass = self._version_info.pick_best(
+                SaslHandShakeRequest)
 
-        sasl_handshake = handshake_klass(self._sasl_mechanism)
-        response = yield from self.send(sasl_handshake)
-        error_type = Errors.for_code(response.error_code)
-        if error_type is not Errors.NoError:
-            error = error_type(self)
-            self.close(reason=CloseReason.AUTH_FAILURE, exc=error)
-            raise error
+            sasl_handshake = handshake_klass(self._sasl_mechanism)
+            response = yield from self.send(sasl_handshake)
+            error_type = Errors.for_code(response.error_code)
+            if error_type is not Errors.NoError:
+                error = error_type(self)
+                self.close(reason=CloseReason.AUTH_FAILURE, exc=error)
+                raise error
 
-        if self._sasl_mechanism not in response.enabled_mechanisms:
-            exc = Errors.UnsupportedSaslMechanismError(
-                'Kafka broker does not support %s sasl mechanism. '
-                'Enabled mechanisms are: %s'
-                % (self._sasl_mechanism, response.enabled_mechanisms))
-            self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
-            raise exc
+            if self._sasl_mechanism not in response.enabled_mechanisms:
+                exc = Errors.UnsupportedSaslMechanismError(
+                    'Kafka broker does not support %s sasl mechanism. '
+                    'Enabled mechanisms are: %s'
+                    % (self._sasl_mechanism, response.enabled_mechanisms))
+                self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
+                raise exc
 
         assert self._sasl_mechanism in ('PLAIN', 'GSSAPI')
         if self._security_protocol == 'SASL_PLAINTEXT' and \
@@ -262,7 +271,7 @@ class AIOKafkaConnection:
         else:
             authenticator = self.authenticator_plain()
 
-        if sasl_handshake.API_VERSION > 0:
+        if handshake_klass is not None and sasl_handshake.API_VERSION > 0:
             auth_klass = self._version_info.pick_best(SaslAuthenticateRequest)
         else:
             auth_klass = None
