@@ -121,6 +121,7 @@ addons:
   apt:
     packages:
     - libsnappy-dev
+    - krb5-user
 
 install:
 - pip install --upgrade pip setuptools wheel

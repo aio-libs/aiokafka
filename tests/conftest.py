@@ -61,6 +61,22 @@ def clean_acl(acl_manager):
     acl_manager.cleanup()
 
 
+if sys.platform != 'win32':
+
+    @pytest.fixture(scope='class')
+    def kerberos_utils(kafka_server):
+        from ._testutil import KerberosUtils
+        utils = KerberosUtils(kafka_server[-1])
+        utils.create_keytab()
+        return utils
+else:
+
+    @pytest.fixture()
+    def kerberos_utils():
+        pytest.skip("Only unit tests on windows for now =(")
+        return
+
+
 @pytest.fixture(scope='session')
 def ssl_folder(docker_ip_address):
     ssl_dir = pathlib.Path('tests/ssl_cert')
@@ -136,13 +152,18 @@ if sys.platform != 'win32':
         }
         kafka_version = image.split(":")[-1].split("_")[-1]
         if not kafka_version == "0.9.0.1":
-            environment['SASL_MECHANISMS'] = "PLAIN"
+            environment['SASL_MECHANISMS'] = "PLAIN,GSSAPI"
+            environment['SASL_JAAS_FILE'] = "kafka_server_jaas.conf"
+        else:
+            environment['SASL_MECHANISMS'] = "GSSAPI"
+            environment['SASL_JAAS_FILE'] = "kafka_server_gssapi_jaas.conf"
 
         container = docker.containers.run(
             image=image,
             name='aiokafka-tests',
             ports={
                 2181: 2181,
+                "88/udp": 88,
                 kafka_port: kafka_port,
                 kafka_ssl_port: kafka_ssl_port,
                 kafka_sasl_plain_port: kafka_sasl_plain_port,
@@ -202,7 +223,8 @@ def setup_test_class_serverless(request, loop, ssl_folder):
 
 
 @pytest.fixture(scope='class')
-def setup_test_class(request, loop, kafka_server, ssl_folder, acl_manager):
+def setup_test_class(request, loop, kafka_server, ssl_folder, acl_manager,
+                     kerberos_utils):
     request.cls.loop = loop
     request.cls.kafka_host = kafka_server[0]
     request.cls.kafka_port = kafka_server[1]
@@ -211,6 +233,7 @@ def setup_test_class(request, loop, kafka_server, ssl_folder, acl_manager):
     request.cls.kafka_sasl_ssl_port = kafka_server[4]
     request.cls.ssl_folder = ssl_folder
     request.cls.acl_manager = acl_manager
+    request.cls.kerberos_utils = kerberos_utils
 
     docker_image = request.config.getoption('--docker-image')
     kafka_version = docker_image.split(":")[-1].split("_")[-1]

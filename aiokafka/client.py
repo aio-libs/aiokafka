@@ -88,9 +88,11 @@ class AIOKafkaClient:
                  security_protocol='PLAINTEXT',
                  api_version='auto',
                  connections_max_idle_ms=540000,
-                 sasl_mechanism="PLAIN",
+                 sasl_mechanism='PLAIN',
                  sasl_plain_username=None,
-                 sasl_plain_password=None):
+                 sasl_plain_password=None,
+                 sasl_kerberos_service_name='kafka',
+                 sasl_kerberos_domain_name=None):
         if security_protocol not in (
                 'SSL', 'PLAINTEXT', 'SASL_PLAINTEXT', 'SASL_SSL'):
             raise ValueError("`security_protocol` should be SSL or PLAINTEXT")
@@ -98,10 +100,12 @@ class AIOKafkaClient:
             raise ValueError(
                 "`ssl_context` is mandatory if security_protocol=='SSL'")
         if security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
-            if sasl_mechanism != "PLAIN":
+            if sasl_mechanism not in ("PLAIN", "GSSAPI"):
                 raise ValueError(
-                    "only `PLAIN` sasl_mechanism is supported at the moment")
-            elif sasl_plain_username is None or sasl_plain_password is None:
+                    "only `PLAIN` and `GSSAPI` sasl_mechanism "
+                    "are supported at the moment")
+            if sasl_mechanism == "PLAIN" and \
+               (sasl_plain_username is None or sasl_plain_password is None):
                 raise ValueError(
                     "sasl_plain_username and sasl_plain_password required for "
                     "PLAIN sasl")
@@ -120,6 +124,8 @@ class AIOKafkaClient:
         self._sasl_mechanism = sasl_mechanism
         self._sasl_plain_username = sasl_plain_username
         self._sasl_plain_password = sasl_plain_password
+        self._sasl_kerberos_service_name = sasl_kerberos_service_name
+        self._sasl_kerberos_domain_name = sasl_kerberos_domain_name
 
         self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
 
@@ -167,10 +173,14 @@ class AIOKafkaClient:
     def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
         # using request v0 for bootstap if not sure v1 is available
-        if self.api_version == "auto" or self.api_version < (0, 10):
+        if self._api_version == "auto" or self._api_version < (0, 10):
             metadata_request = MetadataRequest[0]([])
         else:
             metadata_request = MetadataRequest[1]([])
+
+        version_hint = None
+        if self._api_version != "auto":
+            version_hint = self._api_version
 
         for host, port, _ in self.hosts:
             log.debug("Attempting to bootstrap via node at %s:%s", host, port)
@@ -184,7 +194,10 @@ class AIOKafkaClient:
                     max_idle_ms=self._connections_max_idle_ms,
                     sasl_mechanism=self._sasl_mechanism,
                     sasl_plain_username=self._sasl_plain_username,
-                    sasl_plain_password=self._sasl_plain_password)
+                    sasl_plain_password=self._sasl_plain_password,
+                    sasl_kerberos_service_name=self._sasl_kerberos_service_name,  # noqa: ignore=E501
+                    sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
+                    version_hint=version_hint)
             except (OSError, asyncio.TimeoutError) as err:
                 log.error('Unable connect to "%s:%s": %s', host, port, err)
                 continue
@@ -420,6 +433,8 @@ class AIOKafkaClient:
                     sasl_mechanism=self._sasl_mechanism,
                     sasl_plain_username=self._sasl_plain_username,
                     sasl_plain_password=self._sasl_plain_password,
+                    sasl_kerberos_service_name=self._sasl_kerberos_service_name,  # noqa: ignore=E501
+                    sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     version_hint=version_hint
                 )
         except (OSError, asyncio.TimeoutError) as err:

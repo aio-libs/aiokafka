@@ -182,7 +182,9 @@ class AIOKafkaProducer(object):
                  ssl_context=None, connections_max_idle_ms=540000,
                  enable_idempotence=False, transactional_id=None,
                  transaction_timeout_ms=60000, sasl_mechanism="PLAIN",
-                 sasl_plain_password=None, sasl_plain_username=None):
+                 sasl_plain_password=None, sasl_plain_username=None,
+                 sasl_kerberos_service_name='kafka',
+                 sasl_kerberos_domain_name=None):
         if acks not in (0, 1, -1, 'all', _missing):
             raise ValueError("Invalid ACKS parameter")
         if compression_type not in ('gzip', 'snappy', 'lz4', None):
@@ -239,7 +241,9 @@ class AIOKafkaProducer(object):
             connections_max_idle_ms=connections_max_idle_ms,
             sasl_mechanism=sasl_mechanism,
             sasl_plain_username=sasl_plain_username,
-            sasl_plain_password=sasl_plain_password)
+            sasl_plain_password=sasl_plain_password,
+            sasl_kerberos_service_name=sasl_kerberos_service_name,
+            sasl_kerberos_domain_name=sasl_kerberos_domain_name)
         self._metadata = self.client.cluster
         self._message_accumulator = MessageAccumulator(
             self._metadata, max_batch_size, compression_attrs,

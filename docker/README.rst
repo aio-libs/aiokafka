@@ -11,4 +11,10 @@ Edit `config.yml` to set up an image name and required versions. Images will hav
 
 Run the builder::
 
-    python build.py
+    python build.py build
+
+
+If you want to also push images to dockerhub:
+
+    python build.py build push
+
