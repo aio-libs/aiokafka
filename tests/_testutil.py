@@ -236,7 +236,7 @@ class KerberosUtils:
             subprocess.run(
                 ['ktutil'],
                 cwd=str(keytab_dir.absolute()),
-                input=input_data, check=True)
+                input=input_data.encode(), check=True)
         else:
             raise NotImplementedError
 
