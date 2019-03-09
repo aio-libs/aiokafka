@@ -245,7 +245,7 @@ class KerberosUtils:
     def kinit(self, principal):
         assert self.keytab
         subprocess.run(
-            ['kinit', '-kt', self.keytab.absolute(), principal],
+            ['kinit', '-kt', str(self.keytab.absolute()), principal],
             check=True)
 
     def kdestroy(self):
