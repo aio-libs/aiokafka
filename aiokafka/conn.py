@@ -233,9 +233,9 @@ class AIOKafkaConnection:
 
     @asyncio.coroutine
     def _do_sasl_handshake(self):
-        req_klass = self._version_info.pick_best(SaslHandShakeRequest)
+        handshake_klass = self._version_info.pick_best(SaslHandShakeRequest)
 
-        sasl_handshake = req_klass(self._sasl_mechanism)
+        sasl_handshake = handshake_klass(self._sasl_mechanism)
         response = yield from self.send(sasl_handshake)
         error_type = Errors.for_code(response.error_code)
         if error_type is not Errors.NoError:
@@ -262,6 +262,11 @@ class AIOKafkaConnection:
         else:
             authenticator = self.authenticator_plain()
 
+        if sasl_handshake.API_VERSION > 0:
+            auth_klass = self._version_info.pick_best(SaslAuthenticateRequest)
+        else:
+            auth_klass = None
+
         auth_bytes = None
         expect_response = True
 
@@ -271,13 +276,15 @@ class AIOKafkaConnection:
                 break
             payload, expect_response = res
 
-            if req_klass.API_VERSION == 0:
+            # Before Kafka 1.0.0 Authentication bytes for SASL were send
+            # without a Kafka Header, only with Length. This made error
+            # handling hard, so they made SaslAuthenticateRequest to properly
+            # pass error messages to clients on source of error.
+            if auth_klass is None:
                 auth_bytes = yield from self._send_sasl_token(payload,
                                                               expect_response)
             else:
-                req_klass = self._version_info.pick_best(
-                    SaslAuthenticateRequest)
-                req = req_klass(payload)
+                req = auth_klass(payload)
                 resp = yield from self.send(req)
                 error_type = Errors.for_code(resp.error_code)
                 if error_type is not Errors.NoError:
