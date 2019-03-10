@@ -1,5 +1,26 @@
 CHANGES
---------
+-------
+
+0.5.1 (2019-03-10)
+^^^^^^^^^^^^^^^^^^
+
+New features:
+
+* Add SASL support with both SASL plain and SASL GGSAPI. Support also includes
+  Broker v0.9.0, but you will need to explicitly pass ``api_version="0.9"``.
+  (Big thanks to @cyrbil and @jsurloppe for working on this)
+* Added support for max_poll_interval_ms and rebalance_timeout_ms settings (
+  issue #67)
+* Added pause/resume API for AIOKafkaConsumer. (issue #304)
+* Added header support to both AIOKafkaConsumer and AIOKafkaProducer for
+  brokers v0.11 and above. (issue #462)
+
+Bugfixes:
+
+* Made sure to not request metadata for all topics if broker version is passed
+  explicitly and is 0.10 and above. (issue #440, thanks to @ulrikjohansson)
+* Make sure heartbeat task will close if group is reset. (issue #372)
+
 
 0.5.0 (2018-12-28)
 ^^^^^^^^^^^^^^^^^^
