@@ -1197,6 +1197,14 @@ class AIOKafkaConsumer(object):
             self._subscription.resume(partition)
 
     if PY_35:
+        async def __aenter__(self):
+            await self.start()
+        
+        async def __aexit__(self, exc_type, exc, tb):
+            if (not exc_type) or (not exc) or (not tb):
+                log.debug("Exception in async-with block", exc_info=(exc_type, exc, tb))
+            await self.stop()
+       
         def __aiter__(self):
             if self._closed:
                 raise ConsumerStoppedError()
