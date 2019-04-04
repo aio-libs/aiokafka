@@ -23,6 +23,13 @@ from a Kafka cluster. Most simple usage would be::
     finally:
         await consumer.stop()
 
+In modern version of Python (>=3.5), the consumer supports `async with`::
+
+    async with AIOKafkaConsumer(...) as consumer:
+        # do work
+
+which will automatically call `start` and `stop` on enter and exit of the context.
+
 .. note:: ``msg.value`` and ``msg.key`` are raw bytes, use **key_deserializer**
   and **value_deserializer** configuration if you need to decode them. 
 
