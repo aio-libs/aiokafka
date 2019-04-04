@@ -747,7 +747,7 @@ class AIOKafkaConsumer(object):
             assert partitions, 'No partitions are currently assigned'
         else:
             not_assigned = (
-                set(partitions) - self._subscription.assigned_partitions()
+                    set(partitions) - self._subscription.assigned_partitions()
             )
             if not_assigned:
                 raise IllegalStateError(
@@ -791,7 +791,7 @@ class AIOKafkaConsumer(object):
             assert partitions, 'No partitions are currently assigned'
         else:
             not_assigned = (
-                set(partitions) - self._subscription.assigned_partitions()
+                    set(partitions) - self._subscription.assigned_partitions()
             )
             if not_assigned:
                 raise IllegalStateError(
@@ -836,7 +836,7 @@ class AIOKafkaConsumer(object):
             assert partitions, 'No partitions are currently assigned'
         else:
             not_assigned = (
-                set(partitions) - self._subscription.assigned_partitions()
+                    set(partitions) - self._subscription.assigned_partitions()
             )
             if not_assigned:
                 raise IllegalStateError(
@@ -887,7 +887,7 @@ class AIOKafkaConsumer(object):
         if self._client.api_version <= (0, 10, 0):
             raise UnsupportedVersionError(
                 "offsets_for_times API not supported for cluster version {}"
-                .format(self._client.api_version))
+                    .format(self._client.api_version))
         for tp, ts in timestamps.items():
             timestamps[tp] = int(ts)
             if ts < 0:
@@ -927,7 +927,7 @@ class AIOKafkaConsumer(object):
         if self._client.api_version <= (0, 10, 0):
             raise UnsupportedVersionError(
                 "offsets_for_times API not supported for cluster version {}"
-                .format(self._client.api_version))
+                    .format(self._client.api_version))
         offsets = yield from self._fetcher.beginning_offsets(
             partitions, self._request_timeout_ms)
         return offsets
@@ -963,7 +963,7 @@ class AIOKafkaConsumer(object):
         if self._client.api_version <= (0, 10, 0):
             raise UnsupportedVersionError(
                 "offsets_for_times API not supported for cluster version {}"
-                .format(self._client.api_version))
+                    .format(self._client.api_version))
         offsets = yield from self._fetcher.end_offsets(
             partitions, self._request_timeout_ms)
         return offsets
@@ -1199,12 +1199,13 @@ class AIOKafkaConsumer(object):
     if PY_35:
         async def __aenter__(self):
             await self.start()
-        
+
         async def __aexit__(self, exc_type, exc, tb):
             if (not exc_type) or (not exc) or (not tb):
-                log.debug("Exception in async-with block", exc_info=(exc_type, exc, tb))
+                log.debug("Exception in async-with block",
+                          exc_info=(exc_type, exc, tb))
             await self.stop()
-       
+
         def __aiter__(self):
             if self._closed:
                 raise ConsumerStoppedError()

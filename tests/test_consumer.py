@@ -14,7 +14,7 @@ from aiokafka.consumer import fetcher
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.record import MemoryRecords
 from aiokafka.client import AIOKafkaClient
-from aiokafka.util import ensure_future, PY_341
+from aiokafka.util import ensure_future, PY_341, PY_35
 from aiokafka.structs import (
     OffsetAndTimestamp, TopicPartition, OffsetAndMetadata
 )
@@ -154,6 +154,16 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 del consumer
                 yield from asyncio.sleep(0, loop=self.loop)
                 gc.collect()
+
+    @pytest.mark.skipif(not PY_35, reason="Not supported on older Python's")
+    @run_until_complete
+    async def test_async_with(self):
+        async with AIOKafkaConsumer(loop=self.loop,
+                                    group_id=None,
+                                    bootstrap_servers=self.hosts) \
+                as _:
+            pass
+
 
     @run_until_complete
     def test_get_by_partition(self):
