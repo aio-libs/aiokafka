@@ -115,6 +115,7 @@ class NoGroupCoordinator(BaseCoordinator):
         if no commit is found for group. In the NoGroup mode we need to force
         it after each assignment
         """
+        event_waiter = None
         try:
             while True:
                 if self._subscription.subscription is None:
