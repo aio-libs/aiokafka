@@ -395,7 +395,7 @@ class Assignment:
 
         self._topic_partitions = frozenset(topic_partitions)
 
-        self._tp_state = {}  # type: Dict[TopicPartition:TopicPartitionState]
+        self._tp_state = {}  # type: Dict[TopicPartition, TopicPartitionState]
         for tp in self._topic_partitions:
             self._tp_state[tp] = TopicPartitionState(self, loop=loop)
 
