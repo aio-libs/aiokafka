@@ -76,7 +76,7 @@ class AIOKafkaClient:
             Default: None.
         connections_max_idle_ms (int): Close idle connections after the number
             of milliseconds specified by this config. Specifying `None` will
-            disable idle checks. Default: 540000 (9hours).
+            disable idle checks. Default: 540000 (9 minutes).
     """
 
     def __init__(self, *, loop, bootstrap_servers='localhost',

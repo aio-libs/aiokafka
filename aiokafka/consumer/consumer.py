@@ -173,7 +173,7 @@ class AIOKafkaConsumer(object):
             subscribing to it. Requires 0.10+ Default: True
         connections_max_idle_ms (int): Close idle connections after the number
             of milliseconds specified by this config. Specifying `None` will
-            disable idle checks. Default: 540000 (9hours).
+            disable idle checks. Default: 540000 (9 minutes).
         isolation_level (str): Controls how to read messages written
             transactionally. If set to *read_committed*,
             ``consumer.getmany()``
