@@ -437,7 +437,7 @@ class AIOKafkaClient:
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     version_hint=version_hint
                 )
-        except (OSError, asyncio.TimeoutError) as err:
+        except (OSError, asyncio.TimeoutError, KafkaError) as err:
             log.error('Unable connect to node with id %s: %s', node_id, err)
             if group == ConnectionGroup.DEFAULT:
                 # Connection failures imply that our metadata is stale, so
