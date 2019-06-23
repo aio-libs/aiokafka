@@ -138,7 +138,7 @@ class AIOKafkaProducer(object):
             Default: None.
         connections_max_idle_ms (int): Close idle connections after the number
             of milliseconds specified by this config. Specifying `None` will
-            disable idle checks. Default: 540000 (9hours).
+            disable idle checks. Default: 540000 (9 minutes).
         enable_idempotence (bool): When set to ``True``, the producer will
             ensure that exactly one copy of each message is written in the
             stream. If ``False``, producer retries due to broker failures,
