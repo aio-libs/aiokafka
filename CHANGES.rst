@@ -1,6 +1,16 @@
 CHANGES
 -------
 
+0.5.2 (2019-03-10)
+^^^^^^^^^^^^^^^^^^
+
+Bugfixes:
+
+* Fix ConnectionError breaking metadata sync background task (issue #517 and #512)
+* Fix event_waiter reference before assignment (pr #504 by @romantolkachyov)
+* Bump version of kafka-python
+
+
 0.5.1 (2019-03-10)
 ^^^^^^^^^^^^^^^^^^
 
@@ -51,7 +61,7 @@ Bugfixes:
 
 Bugfix:
 
-* Fixed memory issue introduced as a result of a bug in `asyncio.shield` and 
+* Fixed memory issue introduced as a result of a bug in `asyncio.shield` and
   not cancelling coroutine after usage. (see issue #444 and #436)
 
 
@@ -131,7 +141,7 @@ Big thanks to:
 ^^^^^^^^^^^^^^^^^^
 
 * Added `AIOKafkaProducer.flush()` method. (PR #209 by @vineet-rh)
-* Fixed a bug with uvloop involving `float("inf")` for timeout. (PR #210 by 
+* Fixed a bug with uvloop involving `float("inf")` for timeout. (PR #210 by
    dmitry-moroz)
 * Changed test runner to allow running tests on OSX. (PR #213 by @shargan)
 
@@ -155,7 +165,7 @@ Big thanks to:
 0.2.3 (2017-07-23)
 ^^^^^^^^^^^^^^^^^^
 
-* Fixed retry problem in Producer, when buffer is not reset to 0 offset. 
+* Fixed retry problem in Producer, when buffer is not reset to 0 offset.
   Thanks to @ngavrysh for the fix in Tubular/aiokafka fork. (issue #184)
 * Fixed how Producer handles retries on Leader node failure. It just did not
   work before... Thanks to @blugowski for the help in locating the problem.
@@ -183,9 +193,9 @@ Big thanks to @Artimi for pointing out several of those issues.
 0.2.1 (2017-02-19)
 ^^^^^^^^^^^^^^^^^^
 
-* Add a check to wait topic autocreation in Consumer, instead of raising 
+* Add a check to wait topic autocreation in Consumer, instead of raising
   UnknownTopicOrPartitionError (PR #92 by fabregas)
-* Consumer now stops consumption after `consumer.stop()` call. Any new `get*` calls 
+* Consumer now stops consumption after `consumer.stop()` call. Any new `get*` calls
   will result in ConsumerStoppedError (PR #81)
 * Added `exclude_internal_topics` option for Consumer (PR #111)
 * Better support for pattern subscription when used with `group_id` (part of PR #111)
