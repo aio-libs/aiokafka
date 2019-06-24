@@ -1,5 +1,5 @@
 Sphinx==2.1.2
 sphinxcontrib-asyncio==0.2.0
-sphinxcontrib-spelling==4.2.0
+sphinxcontrib-spelling==4.3.0
 alabaster==0.7.12
 Cython==0.29.10
