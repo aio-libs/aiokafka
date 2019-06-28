@@ -4,17 +4,17 @@ environment:
   SCALA_VERSION: "2.11"
   matrix:
     - PYTHON: "C:\\Python35"
-      SNAPPY_WHEEL: "tools\\python_snappy-0.5.3-cp35-cp35m-win32.whl"
+      SNAPPY_WHEEL: "tools\\python_snappy-0.5.4-cp35-cp35m-win32.whl"
     - PYTHON: "C:\\Python35-x64"
-      SNAPPY_WHEEL: "tools\\python_snappy-0.5.3-cp35-cp35m-win_amd64.whl"
+      SNAPPY_WHEEL: "tools\\python_snappy-0.5.4-cp35-cp35m-win_amd64.whl"
     - PYTHON: "C:\\Python36"
-      SNAPPY_WHEEL: "tools\\python_snappy-0.5.3-cp36-cp36m-win32.whl"
+      SNAPPY_WHEEL: "tools\\python_snappy-0.5.4-cp36-cp36m-win32.whl"
     - PYTHON: "C:\\Python36-x64"
-      SNAPPY_WHEEL: "tools\\python_snappy-0.5.3-cp36-cp36m-win_amd64.whl"
+      SNAPPY_WHEEL: "tools\\python_snappy-0.5.4-cp36-cp36m-win_amd64.whl"
     - PYTHON: "C:\\Python37"
-      SNAPPY_WHEEL: "tools\\python_snappy-0.5.3-cp37-cp37m-win32.whl"
+      SNAPPY_WHEEL: "tools\\python_snappy-0.5.4-cp37-cp37m-win32.whl"
     - PYTHON: "C:\\Python37-x64"
-      SNAPPY_WHEEL: "tools\\python_snappy-0.5.3-cp37-cp37m-win_amd64.whl"
+      SNAPPY_WHEEL: "tools\\python_snappy-0.5.4-cp37-cp37m-win_amd64.whl"
 
 image: Visual Studio 2017
 
