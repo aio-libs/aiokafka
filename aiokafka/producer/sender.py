@@ -49,10 +49,9 @@ class Sender:
         self._request_timeout_ms = request_timeout_ms
         self._linger_time = linger_ms / 1000
 
-    @asyncio.coroutine
-    def start(self):
+    async def start(self):
         # If producer is indempotent we need to assure we have PID found
-        yield from self._maybe_wait_for_pid()
+        await self._maybe_wait_for_pid()
         self._sender_task = ensure_future(
             self._sender_routine(), loop=self._loop)
         self._sender_task.add_done_callback(self._fail_all)
@@ -70,15 +69,13 @@ class Sender:
     def sender_task(self):
         return self._sender_task
 
-    @asyncio.coroutine
-    def close(self):
+    async def close(self):
         if self._sender_task is not None:
             if not self._sender_task.done():
                 self._sender_task.cancel()
-                yield from self._sender_task
+                await self._sender_task
 
-    @asyncio.coroutine
-    def _sender_routine(self):
+    async def _sender_routine(self):
         """ Background task, that sends pending batches to leader nodes for
         batch's partition. This incapsulates same logic as Java's `Sender`
         background thread. Because we use asyncio this is more event based
@@ -92,7 +89,7 @@ class Sender:
             while True:
                 # If indempotence or transactions are turned on we need to
                 # have a valid PID to send any request below
-                yield from self._maybe_wait_for_pid()
+                await self._maybe_wait_for_pid()
 
                 waiters = set()
                 # As transaction coordination is done via a single, separate
@@ -145,7 +142,7 @@ class Sender:
                 # * At least one of produce task is finished
                 # * Data for new partition arrived
                 # * Metadata update if partition leader unknown
-                done, _ = yield from asyncio.wait(
+                done, _ = await asyncio.wait(
                     waiters,
                     return_when=asyncio.FIRST_COMPLETED,
                     loop=self._loop)
@@ -160,7 +157,7 @@ class Sender:
         except asyncio.CancelledError:
             # done tasks should never produce errors, if they are it's a bug
             for task in tasks:
-                yield from task
+                await task
         except (ProducerFenced, OutOfOrderSequenceNumber,
                 TransactionalIdAuthorizationFailed):
             raise
@@ -168,8 +165,7 @@ class Sender:
             log.error("Unexpected error in sender routine", exc_info=True)
             raise KafkaError("Unexpected error during batch delivery")
 
-    @asyncio.coroutine
-    def _maybe_wait_for_pid(self):
+    async def _maybe_wait_for_pid(self):
         if self._txn_manager is None or self._txn_manager.has_pid():
             return
 
@@ -177,28 +173,27 @@ class Sender:
             # If transactions are used we can't just send to a random node, but
             # need to find a suitable coordination node
             if self._txn_manager.transactional_id is not None:
-                node_id = yield from self._find_coordinator(
+                node_id = await self._find_coordinator(
                     CoordinationType.TRANSACTION,
                     self._txn_manager.transactional_id)
             else:
                 node_id = self.client.get_random_node()
-            success = yield from self._do_init_pid(node_id)
+            success = await self._do_init_pid(node_id)
             if not success:
-                yield from self.client.force_metadata_update()
+                await self.client.force_metadata_update()
             else:
                 break
 
     def _coordinator_dead(self, coordinator_type):
         self._coordinators.pop(coordinator_type, None)
 
-    @asyncio.coroutine
-    def _find_coordinator(self, coordinator_type, coordinator_key):
+    async def _find_coordinator(self, coordinator_type, coordinator_key):
         assert self._txn_manager is not None
         if coordinator_type in self._coordinators:
             return self._coordinators[coordinator_type]
         while True:
             try:
-                coordinator_id = yield from self.client.coordinator_lookup(
+                coordinator_id = await self.client.coordinator_lookup(
                     coordinator_type, coordinator_key)
             except Errors.TransactionalIdAuthorizationFailed:
                 err = Errors.TransactionalIdAuthorizationFailed(
@@ -208,8 +203,8 @@ class Sender:
                 err = Errors.GroupAuthorizationFailedError(coordinator_key)
                 raise err
             except Errors.CoordinatorNotAvailableError:
-                yield from self.client.force_metadata_update()
-                yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+                await self.client.force_metadata_update()
+                await asyncio.sleep(self._retry_backoff, loop=self._loop)
                 continue
             except Errors.KafkaError as err:
                 log.error("FindCoordinator Request failed: %s", err)
@@ -217,10 +212,10 @@ class Sender:
 
             # Try to connect to confirm that the connection can be
             # established.
-            ready = yield from self.client.ready(
+            ready = await self.client.ready(
                 coordinator_id, group=ConnectionGroup.COORDINATION)
             if not ready:
-                yield from asyncio.sleep(self._retry_backoff, loop=self._loop)
+                await asyncio.sleep(self._retry_backoff, loop=self._loop)
                 continue
 
             self._coordinators[coordinator_type] = coordinator_id
@@ -239,17 +234,15 @@ class Sender:
                 )
             return coordinator_id
 
-    @asyncio.coroutine
-    def _do_init_pid(self, node_id):
+    async def _do_init_pid(self, node_id):
         handler = InitPIDHandler(self)
-        return (yield from handler.do(node_id))
+        return (await handler.do(node_id))
 
     ###########################################################################
     # Message delivery handler('s')
     ###########################################################################
 
-    @asyncio.coroutine
-    def _send_produce_req(self, node_id, batches):
+    async def _send_produce_req(self, node_id, batches):
         """ Create produce request to node
         If producer configured with `retries`>0 and produce response contain
         "failed" partitions produce request for this partition will try
@@ -262,13 +255,13 @@ class Sender:
         t0 = self._loop.time()
 
         handler = SendProduceReqHandler(self, batches)
-        yield from handler.do(node_id)
+        await handler.do(node_id)
 
         # if batches for node is processed in less than a linger seconds
         # then waiting for the remaining time
         sleep_time = self._linger_time - (self._loop.time() - t0)
         if sleep_time > 0:
-            yield from asyncio.sleep(sleep_time, loop=self._loop)
+            await asyncio.sleep(sleep_time, loop=self._loop)
 
         self._in_flight.remove(node_id)
         for tp in batches:
@@ -310,30 +303,27 @@ class Sender:
                 self._do_txn_commit(commit_result),
                 loop=self._loop)
 
-    @asyncio.coroutine
-    def _do_add_partitions_to_txn(self, tps):
+    async def _do_add_partitions_to_txn(self, tps):
         # First assert we have a valid coordinator to send the request to
-        node_id = yield from self._find_coordinator(
+        node_id = await self._find_coordinator(
             CoordinationType.TRANSACTION, self._txn_manager.transactional_id)
         handler = AddPartitionsToTxnHandler(self, tps)
-        return (yield from handler.do(node_id))
+        return (await handler.do(node_id))
 
-    @asyncio.coroutine
-    def _do_add_offsets_to_txn(self, group_id):
+    async def _do_add_offsets_to_txn(self, group_id):
         # First assert we have a valid coordinator to send the request to
-        node_id = yield from self._find_coordinator(
+        node_id = await self._find_coordinator(
             CoordinationType.TRANSACTION, self._txn_manager.transactional_id)
         handler = AddOffsetsToTxnHandler(self, group_id)
-        return (yield from handler.do(node_id))
+        return (await handler.do(node_id))
 
-    @asyncio.coroutine
-    def _do_txn_offset_commit(self, offsets, group_id):
+    async def _do_txn_offset_commit(self, offsets, group_id):
         # Fast return if nothing to commit
         if not offsets:
             return
         # NOTE: We send this one to GROUP coordinator, not TRANSACTION
         try:
-            node_id = yield from self._find_coordinator(
+            node_id = await self._find_coordinator(
                 CoordinationType.GROUP, group_id)
         except GroupAuthorizationFailedError as exc:
             self._txn_manager.error_transaction(exc)
@@ -343,10 +333,9 @@ class Sender:
             offsets, group_id, node_id
         )
         handler = TxnOffsetCommitHandler(self, offsets, group_id)
-        return (yield from handler.do(node_id))
+        return (await handler.do(node_id))
 
-    @asyncio.coroutine
-    def _do_txn_commit(self, commit_result):
+    async def _do_txn_commit(self, commit_result):
         """ Committing transaction should be done with care.
             Transactional requests will be blocked by this coroutine, so no new
         offsets or new partitions will be added.
@@ -356,7 +345,7 @@ class Sender:
         # First we need to ensure that all pending messages were flushed
         # before committing. Note, that this will only flush batches available
         # till this point, no new ones.
-        yield from self._message_accumulator.flush_for_commit()
+        await self._message_accumulator.flush_for_commit()
 
         txn_manager = self._txn_manager
 
@@ -366,11 +355,11 @@ class Sender:
             return
 
         # First assert we have a valid coordinator to send the request to
-        node_id = yield from self._find_coordinator(
+        node_id = await self._find_coordinator(
             CoordinationType.TRANSACTION, txn_manager.transactional_id)
 
         handler = EndTxnHandler(self, commit_result)
-        return (yield from handler.do(node_id))
+        return (await handler.do(node_id))
 
 
 class BaseHandler:
@@ -381,20 +370,19 @@ class BaseHandler:
         self._default_backoff = sender._retry_backoff
         self._loop = sender._loop
 
-    @asyncio.coroutine
-    def do(self, node_id):
+    async def do(self, node_id):
         req = self.create_request()
         try:
-            resp = yield from self._sender.client.send(
+            resp = await self._sender.client.send(
                 node_id, req, group=self.group)
         except KafkaError as err:
             log.warning("Could not send %r: %r", req.__class__, err)
-            yield from asyncio.sleep(self._default_backoff, loop=self._loop)
+            await asyncio.sleep(self._default_backoff, loop=self._loop)
             return False
 
         retry_backoff = self.handle_response(resp)
         if retry_backoff is not None:
-            yield from asyncio.sleep(retry_backoff, loop=self._loop)
+            await asyncio.sleep(retry_backoff, loop=self._loop)
             return False  # Failure
         else:
             return True  # Success
@@ -717,11 +705,10 @@ class SendProduceReqHandler(BaseHandler):
             **kwargs)
         return request
 
-    @asyncio.coroutine
-    def do(self, node_id):
+    async def do(self, node_id):
         request = self.create_request()
         try:
-            response = yield from self._client.send(node_id, request)
+            response = await self._client.send(node_id, request)
         except KafkaError as err:
             log.warning(
                 "Got error produce response: %s", err)
@@ -743,13 +730,13 @@ class SendProduceReqHandler(BaseHandler):
 
         if self._to_reenqueue:
             # Wait backoff before reequeue
-            yield from asyncio.sleep(self._default_backoff, loop=self._loop)
+            await asyncio.sleep(self._default_backoff, loop=self._loop)
 
             for batch in self._to_reenqueue:
                 self._sender._message_accumulator.reenqueue(batch)
             # If some error started metadata refresh we have to wait before
             # trying again
-            yield from self._client._maybe_wait_metadata()
+            await self._client._maybe_wait_metadata()
 
     def handle_response(self, response):
         for topic, partitions in response.topics:

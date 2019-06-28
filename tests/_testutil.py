@@ -100,9 +100,8 @@ class StubRebalanceListener(ConsumerRebalanceListener):
         self.assigned = None
         self.revoked = None
 
-    @asyncio.coroutine
-    def wait_assign(self):
-        return (yield from self.assigns.get())
+    async def wait_assign(self):
+        return (await self.assigns.get())
 
     def reset(self):
         while not self.assigns.empty():
@@ -309,39 +308,39 @@ class KafkaIntegrationTestCase(unittest.TestCase):
     def add_cleanup(self, cb_or_coro, *args, **kw):
         self._cleanup.append((cb_or_coro, args, kw))
 
-    @asyncio.coroutine
-    def wait_topic(self, client, topic):
+    async def wait_topic(self, client, topic):
         client.add_topic(topic)
         for i in range(5):
-            ok = yield from client.force_metadata_update()
+            ok = await client.force_metadata_update()
             if ok:
                 ok = topic in client.cluster.topics()
             if not ok:
-                yield from asyncio.sleep(1, loop=self.loop)
+                await asyncio.sleep(1, loop=self.loop)
             else:
                 return
         raise AssertionError('No topic "{}" exists'.format(topic))
 
-    @asyncio.coroutine
-    def send_messages(self, partition, messages, *, topic=None,
-                      timestamp_ms=None, return_inst=False, headers=None):
+    async def send_messages(
+        self, partition, messages, *, topic=None,
+        timestamp_ms=None, return_inst=False, headers=None
+    ):
         topic = topic or self.topic
         ret = []
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts)
-        yield from producer.start()
+        await producer.start()
         try:
-            yield from self.wait_topic(producer.client, topic)
+            await self.wait_topic(producer.client, topic)
 
             for msg in messages:
                 if isinstance(msg, str):
                     msg = msg.encode()
                 elif isinstance(msg, int):
                     msg = str(msg).encode()
-                future = yield from producer.send(
+                future = await producer.send(
                     topic, msg, partition=partition,
                     timestamp_ms=timestamp_ms, headers=headers)
-                resp = yield from future
+                resp = await future
                 self.assertEqual(resp.topic, topic)
                 self.assertEqual(resp.partition, partition)
                 if return_inst:
@@ -349,7 +348,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
                 else:
                     ret.append(msg)
         finally:
-            yield from producer.stop()
+            await producer.stop()
         return ret
 
     def assert_message_count(self, messages, num_messages):

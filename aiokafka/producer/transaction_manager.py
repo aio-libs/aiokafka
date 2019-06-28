@@ -1,4 +1,3 @@
-import asyncio
 from enum import Enum
 from collections import namedtuple, defaultdict, deque
 
@@ -83,12 +82,11 @@ class TransactionManager:
     def has_pid(self):
         return self._pid_and_epoch.pid != NO_PRODUCER_ID
 
-    @asyncio.coroutine
-    def wait_for_pid(self):
+    async def wait_for_pid(self):
         if self.has_pid():
             return
         else:
-            yield from self._pid_waiter
+            await self._pid_waiter
 
     def sequence_number(self, tp: TopicPartition):
         return self._sequence_numbers[tp]

@@ -206,7 +206,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                         for msg in msgs:
                             out_msg = b"OUT-" + msg.value
                             # We produce to the same partition
-                            producer.send(
+                            await producer.send(
                                 out_topic, value=out_msg,
                                 partition=tp.partition)
                         offsets[tp] = msg.offset + 1
@@ -265,7 +265,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                         for msg in msgs:
                             out_msg = b"OUT-" + msg.value
                             # We produce to the same partition
-                            producer.send(
+                            await producer.send(
                                 out_topic, value=out_msg,
                                 partition=tp.partition)
                         offsets[tp] = msg.offset + 1
