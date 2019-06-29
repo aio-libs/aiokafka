@@ -1,4 +1,4 @@
-__version__ = '0.5.2'  # noqa
+__version__ = '0.6.0.dev'  # noqa
 
 from .abc import ConsumerRebalanceListener
 from .client import AIOKafkaClient

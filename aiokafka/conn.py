@@ -16,7 +16,7 @@ from kafka.protocol.commit import (
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
 import aiokafka.errors as Errors
-from aiokafka.util import ensure_future, create_future, PY_341, PY_36
+from aiokafka.util import ensure_future, create_future, PY_36
 
 try:
     import gssapi
@@ -61,17 +61,18 @@ class VersionInfo:
         )
 
 
-@asyncio.coroutine
-def create_conn(host, port, *, loop=None, client_id='aiokafka',
-                request_timeout_ms=40000, api_version=(0, 8, 2),
-                ssl_context=None, security_protocol="PLAINTEXT",
-                max_idle_ms=None, on_close=None,
-                sasl_mechanism=None,
-                sasl_plain_username=None,
-                sasl_plain_password=None,
-                sasl_kerberos_service_name='kafka',
-                sasl_kerberos_domain_name=None,
-                version_hint=None):
+async def create_conn(
+    host, port, *, loop=None, client_id='aiokafka',
+    request_timeout_ms=40000, api_version=(0, 8, 2),
+    ssl_context=None, security_protocol="PLAINTEXT",
+    max_idle_ms=None, on_close=None,
+    sasl_mechanism=None,
+    sasl_plain_username=None,
+    sasl_plain_password=None,
+    sasl_kerberos_service_name='kafka',
+    sasl_kerberos_domain_name=None,
+    version_hint=None
+):
     if loop is None:
         loop = asyncio.get_event_loop()
     conn = AIOKafkaConnection(
@@ -86,7 +87,7 @@ def create_conn(host, port, *, loop=None, client_id='aiokafka',
         sasl_kerberos_service_name=sasl_kerberos_service_name,
         sasl_kerberos_domain_name=sasl_kerberos_domain_name,
         version_hint=version_hint)
-    yield from conn.connect()
+    await conn.connect()
     return conn
 
 
@@ -156,34 +157,32 @@ class AIOKafkaConnection:
         if loop.get_debug():
             self._source_traceback = traceback.extract_stack(sys._getframe(1))
 
-    if PY_341:
-        # Warn and try to close. We can close synchroniously, so will attempt
-        # that
-        def __del__(self, _warnings=warnings):
-            if self.connected():
-                if PY_36:
-                    kwargs = {'source': self}
-                else:
-                    kwargs = {}
-                _warnings.warn("Unclosed AIOKafkaConnection {!r}".format(self),
-                               ResourceWarning,
-                               **kwargs)
-                if self._loop.is_closed():
-                    return
+    # Warn and try to close. We can close synchroniously, so will attempt
+    # that
+    def __del__(self, _warnings=warnings):
+        if self.connected():
+            if PY_36:
+                kwargs = {'source': self}
+            else:
+                kwargs = {}
+            _warnings.warn("Unclosed AIOKafkaConnection {!r}".format(self),
+                           ResourceWarning,
+                           **kwargs)
+            if self._loop.is_closed():
+                return
 
-                # We don't need to call callback in this case. Just release
-                # sockets and stop connections.
-                self._on_close_cb = None
-                self.close()
+            # We don't need to call callback in this case. Just release
+            # sockets and stop connections.
+            self._on_close_cb = None
+            self.close()
 
-                context = {'conn': self,
-                           'message': 'Unclosed AIOKafkaConnection'}
-                if self._source_traceback is not None:
-                    context['source_traceback'] = self._source_traceback
-                self._loop.call_exception_handler(context)
+            context = {'conn': self,
+                       'message': 'Unclosed AIOKafkaConnection'}
+            if self._source_traceback is not None:
+                context['source_traceback'] = self._source_traceback
+            self._loop.call_exception_handler(context)
 
-    @asyncio.coroutine
-    def connect(self):
+    async def connect(self):
         loop = self._loop
         self._closed_fut = create_future(loop=loop)
         if self._security_protocol in ["PLAINTEXT", "SASL_PLAINTEXT"]:
@@ -195,7 +194,7 @@ class AIOKafkaConnection:
         # Create streams same as `open_connection`, but using custom protocol
         reader = asyncio.StreamReader(limit=READER_LIMIT, loop=loop)
         protocol = AIOKafkaProtocol(self._closed_fut, reader, loop=loop)
-        transport, _ = yield from asyncio.wait_for(
+        transport, _ = await asyncio.wait_for(
             loop.create_connection(
                 lambda: protocol, self.host, self.port, ssl=ssl),
             loop=loop, timeout=self._request_timeout)
@@ -211,17 +210,16 @@ class AIOKafkaConnection:
                 self._idle_check, weakref.ref(self))
 
         if self._version_hint and self._version_hint >= (0, 10):
-            yield from self._do_version_lookup()
+            await self._do_version_lookup()
 
         if self._security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
-            yield from self._do_sasl_handshake()
+            await self._do_sasl_handshake()
 
         return reader, writer
 
-    @asyncio.coroutine
-    def _do_version_lookup(self):
+    async def _do_version_lookup(self):
         version_req = ApiVersionRequest[0]()
-        response = yield from self.send(version_req)
+        response = await self.send(version_req)
         versions = {}
         for api_key, min_version, max_version in response.api_versions:
             assert min_version <= max_version, (
@@ -231,8 +229,7 @@ class AIOKafkaConnection:
             versions[api_key] = (min_version, max_version)
         self._version_info = VersionInfo(versions)
 
-    @asyncio.coroutine
-    def _do_sasl_handshake(self):
+    async def _do_sasl_handshake(self):
         # NOTE: We will only fallback to v0.9 gssapi scheme if user explicitly
         #       stated, that api_version is "0.9"
         if self._version_hint and self._version_hint < (0, 10):
@@ -245,7 +242,7 @@ class AIOKafkaConnection:
                 SaslHandShakeRequest)
 
             sasl_handshake = handshake_klass(self._sasl_mechanism)
-            response = yield from self.send(sasl_handshake)
+            response = await self.send(sasl_handshake)
             error_type = Errors.for_code(response.error_code)
             if error_type is not Errors.NoError:
                 error = error_type(self)
@@ -280,7 +277,7 @@ class AIOKafkaConnection:
         expect_response = True
 
         while True:
-            res = yield from authenticator.step(auth_bytes)
+            res = await authenticator.step(auth_bytes)
             if res is None:
                 break
             payload, expect_response = res
@@ -290,11 +287,12 @@ class AIOKafkaConnection:
             # handling hard, so they made SaslAuthenticateRequest to properly
             # pass error messages to clients on source of error.
             if auth_klass is None:
-                auth_bytes = yield from self._send_sasl_token(payload,
-                                                              expect_response)
+                auth_bytes = await self._send_sasl_token(
+                    payload, expect_response
+                )
             else:
                 req = auth_klass(payload)
-                resp = yield from self.send(req)
+                resp = await self.send(req)
                 error_type = Errors.for_code(resp.error_code)
                 if error_type is not Errors.NoError:
                     exc = error_type(resp.error_message)
@@ -463,8 +461,7 @@ class AIOKafkaConnection:
         return read_task
 
     @classmethod
-    @asyncio.coroutine
-    def _read(cls, self_ref):
+    async def _read(cls, self_ref):
         # XXX: I know that it become a bit more ugly once cyclic references
         # were removed, but it's needed to allow connections to properly
         # release resources if leaked.
@@ -472,10 +469,10 @@ class AIOKafkaConnection:
 
         reader = self_ref()._reader
         while True:
-            resp = yield from reader.readexactly(4)
+            resp = await reader.readexactly(4)
             size, = struct.unpack(">i", resp)
 
-            resp = yield from reader.readexactly(size)
+            resp = await reader.readexactly(size)
             self_ref()._handle_frame(resp)
 
     def _handle_frame(self, resp):
@@ -526,7 +523,6 @@ class AIOKafkaConnection:
 
 class BaseSaslAuthenticator:
 
-    @asyncio.coroutine
     def step(self, payload):
         return self._loop.run_in_executor(None, self._step, payload)
 

@@ -53,7 +53,6 @@ def commit_structure_validate(offsets):
     return formatted_offsets
 
 
-PY_341 = sys.version_info >= (3, 4, 1)
 PY_35 = sys.version_info >= (3, 5)
 PY_352 = sys.version_info >= (3, 5, 2)
 PY_36 = sys.version_info >= (3, 6)
