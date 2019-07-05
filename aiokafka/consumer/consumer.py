@@ -683,6 +683,25 @@ class AIOKafkaConsumer(object):
         assignment = self._subscription.subscription.assignment
         return assignment.state_value(partition).lso
 
+    def last_poll_timestamp(self, partition):
+        """ Returns the timestamp of the last poll of this partition (in ms).
+        It is the last time `highwater` and `last_stable_offset` were
+        udpated. However it does not mean that new messages were received.
+
+        As with ``highwater()`` will not be available until some messages are
+        consumed.
+
+        Arguments:
+            partition (TopicPartition): partition to check
+
+        Returns:
+            int or None: timestamp if available
+        """
+        assert self._subscription.is_assigned(partition), \
+            'Partition is not assigned'
+        assignment = self._subscription.subscription.assignment
+        return assignment.state_value(partition).timestamp
+
     def seek(self, partition, offset):
         """ Manually specify the fetch offset for a TopicPartition.
 

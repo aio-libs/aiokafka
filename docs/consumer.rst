@@ -444,8 +444,10 @@ catch up). For example::
         for partition in consumer.assignment():
             highwater = consumer.highwater(partition)
             position = await consumer.position(partition)
-            lag = highwater - position
-            if lag > LAG_THRESHOLD:
+            position_lag = highwater - position
+            timestamp = consumer.last_poll_timestamp(partition)
+            time_lag = time.time() * 1000 - timestamp
+            if position_lag > POSITION_THRESHOLD or time_lag > TIME_THRESHOLD:
                 partitions.append(partition)
 
 .. note:: This interface differs from `pause()`/`resume()` interface of 
