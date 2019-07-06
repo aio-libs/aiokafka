@@ -463,6 +463,7 @@ class TopicPartitionState(object):
 
         self.highwater = None  # Last fetched highwater mark
         self.lso = None  # Last fetched stable offset mark
+        self.timestamp = None  # timestamp of last poll
         self._position = None  # The current position of the topic
         self._position_fut = create_future(loop=loop)
 

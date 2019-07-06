@@ -69,6 +69,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             # check unsupported version
             consumer = await self.consumer_factory(api_version="0.8")
 
+        now = time.time()
         await self.send_messages(0, list(range(0, 100)))
         await self.send_messages(1, list(range(100, 200)))
         # Start a consumer_factory
@@ -101,6 +102,10 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         h = consumer.highwater(p0)
         self.assertEqual(h, 100)
+        t = consumer.last_poll_timestamp(p0)
+        self.assertGreaterEqual(t, int(now * 1000))
+        now = time.time()
+        self.assertLessEqual(t, int(now * 1000))
 
         consumer.seek(p0, offset + 90)
         for i in range(10):

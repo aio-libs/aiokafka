@@ -2,6 +2,7 @@ import asyncio
 import collections
 import logging
 import random
+import time
 from itertools import chain
 
 from kafka.protocol.offset import OffsetRequest
@@ -673,6 +674,7 @@ class Fetcher:
             for partition, offset, _ in partitions:
                 fetch_offsets[TopicPartition(topic, partition)] = offset
 
+        now_ms = int(1000 * time.time())
         for topic, partitions in response.topics:
             for partition, error_code, highwater, *part_data in partitions:
                 tp = TopicPartition(topic, partition)
@@ -696,6 +698,7 @@ class Fetcher:
                         lso = None
                     tp_state.highwater = highwater
                     tp_state.lso = lso
+                    tp_state.timestamp = now_ms
 
                     # part_data also contains lso, aborted_transactions.
                     # message_set is last
