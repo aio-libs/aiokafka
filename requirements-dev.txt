@@ -1,5 +1,5 @@
 -r requirements-ci.txt
 -r requirements-docs.txt
 
-diff-cover==2.2.0
+diff-cover==2.3.0
 setuptools>=34.4.0
