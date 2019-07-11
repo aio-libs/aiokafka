@@ -315,22 +315,24 @@ class MessageAccumulator:
         If batch is already full this method waits (`timeout` seconds maximum)
         until batch is drained by send task
         """
-        if self._closed:
-            # this can happen when producer is closing but try to send some
-            # messages in async task
-            raise ProducerClosed()
-        if self._exception is not None:
-            raise copy.copy(self._exception)
+        while True:
+            if self._closed:
+                # this can happen when producer is closing but try to send some
+                # messages in async task
+                raise ProducerClosed()
+            if self._exception is not None:
+                raise copy.copy(self._exception)
 
-        pending_batches = self._batches.get(tp)
-        if not pending_batches:
-            builder = self.create_builder()
-            batch = self._append_batch(builder, tp)
-        else:
-            batch = pending_batches[-1]
+            pending_batches = self._batches.get(tp)
+            if not pending_batches:
+                builder = self.create_builder()
+                batch = self._append_batch(builder, tp)
+            else:
+                batch = pending_batches[-1]
 
-        future = batch.append(key, value, timestamp_ms, headers=headers)
-        if future is None:
+            future = batch.append(key, value, timestamp_ms, headers=headers)
+            if future is not None:
+                return future
             # Batch is full, can't append data atm,
             # waiting until batch per topic-partition is drained
             start = self._loop.time()
@@ -338,9 +340,6 @@ class MessageAccumulator:
             timeout -= self._loop.time() - start
             if timeout <= 0:
                 raise KafkaTimeoutError()
-            return (await self.add_message(
-                tp, key, value, timeout, timestamp_ms))
-        return future
 
     def data_waiter(self):
         """ Return waiter future that will be resolved when accumulator contain
