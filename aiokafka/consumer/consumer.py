@@ -825,6 +825,10 @@ class AIOKafkaConsumer(object):
             *partitions: Optionally provide specific TopicPartitions, otherwise
                 default to all assigned partitions.
 
+        Returns:
+            dict: ``{TopicPartition: offset}`` mapping
+            of the currently committed offsets.
+
         Raises:
             IllegalStateError: If any partition is not currently assigned
             IllegalOperation: If used with ``group_id == None``
@@ -848,11 +852,14 @@ class AIOKafkaConsumer(object):
                 raise IllegalStateError(
                     "Partitions {} are not assigned".format(not_assigned))
 
+        committed_offsets = {}
         for tp in partitions:
             offset = await self.committed(tp)
+            committed_offsets[tp] = offset
             log.debug("Seeking to committed of partition %s %s", tp, offset)
             if offset and offset > 0:
                 self._fetcher.seek_to(tp, offset)
+        return committed_offsets
 
     async def offsets_for_times(self, timestamps):
         """
