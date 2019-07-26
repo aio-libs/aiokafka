@@ -9,6 +9,9 @@ def murmur2(data):
 
     Returns: MurmurHash2 of data
     """
+    cdef int length, seed, r, length4, i, i4, extra_bytes
+    cdef long m, h, k
+
     length = len(data)
     seed = 0x9747b28c
     # 'm' and 'r' are mixing constants generated offline.
