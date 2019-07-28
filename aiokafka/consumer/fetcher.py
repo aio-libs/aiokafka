@@ -214,7 +214,7 @@ class PartitionRecords:
             if self._check_crcs and not next_batch.validate_crc():
                 # This iterator will be closed after the exception, so we don't
                 # try to drain other batches here. They will be refetched.
-                raise Errors.CorruptRecordException("Invalid CRC")
+                raise Errors.CorruptRecordException(f"Invalid CRC - {tp}")
 
             if self._isolation_level == READ_COMMITTED and \
                     next_batch.producer_id is not None:
