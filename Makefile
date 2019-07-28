@@ -28,7 +28,7 @@ ci-test-unit:
 	py.test -s --cov aiokafka --cov-report html $(FLAGS) tests
 
 ci-test-all:
-	py.test -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) -k sasl tests
+	py.test -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
 coverage.xml: .coverage
 	coverage xml
