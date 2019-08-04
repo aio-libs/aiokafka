@@ -1,6 +1,6 @@
 # https://github.com/apache/kafka/blob/0.8.2/clients/src/main/java/org/apache/kafka/common/utils/Utils.java#L244
 def murmur2(data):
-    """Pure-python Murmur2 implementation.
+    """Cython Murmur2 implementation.
 
     Based on java client, see org.apache.kafka.common.utils.Utils.murmur2
 
