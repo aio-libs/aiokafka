@@ -6,7 +6,7 @@ from aiokafka.partitioner import murmur2
 
 
 def run_murmur2(loops: int):
-    data = list(range(10))
+    data = bytes(range(10))
     t0 = pyperf.perf_counter()
     for _ in range(loops):
         murmur2(data)
@@ -15,7 +15,7 @@ def run_murmur2(loops: int):
     return res
 
 def run_murmur2_kafka(loops: int):
-    data = list(range(10))
+    data = bytes(range(10))
     t0 = pyperf.perf_counter()
     for _ in range(loops):
         murmur2_kafka(data)
