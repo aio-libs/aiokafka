@@ -20,7 +20,7 @@ from aiokafka import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.consumer.group_coordinator import (
-    GroupCoordinator, CoordinatorGroupRebalance)
+    GroupCoordinator, CoordinatorGroupRebalance, NoGroupCoordinator)
 from aiokafka.consumer.subscription_state import SubscriptionState
 from aiokafka.util import create_future, ensure_future
 
@@ -1343,3 +1343,38 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertEqual(autocommit_mock.call_count, 4)
         self.assertEqual(metadata_mock.call_count, 1)
         self.assertEqual(last_commit_mock.call_count, 1)
+
+    @run_until_complete
+    async def test_no_group_subscribe_during_metadata_update(self):
+        # Issue #536. During metadata update we can't assume the subscription
+        # did not change. We should handle the case by refreshing meta again.
+        client = AIOKafkaClient(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        await client.bootstrap()
+        await self.wait_topic(client, 'topic1')
+        await self.wait_topic(client, 'topic2')
+        await client.set_topics(('other_topic', ))
+
+        subscription = SubscriptionState(loop=self.loop)
+        coordinator = NoGroupCoordinator(
+            client, subscription, loop=self.loop)
+        subscription.subscribe(topics=set(['topic1']))
+        client.set_topics(('topic1', ))
+        await asyncio.sleep(0.0001, loop=self.loop)
+
+        # Change subscription before metadata update is received
+        subscription.subscribe(topics=set(['topic2']))
+        metadata_fut = client.set_topics(('topic2', ))
+
+        try:
+            await asyncio.wait_for(
+                metadata_fut,
+                timeout=0.2
+            )
+        except asyncio.TimeoutError:
+            pass
+
+        self.assertFalse(client._sync_task.done())
+
+        await coordinator.close()
+        await client.close()

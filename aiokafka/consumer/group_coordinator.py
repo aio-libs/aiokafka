@@ -99,8 +99,15 @@ class NoGroupCoordinator(BaseCoordinator):
         partitions = []
         for topic in self._subscription.subscription.topics:
             p_ids = self._cluster.partitions_for_topic(topic)
-            if not p_ids and check_unknown:
-                raise Errors.UnknownTopicOrPartitionError()
+            if not p_ids:
+                if check_unknown:
+                    raise Errors.UnknownTopicOrPartitionError()
+                else:
+                    # We probably just changed subscription during metadata
+                    # update. No problem, lets wait for the next metadata
+                    # update and make sure it's triggered just in case
+                    self._client.force_metadata_update()
+                    continue
             for p_id in p_ids:
                 partitions.append(TopicPartition(topic, p_id))
 
