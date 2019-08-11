@@ -105,8 +105,7 @@ class NoGroupCoordinator(BaseCoordinator):
                 else:
                     # We probably just changed subscription during metadata
                     # update. No problem, lets wait for the next metadata
-                    # update and make sure it's triggered just in case
-                    self._client.force_metadata_update()
+                    # update
                     continue
             for p_id in p_ids:
                 partitions.append(TopicPartition(topic, p_id))
