@@ -1,4 +1,4 @@
-Sphinx==2.1.2
+Sphinx==2.2.0
 sphinxcontrib-asyncio==0.2.0
 sphinxcontrib-spelling==4.3.0
 alabaster==0.7.12
