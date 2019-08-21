@@ -27,7 +27,7 @@ While ``kafka-python`` has a lot of great features it is made to be used in a
 very powerful with the ability to use multiple cores.
 
 The API itself just can't be adopted to be used in an asynchronous way (even
-thou the library does asyncronous IO using `selectors`). It has too much
+though the library does asynchronous IO using `selectors`). It has too much
 blocking behavior including `blocking` socket usage, threading synchronization,
 etc. Examples would be:
 
@@ -37,7 +37,7 @@ etc. Examples would be:
 
 All those can't be changed to use `Future` API seamlessly. So to get a normal,
 non-blocking interface based on Future's and coroutines a new library needed to
-be done.
+be written.
 
 
 API differences and rationale
@@ -59,7 +59,7 @@ not only message fetching, but also:
   * Does autocommit
 
 This will never be a case where you own the IO loop, at least not with socket
-polling. To avoid misunderstandings as to why does those methods behave in a
+polling. To avoid misunderstandings as to why do those methods behave in a
 different way :ref:`aiokafka-consumer` exposes this interface under the name
 ``getmany()`` with some other differences described below.
 
@@ -78,9 +78,9 @@ heartbeats to Coordinator as long as the *event loop* is running. This
 behaviour is very similar to Java client, with the exception of no heartbeats
 on long CPU bound methods.
 
-But ``aiokafka`` also performs rebalance in the same background Task. This
+But ``aiokafka`` also performs group rebalancing in the same background Task. This
 means, that the processing time between ``getmany`` calls actually does not
-effect rebalancing. ``KIP-62`` proposed to provide ``max.poll.interval.ms`` as
+affect rebalancing. ``KIP-62`` proposed to provide ``max.poll.interval.ms`` as
 the configuration for both *rebalance timeout* and *consumer processing
 timeout*. In ``aiokafka`` it does not make much sense, as those 2 are not
 related, so we added both configurations (``rebalance_timeout_ms`` and
@@ -89,7 +89,7 @@ It is quite critical to provide
 :ref:`ConsumerRebalanceListener <consumer-rebalance-listener>` if you need
 to control rebalance start and end moments. In that case set the
 ``rebalance_timeout_ms`` to the maximum time your application can spend
-waiting in the callback. If your callback waits for last ``getmany`` result to
+waiting in the callback. If your callback waits for the last ``getmany`` result to
 be processed, it is safe to set this value to ``max_poll_interval_ms``, same
 as in Java client.
 
@@ -125,8 +125,8 @@ the time of processing of data in all topics.
 Which is why ``aiokafka`` tries to do prefetches **per partition**. For
 example, if we processed all data pending for a partition in *iterator*
 interface, ``aiokafka`` will *try* to prefetch new data right away. The same
-interface can be somehow build on top of ``kafka-python``'s *pause* API, but
-you will require `a lot of code`_. 
+interface could be built on top of ``kafka-python``'s *pause* API, but
+would require `a lot of code`_. 
 
 .. note::
     
