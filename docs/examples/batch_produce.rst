@@ -27,7 +27,7 @@ Producer
         while i < num:
             msg = ("Test message %d" % i).encode("utf-8")
             metadata = batch.append(key=None, value=msg, timestamp=None)
-            if metadata is None:
+            if metadata is not None:
                 partitions = await producer.partitions_for(topic)
                 partition = random.choice(tuple(partitions))
                 await producer.send_batch(batch, topic, partition=partition)
