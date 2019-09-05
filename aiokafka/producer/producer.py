@@ -549,6 +549,20 @@ class AIOKafkaProducer(object):
         fut = self._txn_manager.add_offsets_to_txn(formatted_offsets, group_id)
         await asyncio.shield(fut, loop=self._loop)
 
+    def set_on_connection_closed_callback(self, on_connection_closed_callback):
+        """Set a callback function to invoke when a connection to Kafka is closed
+        Arguments:
+            on_connection_closed_callback: a callback function to call
+        """
+        self.client.set_on_connection_closed_callback(on_connection_closed_callback)
+
+    def set_on_connection_opened_callback(self, on_connection_opened_callback):
+        """Set a callback function to invoke when a connection to Kafka is opened
+        Arguments:
+            on_connection_opened_callback: a callback function to call
+        """
+        self.client.set_on_connection_opened_callback(on_connection_opened_callback)
+
 
 class TransactionContext:
 

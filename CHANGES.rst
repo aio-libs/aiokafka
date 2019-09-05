@@ -1,6 +1,11 @@
 CHANGES
 -------
 
+552.feature
+^^^^^^^^^^^
+
+Add new callbacks for connection opened/close for consumer and producer 
+
 523.feature
 ^^^^^^^^^^^
 
