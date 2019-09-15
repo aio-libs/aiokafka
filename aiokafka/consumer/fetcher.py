@@ -214,7 +214,8 @@ class PartitionRecords:
             if self._check_crcs and not next_batch.validate_crc():
                 # This iterator will be closed after the exception, so we don't
                 # try to drain other batches here. They will be refetched.
-                raise Errors.CorruptRecordException("Invalid CRC")
+                raise Errors.CorruptRecordException(
+                    "Invalid CRC - {tp}".format(tp=tp))
 
             if self._isolation_level == READ_COMMITTED and \
                     next_batch.producer_id is not None:
@@ -657,6 +658,7 @@ class Fetcher:
             response = await self._client.send(node_id, request)
         except Errors.KafkaError as err:
             log.error("Failed fetch messages from %s: %s", node_id, err)
+            await asyncio.sleep(self._retry_backoff, loop=self._loop)
             return False
         except asyncio.CancelledError:
             # Either `close()` or partition unassigned. Either way the result
