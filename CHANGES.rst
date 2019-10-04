@@ -1,9 +1,10 @@
 CHANGES
 -------
 
-523.feature
-^^^^^^^^^^^
+558.feature
+Upgrade to kafka-python version 1.4.7, which fixes a number of issues with client performance and concurrency.
 
+523.feature
 Add `consumer.last_poll_timestamp(partition)` which gives the ms timestamp of the last update of `highwater` and `lso`.
 
 
