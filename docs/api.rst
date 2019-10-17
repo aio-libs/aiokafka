@@ -96,7 +96,7 @@ Exception handling example:
         try:
             send_future = await producer.send('foobar', b'test data')
             response = await send_future  #  wait until message is produced
-        except KafkaTimeourError:
+        except KafkaTimeoutError:
             print("produce timeout... maybe we want to resend data again?")
         except KafkaError as err:
             print("some kafka error on produce: {}".format(err))
