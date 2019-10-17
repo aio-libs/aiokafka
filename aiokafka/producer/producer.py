@@ -441,11 +441,11 @@ class AIOKafkaProducer(object):
 
     async def send_and_wait(
         self, topic, value=None, key=None, partition=None,
-        timestamp_ms=None
+        timestamp_ms=None, headers=None
     ):
         """Publish a message to a topic and wait the result"""
         future = await self.send(
-            topic, value, key, partition, timestamp_ms)
+            topic, value, key, partition, timestamp_ms, headers)
         return (await future)
 
     def create_batch(self):

@@ -730,3 +730,15 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             await producer.send(
                 self.topic, b'msg', partition=0,
                 headers=[("type", b"Normal")])
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_producer_send_and_wait_with_headers(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        await producer.start()
+        self.add_cleanup(producer.stop)
+
+        resp = await producer.send_and_wait(
+            self.topic, b'msg', partition=0, headers=[("type", b"Normal")])
+        self.assertEqual(resp.partition, 0)
