@@ -137,6 +137,8 @@ class AIOKafkaClient:
         self._md_update_fut = None
         self._md_update_waiter = create_future(loop=self._loop)
         self._get_conn_lock = asyncio.Lock(loop=loop)
+        self._on_connection_closed_callback = None
+        self._on_connection_opened_callback = None
 
     def __repr__(self):
         return '<AIOKafkaClient client_id=%s>' % self._client_id
@@ -371,7 +373,24 @@ class AIOKafkaClient:
         self._topics = set(topics)
         return res
 
+    def set_on_connection_closed_callback(self, on_connection_closed_callback):
+        """Set a callback function to invoke when a connection to Kafka is closed
+        Arguments:
+            on_connection_closed_callback: a callback function to call
+        """
+        self._on_connection_closed_callback = on_connection_closed_callback
+
+    def set_on_connection_opened_callback(self, on_connection_opened_callback):
+        """Set a callback function to invoke when a connection to Kafka is opened
+        Arguments:
+            on_connection_opened_callback: a callback function to call
+        """
+        self._on_connection_opened_callback = on_connection_opened_callback
+
     def _on_connection_closed(self, conn, reason):
+        if self._on_connection_closed_callback:
+            self._on_connection_closed_callback(conn, reason)
+
         """ Callback called when connection is closed
         """
         # Connection failures imply that our metadata is stale, so let's
@@ -441,6 +460,9 @@ class AIOKafkaClient:
                 self.force_metadata_update()
             return None
         else:
+            if self._on_connection_opened_callback:
+                self._on_connection_opened_callback(self._conns[conn_id])
+                
             return self._conns[conn_id]
 
     async def ready(self, node_id, *, group=ConnectionGroup.DEFAULT):
