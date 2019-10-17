@@ -89,7 +89,7 @@ class ve_build_ext(build_ext):
             raise BuildFailed()
 
 
-install_requires = ['kafka-python==1.4.6']
+install_requires = ['kafka-python==1.4.7']
 
 PY_VER = sys.version_info
 
