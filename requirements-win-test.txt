@@ -1,10 +1,10 @@
 flake8==3.7.8
-pytest==5.1.2
-pytest-cov==2.7.1
+pytest==5.2.1
+pytest-cov==2.8.1
 pytest-catchlog==1.2.2
 docker-py==1.10.6
-lz4==2.1.10
-xxhash==1.4.1
+lz4==2.2.1
+xxhash==1.4.2
 python-snappy==0.5.4
 # pypiwin32==219
 cython==0.29.13
