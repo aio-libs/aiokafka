@@ -102,7 +102,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_producer_transactional_restart_reaquire_pid(self):
         # While it's documented that PID may change we need to be sure we
-        # are sending proper InitPIDRequest, not an indempotent one
+        # are sending proper InitPIDRequest, not an idempotent one
 
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts,

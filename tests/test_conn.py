@@ -88,7 +88,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         request = MetadataRequest([])
         await conn.send(request)
         await asyncio.sleep(0.15, loop=self.loop)
-        # Check if we're stil connected after 250ms, as we were not idle
+        # Check if we're still connected after 250ms, as we were not idle
         self.assertEqual(conn.connected(), True)
 
         # It shouldn't break if we have a long running call either

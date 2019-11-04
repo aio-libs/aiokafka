@@ -47,7 +47,7 @@ New features:
 * Add full support for V2 format messages with a Cython extension. Those are
   used for Kafka >= 0.11.0.0
 * Added support for transactional producing (issue #182)
-* Added support for indempotent producing with `enable_idempotence` parameter
+* Added support for idempotent producing with `enable_idempotence` parameter
 * Added support for `fetch_max_bytes` in AIOKafkaConsumer. This can help limit
   the amount of data transferred in a single roundtrip to broker, which is
   essential for consumers with large amount of partitions
@@ -109,7 +109,7 @@ Major changes:
   versions later
 * Added C extension for Records parsing protocol, boosting the speed of
   produce/consume routines significantly
-* Added an experimental batch producer API for unique cases, where user want's
+* Added an experimental batch producer API for unique cases, where user wants
   to control batching himself (by @shargan)
 
 
@@ -257,7 +257,7 @@ Big thanks to @fabregas for the hard work on this release (PR #60)
 0.1.1 (2016-04-15)
 ^^^^^^^^^^^^^^^^^^
 
-* Fix packaging issues. Removed unneded files from package.
+* Fix packaging issues. Removed unneeded files from package.
 
 0.1.0 (2016-04-15)
 ^^^^^^^^^^^^^^^^^^

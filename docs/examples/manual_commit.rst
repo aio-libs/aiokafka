@@ -13,7 +13,7 @@ More on message delivery: https://kafka.apache.org/documentation.html#semantics
 
 .. note::
     After Kafka Broker version 0.11 and after `aiokafka==0.5.0` it is possible
-    to use Transactional Producer to achive *exactly once* delivery semantics.
+    to use Transactional Producer to achieve *exactly once* delivery semantics.
     See :ref:`Tranactional Producer <transactional-producer>` section.
 
 
