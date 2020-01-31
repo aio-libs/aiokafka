@@ -1,6 +1,9 @@
 CHANGES
 -------
 
+576.bugfix
+Added handling `asyncio.TimeoutError` on metadata request to broker and metadata update.
+
 558.feature
 Upgrade to kafka-python version 1.4.7, which fixes a number of issues with client performance and concurrency.
 
