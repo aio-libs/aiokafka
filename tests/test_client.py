@@ -209,6 +209,35 @@ class TestAIOKafkaClient(unittest.TestCase):
         self.assertNotEqual(client.cluster.brokers(), set([]))
         self.assertEqual(client.cluster.brokers(), brokers_before)
 
+    @run_until_complete
+    async def test_client_receive_zero_brokers_timeout_on_send(self):
+        brokers = [
+            (0, 'broker_1', 4567),
+            (1, 'broker_2', 5678)
+        ]
+        correct_meta = MetadataResponse(brokers, [])
+
+        async def send(*args, **kwargs):
+            raise asyncio.TimeoutError()
+
+        client = AIOKafkaClient(loop=self.loop,
+                                bootstrap_servers=['broker_1:4567'],
+                                api_version="0.10")
+        conn = mock.Mock()
+        client._conns = [mock.Mock()]
+        client._get_conn = mock.Mock()
+        client._get_conn.side_effect = asyncio.coroutine(lambda x: conn)
+        conn.send = mock.Mock()
+        conn.send.side_effect = send
+        client.cluster.update_metadata(correct_meta)
+        brokers_before = client.cluster.brokers()
+
+        await client._metadata_update(client.cluster, [])
+
+        # There broker list should not be purged
+        self.assertNotEqual(client.cluster.brokers(), set([]))
+        self.assertEqual(client.cluster.brokers(), brokers_before)
+
 
 class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
@@ -238,6 +267,14 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         with mock.patch.object(AIOKafkaConnection, 'send') as mock_send:
             mock_send.side_effect = KafkaError('some kafka error')
+            with self.assertRaises(ConnectionError):
+                await client.bootstrap()
+
+    @run_until_complete
+    async def test_failed_bootstrap_timeout(self):
+        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        with mock.patch.object(AIOKafkaConnection, 'send') as mock_send:
+            mock_send.side_effect = asyncio.TimeoutError('Timeout error')
             with self.assertRaises(ConnectionError):
                 await client.bootstrap()
 
