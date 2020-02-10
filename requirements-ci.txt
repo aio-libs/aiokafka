@@ -7,5 +7,5 @@ xxhash==1.4.3
 python-snappy==0.5.4
 Cython==0.29.14
 docutils==0.16
-Pygments==2.4.2
+Pygments==2.5.2
 gssapi==1.6.1
