@@ -3,7 +3,7 @@ pytest==5.3.5
 pytest-cov==2.8.1
 docker==4.2.0
 lz4==2.2.1
-xxhash==1.4.2
+xxhash==1.4.3
 python-snappy==0.5.4
 Cython==0.29.13
 docutils==0.15.2
