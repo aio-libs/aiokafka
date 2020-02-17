@@ -1,6 +1,9 @@
 CHANGES
 -------
 
+584.bugfix
+Handle `RequestTimedOutError` in `coordinator._do_commit_offsets()` method to explicitly mark coordinator as dead.
+
 576.bugfix
 Added handling `asyncio.TimeoutError` on metadata request to broker and metadata update.
 

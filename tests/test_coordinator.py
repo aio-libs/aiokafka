@@ -432,12 +432,26 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 Errors.NoError
             ]
             await coordinator.commit_offsets(assignment, offsets)
+            commit_error = [
+                Errors.RequestTimedOutError,
+                Errors.NoError
+            ]
+            await coordinator.commit_offsets(assignment, offsets)
 
             # Make sure coordinator_id is reset properly each retry
-            commit_error = Errors.GroupCoordinatorNotAvailableError
-            with self.assertRaises(Errors.GroupCoordinatorNotAvailableError):
-                await coordinator._do_commit_offsets(assignment, offsets)
-            self.assertEqual(coordinator.coordinator_id, None)
+            for retriable_error in (
+                    Errors.GroupCoordinatorNotAvailableError,
+                    Errors.NotCoordinatorForGroupError,
+                    Errors.RequestTimedOutError,
+            ):
+                self.assertIsNotNone(coordinator.coordinator_id)
+                commit_error = retriable_error
+                with self.assertRaises(retriable_error):
+                    await coordinator._do_commit_offsets(assignment, offsets)
+                self.assertIsNone(coordinator.coordinator_id)
+
+                # ask coordinator to refresh coordinator_id value
+                await coordinator.ensure_coordinator_known()
 
             # Unknown errors are just propagated too
             commit_error = Errors.UnknownError
