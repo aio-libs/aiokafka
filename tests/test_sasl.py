@@ -98,6 +98,38 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         await consumer.start()
         return consumer
 
+    async def scram_producer_factory(self, user="test", **kw):
+        producer = AIOKafkaProducer(
+            loop=self.loop,
+            bootstrap_servers=[self.sasl_hosts],
+            security_protocol="SASL_PLAINTEXT",
+            sasl_mechanism='SCRAM-SHA-256',
+            sasl_plain_username=user,
+            sasl_plain_password=user,
+            **kw)
+        self.add_cleanup(producer.stop)
+        await producer.start()
+        return producer
+
+    async def scram_consumer_factory(self, user="test", **kw):
+        kwargs = dict(
+            enable_auto_commit=True,
+            auto_offset_reset="earliest",
+            group_id=self.group_id
+        )
+        kwargs.update(kw)
+        consumer = AIOKafkaConsumer(
+            self.topic, loop=self.loop,
+            bootstrap_servers=[self.sasl_hosts],
+            security_protocol="SASL_PLAINTEXT",
+            sasl_mechanism='SCRAM-SHA-256',
+            sasl_plain_username=user,
+            sasl_plain_password=user,
+            **kwargs)
+        self.add_cleanup(consumer.stop)
+        await consumer.start()
+        return consumer
+
     @kafka_versions('>=0.10.0')
     @run_until_complete
     async def test_sasl_plaintext_basic(self):
@@ -124,6 +156,17 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             self.assertEqual(msg.value, b"Super sasl msg")
         finally:
             self.kerberos_utils.kdestroy()
+
+    @kafka_versions('>=0.10.2')
+    @run_until_complete
+    async def test_sasl_plaintext_scram(self):
+        producer = await self.scram_producer_factory()
+        await producer.send_and_wait(topic=self.topic,
+                                     value=b"Super scram msg")
+
+        consumer = await self.scram_consumer_factory()
+        msg = await consumer.getone()
+        self.assertEqual(msg.value, b"Super scram msg")
 
     ##########################################################################
     # Topic Resource
