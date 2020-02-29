@@ -214,14 +214,22 @@ class KerberosUtils:
         keytab_dir.mkdir()
 
         if sys.platform == 'darwin':
-            subprocess.run(
+            res = subprocess.run(
                 ['ktutil', '-k', keytab_file,
                  'add',
                  '-p', principal,
                  '-V', '1',
                  '-e', 'aes256-cts-hmac-sha1-96',
                  '-w', password],
-                cwd=str(keytab_dir.absolute()), check=True)
+                cwd=str(keytab_dir.absolute()), capture_output=True)
+            if res.returncode != 0:
+                print(
+                    "Failed to setup keytab for Kerberos.\n"
+                    "stdout: \n{}\nstrerr: \n{}".format(
+                        res.stdout, res.stderr),
+                    file=sys.stderr
+                )
+                res.check_returncode()
         elif sys.platform != 'win32':
             input_data = (
                 "add_entry -password -p {principal} -k 1 "
@@ -232,10 +240,18 @@ class KerberosUtils:
                 principal=principal,
                 password=password,
                 keytab_file=keytab_file)
-            subprocess.run(
+            res = subprocess.run(
                 ['ktutil'],
                 cwd=str(keytab_dir.absolute()),
-                input=input_data.encode(), check=True)
+                input=input_data.encode(), capture_output=True)
+            if res.returncode != 0:
+                print(
+                    "Failed to setup keytab for Kerberos.\n"
+                    "stdout: \n{}\nstrerr: \n{}".format(
+                        res.stdout, res.stderr),
+                    file=sys.stderr
+                )
+                res.check_returncode()
         else:
             raise NotImplementedError
 
