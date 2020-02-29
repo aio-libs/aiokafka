@@ -53,8 +53,8 @@ class BaseCoordinator(object):
                 self._group_subscription is not None:
             metadata_snapshot = self._get_metadata_snapshot()
             if self._metadata_snapshot != metadata_snapshot:
-                log.debug("Metadata for topic has changed from %s to %s. ",
-                          self._metadata_snapshot, metadata_snapshot)
+                log.info("Metadata for topic has changed from %s to %s. ",
+                         self._metadata_snapshot, metadata_snapshot)
                 self._metadata_snapshot = metadata_snapshot
                 self._on_metadata_change()
 

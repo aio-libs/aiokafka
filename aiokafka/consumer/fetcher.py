@@ -230,7 +230,8 @@ class PartitionRecords:
                     log.debug(
                         "Skipping aborted record batch from partition %s with"
                         " producer_id %s and offsets %s to %s",
-                        tp, next_batch.producer_id
+                        tp, next_batch.producer_id,
+                        next_batch.base_offset, next_batch.next_offset - 1
                     )
                     self.next_fetch_offset = next_batch.next_offset
                     continue
