@@ -1013,7 +1013,8 @@ class GroupCoordinator(BaseCoordinator):
                         error_type.__name__)
                     errored[tp] = error_type()
                 elif error_type in (Errors.GroupCoordinatorNotAvailableError,
-                                    Errors.NotCoordinatorForGroupError):
+                                    Errors.NotCoordinatorForGroupError,
+                                    Errors.RequestTimedOutError):
                     log.info(
                         "OffsetCommit failed for group %s due to a"
                         " coordinator error (%s), will find new coordinator"

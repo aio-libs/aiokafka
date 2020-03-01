@@ -202,7 +202,7 @@ class AIOKafkaClient:
 
             try:
                 metadata = await bootstrap_conn.send(metadata_request)
-            except KafkaError as err:
+            except (KafkaError, asyncio.TimeoutError) as err:
                 log.warning('Unable to request metadata from "%s:%s": %s',
                             host, port, err)
                 bootstrap_conn.close()
@@ -292,7 +292,7 @@ class AIOKafkaClient:
 
             try:
                 metadata = await conn.send(metadata_request)
-            except KafkaError as err:
+            except (KafkaError, asyncio.TimeoutError) as err:
                 log.error(
                     'Unable to request metadata from node with id %s: %s',
                     node_id, err)

@@ -1,7 +1,7 @@
 .. _transaction-example:
 
 Transactional Consume-Process-Produce
-------------------------------------
+-------------------------------------
 
 If you have a pattern where you want to consume from one topic, process data
 and produce to a different one, you would really like to do it with using
