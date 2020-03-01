@@ -440,6 +440,8 @@ class GroupCoordinator(BaseCoordinator):
 
         # update partition assignment
         self._subscription.assign_from_subscribed(assignment.partitions())
+        # The await bellow can change subscription, remember the ongoing one.
+        subscription = self._subscription.subscription
 
         # give the assignor a chance to update internal state
         # based on the received assignment
@@ -449,8 +451,7 @@ class GroupCoordinator(BaseCoordinator):
         # Callback can rely on something like ``Consumer.position()`` that
         # requires committed point to be refreshed.
         await self._stop_commit_offsets_refresh_task()
-        self.start_commit_offsets_refresh_task(
-            self._subscription.subscription.assignment)
+        self.start_commit_offsets_refresh_task(subscription.assignment)
 
         assigned = set(self._subscription.assigned_partitions())
         log.info("Setting newly assigned partitions %s for group %s",

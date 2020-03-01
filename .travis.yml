@@ -40,28 +40,28 @@ matrix:
       python: 3.5
       services:
       - docker
-      env: KAFKA_VERSION=2.1.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
+      env: KAFKA_VERSION=2.4.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
       script:
       - make ci-test-all
     - sudo: true
       python: 3.5
       services:
       - docker
-      env: KAFKA_VERSION=2.1.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
+      env: KAFKA_VERSION=2.4.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
       script:
       - make ci-test-all
     - sudo: true
       python: 3.6
       services:
       - docker
-      env: KAFKA_VERSION=2.1.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
+      env: KAFKA_VERSION=2.4.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
       script:
       - make ci-test-all
     - sudo: true
       python: 3.6
       services:
       - docker
-      env: KAFKA_VERSION=2.1.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
+      env: KAFKA_VERSION=2.4.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
       script:
       - make ci-test-all
     - sudo: true
@@ -69,7 +69,7 @@ matrix:
       dist: xenial
       services:
       - docker
-      env: KAFKA_VERSION=2.1.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
+      env: KAFKA_VERSION=2.4.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
       script:
       - make ci-test-all
     - sudo: true
@@ -77,7 +77,7 @@ matrix:
       dist: xenial
       services:
       - docker
-      env: KAFKA_VERSION=2.1.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
+      env: KAFKA_VERSION=2.4.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
       script:
       - make ci-test-all
 
@@ -101,6 +101,34 @@ matrix:
       services:
       - docker
       env: KAFKA_VERSION=0.11.0.3 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
+      script:
+      - make ci-test-all
+    - sudo: true
+      python: *mainstream_python
+      services:
+      - docker
+      env: KAFKA_VERSION=1.1.1 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
+      script:
+      - make ci-test-all
+    - sudo: true
+      python: *mainstream_python
+      services:
+      - docker
+      env: KAFKA_VERSION=2.1.1 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
+      script:
+      - make ci-test-all
+    - sudo: true
+      python: *mainstream_python
+      services:
+      - docker
+      env: KAFKA_VERSION=2.2.2 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
+      script:
+      - make ci-test-all
+    - sudo: true
+      python: *mainstream_python
+      services:
+      - docker
+      env: KAFKA_VERSION=2.3.1 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
       script:
       - make ci-test-all
 

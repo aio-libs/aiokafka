@@ -1,20 +1,23 @@
 # Kafka and Zookeeper (borrowed from spotify/kafka)
 
-FROM java:openjdk-8-jre
+FROM openjdk:11-jre-buster
 
 ENV DEBIAN_FRONTEND noninteractive
+
+# Zookeeper and other needed things
+RUN apt-get update && \
+    apt-get install -y zookeeper wget supervisor dnsutils krb5-admin-server krb5-kdc && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get clean
+
 ARG SCALA_VERSION=2.11
 ARG KAFKA_VERSION=0.9.0.1
 ENV SCALA_VERSION $SCALA_VERSION
 ENV KAFKA_VERSION $KAFKA_VERSION
 ENV KAFKA_HOME /opt/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION"
 
-# Install Kafka, Zookeeper and other needed things
-RUN apt-get update && \
-    apt-get install -y zookeeper wget supervisor dnsutils krb5-admin-server krb5-kdc && \
-    rm -rf /var/lib/apt/lists/* && \
-    apt-get clean && \
-    wget -q https://archive.apache.org/dist/kafka/"$KAFKA_VERSION"/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION".tgz -O /tmp/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION".tgz && \
+# Install Kafka
+RUN wget -q https://archive.apache.org/dist/kafka/"$KAFKA_VERSION"/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION".tgz -O /tmp/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION".tgz && \
     tar xfz /tmp/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION".tgz -C /opt && \
     rm /tmp/kafka_"$SCALA_VERSION"-"$KAFKA_VERSION".tgz
 

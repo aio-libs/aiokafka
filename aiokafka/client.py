@@ -558,6 +558,7 @@ class AIOKafkaClient:
         # in descending order. As soon as we find one that works, return it
         test_cases = [
             # format (<broker verion>, <needed struct>)
+            ((2, 3, 0), FetchRequest[0].API_KEY, 11),
             ((2, 1, 0), MetadataRequest[0].API_KEY, 7),
             ((1, 1, 0), FetchRequest[0].API_KEY, 7),
             ((1, 0, 0), MetadataRequest[0].API_KEY, 5),
