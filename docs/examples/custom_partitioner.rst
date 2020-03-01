@@ -3,7 +3,7 @@ Custom partitioner
 ==================
 
 If you consider using partitions as a logical entity, rather then purely for
-load-balancing, you may need to have more controll over routing messages to
+load-balancing, you may need to have more control over routing messages to
 partitions. By default hashing algorithms are used.
 
 

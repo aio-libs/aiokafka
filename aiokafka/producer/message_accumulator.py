@@ -378,7 +378,7 @@ class MessageAccumulator:
         batch.reset_drain()
 
     def drain_by_nodes(self, ignore_nodes, muted_partitions=set()):
-        """ Group batches by leader to partiton nodes. """
+        """ Group batches by leader to partition nodes. """
         nodes = collections.defaultdict(dict)
         unknown_leaders_exist = False
         for tp in list(self._batches.keys()):

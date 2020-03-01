@@ -257,7 +257,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
         client.set_topics(['t2', 't3'])
         client.set_topics(['t2', 't3'])  # should be ignored
-        client.add_topic('t2')  # shold be ignored
+        client.add_topic('t2')  # should be ignored
         # bootstrap again -- no error expected
         await client.bootstrap()
         await client.close()
@@ -415,7 +415,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
             self.assertEqual(
                 len(client._metadata_update.mock_calls), 2)
 
-            # Setting [] should force update as it meens all topics
+            # Setting [] should force update as it means all topics
             await client.set_topics([])
             self.assertEqual(
                 len(client._metadata_update.mock_calls), 3)

@@ -169,7 +169,7 @@ There are several points of interest in this example:
   * We implement ``RebalanceListener`` to dump all counts and offsets before
     rebalances. After rebalances we load them from the same files. It's a kind
     of cache to avoid re-reading all messages.
-  * We controll offset reset policy manualy by setting
+  * We control offset reset policy manually by setting
     ``auto_offset_reset="none"``. We need it to catch OffsetOutOfRangeError
     so we can clear cache if files were old and such offsets don't exist
     anymore in Kafka.

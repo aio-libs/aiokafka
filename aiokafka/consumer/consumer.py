@@ -686,7 +686,7 @@ class AIOKafkaConsumer(object):
     def last_poll_timestamp(self, partition):
         """ Returns the timestamp of the last poll of this partition (in ms).
         It is the last time `highwater` and `last_stable_offset` were
-        udpated. However it does not mean that new messages were received.
+        updated. However it does not mean that new messages were received.
 
         As with ``highwater()`` will not be available until some messages are
         consumed.

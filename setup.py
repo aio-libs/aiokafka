@@ -98,7 +98,7 @@ if PY_VER >= (3, 5):
 elif PY_VER >= (3, 4):
     install_requires.append('typing')
 else:
-    raise RuntimeError("aiokafka doesn't suppport Python earlier than 3.4")
+    raise RuntimeError("aiokafka doesn't support Python earlier than 3.4")
 
 
 def read(f):
