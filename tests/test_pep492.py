@@ -102,7 +102,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         await consumer.stop()
         # Should just stop iterator, no errors
         await task
-        # But creating anothe iterator should result in an error, we can't
+        # But creating another iterator should result in an error, we can't
         # have dead loops like:
         #
         #   while True:

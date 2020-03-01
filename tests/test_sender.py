@@ -91,7 +91,7 @@ class TestSender(KafkaIntegrationTestCase):
     async def test_sender_maybe_wait_for_pid_non_transactional(self):
         sender = await self._setup_sender_with_init_mocked()
 
-        # If we are not using transactional manager will return rigth away
+        # If we are not using transactional manager will return right away
         sender._txn_manager = None
         await sender._maybe_wait_for_pid()
         sender._do_init_pid.assert_not_called()

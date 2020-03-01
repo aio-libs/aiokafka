@@ -50,7 +50,7 @@ def test_fetch_result_and_error(loop):
         loop=loop, error=OffsetOutOfRangeError({}), backoff=0)
 
     # Python3.7 got rid of trailing comma in exceptions, which makes the line
-    # diffrent between 3.6 and 3.7.
+    # different between 3.6 and 3.7.
     assert repr(error) in [
         "<FetchError error=OffsetOutOfRangeError({},)>",
         "<FetchError error=OffsetOutOfRangeError({})>"
@@ -81,7 +81,7 @@ class TestFetcher(unittest.TestCase):
         subscriptions = SubscriptionState(loop=self.loop)
         fetcher = Fetcher(client, subscriptions, loop=self.loop)
         self.add_cleanup(fetcher.close)
-        # Disable backgroud task
+        # Disable background task
         fetcher._fetch_task.cancel()
         try:
             await fetcher._fetch_task

@@ -93,10 +93,10 @@ The least safe is ``ack=0`` when there will be no acknowledgement from Broker,
 meaning client will never retry, as it will never see any errors.
 
 
-Indempotent produce
+Idempotent produce
 -------------------
 
-As of Kafka 0.11 the Brokers support indempotent producing, that will prevent
+As of Kafka 0.11 the Brokers support idempotent producing, that will prevent
 the Producer from creating duplicates on retries. *aiokafka* supports this mode
 by passing the parameter ``enable_idempotence=True`` to ``AIOKafkaProducer``::
 
@@ -197,7 +197,7 @@ containing fields:
       ``send()`` 0 will be returned (CreateTime). If Broker set it's own
       timestamp 1 will be returned (LogAppendTime).
 
-.. note:: In a very rare case, when Indempotent or Transactional producer is
+.. note:: In a very rare case, when Idempotent or Transactional producer is
     used and there was a long wait between batch initial send and a retry,
     producer may return ``offset == -1`` and ``timestamp == -1`` as Broker
     already expired the metadata for this produce sequence and only knows that
@@ -218,7 +218,7 @@ Users who need precise control over batch flow may use the lower-level
         metadata = batch.append(value=b"msg %d" % i, key=None, timestamp=None)
         assert metadata is not None
 
-    # Optionaly close the batch to further submission. If left open, the batch
+    # Optionally close the batch to further submission. If left open, the batch
     # may be appended to by producer.send().
     batch.close()
 

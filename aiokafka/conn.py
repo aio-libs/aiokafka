@@ -157,7 +157,7 @@ class AIOKafkaConnection:
         if loop.get_debug():
             self._source_traceback = traceback.extract_stack(sys._getframe(1))
 
-    # Warn and try to close. We can close synchroniously, so will attempt
+    # Warn and try to close. We can close synchronously, so will attempt
     # that
     def __del__(self, _warnings=warnings):
         if self.connected():

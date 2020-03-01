@@ -90,7 +90,7 @@ class TestMessageAccumulator(unittest.TestCase):
 
         done, _ = await asyncio.wait(
             [add_task], timeout=0.1, loop=self.loop)
-        self.assertFalse(bool(done))  # we stil not drained data for tp1
+        self.assertFalse(bool(done))  # we still not drained data for tp1
 
         batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(unknown_leaders_exist, True)

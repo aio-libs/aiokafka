@@ -856,7 +856,7 @@ class Fetcher:
         Arguments:
             timestamps: {TopicPartition: int} dict with timestamps to fetch
                 offsets by. -1 for the latest available, -2 for the earliest
-                available. Otherwise timestamp is treated as epoch miliseconds.
+                available. Otherwise timestamp is treated as epoch milliseconds.
 
         Returns:
             {TopicPartition: (int, int)}: Mapping of partition to

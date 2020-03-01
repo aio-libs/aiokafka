@@ -50,7 +50,7 @@ class Sender:
         self._linger_time = linger_ms / 1000
 
     async def start(self):
-        # If producer is indempotent we need to assure we have PID found
+        # If producer is idempotent we need to assure we have PID found
         await self._maybe_wait_for_pid()
         self._sender_task = ensure_future(
             self._sender_routine(), loop=self._loop)

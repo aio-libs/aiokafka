@@ -182,7 +182,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             await producer.send(self.topic, value, key=key)
 
         await producer.stop()
-        await producer.stop()  # shold be Ok
+        await producer.stop()  # should be Ok
 
     @run_until_complete
     async def test_producer_send_with_compression(self):
@@ -550,7 +550,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @kafka_versions('>=0.11.0')
     @run_until_complete
     async def test_producer_indempotence_no_duplicates(self):
-        # Indempotent producer should retry produce in case of timeout error
+        # Idempotent producer should retry produce in case of timeout error
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts,
             enable_idempotence=True,
@@ -685,7 +685,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_producer_sender_errors_propagate_to_producer(self):
         # Following on #362 there may be other unexpected errors in sender
-        # routine that we wan't the user to see, rather than just get stuck.
+        # routine that we want the user to see, rather than just get stuck.
 
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts, linger_ms=1000)

@@ -286,7 +286,7 @@ class GroupCoordinator(BaseCoordinator):
 
     def check_errors(self):
         """ Check if coordinator is well and no authorization or unrecoverable
-        errors occured
+        errors occurred
         """
         if self._coordination_task.done():
             self._coordination_task.result()
@@ -820,7 +820,7 @@ class GroupCoordinator(BaseCoordinator):
             self._commit_refresh_routine(assignment), loop=self._loop)
 
     async def _stop_commit_offsets_refresh_task(self):
-        # The previous task should end after assinment changed
+        # The previous task should end after assignment changed
         if self._commit_refresh_task is not None:
             if not self._commit_refresh_task.done():
                 self._commit_refresh_task.cancel()
