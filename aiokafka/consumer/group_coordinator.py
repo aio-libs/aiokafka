@@ -591,7 +591,7 @@ class GroupCoordinator(BaseCoordinator):
                 if auto_assigned and self.need_rejoin(subscription):
                     new_assignment = await self.ensure_active_group(
                         subscription, assignment)
-                    if new_assignment is None:
+                    if new_assignment is None or not new_assignment.active:
                         continue
                     else:
                         assignment = new_assignment
