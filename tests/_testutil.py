@@ -221,7 +221,9 @@ class KerberosUtils:
                  '-V', '1',
                  '-e', 'aes256-cts-hmac-sha1-96',
                  '-w', password],
-                cwd=str(keytab_dir.absolute()), capture_output=True)
+                cwd=str(keytab_dir.absolute()),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
             if res.returncode != 0:
                 print(
                     "Failed to setup keytab for Kerberos.\n"
@@ -243,7 +245,10 @@ class KerberosUtils:
             res = subprocess.run(
                 ['ktutil'],
                 cwd=str(keytab_dir.absolute()),
-                input=input_data.encode(), capture_output=True)
+                input=input_data.encode(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+                )
             if res.returncode != 0:
                 print(
                     "Failed to setup keytab for Kerberos.\n"
