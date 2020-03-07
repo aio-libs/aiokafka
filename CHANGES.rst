@@ -1,6 +1,9 @@
 CHANGES
 -------
 
+590.feature
+Upgrade to kafka-python version 2.0.0
+
 584.bugfix
 Handle `RequestTimedOutError` in `coordinator._do_commit_offsets()` method to explicitly mark coordinator as dead.
 
