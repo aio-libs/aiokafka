@@ -4,9 +4,10 @@ import unittest
 from unittest import mock
 
 from kafka.cluster import ClusterMetadata
-from kafka.common import (TopicPartition, KafkaTimeoutError,
+from kafka.errors import (KafkaTimeoutError,
                           NotLeaderForPartitionError,
                           LeaderNotAvailableError)
+from kafka.structs import TopicPartition
 from ._testutil import run_until_complete
 from aiokafka.util import ensure_future
 from aiokafka.producer.message_accumulator import (
@@ -90,7 +91,7 @@ class TestMessageAccumulator(unittest.TestCase):
 
         done, _ = await asyncio.wait(
             [add_task], timeout=0.1, loop=self.loop)
-        self.assertFalse(bool(done))  # we stil not drained data for tp1
+        self.assertFalse(bool(done))  # we still not drained data for tp1
 
         batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(unknown_leaders_exist, True)

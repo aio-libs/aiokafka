@@ -89,7 +89,7 @@ class ve_build_ext(build_ext):
             raise BuildFailed()
 
 
-install_requires = ['kafka-python==1.4.7']
+install_requires = ['kafka-python>=2.0.0']
 
 PY_VER = sys.version_info
 
@@ -98,7 +98,7 @@ if PY_VER >= (3, 5):
 elif PY_VER >= (3, 4):
     install_requires.append('typing')
 else:
-    raise RuntimeError("aiokafka doesn't suppport Python earlier than 3.4")
+    raise RuntimeError("aiokafka doesn't support Python earlier than 3.4")
 
 
 def read(f):

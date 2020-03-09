@@ -15,7 +15,7 @@ from aiokafka.protocol.coordination import FindCoordinatorRequest
 from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.errors import (
     KafkaError,
-    ConnectionError,
+    KafkaConnectionError,
     NodeNotReadyError,
     RequestTimedOutError,
     UnknownTopicOrPartitionError,
@@ -172,7 +172,7 @@ class AIOKafkaClient:
 
     async def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
-        # using request v0 for bootstap if not sure v1 is available
+        # using request v0 for bootstrap if not sure v1 is available
         if self._api_version == "auto" or self._api_version < (0, 10):
             metadata_request = MetadataRequest[0]([])
         else:
@@ -224,7 +224,7 @@ class AIOKafkaClient:
             log.debug('Received cluster metadata: %s', self.cluster)
             break
         else:
-            raise ConnectionError(
+            raise KafkaConnectionError(
                 'Unable to bootstrap from {}'.format(self.hosts))
 
         # detect api version if need
@@ -459,10 +459,10 @@ class AIOKafkaClient:
             request (Struct): request object (not-encoded)
 
         Raises:
-            kafka.common.RequestTimedOutError
-            kafka.common.NodeNotReadyError
-            kafka.common.ConnectionError
-            kafka.common.CorrelationIdError
+            kafka.errors.RequestTimedOutError
+            kafka.errors.NodeNotReadyError
+            kafka.errors.ConnectionError
+            kafka.errors.CorrelationIdError
 
         Returns:
             Future: resolves to Response struct
@@ -516,7 +516,7 @@ class AIOKafkaClient:
             ((0, 8, 0), MetadataRequest_v0([])),
         ]
 
-        # kafka kills the connection when it doesnt recognize an API request
+        # kafka kills the connection when it does not recognize an API request
         # so we can send a test request and then follow immediately with a
         # vanilla MetadataRequest. If the server did not recognize the first
         # request, both will be failed with a ConnectionError that wraps
@@ -559,7 +559,7 @@ class AIOKafkaClient:
         # The logic here is to check the list of supported request versions
         # in descending order. As soon as we find one that works, return it
         test_cases = [
-            # format (<broker verion>, <needed struct>)
+            # format (<broker version>, <needed struct>)
             ((2, 1, 0), MetadataRequest[0].API_KEY, 7),
             ((1, 1, 0), FetchRequest[0].API_KEY, 7),
             ((1, 0, 0), MetadataRequest[0].API_KEY, 5),

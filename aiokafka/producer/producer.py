@@ -289,7 +289,7 @@ class AIOKafkaProducer(object):
 
         if self._txn_manager is not None and self.client.api_version < (0, 11):
             raise UnsupportedVersionError(
-                "Idempotent producer available only for Broker vesion 0.11"
+                "Idempotent producer available only for Broker version 0.11"
                 " and above")
 
         await self._sender.start()
@@ -298,7 +298,7 @@ class AIOKafkaProducer(object):
         log.debug("Kafka producer started")
 
     async def flush(self):
-        """Wait untill all batches are Delivered and futures resolved"""
+        """Wait until all batches are Delivered and futures resolved"""
         await self._message_accumulator.flush()
 
     async def stop(self):

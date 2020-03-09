@@ -1,5 +1,5 @@
 import collections
-from kafka.common import (
+from kafka.structs import (
     OffsetAndMetadata, TopicPartition, BrokerMetadata, PartitionMetadata
 )
 

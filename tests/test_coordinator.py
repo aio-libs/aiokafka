@@ -12,7 +12,7 @@ from kafka.protocol.commit import (
     OffsetCommitRequest, OffsetCommitResponse_v2,
     OffsetFetchRequest_v1 as OffsetFetchRequest
 )
-import kafka.common as Errors
+import kafka.errors as Errors
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -183,7 +183,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             await do_rebalance()
         self.assertEqual(coordinator.need_rejoin(subsc), True)
 
-        # no exception expected, member_id should be reseted
+        # no exception expected, member_id should be reset
         coordinator.member_id = 'some_invalid_member_id'
         error_type = Errors.UnknownMemberIdError
         resp = await do_rebalance()
@@ -196,7 +196,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(Errors.KafkaError):  # Masked as unknown error
             await do_rebalance()
 
-        # no exception expected, coordinator_id should be reseted
+        # no exception expected, coordinator_id should be reset
         error_type = Errors.GroupCoordinatorNotAvailableError
         resp = await do_rebalance()
         self.assertIsNone(resp)
@@ -390,7 +390,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             with self.assertRaises(Errors.OffsetMetadataTooLargeError):
                 await coordinator.commit_offsets(assignment, offsets)
 
-            # retriable erros should be retried
+            # retriable errors should be retried
             commit_error = [
                 Errors.GroupLoadInProgressError,
                 Errors.GroupLoadInProgressError,

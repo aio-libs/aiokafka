@@ -94,7 +94,7 @@ For most simple use cases auto committing is probably the best choice::
         enable_auto_commit=True,       # Is True by default anyway
         auto_commit_interval_ms=1000,  # Autocommit every second
         auto_offset_reset="earliest",  # If committed offset not found, start
-                                       # from beginnig
+                                       # from beginning
     )
     await consumer.start()
 
@@ -112,7 +112,7 @@ batch operations you should use *manual commit*::
         group_id="my_group",           # Consumer must be in a group to commit
         enable_auto_commit=False,      # Will disable autocommit
         auto_offset_reset="earliest",  # If committed offset not found, start
-                                       # from beginnig
+                                       # from beginning
     )
     await consumer.start()
 
@@ -382,7 +382,7 @@ new topic matching a *subscribed regex* is created. For example::
 
     consumer = AIOKafkaConsumer(
         loop=loop, bootstrap_servers='localhost:9092',
-        metadata_max_age_ms=30000,  # This controlls the polling interval
+        metadata_max_age_ms=30000,  # This controls the polling interval
     )
     await consumer.start()
     consumer.subscribe(pattern="^MyGreatTopic-.*$")
@@ -500,7 +500,7 @@ A `read_committed` consumer will only read up to the LSO and filter out any
 transactional messages which have been aborted. The LSO also affects the
 behavior of ``seek_to_end(*partitions)`` and ``end_offsets(partitions)``
 for ``read_committed`` consumers, details of which are in each method's
-documentation. Finally, ``last_stable_offset()`` API was added similary to
+documentation. Finally, ``last_stable_offset()`` API was added similarly to
 ``highwater()`` API to query the lSO on a currently assigned transaction::
 
     async for msg in consumer:  # Only read committed tranasctions

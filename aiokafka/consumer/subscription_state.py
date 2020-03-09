@@ -25,7 +25,7 @@ class SubscriptionType(Enum):
 
 
 class SubscriptionState:
-    """ Intermidiate bridge to coordinate work between Consumer, Coordinator
+    """ Intermediate bridge to coordinate work between Consumer, Coordinator
     and Fetcher primitives.
 
         The class is different from kafka-python's implementation to provide
@@ -260,7 +260,7 @@ class SubscriptionState:
         self._fetch_waiters = waiters
 
     def abort_waiters(self, exc):
-        """ Critical error occured, we will abort any pending waiter
+        """ Critical error occurred, we will abort any pending waiter
         """
         for waiter in self._assignment_waiters:
             if not waiter.done():
@@ -523,7 +523,7 @@ class TopicPartitionState(object):
         return fut
 
     def update_committed(self, offset_meta: OffsetAndMetadata):
-        """ Called by Coordinator on successfull commit to update commit cache.
+        """ Called by Coordinator on successful commit to update commit cache.
         """
         for fut in self._committed_futs:
             if not fut.done():
