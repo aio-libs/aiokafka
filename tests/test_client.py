@@ -5,7 +5,7 @@ import socket
 import types
 from unittest import mock
 
-from kafka.common import (KafkaError, ConnectionError, RequestTimedOutError,
+from kafka.errors import (KafkaError, KafkaConnectionError, RequestTimedOutError,
                           NodeNotReadyError, UnrecognizedBrokerVersion)
 from kafka.protocol.metadata import (
     MetadataRequest_v0 as MetadataRequest,
@@ -245,7 +245,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
     async def test_bootstrap(self):
         client = AIOKafkaClient(loop=self.loop,
                                 bootstrap_servers='0.42.42.42:444')
-        with self.assertRaises(ConnectionError):
+        with self.assertRaises(KafkaConnectionError):
             await client.bootstrap()
 
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
@@ -267,7 +267,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         with mock.patch.object(AIOKafkaConnection, 'send') as mock_send:
             mock_send.side_effect = KafkaError('some kafka error')
-            with self.assertRaises(ConnectionError):
+            with self.assertRaises(KafkaConnectionError):
                 await client.bootstrap()
 
     @run_until_complete
@@ -275,7 +275,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         with mock.patch.object(AIOKafkaConnection, 'send') as mock_send:
             mock_send.side_effect = asyncio.TimeoutError('Timeout error')
-            with self.assertRaises(ConnectionError):
+            with self.assertRaises(KafkaConnectionError):
                 await client.bootstrap()
 
     @run_until_complete
@@ -308,7 +308,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
                 await client.check_version(client.get_random_node())
 
         client._get_conn = asyncio.coroutine(lambda _, **kw: None)
-        with self.assertRaises(ConnectionError):
+        with self.assertRaises(KafkaConnectionError):
             await client.check_version()
         await client.close()
 

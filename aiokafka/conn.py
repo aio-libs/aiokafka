@@ -373,7 +373,7 @@ class AIOKafkaConnection:
 
     def send(self, request, expect_response=True):
         if self._writer is None:
-            raise Errors.ConnectionError(
+            raise Errors.KafkaConnectionError(
                 "No connection to broker at {0}:{1}"
                 .format(self._host, self._port))
 
@@ -387,7 +387,7 @@ class AIOKafkaConnection:
             self._writer.write(size + message)
         except OSError as err:
             self.close(reason=CloseReason.CONNECTION_BROKEN)
-            raise Errors.ConnectionError(
+            raise Errors.KafkaConnectionError(
                 "Connection at {0}:{1} broken: {2}".format(
                     self._host, self._port, err))
 
@@ -402,7 +402,7 @@ class AIOKafkaConnection:
 
     def _send_sasl_token(self, payload, expect_response=True):
         if self._writer is None:
-            raise Errors.ConnectionError(
+            raise Errors.KafkaConnectionError(
                 "No connection to broker at {0}:{1}"
                 .format(self._host, self._port))
 
@@ -411,7 +411,7 @@ class AIOKafkaConnection:
             self._writer.write(size + payload)
         except OSError as err:
             self.close(reason=CloseReason.CONNECTION_BROKEN)
-            raise Errors.ConnectionError(
+            raise Errors.KafkaConnectionError(
                 "Connection at {0}:{1} broken: {2}".format(
                     self._host, self._port, err))
 
@@ -435,7 +435,7 @@ class AIOKafkaConnection:
                 self._read_task = None
             for _, _, fut in self._requests:
                 if not fut.done():
-                    error = Errors.ConnectionError(
+                    error = Errors.KafkaConnectionError(
                         "Connection at {0}:{1} closed".format(
                             self._host, self._port))
                     if exc is not None:

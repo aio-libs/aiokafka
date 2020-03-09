@@ -12,7 +12,7 @@ from kafka.protocol.commit import (
     OffsetCommitRequest, OffsetCommitResponse_v2,
     OffsetFetchRequest_v1 as OffsetFetchRequest
 )
-import kafka.common as Errors
+import kafka.errors as Errors
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 

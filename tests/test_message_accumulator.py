@@ -4,9 +4,10 @@ import unittest
 from unittest import mock
 
 from kafka.cluster import ClusterMetadata
-from kafka.common import (TopicPartition, KafkaTimeoutError,
+from kafka.errors import (KafkaTimeoutError,
                           NotLeaderForPartitionError,
                           LeaderNotAvailableError)
+from kafka.structs import TopicPartition
 from ._testutil import run_until_complete
 from aiokafka.util import ensure_future
 from aiokafka.producer.message_accumulator import (

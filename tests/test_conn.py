@@ -17,7 +17,7 @@ from kafka.protocol.admin import (
 
 from aiokafka.conn import AIOKafkaConnection, create_conn, VersionInfo
 from aiokafka.errors import (
-    ConnectionError, CorrelationIdError, KafkaError, NoError, UnknownError,
+    KafkaConnectionError, CorrelationIdError, KafkaError, NoError, UnknownError,
     UnsupportedSaslMechanismError, IllegalSaslStateError
 )
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
@@ -136,13 +136,13 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         host, port = self.kafka_host, self.kafka_port
         conn = AIOKafkaConnection(host=host, port=port, loop=self.loop)
         request = MetadataRequest([])
-        with self.assertRaises(ConnectionError):
+        with self.assertRaises(KafkaConnectionError):
             await conn.send(request)
 
         conn._writer = mock.MagicMock()
         conn._writer.write.side_effect = OSError('mocked writer is closed')
 
-        with self.assertRaises(ConnectionError):
+        with self.assertRaises(KafkaConnectionError):
             await conn.send(request)
 
     @run_until_complete
@@ -229,7 +229,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         # invoke reader task
         conn._read_task = conn._create_reader_task()
 
-        with self.assertRaises(ConnectionError):
+        with self.assertRaises(KafkaConnectionError):
             await conn.send(request)
         self.assertEqual(conn.connected(), False)
 
