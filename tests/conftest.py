@@ -14,6 +14,8 @@ from aiokafka.record.legacy_records import (
 from aiokafka.record.default_records import (
     DefaultRecordBatchBuilder, _DefaultRecordBatchBuilderPy)
 from aiokafka.util import NO_EXTENSIONS
+from ._testutil import wait_kafka
+
 
 if not NO_EXTENSIONS:
     assert LegacyRecordBatchBuilder is not _LegacyRecordBatchBuilderPy and \
@@ -179,11 +181,24 @@ if sys.platform != 'win32':
             tty=True,
             detach=True)
 
-        yield (
-            kafka_host, kafka_port, kafka_ssl_port, kafka_sasl_plain_port,
-            kafka_sasl_ssl_port, container
-        )
-        container.remove(force=True)
+        try:
+            if not wait_kafka(kafka_host, kafka_port, timeout=10):
+                exit_code, output = container.exec_run(
+                    ["supervisorctl", "tail", "kafka"])
+                print("Kafka failed to start. \n--- STDOUT:")
+                print(output.decode(), file=sys.stdout)
+                exit_code, output = container.exec_run(
+                    ["supervisorctl", "tail", "kafka", "stderr"])
+                print("--- STDERR:")
+                print(output.decode(), file=sys.stderr)
+                pytest.exit("Could not start Kafka Server")
+
+            yield (
+                kafka_host, kafka_port, kafka_ssl_port, kafka_sasl_plain_port,
+                kafka_sasl_ssl_port, container
+            )
+        finally:
+            container.remove(force=True)
 
 else:
 
@@ -234,13 +249,13 @@ def setup_test_class(request, loop, kafka_server, ssl_folder, acl_manager,
     request.cls.ssl_folder = ssl_folder
     request.cls.acl_manager = acl_manager
     request.cls.kerberos_utils = kerberos_utils
+    request.cls.hosts = [
+        '{}:{}'.format(request.cls.kafka_host, request.cls.kafka_port)
+    ]
 
     docker_image = request.config.getoption('--docker-image')
     kafka_version = docker_image.split(":")[-1].split("_")[-1]
     request.cls.kafka_version = kafka_version
-
-    if hasattr(request.cls, 'wait_kafka'):
-        request.cls.wait_kafka()
 
 
 def pytest_ignore_collect(path, config):

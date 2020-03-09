@@ -279,27 +279,6 @@ class KerberosUtils:
 class KafkaIntegrationTestCase(unittest.TestCase):
 
     topic = None
-    hosts = []
-
-    @classmethod
-    def wait_kafka(cls):
-        cls.hosts = ['{}:{}'.format(cls.kafka_host, cls.kafka_port)]
-
-        # Reconnecting until Kafka in docker becomes available
-        for i in range(500):
-            client = AIOKafkaClient(loop=cls.loop, bootstrap_servers=cls.hosts)
-            try:
-                cls.loop.run_until_complete(client.bootstrap())
-                # Broker can still be loading cluster layout, so we can get 0
-                # brokers. That counts as still not available
-                if client.cluster.brokers():
-                    return
-            except ConnectionError:
-                pass
-            finally:
-                cls.loop.run_until_complete(client.close())
-            time.sleep(0.1)
-        assert False, "Kafka server never started"
 
     @contextmanager
     def silence_loop_exception_handler(self):
@@ -392,3 +371,27 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 def random_string(length):
     s = "".join(random.choice(string.ascii_letters) for _ in range(length))
     return s.encode('utf-8')
+
+
+def wait_kafka(kafka_host, kafka_port, timeout=60):
+    hosts = ['{}:{}'.format(kafka_host, kafka_port)]
+    loop = asyncio.get_event_loop()
+
+    # Reconnecting until Kafka in docker becomes available
+    start = loop.time()
+    while True:
+        client = AIOKafkaClient(
+            loop=loop, bootstrap_servers=hosts)
+        try:
+            loop.run_until_complete(client.bootstrap())
+            # Broker can still be loading cluster layout, so we can get 0
+            # brokers. That counts as still not available
+            if client.cluster.brokers():
+                return True
+        except ConnectionError:
+            pass
+        finally:
+            loop.run_until_complete(client.close())
+        time.sleep(0.5)
+        if loop.time() - start > timeout:
+            return False
