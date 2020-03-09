@@ -68,7 +68,7 @@ from kafka.errors import (
 
     KafkaUnavailableError,
     KafkaTimeoutError,
-    ConnectionError,
+    KafkaConnectionError,
 )
 
 __all__ = [
@@ -143,7 +143,7 @@ __all__ = [
 
     "KafkaUnavailableError",
     "KafkaTimeoutError",
-    "ConnectionError",
+    "KafkaConnectionError",
 ]
 
 

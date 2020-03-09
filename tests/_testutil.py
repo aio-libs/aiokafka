@@ -16,7 +16,7 @@ from functools import wraps
 
 from aiokafka import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
-from aiokafka.errors import ConnectionError
+from aiokafka.errors import KafkaConnectionError
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.helpers import create_ssl_context
 

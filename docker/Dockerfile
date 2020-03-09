@@ -1,6 +1,6 @@
 # Kafka and Zookeeper (borrowed from spotify/kafka)
 
-FROM openjdk:11-jre-buster
+FROM openjdk:8-buster
 
 ENV DEBIAN_FRONTEND noninteractive
 
