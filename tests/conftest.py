@@ -152,7 +152,7 @@ if sys.platform != 'win32':
         }
         kafka_version = image.split(":")[-1].split("_")[-1]
         if not kafka_version == "0.9.0.1":
-            environment['SASL_MECHANISMS'] = "PLAIN,GSSAPI"
+            environment['SASL_MECHANISMS'] = "PLAIN,GSSAPI,SCRAM-SHA-256"
             environment['SASL_JAAS_FILE'] = "kafka_server_jaas.conf"
         else:
             environment['SASL_MECHANISMS'] = "GSSAPI"

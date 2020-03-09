@@ -16,6 +16,9 @@ Upgrade to kafka-python version 1.4.7, which fixes a number of issues with clien
 523.feature
 Add `consumer.last_poll_timestamp(partition)` which gives the ms timestamp of the last update of `highwater` and `lso`.
 
+571.feature
+Add support for sasl mechanism `SCRAM-SHA-256` and `SCRAM-SHA-512`
+
 567.doc
 Fix spelling errors in comments and documentation using codespell
 
