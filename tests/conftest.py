@@ -55,6 +55,16 @@ def acl_manager(kafka_server, request):
     return manager
 
 
+@pytest.fixture(scope='class')
+def kafka_config(kafka_server, request):
+    image = request.config.getoption('--docker-image')
+    tag = image.split(":")[-1].replace('_', '-')
+
+    from ._testutil import KafkaConfig
+    manager = KafkaConfig(kafka_server[-1], tag)
+    return manager
+
+
 @pytest.yield_fixture(autouse=True)
 def clean_acl(acl_manager):
     # This is used to have a better report on ResourceWarnings. Without it
@@ -153,9 +163,15 @@ if sys.platform != 'win32':
             'NUM_PARTITIONS': 2
         }
         kafka_version = image.split(":")[-1].split("_")[-1]
-        if not kafka_version == "0.9.0.1":
-            environment['SASL_MECHANISMS'] = "PLAIN,GSSAPI,SCRAM-SHA-256"
+        kafka_version = tuple(int(x) for x in kafka_version.split('.'))
+        if kafka_version >= (0, 10, 2):
+            environment['SASL_MECHANISMS'] = (
+                "PLAIN,GSSAPI,SCRAM-SHA-256,SCRAM-SHA-512"
+            )
             environment['SASL_JAAS_FILE'] = "kafka_server_jaas.conf"
+        elif kafka_version >= (0, 10, 1):
+            environment['SASL_MECHANISMS'] = "PLAIN,GSSAPI"
+            environment['SASL_JAAS_FILE'] = "kafka_server_jaas_no_scram.conf"
         else:
             environment['SASL_MECHANISMS'] = "GSSAPI"
             environment['SASL_JAAS_FILE'] = "kafka_server_gssapi_jaas.conf"
@@ -239,7 +255,7 @@ def setup_test_class_serverless(request, loop, ssl_folder):
 
 @pytest.fixture(scope='class')
 def setup_test_class(request, loop, kafka_server, ssl_folder, acl_manager,
-                     kerberos_utils):
+                     kerberos_utils, kafka_config):
     request.cls.loop = loop
     request.cls.kafka_host = kafka_server[0]
     request.cls.kafka_port = kafka_server[1]
@@ -249,6 +265,7 @@ def setup_test_class(request, loop, kafka_server, ssl_folder, acl_manager,
     request.cls.ssl_folder = ssl_folder
     request.cls.acl_manager = acl_manager
     request.cls.kerberos_utils = kerberos_utils
+    request.cls.kafka_config = kafka_config
     request.cls.hosts = [
         '{}:{}'.format(request.cls.kafka_host, request.cls.kafka_port)
     ]

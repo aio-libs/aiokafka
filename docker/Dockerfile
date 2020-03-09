@@ -24,6 +24,7 @@ RUN wget -q https://archive.apache.org/dist/kafka/"$KAFKA_VERSION"/kafka_"$SCALA
 ADD scripts/start-kafka.sh /usr/bin/start-kafka.sh
 ADD scripts/kafka_server_jaas.conf /etc/kafka/kafka_server_jaas.conf
 ADD scripts/kafka_server_gssapi_jaas.conf /etc/kafka/kafka_server_gssapi_jaas.conf
+ADD scripts/kafka_server_jaas_no_scram.conf /etc/kafka/kafka_server_jaas_no_scram.conf
 ADD scripts/krb5.conf /etc/krb5.conf
 
 # Supervisor config

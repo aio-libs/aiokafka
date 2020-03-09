@@ -5,8 +5,10 @@ import socket
 import types
 from unittest import mock
 
-from kafka.errors import (KafkaError, KafkaConnectionError, RequestTimedOutError,
-                          NodeNotReadyError, UnrecognizedBrokerVersion)
+from kafka.errors import (
+    KafkaError, KafkaConnectionError, RequestTimedOutError,
+    NodeNotReadyError, UnrecognizedBrokerVersion
+)
 from kafka.protocol.metadata import (
     MetadataRequest_v0 as MetadataRequest,
     MetadataResponse_v0 as MetadataResponse)

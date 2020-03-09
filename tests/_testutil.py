@@ -194,6 +194,40 @@ class ACLManager:
             self.remove_acl(**acl_params)
 
 
+class KafkaConfig:
+
+    def __init__(self, docker, tag):
+        self._docker = docker
+        self._active_acls = []
+        self._tag = tag
+
+    @property
+    def cmd(self):
+        return "/opt/kafka_{tag}/bin/kafka-configs.sh".format(tag=self._tag)
+
+    def _exec(self, *cmd_options):
+        cmd = ' '.join(
+            [self.cmd, "--zookeeper", "localhost:2181"] + list(cmd_options))
+        exit_code, output = self._docker.exec_run(cmd)
+        if exit_code != 0:
+            for line in output.split(b'\n'):
+                log.warning(line)
+            raise RuntimeError("Failed to apply Config")
+        else:
+            for line in output.split(b'\n'):
+                log.debug(line)
+            return output
+
+    def add_scram_user(self, username, password):
+        self._exec(
+            "--alter",
+            "--add-config",
+            "SCRAM-SHA-256=[password={0}],SCRAM-SHA-512=[password={0}]".format(
+                password),
+            "--entity-type", "users",
+            "--entity-name", username)
+
+
 class KerberosUtils:
 
     def __init__(self, docker):
@@ -388,7 +422,7 @@ def wait_kafka(kafka_host, kafka_port, timeout=60):
             # brokers. That counts as still not available
             if client.cluster.brokers():
                 return True
-        except ConnectionError:
+        except KafkaConnectionError:
             pass
         finally:
             loop.run_until_complete(client.close())

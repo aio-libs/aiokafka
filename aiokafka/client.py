@@ -461,7 +461,7 @@ class AIOKafkaClient:
         Raises:
             kafka.errors.RequestTimedOutError
             kafka.errors.NodeNotReadyError
-            kafka.errors.ConnectionError
+            kafka.errors.KafkaConnectionError
             kafka.errors.CorrelationIdError
 
         Returns:
@@ -523,7 +523,7 @@ class AIOKafkaClient:
         # socket.error (32, 54, or 104)
         conn = await self._get_conn(node_id, no_hint=True)
         if conn is None:
-            raise ConnectionError(
+            raise KafkaConnectionError(
                 "No connection to node with id {}".format(node_id))
         for version, request in test_cases:
             try:

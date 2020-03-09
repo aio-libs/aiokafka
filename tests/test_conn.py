@@ -17,8 +17,8 @@ from kafka.protocol.admin import (
 
 from aiokafka.conn import AIOKafkaConnection, create_conn, VersionInfo
 from aiokafka.errors import (
-    KafkaConnectionError, CorrelationIdError, KafkaError, NoError, UnknownError,
-    UnsupportedSaslMechanismError, IllegalSaslStateError
+    KafkaConnectionError, CorrelationIdError, KafkaError, NoError,
+    UnknownError, UnsupportedSaslMechanismError, IllegalSaslStateError
 )
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
@@ -409,14 +409,14 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
         # Broken pipe error
         conn._writer.write.side_effect = OSError
-        with self.assertRaises(ConnectionError):
+        with self.assertRaises(KafkaConnectionError):
             conn._send_sasl_token(b"Super data")
         self.assertEqual(out_buffer, [])
         self.assertEqual(len(conn._requests), 0)
         self.assertEqual(conn.close.call_count, 1)
 
         conn._writer = None
-        with self.assertRaises(ConnectionError):
+        with self.assertRaises(KafkaConnectionError):
             conn._send_sasl_token(b"Super data")
         # We don't need to close 2ce
         self.assertEqual(conn.close.call_count, 1)
