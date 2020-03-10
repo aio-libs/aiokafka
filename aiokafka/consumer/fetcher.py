@@ -230,7 +230,8 @@ class PartitionRecords:
                     log.debug(
                         "Skipping aborted record batch from partition %s with"
                         " producer_id %s and offsets %s to %s",
-                        tp, next_batch.producer_id
+                        tp, next_batch.producer_id,
+                        next_batch.base_offset, next_batch.next_offset - 1
                     )
                     self.next_fetch_offset = next_batch.next_offset
                     continue
@@ -855,7 +856,8 @@ class Fetcher:
         Arguments:
             timestamps: {TopicPartition: int} dict with timestamps to fetch
                 offsets by. -1 for the latest available, -2 for the earliest
-                available. Otherwise timestamp is treated as epoch milliseconds.
+                available. Otherwise timestamp is treated as epoch
+                milliseconds.
 
         Returns:
             {TopicPartition: (int, int)}: Mapping of partition to

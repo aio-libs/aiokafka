@@ -13,5 +13,14 @@ versions:
     kafka: "1.1.1"
     scala: "2.12"
   -
-    kafka: "2.1.0"
+    kafka: "2.1.1"
+    scala: "2.12"
+  -
+    kafka: "2.2.2"
+    scala: "2.12"
+  -
+    kafka: "2.3.1"
+    scala: "2.12"
+  -
+    kafka: "2.4.0"
     scala: "2.12"

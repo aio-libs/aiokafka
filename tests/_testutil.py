@@ -194,6 +194,40 @@ class ACLManager:
             self.remove_acl(**acl_params)
 
 
+class KafkaConfig:
+
+    def __init__(self, docker, tag):
+        self._docker = docker
+        self._active_acls = []
+        self._tag = tag
+
+    @property
+    def cmd(self):
+        return "/opt/kafka_{tag}/bin/kafka-configs.sh".format(tag=self._tag)
+
+    def _exec(self, *cmd_options):
+        cmd = ' '.join(
+            [self.cmd, "--zookeeper", "localhost:2181"] + list(cmd_options))
+        exit_code, output = self._docker.exec_run(cmd)
+        if exit_code != 0:
+            for line in output.split(b'\n'):
+                log.warning(line)
+            raise RuntimeError("Failed to apply Config")
+        else:
+            for line in output.split(b'\n'):
+                log.debug(line)
+            return output
+
+    def add_scram_user(self, username, password):
+        self._exec(
+            "--alter",
+            "--add-config",
+            "SCRAM-SHA-256=[password={0}],SCRAM-SHA-512=[password={0}]".format(
+                password),
+            "--entity-type", "users",
+            "--entity-name", username)
+
+
 class KerberosUtils:
 
     def __init__(self, docker):
@@ -214,14 +248,24 @@ class KerberosUtils:
         keytab_dir.mkdir()
 
         if sys.platform == 'darwin':
-            subprocess.run(
+            res = subprocess.run(
                 ['ktutil', '-k', keytab_file,
                  'add',
                  '-p', principal,
                  '-V', '1',
                  '-e', 'aes256-cts-hmac-sha1-96',
                  '-w', password],
-                cwd=str(keytab_dir.absolute()), check=True)
+                cwd=str(keytab_dir.absolute()),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
+            if res.returncode != 0:
+                print(
+                    "Failed to setup keytab for Kerberos.\n"
+                    "stdout: \n{}\nstrerr: \n{}".format(
+                        res.stdout, res.stderr),
+                    file=sys.stderr
+                )
+                res.check_returncode()
         elif sys.platform != 'win32':
             input_data = (
                 "add_entry -password -p {principal} -k 1 "
@@ -232,10 +276,21 @@ class KerberosUtils:
                 principal=principal,
                 password=password,
                 keytab_file=keytab_file)
-            subprocess.run(
+            res = subprocess.run(
                 ['ktutil'],
                 cwd=str(keytab_dir.absolute()),
-                input=input_data.encode(), check=True)
+                input=input_data.encode(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+                )
+            if res.returncode != 0:
+                print(
+                    "Failed to setup keytab for Kerberos.\n"
+                    "stdout: \n{}\nstrerr: \n{}".format(
+                        res.stdout, res.stderr),
+                    file=sys.stderr
+                )
+                res.check_returncode()
         else:
             raise NotImplementedError
 
@@ -258,27 +313,6 @@ class KerberosUtils:
 class KafkaIntegrationTestCase(unittest.TestCase):
 
     topic = None
-    hosts = []
-
-    @classmethod
-    def wait_kafka(cls):
-        cls.hosts = ['{}:{}'.format(cls.kafka_host, cls.kafka_port)]
-
-        # Reconnecting until Kafka in docker becomes available
-        for i in range(500):
-            client = AIOKafkaClient(loop=cls.loop, bootstrap_servers=cls.hosts)
-            try:
-                cls.loop.run_until_complete(client.bootstrap())
-                # Broker can still be loading cluster layout, so we can get 0
-                # brokers. That counts as still not available
-                if client.cluster.brokers():
-                    return
-            except KafkaConnectionError:
-                pass
-            finally:
-                cls.loop.run_until_complete(client.close())
-            time.sleep(0.1)
-        assert False, "Kafka server never started"
 
     @contextmanager
     def silence_loop_exception_handler(self):
@@ -371,3 +405,27 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 def random_string(length):
     s = "".join(random.choice(string.ascii_letters) for _ in range(length))
     return s.encode('utf-8')
+
+
+def wait_kafka(kafka_host, kafka_port, timeout=60):
+    hosts = ['{}:{}'.format(kafka_host, kafka_port)]
+    loop = asyncio.get_event_loop()
+
+    # Reconnecting until Kafka in docker becomes available
+    start = loop.time()
+    while True:
+        client = AIOKafkaClient(
+            loop=loop, bootstrap_servers=hosts)
+        try:
+            loop.run_until_complete(client.bootstrap())
+            # Broker can still be loading cluster layout, so we can get 0
+            # brokers. That counts as still not available
+            if client.cluster.brokers():
+                return True
+        except KafkaConnectionError:
+            pass
+        finally:
+            loop.run_until_complete(client.close())
+        time.sleep(0.5)
+        if loop.time() - start > timeout:
+            return False

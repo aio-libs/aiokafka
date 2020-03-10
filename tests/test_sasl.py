@@ -14,7 +14,7 @@ import pytest
 
 
 @pytest.mark.usefixtures('setup_test_class')
-class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
+class TestKafkaSASL(KafkaIntegrationTestCase):
     TEST_TIMEOUT = 60
 
     # See https://docs.confluent.io/current/kafka/authorization.html
@@ -160,6 +160,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @kafka_versions('>=0.10.2')
     @run_until_complete
     async def test_sasl_plaintext_scram(self):
+        self.kafka_config.add_scram_user("test", "test")
         producer = await self.scram_producer_factory()
         await producer.send_and_wait(topic=self.topic,
                                      value=b"Super scram msg")

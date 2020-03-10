@@ -5,8 +5,10 @@ import socket
 import types
 from unittest import mock
 
-from kafka.errors import (KafkaError, KafkaConnectionError, RequestTimedOutError,
-                          NodeNotReadyError, UnrecognizedBrokerVersion)
+from kafka.errors import (
+    KafkaError, KafkaConnectionError, RequestTimedOutError,
+    NodeNotReadyError, UnrecognizedBrokerVersion
+)
 from kafka.protocol.metadata import (
     MetadataRequest_v0 as MetadataRequest,
     MetadataResponse_v0 as MetadataResponse)
@@ -294,7 +296,14 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
         await client.bootstrap()
         ver = await client.check_version()
-        self.assertEqual(kafka_version[:2], ver[:2])
+
+        expected_version = kafka_version[:2]
+        # No significant protocol changed, no way to differencieate
+        if expected_version == (2, 2):
+            expected_version = (2, 1)
+        elif expected_version == (2, 4):
+            expected_version = (2, 3)
+        self.assertEqual(expected_version, ver[:2])
         await self.wait_topic(client, 'some_test_topic')
         ver2 = await client.check_version()
         self.assertEqual(ver, ver2)
