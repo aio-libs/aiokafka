@@ -161,7 +161,7 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_sasl_plaintext_scram(self):
         self.kafka_config.add_scram_user("test", "test")
-        producer = await self.scram_producer_factory(api_version="2.4.0")
+        producer = await self.scram_producer_factory()
         await producer.send_and_wait(topic=self.topic,
                                      value=b"Super scram msg")
 
