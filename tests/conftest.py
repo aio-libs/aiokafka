@@ -198,7 +198,7 @@ if sys.platform != 'win32':
             detach=True)
 
         try:
-            if not wait_kafka(kafka_host, kafka_port, timeout=10):
+            if not wait_kafka(kafka_host, kafka_port):
                 exit_code, output = container.exec_run(
                     ["supervisorctl", "tail", "kafka"])
                 print("Kafka failed to start. \n--- STDOUT:")
