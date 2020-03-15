@@ -132,7 +132,9 @@ class ACLManager:
             [self.cmd, "--force",
               '--authorizer-properties zookeeper.connect=localhost:2181'
              ] + list(cmd_options))
+        print(cmd)
         exit_code, output = self._docker.exec_run(cmd)
+        print(output.decode())
         if exit_code != 0:
             for line in output.split(b'\n'):
                 log.warning(line)
