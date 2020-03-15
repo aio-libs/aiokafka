@@ -1,6 +1,7 @@
 import asyncio
 import gc
 import docker as libdocker
+import logging
 import pytest
 import socket
 import uuid
@@ -37,6 +38,12 @@ def pytest_addoption(parser):
                      help='Do not pull new docker image before test run')
 
 
+def pytest_configure(config):
+    """Disable the loggers."""
+    logger = logging.getLogger("asyncio")
+    logger.setLevel(logging.INFO)
+
+
 @pytest.fixture(scope='session')
 def docker(request):
     image = request.config.getoption('--docker-image')
@@ -69,6 +76,7 @@ def kafka_config(kafka_server, request):
 def clean_acl(acl_manager):
     # This is used to have a better report on ResourceWarnings. Without it
     # all warnings will be filled in the end of last test-case.
+    acl_manager.list_acl()
     yield
     acl_manager.cleanup()
 

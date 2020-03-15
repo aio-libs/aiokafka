@@ -28,7 +28,7 @@ ci-test-unit:
 	py.test -s --log-level DEBUG --cov aiokafka --cov-report html $(FLAGS) tests
 
 ci-test-all:
-	py.test -s --log-level DEBUG --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	py.test -s -v --log-level DEBUG --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
 coverage.xml: .coverage
 	coverage xml
