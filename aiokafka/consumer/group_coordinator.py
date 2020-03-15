@@ -129,6 +129,7 @@ class NoGroupCoordinator(BaseCoordinator):
 
                 assignment = self._subscription.subscription.assignment
                 if assignment is None:
+
                     await self._subscription.wait_for_assignment()
                     continue
 
@@ -147,6 +148,10 @@ class NoGroupCoordinator(BaseCoordinator):
                     [assignment.unassign_future, event_waiter],
                     return_when=asyncio.FIRST_COMPLETED,
                     loop=self._loop)
+
+                if not event_waiter.done():
+                    event_waiter.cancel()
+                    event_waiter = None
 
         except asyncio.CancelledError:
             pass
