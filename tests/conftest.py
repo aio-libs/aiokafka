@@ -1,6 +1,7 @@
 import asyncio
 import gc
 import docker as libdocker
+import logging
 import pytest
 import socket
 import uuid
@@ -37,6 +38,14 @@ def pytest_addoption(parser):
                      help='Do not pull new docker image before test run')
 
 
+def pytest_configure(config):
+    """Disable the loggers."""
+    # Debug logs clobber output on CI
+    for name in ["urllib3", "asyncio"]:
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.INFO)
+
+
 @pytest.fixture(scope='session')
 def docker(request):
     image = request.config.getoption('--docker-image')
@@ -63,14 +72,6 @@ def kafka_config(kafka_server, request):
     from ._testutil import KafkaConfig
     manager = KafkaConfig(kafka_server[-1], tag)
     return manager
-
-
-@pytest.yield_fixture(autouse=True)
-def clean_acl(acl_manager):
-    # This is used to have a better report on ResourceWarnings. Without it
-    # all warnings will be filled in the end of last test-case.
-    yield
-    acl_manager.cleanup()
 
 
 if sys.platform != 'win32':
@@ -198,7 +199,7 @@ if sys.platform != 'win32':
             detach=True)
 
         try:
-            if not wait_kafka(kafka_host, kafka_port, timeout=10):
+            if not wait_kafka(kafka_host, kafka_port):
                 exit_code, output = container.exec_run(
                     ["supervisorctl", "tail", "kafka"])
                 print("Kafka failed to start. \n--- STDOUT:")

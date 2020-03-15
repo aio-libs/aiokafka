@@ -1,3 +1,5 @@
+import pytest
+
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, kafka_versions
 )
@@ -10,7 +12,6 @@ from aiokafka.errors import (
     TransactionalIdAuthorizationFailed, UnknownTopicOrPartitionError
 )
 from aiokafka.structs import TopicPartition
-import pytest
 
 
 @pytest.mark.usefixtures('setup_test_class')
@@ -20,6 +21,17 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
     # See https://docs.confluent.io/current/kafka/authorization.html
     # for a good list of what Operation can be mapped to what Resource and
     # when is it checked
+
+    def setUp(self):
+        super().setUp()
+        if tuple(map(int, self.kafka_version.split("."))) >= (0, 10):
+            self.acl_manager.list_acl()
+
+    def tearDown(self):
+        # This is used to have a better report on ResourceWarnings. Without it
+        # all warnings will be filled in the end of last test-case.
+        super().tearDown()
+        self.acl_manager.cleanup()
 
     @property
     def sasl_hosts(self):
@@ -228,6 +240,27 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         with self.assertRaises(TopicAuthorizationFailedError):
             await producer.send_and_wait(
                 topic=self.topic, value=b"Super sasl msg")
+
+    @kafka_versions('>=0.11.0')
+    @run_until_complete
+    async def test_sasl_deny_autocreate_cluster(self):
+        self.acl_manager.add_acl(
+            deny_principal="test", operation="CREATE", cluster=True)
+        self.acl_manager.add_acl(
+            allow_principal="test", operation="DESCRIBE", topic=self.topic)
+        self.acl_manager.add_acl(
+            allow_principal="test", operation="WRITE", topic=self.topic)
+
+        producer = await self.producer_factory(request_timeout_ms=5000)
+        with self.assertRaises(TopicAuthorizationFailedError):
+            await producer.send_and_wait(self.topic, value=b"Super sasl msg")
+
+        with self.assertRaises(TopicAuthorizationFailedError):
+            await self.consumer_factory(request_timeout_ms=5000)
+
+        with self.assertRaises(TopicAuthorizationFailedError):
+            await self.consumer_factory(
+                request_timeout_ms=5000, group_id=None)
 
     ##########################################################################
     # Group Resource

@@ -190,7 +190,7 @@ class ACLManager:
         return options
 
     def cleanup(self):
-        for acl_params in self._active_acls:
+        for acl_params in self._active_acls[:]:
             self.remove_acl(**acl_params)
 
 
