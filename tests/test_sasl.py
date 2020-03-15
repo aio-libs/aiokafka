@@ -24,7 +24,8 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
 
     def setUp(self):
         super().setUp()
-        self.acl_manager.list_acl()
+        if tuple(map(int, self.kafka_version.split("."))) >= (0, 10):
+            self.acl_manager.list_acl()
 
     def tearDown(self):
         # This is used to have a better report on ResourceWarnings. Without it
@@ -242,42 +243,24 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
 
     @kafka_versions('>=0.11.0')
     @run_until_complete
-    async def test_sasl_deny_autocreate(self):
-        # Before 1.0.0 Kafka if topic does not exist it will not report
-        # Topic authorization errors, so we need to create topic beforehand
-        # See https://kafka.apache.org/documentation/#upgrade_100_notable
-        tmp_producer = await self.producer_factory()
-        error_class = TopicAuthorizationFailedError
-        if tmp_producer.client.api_version < (1, 0):
-            error_class = UnknownTopicOrPartitionError
-        del tmp_producer
-
-        self.acl_manager.add_acl(
-            allow_principal="test", operation="All", cluster=True)
+    async def test_sasl_deny_autocreate_cluster(self):
         self.acl_manager.add_acl(
             deny_principal="test", operation="CREATE", cluster=True)
+        self.acl_manager.add_acl(
+            allow_principal="test", operation="DESCRIBE", topic=self.topic)
+        self.acl_manager.add_acl(
+            allow_principal="test", operation="WRITE", topic=self.topic)
 
         producer = await self.producer_factory(request_timeout_ms=5000)
-        with self.assertRaises(UnknownTopicOrPartitionError):
+        with self.assertRaises(TopicAuthorizationFailedError):
             await producer.send_and_wait(self.topic, value=b"Super sasl msg")
 
-        with self.assertRaises(UnknownTopicOrPartitionError):
+        with self.assertRaises(TopicAuthorizationFailedError):
             await self.consumer_factory(request_timeout_ms=5000)
 
-        with self.assertRaises(UnknownTopicOrPartitionError):
+        with self.assertRaises(TopicAuthorizationFailedError):
             await self.consumer_factory(
                 request_timeout_ms=5000, group_id=None)
-
-        self.acl_manager.add_acl(
-            allow_principal="test", operation="All", topic=self.topic)
-        self.acl_manager.add_acl(
-            deny_principal="test", operation="CREATE", topic=self.topic)
-
-        with self.assertRaises(error_class):
-            await producer.send_and_wait(self.topic, value=b"Super sasl msg")
-
-        with self.assertRaises(error_class):
-            await self.consumer_factory(request_timeout_ms=5000)
 
     ##########################################################################
     # Group Resource

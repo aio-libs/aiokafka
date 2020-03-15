@@ -40,8 +40,10 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     """Disable the loggers."""
-    logger = logging.getLogger("asyncio")
-    logger.setLevel(logging.INFO)
+    # Debug logs clobber output on CI
+    for name in ["urllib3", "asyncio"]:
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.INFO)
 
 
 @pytest.fixture(scope='session')
