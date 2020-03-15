@@ -72,15 +72,6 @@ def kafka_config(kafka_server, request):
     return manager
 
 
-@pytest.yield_fixture(autouse=True)
-def clean_acl(acl_manager):
-    # This is used to have a better report on ResourceWarnings. Without it
-    # all warnings will be filled in the end of last test-case.
-    acl_manager.list_acl()
-    yield
-    acl_manager.cleanup()
-
-
 if sys.platform != 'win32':
 
     @pytest.fixture(scope='class')
