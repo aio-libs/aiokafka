@@ -97,8 +97,9 @@ class AIOKafkaConsumer(object):
             errors. Default: 100.
         auto_offset_reset (str): A policy for resetting offsets on
             OffsetOutOfRange errors: 'earliest' will move to the oldest
-            available message, 'latest' will move to the most recent. Any
-            ofther value will raise the exception. Default: 'latest'.
+            available message, 'latest' will move to the most recent, and
+            'none' will raise an exception so you can handle this case.
+            Default: 'latest'.
         enable_auto_commit (bool): If true the consumer's offset will be
             periodically committed in the background. Default: True.
         auto_commit_interval_ms (int): milliseconds between automatic
