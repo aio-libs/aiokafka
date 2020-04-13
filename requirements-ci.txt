@@ -5,7 +5,7 @@ docker==4.2.0
 lz4==2.2.1
 xxhash==1.4.3
 python-snappy==0.5.4
-Cython==0.29.15
+Cython==0.29.16
 docutils==0.16
 Pygments==2.5.2
 gssapi==1.6.1
