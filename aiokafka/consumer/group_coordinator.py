@@ -99,8 +99,14 @@ class NoGroupCoordinator(BaseCoordinator):
         partitions = []
         for topic in self._subscription.subscription.topics:
             p_ids = self._cluster.partitions_for_topic(topic)
-            if not p_ids and check_unknown:
-                raise Errors.UnknownTopicOrPartitionError()
+            if not p_ids:
+                if check_unknown:
+                    raise Errors.UnknownTopicOrPartitionError()
+                else:
+                    # We probably just changed subscription during metadata
+                    # update. No problem, lets wait for the next metadata
+                    # update
+                    continue
             for p_id in p_ids:
                 partitions.append(TopicPartition(topic, p_id))
 
@@ -123,6 +129,7 @@ class NoGroupCoordinator(BaseCoordinator):
 
                 assignment = self._subscription.subscription.assignment
                 if assignment is None:
+
                     await self._subscription.wait_for_assignment()
                     continue
 
@@ -141,6 +148,10 @@ class NoGroupCoordinator(BaseCoordinator):
                     [assignment.unassign_future, event_waiter],
                     return_when=asyncio.FIRST_COMPLETED,
                     loop=self._loop)
+
+                if not event_waiter.done():
+                    event_waiter.cancel()
+                    event_waiter = None
 
         except asyncio.CancelledError:
             pass

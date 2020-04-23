@@ -1047,6 +1047,15 @@ class AIOKafkaConsumer(object):
             self._subscription.subscribe(
                 topics=topics, listener=listener)
             self._client.set_topics(self._subscription.subscription.topics)
+            if self._group_id is None:
+                # We have reset the assignment, but client.set_topics will
+                # not always do a metadata update. We force it to do it even
+                # if metadata did not change. This will trigger a reassignment
+                # on NoGroupCoordinator, but only if snapshot did not change,
+                # thus we reset it too.
+                self._client.force_metadata_update()
+                if self._coordinator is not None:
+                    self._coordinator._metadata_snapshot = {}
             log.info("Subscribed to topic(s): %s", topics)
 
     def subscription(self):
