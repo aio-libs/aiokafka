@@ -1187,6 +1187,13 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             coordinator._next_autocommit_deadline, now + timeout,
             places=1)
 
+        # UnknownMemberId should also retry
+        coordinator._next_autocommit_deadline = 0
+        mocked.side_effect = Errors.UnknownMemberIdError()
+        now = self.loop.time()
+        timeout = await coordinator._maybe_do_autocommit(assignment)
+        self.assertEqual(timeout, 0.05)
+
         # Not retriable errors should skip autocommit and log
         mocked.side_effect = Errors.UnknownError()
         now = self.loop.time()
