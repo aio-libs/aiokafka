@@ -196,7 +196,8 @@ if sys.platform != 'win32':
             },
             environment=environment,
             tty=True,
-            detach=True)
+            detach=True,
+            remove=True)
 
         try:
             if not wait_kafka(kafka_host, kafka_port):

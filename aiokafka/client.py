@@ -21,7 +21,9 @@ from aiokafka.errors import (
     UnknownTopicOrPartitionError,
     UnrecognizedBrokerVersion,
     StaleMetadata)
-from aiokafka.util import ensure_future, create_future, parse_kafka_version
+from aiokafka.util import (
+    ensure_future, create_future, get_running_loop, parse_kafka_version
+)
 
 
 __all__ = ['AIOKafkaClient']
@@ -79,7 +81,7 @@ class AIOKafkaClient:
             disable idle checks. Default: 540000 (9 minutes).
     """
 
-    def __init__(self, *, loop, bootstrap_servers='localhost',
+    def __init__(self, *, loop=None, bootstrap_servers='localhost',
                  client_id='aiokafka-' + __version__,
                  metadata_max_age_ms=300000,
                  request_timeout_ms=40000,
@@ -93,6 +95,9 @@ class AIOKafkaClient:
                  sasl_plain_password=None,
                  sasl_kerberos_service_name='kafka',
                  sasl_kerberos_domain_name=None):
+        if loop is None:
+            loop = get_running_loop()
+
         if security_protocol not in (
                 'SSL', 'PLAINTEXT', 'SASL_PLAINTEXT', 'SASL_SSL'):
             raise ValueError("`security_protocol` should be SSL or PLAINTEXT")

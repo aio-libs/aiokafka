@@ -1,6 +1,6 @@
 # Some simple testing tasks (sorry, UNIX only).
 
-FLAGS=
+FLAGS?=--maxfail=3
 SCALA_VERSION?=2.12
 KAFKA_VERSION?=2.2.2
 DOCKER_IMAGE=aiolibs/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)

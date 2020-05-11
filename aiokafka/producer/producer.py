@@ -13,7 +13,7 @@ from aiokafka.errors import (
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import TopicPartition
 from aiokafka.util import (
-    INTEGER_MAX_VALUE, PY_36, commit_structure_validate
+    INTEGER_MAX_VALUE, PY_36, commit_structure_validate, get_running_loop
 )
 
 from .message_accumulator import MessageAccumulator
@@ -170,7 +170,7 @@ class AIOKafkaProducer(object):
     _closed = None  # Serves as an uninitialized flag for __del__
     _source_traceback = None
 
-    def __init__(self, *, loop, bootstrap_servers='localhost',
+    def __init__(self, *, loop=None, bootstrap_servers='localhost',
                  client_id=None,
                  metadata_max_age_ms=300000, request_timeout_ms=40000,
                  api_version='auto', acks=_missing,
@@ -185,6 +185,9 @@ class AIOKafkaProducer(object):
                  sasl_plain_password=None, sasl_plain_username=None,
                  sasl_kerberos_service_name='kafka',
                  sasl_kerberos_domain_name=None):
+        if loop is None:
+            loop = get_running_loop()
+
         if acks not in (0, 1, -1, 'all', _missing):
             raise ValueError("Invalid ACKS parameter")
         if compression_type not in ('gzip', 'snappy', 'lz4', None):

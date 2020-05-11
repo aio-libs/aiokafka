@@ -1,6 +1,6 @@
+import asyncio
 import os
 import sys
-import asyncio
 from distutils.version import StrictVersion
 
 from .structs import TopicPartition, OffsetAndMetadata
@@ -51,6 +51,16 @@ def commit_structure_validate(offsets):
 
         formatted_offsets[tp] = OffsetAndMetadata(offset, metadata)
     return formatted_offsets
+
+
+def get_running_loop() -> asyncio.AbstractEventLoop:
+    loop = asyncio.get_event_loop()
+    if not loop.is_running():
+        raise RuntimeError(
+            "The object should be created within an async function or "
+            "provide loop directly."
+        )
+    return loop
 
 
 PY_35 = sys.version_info >= (3, 5)
