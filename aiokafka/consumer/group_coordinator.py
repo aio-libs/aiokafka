@@ -916,7 +916,7 @@ class GroupCoordinator(BaseCoordinator):
                         assignment, assignment.all_consumed_offsets())
             except Errors.KafkaError as error:
                 log.warning("Auto offset commit failed: %s", error)
-                if error.retriable:
+                if self._is_commit_retriable(error):
                     # Retry after backoff.
                     self._next_autocommit_deadline = \
                         self._loop.time() + backoff
@@ -928,6 +928,16 @@ class GroupCoordinator(BaseCoordinator):
             self._next_autocommit_deadline = now + interval
 
         return max(0, self._next_autocommit_deadline - self._loop.time())
+
+    def _is_commit_retriable(self, error):
+        # Java client raises CommitFailedError which is retriable and thus
+        # masks those 3. We raise error that we got explicitly, so treat them
+        # as retriable.
+        return error.retriable or isinstance(error, (
+            Errors.UnknownMemberIdError,
+            Errors.IllegalGenerationError,
+            Errors.RebalanceInProgressError
+        ))
 
     async def _maybe_do_last_autocommit(self, assignment):
         if not self._enable_auto_commit:
