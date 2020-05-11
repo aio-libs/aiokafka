@@ -16,7 +16,7 @@ from aiokafka.errors import (
 )
 from aiokafka.structs import TopicPartition
 from aiokafka.util import (
-    PY_36, commit_structure_validate
+    PY_36, commit_structure_validate, get_running_loop
 )
 from aiokafka import __version__
 
@@ -214,7 +214,7 @@ class AIOKafkaConsumer(object):
     _closed = None  # Serves as an uninitialized flag for __del__
     _source_traceback = None
 
-    def __init__(self, *topics, loop,
+    def __init__(self, *topics, loop=None,
                  bootstrap_servers='localhost',
                  client_id='aiokafka-' + __version__,
                  group_id=None,
@@ -248,6 +248,9 @@ class AIOKafkaConsumer(object):
                  sasl_plain_username=None,
                  sasl_kerberos_service_name='kafka',
                  sasl_kerberos_domain_name=None):
+        if loop is None:
+            loop = get_running_loop()
+
         if max_poll_records is not None and (
                 not isinstance(max_poll_records, int) or max_poll_records < 1):
             raise ValueError("`max_poll_records` should be positive Integer")

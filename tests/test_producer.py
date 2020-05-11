@@ -32,13 +32,12 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_producer_start(self):
         with self.assertRaises(ValueError):
-            producer = AIOKafkaProducer(loop=self.loop, acks=122)
+            producer = AIOKafkaProducer(acks=122)
 
         with self.assertRaises(ValueError):
-            producer = AIOKafkaProducer(loop=self.loop, api_version="3.4.5")
+            producer = AIOKafkaProducer(api_version="3.4.5")
 
-        producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts)
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         await producer.start()
         self.assertNotEqual(producer.client.api_version, 'auto')
         partitions = await producer.partitions_for('some_topic_name')

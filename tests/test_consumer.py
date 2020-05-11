@@ -36,7 +36,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         auto_offset_reset = kwargs.pop('auto_offset_reset', 'earliest')
         group = kwargs.pop('group', 'group-%s' % self.id())
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop, group_id=group,
+            self.topic, group_id=group,
             bootstrap_servers=self.hosts,
             enable_auto_commit=enable_auto_commit,
             auto_offset_reset=auto_offset_reset,

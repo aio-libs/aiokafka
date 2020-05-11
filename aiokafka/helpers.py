@@ -1,4 +1,5 @@
 import logging
+
 from ssl import create_default_context, Purpose
 
 log = logging.getLogger(__name__)
