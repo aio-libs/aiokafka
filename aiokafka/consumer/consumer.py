@@ -1241,3 +1241,10 @@ class AIOKafkaConsumer(object):
                 raise err
             except RecordTooLargeError:
                 log.exception("error in consumer iterator: %s")
+
+    async def __aenter__(self):
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.stop()

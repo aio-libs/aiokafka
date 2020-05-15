@@ -552,6 +552,12 @@ class AIOKafkaProducer(object):
         fut = self._txn_manager.add_offsets_to_txn(formatted_offsets, group_id)
         await asyncio.shield(fut, loop=self._loop)
 
+    async def __aenter__(self):
+        await self.start()
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.stop()
+
 
 class TransactionContext:
 

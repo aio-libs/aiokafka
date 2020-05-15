@@ -134,6 +134,25 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             await producer.send(self.topic, b'value', key=b'KEY')
 
     @run_until_complete
+    async def test_producer_context_manager(self):
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        async with producer:
+            assert producer._sender._sender_task is not None
+            await producer.send(self.topic, b'value', key=b'KEY')
+        assert producer._closed
+
+        # Closes even on error
+        producer = AIOKafkaProducer(
+            loop=self.loop, bootstrap_servers=self.hosts)
+        with pytest.raises(ValueError):
+            async with producer:
+                assert producer._sender._sender_task is not None
+                await producer.send(self.topic, b'value', key=b'KEY')
+                raise ValueError()
+        assert producer._closed
+
+    @run_until_complete
     async def test_producer_send_noack(self):
         producer = AIOKafkaProducer(
             loop=self.loop, bootstrap_servers=self.hosts, acks=0)

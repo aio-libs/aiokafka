@@ -117,6 +117,46 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await consumer.stop()
 
     @run_until_complete
+    async def test_consumer_context_manager(self):
+        await self.send_messages(0, list(range(0, 10)))
+
+        group = 'group-%s' % self.id()
+        consumer = AIOKafkaConsumer(
+            self.topic, group_id=group,
+            bootstrap_servers=self.hosts,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest")
+        async with consumer as con:
+            assert con is consumer
+            assert consumer._fetcher is not None
+            messages = []
+            async for m in consumer:
+                messages.append(m)
+                if len(messages) == 10:
+                    break
+            self.assert_message_count(messages, 10)
+        assert consumer._closed
+
+        # Finilize on exception too
+        consumer = AIOKafkaConsumer(
+            self.topic, group_id=group,
+            bootstrap_servers=self.hosts,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest")
+        with pytest.raises(ValueError):
+            async with consumer as con:
+                assert con is consumer
+                assert consumer._fetcher is not None
+                messages = []
+                async for m in consumer:
+                    messages.append(m)
+                    if len(messages) == 10:
+                        break
+                self.assert_message_count(messages, 10)
+                raise ValueError
+        assert consumer._closed
+
+    @run_until_complete
     async def test_consumer_api_version(self):
         await self.send_messages(0, list(range(0, 10)))
         for text_version, api_version in [
