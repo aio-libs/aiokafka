@@ -27,7 +27,6 @@ Bugfixes:
 * Fix issue with messages not being read after subscriptions change with group_id=None. (issue #536)
 * Handle `RequestTimedOutError` in `coordinator._do_commit_offsets()` method to explicitly mark
   coordinator as dead. (issue #584 and pr #585 by @FedirAlifirenko)
-  `#4106 <https://github.com/aio-libs/aiohttp/issues/4106>`_
 * Added handling `asyncio.TimeoutError` on metadata request to broker and metadata update.
   (issue #576 and pr #577 by @MichalMazurek)
 * Too many reqs on kafka not available (issue #496 by @lud4ik)
