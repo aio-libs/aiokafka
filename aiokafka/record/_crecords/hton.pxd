@@ -1,3 +1,4 @@
+#cython: language_level=3
 # Module taken as is from https://github.com/MagicStack/asyncpg project.
 
 # Copyright (C) 2016-present the asyncpg authors and contributors

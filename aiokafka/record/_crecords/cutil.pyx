@@ -1,3 +1,4 @@
+#cython: language_level=3
 from aiokafka.errors import CorruptRecordException
 
 # VarInt implementation
