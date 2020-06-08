@@ -1,7 +1,7 @@
 flake8==3.8.2
 pytest==5.4.3
 pytest-cov==2.9.0
-docker==4.2.0
+docker==4.2.1
 lz4==2.2.1
 xxhash==1.4.3
 python-snappy==0.5.4
