@@ -1101,6 +1101,9 @@ class Fetcher:
                 [waiter], timeout=timeout, loop=self._loop)
 
             if not done or self._closed:
+                fut = _.pop()
+                self._fetch_waiters.discard(fut)
+                fut.cancel()
                 return {}
 
             if waiter.done():
