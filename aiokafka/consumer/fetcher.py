@@ -1097,12 +1097,12 @@ class Fetcher:
                 return drained
 
             waiter = self._create_fetch_waiter()
-            done, _ = await asyncio.wait(
+            done, pending = await asyncio.wait(
                 [waiter], timeout=timeout, loop=self._loop)
 
             if not done or self._closed:
-                fut = _.pop() if _ else None
-                if fut:
+                if pending:
+                    fut = pending.pop()
                     fut.cancel()
                 return {}
 
