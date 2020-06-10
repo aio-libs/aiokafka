@@ -2,6 +2,8 @@
 Changelog
 =========
 
+628.bugfix
+Fix memory leak in kafka consumer when consumer is in idle state not consuming any message
 
 0.6.0 (2020-05-15)
 ==================
