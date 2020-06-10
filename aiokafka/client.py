@@ -94,7 +94,9 @@ class AIOKafkaClient:
                  sasl_plain_username=None,
                  sasl_plain_password=None,
                  sasl_kerberos_service_name='kafka',
-                 sasl_kerberos_domain_name=None):
+                 sasl_kerberos_domain_name=None,
+                 sasl_oauth_token_provider=None
+                 ):
         if loop is None:
             loop = get_running_loop()
 
@@ -106,7 +108,7 @@ class AIOKafkaClient:
                 "`ssl_context` is mandatory if security_protocol=='SSL'")
         if security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
             if sasl_mechanism not in (
-                    "PLAIN", "GSSAPI", "SCRAM-SHA-256", "SCRAM-SHA-512"):
+                    "PLAIN", "GSSAPI", "SCRAM-SHA-256", "SCRAM-SHA-512", "OAUTHBEARER"):
                 raise ValueError(
                     "only `PLAIN`, `GSSAPI`, `SCRAM-SHA-256` and "
                     "`SCRAM-SHA-512` sasl_mechanism are supported "
@@ -133,6 +135,7 @@ class AIOKafkaClient:
         self._sasl_plain_password = sasl_plain_password
         self._sasl_kerberos_service_name = sasl_kerberos_service_name
         self._sasl_kerberos_domain_name = sasl_kerberos_domain_name
+        self._sasl_oauth_token_provider = sasl_oauth_token_provider
 
         self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
 
@@ -202,6 +205,7 @@ class AIOKafkaClient:
                     sasl_plain_password=self._sasl_plain_password,
                     sasl_kerberos_service_name=self._sasl_kerberos_service_name,  # noqa: ignore=E501
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
+                    sasl_oauth_token_provider=self._sasl_oauth_token_provider,
                     version_hint=version_hint)
             except (OSError, asyncio.TimeoutError) as err:
                 log.error('Unable connect to "%s:%s": %s', host, port, err)
@@ -438,6 +442,7 @@ class AIOKafkaClient:
                     sasl_plain_password=self._sasl_plain_password,
                     sasl_kerberos_service_name=self._sasl_kerberos_service_name,  # noqa: ignore=E501
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
+                    sasl_oauth_token_provider=self._sasl_oauth_token_provider,
                     version_hint=version_hint
                 )
         except (OSError, asyncio.TimeoutError, KafkaError) as err:

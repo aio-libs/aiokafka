@@ -154,6 +154,9 @@ class AIOKafkaProducer(object):
             Default: None
         sasl_plain_password (str): password for sasl PLAIN authentication.
             Default: None
+        sasl_oauth_token_provider (AbstractTokenProvider): OAuthBearer token provider instance. (See kafka.oauth.abstract). 
+            Default: None
+        
 
     Note:
         Many configuration parameters are taken from the Java client:
@@ -184,7 +187,8 @@ class AIOKafkaProducer(object):
                  transaction_timeout_ms=60000, sasl_mechanism="PLAIN",
                  sasl_plain_password=None, sasl_plain_username=None,
                  sasl_kerberos_service_name='kafka',
-                 sasl_kerberos_domain_name=None):
+                 sasl_kerberos_domain_name=None,
+                 sasl_oauth_token_provider=None):
         if loop is None:
             loop = get_running_loop()
 
@@ -246,7 +250,8 @@ class AIOKafkaProducer(object):
             sasl_plain_username=sasl_plain_username,
             sasl_plain_password=sasl_plain_password,
             sasl_kerberos_service_name=sasl_kerberos_service_name,
-            sasl_kerberos_domain_name=sasl_kerberos_domain_name)
+            sasl_kerberos_domain_name=sasl_kerberos_domain_name,
+            sasl_oauth_token_provider=sasl_oauth_token_provider)
         self._metadata = self.client.cluster
         self._message_accumulator = MessageAccumulator(
             self._metadata, max_batch_size, compression_attrs,
