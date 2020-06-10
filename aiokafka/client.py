@@ -108,10 +108,12 @@ class AIOKafkaClient:
                 "`ssl_context` is mandatory if security_protocol=='SSL'")
         if security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
             if sasl_mechanism not in (
-                    "PLAIN", "GSSAPI", "SCRAM-SHA-256", "SCRAM-SHA-512", "OAUTHBEARER"):
+                    "PLAIN", "GSSAPI", "SCRAM-SHA-256", "SCRAM-SHA-512",
+                    "OAUTHBEARER"):
                 raise ValueError(
-                    "only `PLAIN`, `GSSAPI`, `SCRAM-SHA-256` and "
-                    "`SCRAM-SHA-512` sasl_mechanism are supported "
+                    "only `PLAIN`, `GSSAPI`, `SCRAM-SHA-256`, "
+                    "`SCRAM-SHA-512` and `OAUTHBEARER`"
+                    "sasl_mechanism are supported "
                     "at the moment")
             if sasl_mechanism == "PLAIN" and \
                (sasl_plain_username is None or sasl_plain_password is None):

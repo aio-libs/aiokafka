@@ -18,7 +18,6 @@ from kafka.protocol.admin import (
 )
 from kafka.protocol.commit import (
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
-from kafka.oauth.abstract import AbstractTokenProvider
 
 import aiokafka.errors as Errors
 from aiokafka.util import ensure_future, create_future, PY_36
@@ -131,8 +130,14 @@ class AIOKafkaConnection:
             assert gssapi is not None, "gssapi library required"
 
         if sasl_mechanism == "OAUTHBEARER":
-            assert sasl_oauth_token_provider is not None, 'sasl_oauth_token_provider required for OAUTHBEARER sasl'
-            assert callable(getattr(sasl_oauth_token_provider, "token", None)), 'sasl_oauth_token_provider must implement method #token()'
+            assert sasl_oauth_token_provider is not None, (
+                'sasl_oauth_token_provider required for OAUTHBEARER sasl'
+                )
+            assert callable(
+                getattr(sasl_oauth_token_provider, "token", None)
+                ), (
+                'sasl_oauth_token_provider must implement method #token()'
+                )
 
         self._loop = loop
         self._host = host
@@ -348,7 +353,7 @@ class AIOKafkaConnection:
             sasl_plain_password=self._sasl_plain_password,
             sasl_plain_username=self._sasl_plain_username,
             sasl_mechanism=self._sasl_mechanism)
-            
+
     def authenticator_oauth(self):
         return OAuthAuthenticator(
             loop=self._loop,
@@ -730,20 +735,29 @@ class OAuthAuthenticator(BaseSaslAuthenticator):
 
         assert resp == b"", (
             "Server should either close or send an empty response"
-        )  
+        )
 
     def _build_oauth_client_request(self):
-        return "n,,\x01auth=Bearer {}{}\x01\x01".format(self._sasl_oauth_token_provider.token(), self._token_extensions())
-    
+        return "n,,\x01auth=Bearer {}{}\x01\x01".format(
+            self._sasl_oauth_token_provider.token(), self._token_extensions()
+            )
+
     def _token_extensions(self):
         """
-        Return a string representation of the OPTIONAL key-value pairs that can be sent with an OAUTHBEARER
-        initial request.
+        Return a string representation of the OPTIONAL key-value pairs
+        that can be sent with an OAUTHBEARER initial request.
         """
-        # Only run if the #extensions() method is implemented by the clients Token Provider class
+        # Only run if the #extensions() method is implemented
+        # by the clients Token Provider class
         # Builds up a string separated by \x01 via a dict of key value pairs
-        if callable(getattr(self._sasl_oauth_token_provider, "extensions", None)) and len(self._sasl_oauth_token_provider.extensions()) > 0:
-            msg = "\x01".join(["{}={}".format(k, v) for k, v in self._sasl_oauth_token_provider.extensions().items()])
+        if callable(
+            getattr(self._sasl_oauth_token_provider, "extensions", None)
+            ) and \
+                len(self._sasl_oauth_token_provider.extensions()) > 0:
+            msg = "\x01".join(
+                ["{}={}".format(k, v) for k, v in
+                    self._sasl_oauth_token_provider.extensions().items()]
+                )
             return "\x01" + msg
         else:
             return ""

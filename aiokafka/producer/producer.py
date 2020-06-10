@@ -149,14 +149,15 @@ class AIOKafkaProducer(object):
             New in version 0.5.0.
         sasl_mechanism (str): Authentication mechanism when security_protocol
             is configured for SASL_PLAINTEXT or SASL_SSL. Valid values are:
-            PLAIN, GSSAPI, SCRAM-SHA-256, SCRAM-SHA-512. Default: PLAIN
+            PLAIN, GSSAPI, SCRAM-SHA-256, SCRAM-SHA-512, OAUTHBEARER.
+            Default: PLAIN
         sasl_plain_username (str): username for sasl PLAIN authentication.
             Default: None
         sasl_plain_password (str): password for sasl PLAIN authentication.
             Default: None
-        sasl_oauth_token_provider (AbstractTokenProvider): OAuthBearer token provider instance. (See kafka.oauth.abstract). 
+        sasl_oauth_token_provider (kafka.oauth.abstract.AbstractTokenProvider):
+            OAuthBearer token provider instance. (See kafka.oauth.abstract).
             Default: None
-        
 
     Note:
         Many configuration parameters are taken from the Java client:
