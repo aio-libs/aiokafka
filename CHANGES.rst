@@ -1,7 +1,8 @@
 =========
 Changelog
 =========
-
+618.feature
+added `OAUTHBEARER` as a new `sasl_mechanism`.
 
 0.6.0 (2020-05-15)
 ==================
