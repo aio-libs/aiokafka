@@ -4,7 +4,6 @@ Changelog
 
 628.bugfix
 Fix memory leak in kafka consumer when consumer is in idle state not consuming any message
-=======
 618.feature
 added `OAUTHBEARER` as a new `sasl_mechanism`.
 
