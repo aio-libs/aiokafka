@@ -26,7 +26,12 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get install libsnappy-dev krb5-user
+
+    - name: Install python dependencies
       run: |
         pip install --upgrade pip setuptools wheel
         pip install -r requirements-ci.txt
