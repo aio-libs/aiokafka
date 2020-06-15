@@ -22,12 +22,11 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: 3.8
+        python-version: 3.7
 
     - name: Install system dependencies
       run: |
         sudo apt-get install -y libsnappy-dev libkrb5-dev
-        krb5-config --libs gssapi
 
     - name: Install python dependencies
       run: |
