@@ -16,20 +16,18 @@ jobs:
   test-sanity:
 
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [3.5, 3.6, 3.7, 3.8]
 
     steps:
     - uses: actions/checkout@v2
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: 3.8
 
     - name: Install system dependencies
       run: |
-        sudo apt-get install libsnappy-dev krb5-user
+        sudo apt-get install -y libsnappy-dev krb5-user
+        krb5-config --libs gssapi
 
     - name: Install python dependencies
       run: |
