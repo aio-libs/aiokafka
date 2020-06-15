@@ -46,16 +46,20 @@ jobs:
       run: |
         make check-readme
 
-  test-unit-win:
-
+  test-windows:
+    needs: test-sanity
     runs-on: windows-latest
+
+    strategy:
+      matrix:
+        python: [3.6, 3.7]
 
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: 3.7
+        python-version: ${{ matrix.python }}
 
     - name: Install python dependencies
       run: |
@@ -67,3 +71,9 @@ jobs:
     - name: Run Unit Tests
       run: |
         make ci-test-unit
+
+
+    - name: Check docker version
+      run: |
+        docker --version
+        docker run --rm ubuntu:latest echo 'AAA'
