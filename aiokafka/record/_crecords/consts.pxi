@@ -1,3 +1,4 @@
+#cython: language_level=3
 # Attribute parsing flags
 DEF _ATTR_CODEC_MASK = 0x07
 DEF _ATTR_CODEC_NONE = 0x00

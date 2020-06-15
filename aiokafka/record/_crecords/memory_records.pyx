@@ -1,3 +1,4 @@
+#cython: language_level=3
 # This class takes advantage of the fact that all formats v0, v1 and v2 of
 # messages storage has the same byte offsets for Length and Magic fields.
 # Lets look closely at what leading bytes all versions have:
