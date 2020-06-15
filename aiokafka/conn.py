@@ -356,7 +356,6 @@ class AIOKafkaConnection:
 
     def authenticator_oauth(self):
         return OAuthAuthenticator(
-            loop=self._loop,
             sasl_oauth_token_provider=self._sasl_oauth_token_provider)
 
     @property
@@ -720,26 +719,22 @@ class ScramAuthenticator(BaseSaslAuthenticator):
 
 
 class OAuthAuthenticator(BaseSaslAuthenticator):
-    def __init__(self, *, loop, sasl_oauth_token_provider):
-        self._loop = loop
+    def __init__(self, *, sasl_oauth_token_provider):
         self._sasl_oauth_token_provider = sasl_oauth_token_provider
-        self._authenticator = self.authenticator_oauth()
+        self._token_sent = False
 
-    def authenticator_oauth(self):
-        """ Automaton to authenticate with OAutheBearer token
-        """
-        # Send PLAIN credentials per RFC-4616
-        data = self._build_oauth_client_request().encode("utf-8")
+    async def step(self, payload):
+        if self._token_sent:
+            return
+        token = await self._sasl_oauth_token_provider.token()
+        token_extensions = self._token_extensions()
+        self._token_sent = True
+        return self._build_oauth_client_request(token, token_extensions)\
+            .encode("utf-8"), True
 
-        resp = yield data, True
-
-        assert resp == b"", (
-            "Server should either close or send an empty response"
-        )
-
-    def _build_oauth_client_request(self):
+    def _build_oauth_client_request(self, token, token_extensions):
         return "n,,\x01auth=Bearer {}{}\x01\x01".format(
-            self._sasl_oauth_token_provider.token(), self._token_extensions()
+            token, token_extensions
             )
 
     def _token_extensions(self):

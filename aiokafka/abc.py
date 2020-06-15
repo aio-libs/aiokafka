@@ -1,5 +1,8 @@
 import abc
 from kafka import ConsumerRebalanceListener as BaseConsumerRebalanceListener
+from kafka.oauth.abstract import AbstractTokenProvider \
+    as BaseAbstractTokenProvider
+import asyncio
 
 
 class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
@@ -87,6 +90,17 @@ class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
         pass
 
 
+class AbstractTokenProvider(BaseAbstractTokenProvider):
+    async def token(self):
+        return await asyncio.get_running_loop().run_in_executor(
+            None, self._token)
+
+    @abc.abstractmethod
+    def _token(self):
+        pass
+
+
 __all__ = [
-    "ConsumerRebalanceListener"
+    "ConsumerRebalanceListener",
+    "AbstractTokenProvider"
 ]
