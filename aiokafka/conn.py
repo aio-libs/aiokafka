@@ -22,6 +22,8 @@ from kafka.protocol.commit import (
 import aiokafka.errors as Errors
 from aiokafka.util import ensure_future, create_future, PY_36
 
+from aiokafka.abc import AbstractTokenProvider
+
 try:
     import gssapi
 except ImportError:
@@ -130,9 +132,11 @@ class AIOKafkaConnection:
             assert gssapi is not None, "gssapi library required"
 
         if sasl_mechanism == "OAUTHBEARER":
-            assert sasl_oauth_token_provider is not None, (
-                'sasl_oauth_token_provider required for OAUTHBEARER sasl'
-                )
+            if sasl_oauth_token_provider is None or \
+                    not isinstance(
+                        sasl_oauth_token_provider, AbstractTokenProvider):
+                raise ValueError("sasl_oauth_token_provider needs to be \
+                    provided implementing aiokafka.abc.AbstractTokenProvider")
             assert callable(
                 getattr(sasl_oauth_token_provider, "token", None)
                 ), (
