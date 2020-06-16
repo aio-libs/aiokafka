@@ -34,8 +34,8 @@ jobs:
         path: ~/.cache/pip
         key: ${{ runner.os }}-py-3.7-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
         # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
-        restore-keys:
-          - ${{ runner.os }}-py-3.7-
+        restore-keys: |
+         ${{ runner.os }}-py-3.7-
 
     - name: Install python dependencies
       run: |
