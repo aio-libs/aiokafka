@@ -137,11 +137,11 @@ jobs:
 
     - name: Run All Tests
       run: |
-        make ci-test-all
+        make ci-test-unit
 
     - name: Run All Tests without extensions
       run: |
-        make ci-test-all
+        make ci-test-unit
       env:
         AIOKAFKA_NO_EXTENSIONS: "1"
 
