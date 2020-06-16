@@ -28,6 +28,15 @@ jobs:
       run: |
         sudo apt-get install -y libsnappy-dev libkrb5-dev
 
+    - name: Cache packages
+      uses: actions/cache@v1
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-py-3.7-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
+        # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
+        restore-keys:
+          - ${{ runner.os }}-py-3.7-
+
     - name: Install python dependencies
       run: |
         pip install --upgrade pip setuptools wheel
@@ -53,6 +62,11 @@ jobs:
     strategy:
       matrix:
         python: [3.6, 3.7]
+        include:
+          - python: 3.6
+            snappy_whl: tools/python_snappy-0.5.4-cp36-cp36m-win_amd64.whl
+          - python: 3.7
+            snappy_whl: tools/python_snappy-0.5.4-cp37-cp37m-win_amd64.whl
 
     steps:
     - uses: actions/checkout@v2
@@ -64,14 +78,13 @@ jobs:
     - name: Install python dependencies
       run: |
         pip install --upgrade pip setuptools wheel
-        pip install tools/python_snappy-0.5.4-cp37-cp37m-win_amd64.whl
+        pip install ${{ matrix.snappy_whl }}
         pip install -r requirements-win-test.txt
         pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
 
     - name: Run Unit Tests
       run: |
         make ci-test-unit
-
 
     - name: Check docker version
       run: |
