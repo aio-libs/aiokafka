@@ -75,11 +75,59 @@ jobs:
       with:
         python-version: ${{ matrix.python }}
 
+    - name: Cache packages
+      uses: actions/cache@v1
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('equirements-win-test.txt') }}-${{ hashFiles('setup.py') }}
+        # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
+        restore-keys: |
+         ${{ runner.os }}-py-${{ matrix.python }}-
+
     - name: Install python dependencies
       run: |
         pip install --upgrade pip setuptools wheel
         pip install ${{ matrix.snappy_whl }}
         pip install -r requirements-win-test.txt
+        pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
+
+    - name: Run Unit Tests
+      run: |
+        make ci-test-unit
+
+  test-mac:
+    needs: test-sanity
+    runs-on: macos-latest
+
+    strategy:
+      matrix:
+        python: [3.6, 3.7]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python }}
+
+    - name: Cache packages
+      uses: actions/cache@v1
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
+        # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
+        restore-keys: |
+         ${{ runner.os }}-py-${{ matrix.python }}-
+
+
+    - name: Install system dependencies
+      run: |
+        brew install snappy
+
+    - name: Install python dependencies
+      run: |
+        pip install --upgrade pip setuptools wheel
+        pip install -r requirements-ci.txt
         pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
 
     - name: Run Unit Tests
