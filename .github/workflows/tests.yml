@@ -95,6 +95,10 @@ jobs:
       run: |
         make ci-test-unit
 
+    - name: Run Unit Tests without extensions
+      run: |
+        AIOKAFKA_NO_EXTENSIONS=1 make ci-test-unit
+
   test-mac:
     needs: test-sanity
     runs-on: macos-latest
@@ -119,7 +123,6 @@ jobs:
         restore-keys: |
          ${{ runner.os }}-py-${{ matrix.python }}-
 
-
     - name: Install system dependencies
       run: |
         brew install snappy
@@ -133,3 +136,7 @@ jobs:
     - name: Run Unit Tests
       run: |
         make ci-test-unit
+
+    - name: Run Unit Tests without extensions
+      run: |
+        AIOKAFKA_NO_EXTENSIONS=1 make ci-test-unit
