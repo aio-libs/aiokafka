@@ -145,3 +145,81 @@ jobs:
       env:
         AIOKAFKA_NO_EXTENSIONS: "1"
 
+  test-linux:
+    needs: test-sanity
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - python: 3.7
+            kafka: "2.4.0"
+            scala: "2.12"
+
+          # # Older python versions against latest broker
+          # - python: 3.5
+          #   kafka: "2.4.0"
+          #   scala: "2.12"
+          # - python: 3.6
+          #   kafka: "2.4.0"
+          #   scala: "2.12"
+
+          # # Older brokers against latest python version
+          # - python: 3.7
+          #   kafka: "0.9.0.1"
+          #   scala: "2.11"
+          # - python: 3.7
+          #   kafka: "0.10.2.1"
+          #   scala: "2.11"
+          # - python: 3.7
+          #   kafka: "0.11.0.3"
+          #   scala: "2.12"
+          # - python: 3.7
+          #   kafka: "1.1.1"
+          #   scala: "2.12"
+          # - python: 3.7
+          #   kafka: "2.1.1"
+          #   scala: "2.12"
+          # - python: 3.7
+          #   kafka: "2.2.2"
+          #   scala: "2.12"
+          # - python: 3.7
+          #   kafka: "2.3.1"
+          #   scala: "2.12"
+
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python }}
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get install -y libsnappy-dev libkrb5-dev
+
+    - name: Cache packages
+      uses: actions/cache@v1
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
+        # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
+        restore-keys: |
+         ${{ runner.os }}-py-${{ matrix.python }}-
+
+    - name: Install python dependencies
+      run: |
+        pip install --upgrade pip setuptools wheel
+        pip install -r requirements-ci.txt
+        pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
+
+    - name: Run All Tests
+      run: |
+        make ci-test-all
+
+    - name: Run All Tests without extensions
+      run: |
+        make ci-test-all
+      env:
+        AIOKAFKA_NO_EXTENSIONS: "1"
