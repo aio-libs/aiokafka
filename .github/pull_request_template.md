@@ -3,7 +3,7 @@ Feel free to change the template if you feel confused.
 -->
 ### Changes
 
-Fixes issue #<!-- Provide issue number if exists -->
+Fixes #<!-- Provide issue number if exists -->
 
 <!-- Please give a short brief about these changes. -->
 
