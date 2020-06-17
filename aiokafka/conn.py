@@ -22,6 +22,8 @@ from kafka.protocol.commit import (
 import aiokafka.errors as Errors
 from aiokafka.util import ensure_future, create_future, PY_36
 
+from aiokafka.abc import AbstractTokenProvider
+
 try:
     import gssapi
 except ImportError:
@@ -75,6 +77,7 @@ async def create_conn(
     sasl_plain_password=None,
     sasl_kerberos_service_name='kafka',
     sasl_kerberos_domain_name=None,
+    sasl_oauth_token_provider=None,
     version_hint=None
 ):
     if loop is None:
@@ -90,6 +93,7 @@ async def create_conn(
         sasl_plain_password=sasl_plain_password,
         sasl_kerberos_service_name=sasl_kerberos_service_name,
         sasl_kerberos_domain_name=sasl_kerberos_domain_name,
+        sasl_oauth_token_provider=sasl_oauth_token_provider,
         version_hint=version_hint)
     await conn.connect()
     return conn
@@ -122,9 +126,22 @@ class AIOKafkaConnection:
                  sasl_plain_password=None, sasl_plain_username=None,
                  sasl_kerberos_service_name='kafka',
                  sasl_kerberos_domain_name=None,
+                 sasl_oauth_token_provider=None,
                  version_hint=None):
         if sasl_mechanism == "GSSAPI":
             assert gssapi is not None, "gssapi library required"
+
+        if sasl_mechanism == "OAUTHBEARER":
+            if sasl_oauth_token_provider is None or \
+                    not isinstance(
+                        sasl_oauth_token_provider, AbstractTokenProvider):
+                raise ValueError("sasl_oauth_token_provider needs to be \
+                    provided implementing aiokafka.abc.AbstractTokenProvider")
+            assert callable(
+                getattr(sasl_oauth_token_provider, "token", None)
+                ), (
+                'sasl_oauth_token_provider must implement method #token()'
+                )
 
         self._loop = loop
         self._host = host
@@ -139,6 +156,7 @@ class AIOKafkaConnection:
         self._sasl_plain_password = sasl_plain_password
         self._sasl_kerberos_service_name = sasl_kerberos_service_name
         self._sasl_kerberos_domain_name = sasl_kerberos_domain_name
+        self._sasl_oauth_token_provider = sasl_oauth_token_provider
 
         # Version hint is the version determined by initial client bootstrap
         self._version_hint = version_hint
@@ -262,7 +280,7 @@ class AIOKafkaConnection:
                 raise exc
 
         assert self._sasl_mechanism in (
-            'PLAIN', 'GSSAPI', 'SCRAM-SHA-256', 'SCRAM-SHA-512'
+            'PLAIN', 'GSSAPI', 'SCRAM-SHA-256', 'SCRAM-SHA-512', 'OAUTHBEARER'
         )
         if self._security_protocol == 'SASL_PLAINTEXT' and \
            self._sasl_mechanism == 'PLAIN':
@@ -273,6 +291,8 @@ class AIOKafkaConnection:
             authenticator = self.authenticator_gssapi()
         elif self._sasl_mechanism.startswith('SCRAM-SHA-'):
             authenticator = self.authenticator_scram()
+        elif self._sasl_mechanism == 'OAUTHBEARER':
+            authenticator = self.authenticator_oauth()
         else:
             authenticator = self.authenticator_plain()
 
@@ -312,6 +332,10 @@ class AIOKafkaConnection:
             self.log.info(
                 'Authenticated as %s via GSSAPI',
                 self.sasl_principal)
+        elif self._sasl_mechanism == 'OAUTHBEARER':
+            self.log.info(
+                'Authenticated via OAUTHBEARER'
+            )
         else:
             self.log.info('Authenticated as %s via PLAIN',
                           self._sasl_plain_username)
@@ -333,6 +357,10 @@ class AIOKafkaConnection:
             sasl_plain_password=self._sasl_plain_password,
             sasl_plain_username=self._sasl_plain_username,
             sasl_mechanism=self._sasl_mechanism)
+
+    def authenticator_oauth(self):
+        return OAuthAuthenticator(
+            sasl_oauth_token_provider=self._sasl_oauth_token_provider)
 
     @property
     def sasl_principal(self):
@@ -692,3 +720,41 @@ class ScramAuthenticator(BaseSaslAuthenticator):
     @staticmethod
     def _xor_bytes(left, right):
         return bytes(lb ^ rb for lb, rb in zip(left, right))
+
+
+class OAuthAuthenticator(BaseSaslAuthenticator):
+    def __init__(self, *, sasl_oauth_token_provider):
+        self._sasl_oauth_token_provider = sasl_oauth_token_provider
+        self._token_sent = False
+
+    async def step(self, payload):
+        if self._token_sent:
+            return
+        token = await self._sasl_oauth_token_provider.token()
+        token_extensions = self._token_extensions()
+        self._token_sent = True
+        return self._build_oauth_client_request(token, token_extensions)\
+            .encode("utf-8"), True
+
+    def _build_oauth_client_request(self, token, token_extensions):
+        return "n,,\x01auth=Bearer {}{}\x01\x01".format(
+            token, token_extensions
+            )
+
+    def _token_extensions(self):
+        """
+        Return a string representation of the OPTIONAL key-value pairs
+        that can be sent with an OAUTHBEARER initial request.
+        """
+        # Only run if the #extensions() method is implemented
+        # by the clients Token Provider class
+        # Builds up a string separated by \x01 via a dict of key value pairs
+        if callable(
+                getattr(self._sasl_oauth_token_provider, "extensions", None)):
+            extensions = self._sasl_oauth_token_provider.extensions()
+            if len(extensions) > 0:
+                msg = "\x01".join(
+                    ["{}={}".format(k, v) for k, v in extensions.items()])
+                return "\x01" + msg
+
+        return ""
