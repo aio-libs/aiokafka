@@ -204,7 +204,7 @@ jobs:
           - python: 3.7
             kafka: "2.3.1"
             scala: "2.12"
-
+      fail-fast: false
 
     steps:
     - uses: actions/checkout@v2
