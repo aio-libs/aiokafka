@@ -750,13 +750,11 @@ class OAuthAuthenticator(BaseSaslAuthenticator):
         # by the clients Token Provider class
         # Builds up a string separated by \x01 via a dict of key value pairs
         if callable(
-            getattr(self._sasl_oauth_token_provider, "extensions", None)
-            ) and \
-                len(self._sasl_oauth_token_provider.extensions()) > 0:
-            msg = "\x01".join(
-                ["{}={}".format(k, v) for k, v in
-                    self._sasl_oauth_token_provider.extensions().items()]
-                )
-            return "\x01" + msg
-        else:
-            return ""
+                getattr(self._sasl_oauth_token_provider, "extensions", None)):
+            extensions = self._sasl_oauth_token_provider.extensions()
+            if len(extensions) > 0:
+                msg = "\x01".join(
+                    ["{}={}".format(k, v) for k, v in extensions.items()])
+                return "\x01" + msg
+
+        return ""
