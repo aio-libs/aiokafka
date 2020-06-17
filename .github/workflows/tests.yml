@@ -106,12 +106,30 @@ jobs:
     - name: Run Unit Tests
       run: |
         make ci-test-unit
+        mv coverage.xml coverage-ext.xml
 
     - name: Run Unit Tests without extensions
       run: |
         make ci-test-unit
+        mv coverage.xml coverage-py.xml
       env:
         AIOKAFKA_NO_EXTENSIONS: "1"
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./coverage-ext.xml
+        flags: unit,cext
+        name: test-windows-${{ matrix.python }}-ext
+      if: ${{ always() }}
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./coverage-py.xml
+        flags: unit,purepy
+        name: test-windows-${{ matrix.python }}-py
+      if: ${{ always() }}
 
   test-mac:
     needs: test-sanity
@@ -156,12 +174,30 @@ jobs:
     - name: Run All Tests
       run: |
         make ci-test-unit
+        mv coverage.xml coverage-ext.xml
 
     - name: Run All Tests without extensions
       run: |
         make ci-test-unit
+        mv coverage.xml coverage-py.xml
       env:
         AIOKAFKA_NO_EXTENSIONS: "1"
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./coverage-ext.xml
+        flags: unit,cext
+        name: test-mac-${{ matrix.python }}-ext
+      if: ${{ always() }}
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./coverage-py.xml
+        flags: unit,purepy
+        name: test-mac-${{ matrix.python }}-py
+      if: ${{ always() }}
 
   test-linux:
     needs: test-sanity
@@ -241,6 +277,7 @@ jobs:
     - name: Run All Tests
       run: |
         make ci-test-all
+        mv coverage.xml coverage-ext.xml
       env:
         SCALA_VERSION: ${{ matrix.scala }}
         KAFKA_VERSION: ${{ matrix.kafka }}
@@ -248,7 +285,24 @@ jobs:
     - name: Run All Tests without extensions
       run: |
         make ci-test-all
+        mv coverage.xml coverage-py.xml
       env:
         AIOKAFKA_NO_EXTENSIONS: "1"
         SCALA_VERSION: ${{ matrix.scala }}
         KAFKA_VERSION: ${{ matrix.kafka }}
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./coverage-ext.xml
+        flags: integration,cext
+        name: test-linux-${{ matrix.python }}-${{ matrix.kafka }}-${{ matrix.scala }}-ext
+      if: ${{ always() }}
+
+    - name: Upload coverage without cext to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./coverage-py.xml
+        flags: integration,purepy
+        name: test-linux-${{ matrix.python }}-${{ matrix.kafka }}-${{ matrix.scala }}-py
+      if: ${{ always() }}
