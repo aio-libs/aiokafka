@@ -52,9 +52,6 @@ jobs:
     - name: Run Unit Tests
       run: |
         make ci-test-unit
-        cat aiokafka/consumer/consumer.py
-        echo "==========================================="
-        cat coverage.xml
 
     - name: Lint code
       run: |
@@ -146,6 +143,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
@@ -249,6 +248,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
