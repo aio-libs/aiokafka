@@ -25,6 +25,7 @@ cov cover coverage: flake
 	@echo "open file://`pwd`/htmlcov/index.html"
 
 ci-test-wheel:
+	pip install pytest
 	py.test -s --log-level DEBUG $(FLAGS) tests/record
 
 ci-test-unit:
