@@ -43,7 +43,9 @@ jobs:
           python-version: 3.7
       - name: Build wheels
         env:
-          CIBW_TEST_COMMAND: cd {project} && ls -R . && make ci-test-wheel
+          CIBW_BEFORE_BUILD: pip install -r requirements-cython.txt
+          CIBW_TEST_COMMAND: cd {project} && make ci-test-wheel
+          CIBW_BUILD_VERBOSITY: 2
           CIBW_SKIP: cp27-* cp35-* pp27-*
         run: |
           python -m pip install --upgrade pip setuptools
