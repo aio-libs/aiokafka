@@ -1,3 +1,4 @@
+-r requirements-cython.txt
 flake8==3.7.9
 pytest==5.3.5
 pytest-cov==2.8.1

@@ -24,6 +24,9 @@ cov cover coverage: flake
 	py.test -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 	@echo "open file://`pwd`/htmlcov/index.html"
 
+ci-test-wheel:
+	py.test -s --log-level DEBUG $(FLAGS) tests/record
+
 ci-test-unit:
 	py.test -s --log-level DEBUG --cov aiokafka --cov-report xml $(FLAGS) tests
 
