@@ -43,10 +43,11 @@ jobs:
           python-version: 3.7
       - name: Build wheels
         env:
-          CIBW_BEFORE_BUILD: pip install -r requirements-cython.txt && yum install zlib-devel
+          CIBW_BEFORE_BUILD_LINUX: pip install -r requirements-cython.txt && yum install -y zlib-devel
           # On windows we should have z library preinstalled
-          CIBW_BEFORE_BUILD_WINDOWS: pip install -r requirements-cython.txt
-          CIBW_TEST_COMMAND: cd {project} && make ci-test-wheel
+          CIBW_BEFORE_BUILD: pip install -r requirements-cython.txt
+          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_COMMAND: pytest {project}/tests/record
           CIBW_BUILD_VERBOSITY: 2
           CIBW_SKIP: cp27-* cp35-* pp27-*
         run: |
