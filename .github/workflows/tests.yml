@@ -109,6 +109,8 @@ jobs:
       run: |
         make ci-test-unit
         mv coverage.xml coverage-ext.xml
+      env:
+        PYTHONASYNCIODEBUG: "1"
 
     - name: Run Unit Tests without extensions
       run: |
@@ -179,6 +181,8 @@ jobs:
       run: |
         make ci-test-unit
         mv coverage.xml coverage-ext.xml
+      env:
+        PYTHONASYNCIODEBUG: "1"
 
     - name: Run All Tests without extensions
       run: |
