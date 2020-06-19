@@ -6,6 +6,8 @@ name: Publish
 on:
   release:
     types: [created]
+  push:
+    branches: [ github_actions ]
 
 jobs:
   package-source:
