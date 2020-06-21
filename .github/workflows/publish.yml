@@ -47,7 +47,7 @@ jobs:
           # On windows we should have z library preinstalled
           CIBW_BEFORE_BUILD: pip install -r requirements-cython.txt
           CIBW_TEST_REQUIRES: pytest
-          CIBW_TEST_COMMAND: which python && python -c "import aiokafka; print(aiokafka.__file__)" && pwd && pytest {project}/tests/record
+          CIBW_TEST_COMMAND: which python && python -c "import aiokafka; print(aiokafka.__file__)" && pwd && pytest {project}/tests/record --import-mode importlib
           CIBW_BUILD_VERBOSITY: 2
           CIBW_SKIP: cp27-* cp35-* pp27-*
         run: |
