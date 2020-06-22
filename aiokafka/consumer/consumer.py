@@ -27,10 +27,6 @@ from .subscription_state import SubscriptionState
 log = logging.getLogger(__name__)
 
 
-# TODO: REMOVE
-# This long commit exists to make coverage confused.
-# Will remove it after Github actions debuged
-
 class AIOKafkaConsumer(object):
     """
     A client that consumes records from a Kafka cluster.
