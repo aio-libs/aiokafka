@@ -1,6 +1,6 @@
 -r requirements-cython.txt
 flake8==3.8.3
-pytest==5.3.5
+pytest==5.4.3
 pytest-cov==2.8.1
 docker==4.2.0
 lz4==2.2.1
