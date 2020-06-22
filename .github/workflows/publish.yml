@@ -46,7 +46,7 @@ jobs:
           CIBW_BEFORE_BUILD_LINUX: pip install -r requirements-cython.txt && yum install -y zlib-devel
           # On windows we should have z library preinstalled
           CIBW_BEFORE_BUILD: pip install -r requirements-cython.txt
-          CIBW_BEFORE_TEST: pytest docker
+          CIBW_TEST_REQUIRES: pytest docker
           CIBW_TEST_COMMAND: cp -r {project}/tests/record ./tests && pytest tests
           CIBW_BUILD_VERBOSITY: 2
           CIBW_SKIP: cp27-* cp35-* pp27-*
