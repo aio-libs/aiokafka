@@ -30,6 +30,7 @@ jobs:
         with:
           name: dist
           path: dist/
+
   package-wheel:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -44,7 +45,7 @@ jobs:
       - name: Build wheels
         env:
           CIBW_BEFORE_BUILD_LINUX: pip install -r requirements-cython.txt && yum install -y zlib-devel
-          # On windows we should have z library preinstalled
+          # On windows and mac we should have z library preinstalled
           CIBW_BEFORE_BUILD: pip install -r requirements-cython.txt
           CIBW_BUILD_VERBOSITY: 2
           CIBW_SKIP: cp27-* cp35-* pp27-*
@@ -59,10 +60,130 @@ jobs:
           name: dist
           path: dist/
 
+  test-wheels-windows:
+    needs: [package-source, package-wheel]
+    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        python: [3.6, 3.7]
+        include:
+          - python: 3.6
+            snappy_whl: tools/python_snappy-0.5.4-cp36-cp36m-win_amd64.whl
+            aiokafka_whl: dist/aiokafka-*-cp36-cp36m-win_amd64.whl
+          - python: 3.7
+            snappy_whl: tools/python_snappy-0.5.4-cp37-cp37m-win_amd64.whl
+            aiokafka_whl: dist/aiokafka-*-cp37-cp37m-win_amd64.whl
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Download distributions
+        uses: actions/download-artifact@v2
+        with:
+          name: dist
+          path: dist/
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install python dependencies
+        run: |
+          pip install --upgrade pip setuptools
+          pip install ${{ matrix.snappy_whl }}
+          pip install -r requirements-win-test.txt
+          pip install ${{ matrix.aiokafka_whl }}
+
+      - name: Run Unit Tests
+        run: |
+          # Remove source code to be sure we use wheel code
+          rm -rf aiokafka
+          make ci-test-unit
+
+  test-wheels-mac:
+    needs: [package-source, package-wheel]
+    runs-on: macos-latest
+
+    strategy:
+      matrix:
+        python: [3.6, 3.7]
+        include:
+          - python: 3.6
+            aiokafka_whl: dist/aiokafka-*-cp36-cp36m-macosx_10_9_x86_64.whl
+          - python: 3.7
+            aiokafka_whl: dist/aiokafka-*-cp37-cp37m-macosx_10_9_x86_64.whl
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Download distributions
+        uses: actions/download-artifact@v2
+        with:
+          name: dist
+          path: dist/
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install system dependencies
+        run: |
+          brew install snappy
+      - name: Install python dependencies
+        run: |
+          pip install --upgrade pip setuptools
+          pip install -r requirements-ci.txt
+          pip install ${{ matrix.aiokafka_whl }}
+
+      - name: Run Unit Tests
+        run: |
+          # Remove source code to be sure we use wheel code
+          rm -rf aiokafka
+          make ci-test-unit
+
+  test-wheels-linux:
+    needs: [package-source, package-wheel]
+    runs-on: macos-latest
+
+    strategy:
+      matrix:
+        python: [3.6, 3.7]
+        include:
+          - python: 3.6
+            aiokafka_whl: dist/aiokafka-*-cp36-cp36m-manylinux1_x86_64.wh
+          - python: 3.7
+            aiokafka_whl: dist/aiokafka-*-cp37-cp37m-manylinux1_x86_64.wh
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Download distributions
+        uses: actions/download-artifact@v2
+        with:
+          name: dist
+          path: dist/
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get install -y libsnappy-dev libkrb5-dev
+      - name: Install python dependencies
+        run: |
+          pip install --upgrade pip setuptools
+          pip install -r requirements-ci.txt
+          pip install ${{ matrix.aiokafka_whl }}
+
+      - name: Run Unit Tests
+        run: |
+          # Remove source code to be sure we use wheel code
+          rm -rf aiokafka
+          make ci-test-unit
+
   deploy:
 
     runs-on: ubuntu-latest
-    needs: [package-source, package-wheel]
+    needs: [test-wheels-linux, test-wheels-mac, test-wheels-windows]
 
     steps:
       - uses: actions/checkout@v2
