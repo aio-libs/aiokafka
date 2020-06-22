@@ -93,6 +93,7 @@ jobs:
           pip install ${{ matrix.snappy_whl }}
           pip install -r requirements-win-test.txt
           pip install ${{ matrix.aiokafka_whl }}
+        shell: bash
 
       - name: Run Unit Tests
         run: |
@@ -142,7 +143,7 @@ jobs:
 
   test-wheels-linux:
     needs: [package-source, package-wheel]
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
 
     strategy:
       matrix:
