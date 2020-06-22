@@ -135,7 +135,6 @@ else:
         size_of_varint = size_of_varint_cython
         calc_crc32c = crc32c_cython
     except ImportError:  # pragma: no cover
-        raise
         calc_crc32c = calc_crc32c_py
         decode_varint = decode_varint_py
         size_of_varint = size_of_varint_py

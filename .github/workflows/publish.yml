@@ -6,8 +6,6 @@ name: Publish
 on:
   release:
     types: [created]
-  push:
-    branches: [ github_actions ]
 
 jobs:
   package-source:
@@ -198,5 +196,4 @@ jobs:
         uses: pypa/gh-action-pypi-publish@master
         with:
           user: ${{ secrets.PYPI_USERNAME }}
-          password: ${{ secrets.PYPI_PASSWORD_TEST }}
-          repository_url: https://test.pypi.org/legacy/
+          password: ${{ secrets.PYPI_PASSWORD }}

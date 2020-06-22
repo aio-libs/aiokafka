@@ -6,4 +6,3 @@ docker==4.2.0
 lz4==2.2.1
 xxhash==1.4.3
 python-snappy==0.5.4
-Cython==0.29.19
