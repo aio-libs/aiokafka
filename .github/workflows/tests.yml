@@ -1,0 +1,318 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: Tests
+
+on:
+  push:
+    branches: [ master ]
+    tags:
+      - "v0.[0-9]+.[0-9]+"
+      - "v0.[0-9]+.[0-9]+.dev*"
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test-sanity:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.7
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get install -y libsnappy-dev libkrb5-dev
+
+    - name: Get pip cache dir
+      id: pip-cache
+      run: |
+        python -m pip install -U "pip>=20.1"
+        echo "::set-output name=dir::$(pip cache dir)"
+
+    - name: Cache packages
+      uses: actions/cache@v1
+      with:
+        path: ${{ steps.pip-cache.outputs.dir }}
+        key: ${{ runner.os }}-py-3.7-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
+        # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
+        restore-keys: |
+         ${{ runner.os }}-py-3.7-
+
+    - name: Install python dependencies
+      run: |
+        pip install --upgrade pip setuptools wheel
+        pip install -r requirements-ci.txt
+        pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
+
+    - name: Run Unit Tests
+      run: |
+        make ci-test-unit
+
+    - name: Lint code
+      run: |
+        make flake
+
+    - name: Check readme for package
+      run: |
+        make check-readme
+
+  test-windows:
+    needs: test-sanity
+    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        python: [3.6, 3.7]
+        include:
+          - python: 3.6
+            snappy_whl: tools/python_snappy-0.5.4-cp36-cp36m-win_amd64.whl
+          - python: 3.7
+            snappy_whl: tools/python_snappy-0.5.4-cp37-cp37m-win_amd64.whl
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python }}
+
+    - name: Get pip cache dir
+      id: pip-cache
+      run: |
+        python -m pip install -U "pip>=20.1"
+        echo "::set-output name=dir::$(pip cache dir)"
+
+    - name: Cache packages
+      uses: actions/cache@v1
+      with:
+        path: ${{ steps.pip-cache.outputs.dir }}
+        key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-win-test.txt') }}-${{ hashFiles('setup.py') }}
+        # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
+        restore-keys: |
+         ${{ runner.os }}-py-${{ matrix.python }}-
+
+    - name: Install python dependencies
+      run: |
+        pip install --upgrade pip setuptools wheel
+        pip install ${{ matrix.snappy_whl }}
+        pip install -r requirements-win-test.txt
+        pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
+
+    - name: Run Unit Tests
+      run: |
+        make ci-test-unit
+        mv coverage.xml coverage-ext.xml
+      env:
+        PYTHONASYNCIODEBUG: "1"
+
+    - name: Run Unit Tests without extensions
+      run: |
+        make ci-test-unit
+        mv coverage.xml coverage-py.xml
+      env:
+        AIOKAFKA_NO_EXTENSIONS: "1"
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./coverage-ext.xml
+        flags: unit,cext
+        name: test-windows-${{ matrix.python }}-ext
+      if: ${{ always() }}
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./coverage-py.xml
+        flags: unit,purepy
+        name: test-windows-${{ matrix.python }}-py
+      if: ${{ always() }}
+
+  test-mac:
+    needs: test-sanity
+    runs-on: macos-latest
+
+    strategy:
+      matrix:
+        python: [3.6, 3.7]
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python }}
+
+    - name: Get pip cache dir
+      id: pip-cache
+      run: |
+        python -m pip install -U "pip>=20.1"
+        echo "::set-output name=dir::$(pip cache dir)"
+
+    - name: Cache packages
+      uses: actions/cache@v1
+      with:
+        path: ${{ steps.pip-cache.outputs.dir }}
+        key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
+        # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
+        restore-keys: |
+         ${{ runner.os }}-py-${{ matrix.python }}-
+
+    - name: Install system dependencies
+      run: |
+        brew install snappy
+
+    - name: Install python dependencies
+      run: |
+        pip install --upgrade pip setuptools wheel
+        pip install -r requirements-ci.txt
+        pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
+
+    - name: Run All Tests
+      run: |
+        make ci-test-unit
+        mv coverage.xml coverage-ext.xml
+      env:
+        PYTHONASYNCIODEBUG: "1"
+
+    - name: Run All Tests without extensions
+      run: |
+        make ci-test-unit
+        mv coverage.xml coverage-py.xml
+      env:
+        AIOKAFKA_NO_EXTENSIONS: "1"
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./coverage-ext.xml
+        flags: unit,cext
+        name: test-mac-${{ matrix.python }}-ext
+      if: ${{ always() }}
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./coverage-py.xml
+        flags: unit,purepy
+        name: test-mac-${{ matrix.python }}-py
+      if: ${{ always() }}
+
+  test-linux:
+    needs: test-sanity
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - python: 3.7
+            kafka: "2.4.0"
+            scala: "2.12"
+
+          # Older python versions against latest broker
+          - python: 3.5
+            kafka: "2.4.0"
+            scala: "2.12"
+          - python: 3.6
+            kafka: "2.4.0"
+            scala: "2.12"
+
+          # Older brokers against latest python version
+          - python: 3.7
+            kafka: "0.9.0.1"
+            scala: "2.11"
+          - python: 3.7
+            kafka: "0.10.2.1"
+            scala: "2.11"
+          - python: 3.7
+            kafka: "0.11.0.3"
+            scala: "2.12"
+          - python: 3.7
+            kafka: "1.1.1"
+            scala: "2.12"
+          - python: 3.7
+            kafka: "2.1.1"
+            scala: "2.12"
+          - python: 3.7
+            kafka: "2.2.2"
+            scala: "2.12"
+          - python: 3.7
+            kafka: "2.3.1"
+            scala: "2.12"
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python }}
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get install -y libsnappy-dev libkrb5-dev krb5-user
+
+    - name: Get pip cache dir
+      id: pip-cache
+      run: |
+        python -m pip install -U "pip>=20.1"
+        echo "::set-output name=dir::$(pip cache dir)"
+
+    - name: Cache packages
+      uses: actions/cache@v1
+      with:
+        path: ${{ steps.pip-cache.outputs.dir }}
+        key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
+        # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
+        restore-keys: |
+         ${{ runner.os }}-py-${{ matrix.python }}-
+
+    - name: Install python dependencies
+      run: |
+        pip install --upgrade pip setuptools wheel
+        pip install -r requirements-ci.txt
+        pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
+
+    - name: Run All Tests
+      run: |
+        make ci-test-all
+        mv coverage.xml coverage-ext.xml
+      env:
+        SCALA_VERSION: ${{ matrix.scala }}
+        KAFKA_VERSION: ${{ matrix.kafka }}
+
+    - name: Run All Tests without extensions
+      run: |
+        make ci-test-all
+        mv coverage.xml coverage-py.xml
+      env:
+        AIOKAFKA_NO_EXTENSIONS: "1"
+        SCALA_VERSION: ${{ matrix.scala }}
+        KAFKA_VERSION: ${{ matrix.kafka }}
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./coverage-ext.xml
+        flags: integration,cext
+        name: test-linux-${{ matrix.python }}-${{ matrix.kafka }}-${{ matrix.scala }}-ext
+      if: ${{ always() }}
+
+    - name: Upload coverage without cext to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./coverage-py.xml
+        flags: integration,purepy
+        name: test-linux-${{ matrix.python }}-${{ matrix.kafka }}-${{ matrix.scala }}-py
+      if: ${{ always() }}
