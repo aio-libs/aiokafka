@@ -89,7 +89,7 @@ jobs:
 
       - name: Install python dependencies
         run: |
-          pip install --upgrade pip setuptools
+          pip install --upgrade pip setuptools wheel
           pip install ${{ matrix.snappy_whl }}
           pip install -r requirements-win-test.txt
           pip install ${{ matrix.aiokafka_whl }}
@@ -100,6 +100,7 @@ jobs:
           # Remove source code to be sure we use wheel code
           rm -rf aiokafka
           make ci-test-unit
+        shell: bash
 
   test-wheels-mac:
     needs: [package-source, package-wheel]
@@ -131,7 +132,7 @@ jobs:
           brew install snappy
       - name: Install python dependencies
         run: |
-          pip install --upgrade pip setuptools
+          pip install --upgrade pip setuptools wheel
           pip install -r requirements-ci.txt
           pip install ${{ matrix.aiokafka_whl }}
 
@@ -150,9 +151,9 @@ jobs:
         python: [3.6, 3.7]
         include:
           - python: 3.6
-            aiokafka_whl: dist/aiokafka-*-cp36-cp36m-manylinux1_x86_64.wh
+            aiokafka_whl: dist/aiokafka-*-cp36-cp36m-manylinux1_x86_64.whl
           - python: 3.7
-            aiokafka_whl: dist/aiokafka-*-cp37-cp37m-manylinux1_x86_64.wh
+            aiokafka_whl: dist/aiokafka-*-cp37-cp37m-manylinux1_x86_64.whl
 
     steps:
       - uses: actions/checkout@v2
@@ -171,7 +172,7 @@ jobs:
           sudo apt-get install -y libsnappy-dev libkrb5-dev
       - name: Install python dependencies
         run: |
-          pip install --upgrade pip setuptools
+          pip install --upgrade pip setuptools wheel
           pip install -r requirements-ci.txt
           pip install ${{ matrix.aiokafka_whl }}
 
