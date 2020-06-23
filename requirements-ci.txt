@@ -8,4 +8,4 @@ xxhash==1.4.3
 python-snappy==0.5.4
 docutils==0.16
 Pygments==2.6.1
-gssapi==1.6.2 # pyup: != 1.6.6  # For some reason 1.6.5 does not install with py35
+gssapi==1.6.2 # pyup: <= 1.6.2  # For some reason 1.6.5 does not install with py35
