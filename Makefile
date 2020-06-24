@@ -5,14 +5,26 @@ SCALA_VERSION?=2.12
 KAFKA_VERSION?=2.2.2
 DOCKER_IMAGE=aiolibs/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
 DIFF_BRANCH=origin/master
+FORMATTED_AREAS=aiokafka/util.py aiokafka/structs.py
 
 setup:
 	pip install -r requirements-dev.txt
 	pip install -Ue .
 
-flake:
-	extra=$$(python -c "import sys;sys.stdout.write('--exclude tests/test_pep492.py') if sys.version_info[:3] < (3, 5, 0) else sys.stdout.write('')"); \
-	flake8 aiokafka tests $$extra
+format:
+	isort -rc $(FORMATTED_AREAS) setup.py
+	black $(FORMATTED_AREAS) setup.py
+
+flake: lint
+lint:
+	black --check $(FORMATTED_AREAS) setup.py
+	@if ! isort -c -rc $(FORMATTED_AREAS) setup.py; then \
+            echo "Import sort errors, run 'make format' to fix them!!!"; \
+            isort --diff -rc $(FORMATTED_AREAS) setup.py; \
+            false; \
+        fi
+	flake8 aiokafka tests setup.py
+	mypy $(FORMATTED_AREAS)
 
 test: flake
 	py.test -s --show-capture=no --docker-image $(DOCKER_IMAGE) $(FLAGS) tests

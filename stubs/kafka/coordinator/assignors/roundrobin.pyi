@@ -1,0 +1,16 @@
+from kafka.coordinator.assignors.abstract import AbstractPartitionAssignor as AbstractPartitionAssignor
+from kafka.coordinator.protocol import ConsumerProtocolMemberAssignment as ConsumerProtocolMemberAssignment, ConsumerProtocolMemberMetadata as ConsumerProtocolMemberMetadata
+from kafka.structs import TopicPartition as TopicPartition
+from typing import Any
+
+log: Any
+
+class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
+    name: str = ...
+    version: int = ...
+    @classmethod
+    def assign(cls, cluster: Any, member_metadata: Any): ...
+    @classmethod
+    def metadata(cls, topics: Any): ...
+    @classmethod
+    def on_assignment(cls, assignment: Any) -> None: ...
