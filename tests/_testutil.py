@@ -27,20 +27,6 @@ log = logging.getLogger(__name__)
 __all__ = ['KafkaIntegrationTestCase', 'random_string']
 
 
-def run_until_complete(fun):
-    if not asyncio.iscoroutinefunction(fun):
-        fun = asyncio.coroutine(fun)
-
-    @wraps(fun)
-    def wrapper(test, *args, **kw):
-        loop = test.loop
-        timeout = getattr(test, "TEST_TIMEOUT", 120)
-        ret = loop.run_until_complete(
-            asyncio.wait_for(fun(test, *args, **kw), timeout, loop=loop))
-        return ret
-    return wrapper
-
-
 def kafka_versions(*versions):
     # Took from kafka-python
 
