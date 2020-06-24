@@ -23,7 +23,7 @@ lint:
             isort --diff -rc $(FORMATTED_AREAS) setup.py; \
             false; \
         fi
-	flake8 $(FORMATTED_AREAS) setup.py
+	flake8 aiokafka tests setup.py
 	mypy $(FORMATTED_AREAS)
 
 test: flake
