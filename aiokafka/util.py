@@ -1,7 +1,7 @@
 import asyncio
 import os
 import sys
-from asyncio import AbstractEventLoop, Future
+from asyncio import AbstractEventLoop
 from distutils.version import StrictVersion
 from typing import Dict, Tuple, TypeVar, Union
 
@@ -19,7 +19,7 @@ except ImportError:
 T = TypeVar("T")
 
 
-def create_future(loop: AbstractEventLoop) -> Future[T]:
+def create_future(loop: AbstractEventLoop) -> "asyncio.Future[T]":
     try:
         return loop.create_future()
     except AttributeError:

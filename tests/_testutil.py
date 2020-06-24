@@ -26,6 +26,8 @@ log = logging.getLogger(__name__)
 
 __all__ = ['KafkaIntegrationTestCase', 'random_string']
 
+run_until_complete = pytest.mark.asyncio
+
 
 def kafka_versions(*versions):
     # Took from kafka-python
