@@ -1,7 +1,8 @@
 from aiokafka.admin import AIOKafkaAdminClient
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
-from kafka.admin import NewTopic
+from kafka.admin import NewTopic, NewPartitions
+from kafka.admin.config_resource import ConfigResource, ConfigResourceType
 import random
 
 
@@ -60,6 +61,48 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert error_code == 0
         topics = await self.admin.list_topics()
         assert name not in topics
+
+    @run_until_complete
+    async def test_describe_configs(self):
+        tn = self.topic_name
+        await self.admin.create_topics([NewTopic(tn, 1, 1)])
+        cr = ConfigResource(ConfigResourceType.TOPIC, tn, None)
+        resp = await self.admin.describe_configs([cr])
+        assert len(resp) == 1
+        assert len(resp[0].resources) == 1
+        config_resource = resp[0].resources[0]
+        assert config_resource[3] == tn
+        assert False, config_resource
+
+    @run_until_complete
+    async def test_alter_configs(self):
+        tn = self.topic_name
+        await self.admin.create_topics([NewTopic(tn, 1, 1)])
+        cr = ConfigResource(ConfigResourceType.TOPIC, tn, {"cleanup.policy": "delete"})
+        await self.admin.alter_configs([cr])
+        new_configs_resp = await self.admin.describe_configs([cr])
+        assert len(new_configs_resp) == 1
+        assert len(new_configs_resp[0].resources) == 1
+        name, value, _, _, _, _ = new_configs_resp[0].resources[0][4][0]
+        assert name == "cleanup.policy"
+        assert value == "delete"
+
+    @run_until_complete
+    async def test_create_partitions(self):
+        tn = self.topic_name
+        await self.admin.create_topics([NewTopic(tn, 1, 1)])
+        old_desc = await self.admin.describe_topics([tn])
+        assert len(old_desc[0]["partitions"]) == 1
+        new_part = NewPartitions(total_count=2)
+        await self.admin.create_partitions({tn: new_part})
+        new_desc = await self.admin.describe_topics([tn])
+        assert len(new_desc[0]["partitions"]) == 2
+        assert new_desc[0]["partitions"][0] == old_desc[0]["partitions"][0]
+
+    @run_until_complete
+    async def test_list_consumer_groups(self):
+        resp = await self.admin.list_consumer_groups()
+        assert len(resp) == 0
 
     @property
     def topic_name(self):
