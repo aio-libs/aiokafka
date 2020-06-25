@@ -166,7 +166,6 @@ if sys.platform != 'win32':
             pytest.skip(
                 "Skipping functional test as `--docker-image` not provided")
             return
-        print("pull")
         if not request.config.getoption('--no-pull'):
             docker.images.pull(image)
         kafka_host = docker_ip_address
@@ -195,7 +194,6 @@ if sys.platform != 'win32':
         else:
             environment['SASL_MECHANISMS'] = "GSSAPI"
             environment['SASL_JAAS_FILE'] = "kafka_server_gssapi_jaas.conf"
-        print("container")
 
         container = docker.containers.run(
             image=image,
