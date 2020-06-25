@@ -1,10 +1,14 @@
-flake8==3.7.9
-pytest==5.3.5
-pytest-cov==2.8.1
-pytest-catchlog==1.2.2
-docker-py==1.10.6
-lz4==2.2.1
+-r requirements-cython.txt
+flake8==3.8.3
+black==19.10b0
+mypy==0.782
+isort==4.3.21
+pytest==5.4.3
+pytest-cov==2.10.0
+pytest-asyncio==0.12.0
+docker==4.2.1
+lz4==3.1.0
 xxhash==1.4.3
 python-snappy==0.5.4
-# pypiwin32==219
-cython==0.29.19
+dataclasses==0.5; python_version<"3.7"
+async_generator==1.10; python_version<"3.7"
