@@ -5,16 +5,25 @@ from distutils.version import StrictVersion
 
 from .structs import TopicPartition, OffsetAndMetadata
 
-__all__ = ["ensure_future", "create_future", "PY_35"]
 
+__all__ = [
+    "ensure_future", "create_future", "PY_35",
+    "PY_352", "PY_36", "NO_EXTENSIONS", "INTEGER_MAX_VALUE",
+    "INTEGER_MIN_VALUE"]
 
 try:
-    from asyncio import ensure_future
+    from asyncio import create_task
+
+    def ensure_future(coro):
+        return create_task(coro)
+
 except ImportError:
-    exec("from asyncio import async as ensure_future")
+    from asyncio import ensure_future
 
 
-def create_future(loop):
+def create_future(loop=None):
+    if loop is None:
+        loop = get_running_loop()
     try:
         return loop.create_future()
     except AttributeError:

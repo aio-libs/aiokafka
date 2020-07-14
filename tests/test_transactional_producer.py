@@ -21,7 +21,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_producer_transactions_not_supported(self):
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer")
         producer
         with self.assertRaises(UnsupportedVersionError):
@@ -35,7 +35,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # transactional_id option and minimal setup.
 
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -45,7 +45,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 self.topic, b'hello, Kafka!')
 
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop,
+            self.topic,
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest")
         await consumer.start()
@@ -63,7 +63,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # not even send the End marker
 
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -81,13 +81,13 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # transactional_id
 
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p1")
         await producer.start()
         self.add_cleanup(producer.stop)
 
         producer2 = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p2")
         await producer2.start()
         self.add_cleanup(producer2.stop)
@@ -105,14 +105,14 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # are sending proper InitPIDRequest, not an idempotent one
 
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p1")
         await producer.start()
         pid = producer._txn_manager.producer_id
         await producer.stop()
 
         producer2 = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p2")
         await producer2.start()
         self.add_cleanup(producer2.stop)
@@ -125,7 +125,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # OutOfOrderSequenceNumber
 
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p1")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -145,7 +145,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # OutOfOrderSequenceNumber
 
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p1")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -174,7 +174,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         group_id = self.topic + "-group"
 
         consumer = AIOKafkaConsumer(
-            in_topic, loop=self.loop,
+            in_topic,
             bootstrap_servers=self.hosts,
             enable_auto_commit=False,
             group_id=group_id,
@@ -183,7 +183,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(consumer.stop)
 
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p1")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -233,7 +233,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         group_id = self.topic + "-group"
 
         consumer = AIOKafkaConsumer(
-            in_topic, loop=self.loop,
+            in_topic,
             bootstrap_servers=self.hosts,
             enable_auto_commit=False,
             group_id=group_id,
@@ -242,7 +242,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(consumer.stop)
 
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p1")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -294,7 +294,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_producer_transactional_send_offsets_error_checks(self):
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p1")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -315,7 +315,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # committing the transaction
 
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p1")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -339,7 +339,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # the same partition. They will be sent one at a time.
 
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p1")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -365,7 +365,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_producer_transactional_cancel_txn_methods(self):
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p1")
         txn_manager = producer._txn_manager
         self.assertEqual(txn_manager.state, TransactionState.UNINITIALIZED)
@@ -411,7 +411,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_producer_require_transactional_id(self):
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts)
+            bootstrap_servers=self.hosts)
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -431,7 +431,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_producer_transactional_send_message_outside_txn(self):
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p1")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -443,7 +443,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         await producer.begin_transaction()
         await producer.send(self.topic, value=b"1", partition=0)
         commit_task = ensure_future(producer.commit_transaction())
-        await asyncio.sleep(0.0001, loop=self.loop)
+        await asyncio.sleep(0.0001)
         self.assertFalse(commit_task.done())
 
         # Already not in transaction
@@ -459,7 +459,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_producer_transactional_send_batch_outside_txn(self):
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer", client_id="p1")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -475,7 +475,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         await producer.begin_transaction()
         await producer.send(self.topic, value=b"1", partition=0)
         commit_task = ensure_future(producer.commit_transaction())
-        await asyncio.sleep(0.001, loop=self.loop)
+        await asyncio.sleep(0.001)
         self.assertFalse(commit_task.done())
 
         # Already not in transaction

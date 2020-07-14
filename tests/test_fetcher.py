@@ -21,7 +21,7 @@ from aiokafka.consumer.fetcher import (
     PartitionRecords, READ_UNCOMMITTED
 )
 from aiokafka.consumer.subscription_state import SubscriptionState
-from aiokafka.util import ensure_future
+from aiokafka.util import ensure_future, create_future
 from ._testutil import run_until_complete
 
 
@@ -42,12 +42,12 @@ def test_offset_reset_strategy():
 def test_fetch_result_and_error(loop):
     # Add some data
     result = FetchResult(
-        TopicPartition("test", 0), assignment=mock.Mock(), loop=loop,
+        TopicPartition("test", 0), assignment=mock.Mock(),
         partition_records=mock.Mock(next_fetch_offset=0), backoff=0)
 
     assert repr(result) == "<FetchResult position=0>"
     error = FetchError(
-        loop=loop, error=OffsetOutOfRangeError({}), backoff=0)
+        error=OffsetOutOfRangeError({}), backoff=0)
 
     # Python3.7 got rid of trailing comma in exceptions, which makes the line
     # different between 3.6 and 3.7.
@@ -67,7 +67,7 @@ class TestFetcher(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         for coro, args, kw in reversed(self._cleanup):
-            task = asyncio.wait_for(coro(*args, **kw), 30, loop=self.loop)
+            task = asyncio.wait_for(coro(*args, **kw), 30)
             self.loop.run_until_complete(task)
 
     def add_cleanup(self, cb_or_coro, *args, **kw):
@@ -76,10 +76,9 @@ class TestFetcher(unittest.TestCase):
     @run_until_complete
     async def test_fetcher__update_fetch_positions(self):
         client = AIOKafkaClient(
-            loop=self.loop,
             bootstrap_servers=[])
-        subscriptions = SubscriptionState(loop=self.loop)
-        fetcher = Fetcher(client, subscriptions, loop=self.loop)
+        subscriptions = SubscriptionState()
+        fetcher = Fetcher(client, subscriptions)
         self.add_cleanup(fetcher.close)
         # Disable background task
         fetcher._fetch_task.cancel()
@@ -88,7 +87,7 @@ class TestFetcher(unittest.TestCase):
         except asyncio.CancelledError:
             pass
         fetcher._fetch_task = ensure_future(
-            asyncio.sleep(1000000, loop=self.loop), loop=self.loop)
+            asyncio.sleep(1000000))
 
         partition = TopicPartition('test', 0)
         offsets = {partition: OffsetAndTimestamp(12, -1)}
@@ -112,9 +111,8 @@ class TestFetcher(unittest.TestCase):
         # In basic case we will need to wait for committed
         update_task = ensure_future(
             fetcher._update_fetch_positions(assignment, 0, [partition]),
-            loop=self.loop
         )
-        await asyncio.sleep(0.1, loop=self.loop)
+        await asyncio.sleep(0.1)
         self.assertFalse(update_task.done())
         # Will continue only after committed is resolved
         tp_state.update_committed(OffsetAndMetadata(4, ""))
@@ -139,9 +137,8 @@ class TestFetcher(unittest.TestCase):
         assignment, tp_state = reset_assignment()
         update_task = ensure_future(
             fetcher._update_fetch_positions(assignment, 0, [partition]),
-            loop=self.loop
         )
-        await asyncio.sleep(0.1, loop=self.loop)
+        await asyncio.sleep(0.1)
         self.assertFalse(update_task.done())
 
         tp_state.seek(8)
@@ -154,9 +151,8 @@ class TestFetcher(unittest.TestCase):
         assignment, tp_state = reset_assignment()
         update_task = ensure_future(
             fetcher._update_fetch_positions(assignment, 0, [partition]),
-            loop=self.loop
         )
-        await asyncio.sleep(0.1, loop=self.loop)
+        await asyncio.sleep(0.1)
         self.assertFalse(update_task.done())
 
         tp_state.await_reset(OffsetResetStrategy.LATEST)
@@ -212,11 +208,10 @@ class TestFetcher(unittest.TestCase):
     @run_until_complete
     async def test_proc_fetch_request(self):
         client = AIOKafkaClient(
-            loop=self.loop,
             bootstrap_servers=[])
-        subscriptions = SubscriptionState(loop=self.loop)
+        subscriptions = SubscriptionState()
         fetcher = Fetcher(
-            client, subscriptions, auto_offset_reset="latest", loop=self.loop)
+            client, subscriptions, auto_offset_reset="latest")
 
         tp = TopicPartition('test', 0)
         tp_info = (tp.topic, [(tp.partition, 4, 100000)])
@@ -224,11 +219,19 @@ class TestFetcher(unittest.TestCase):
             -1,  # replica_id
             100, 100, [tp_info])
 
+        async def ready(conn):
+            return True
+
+        def force_metadata_update():
+            fut = create_future()
+            fut.set_result(False)
+            fut.result()
+            return fut
+
         client.ready = mock.MagicMock()
-        client.ready.side_effect = asyncio.coroutine(lambda a: True)
+        client.ready.side_effect = ready
         client.force_metadata_update = mock.MagicMock()
-        client.force_metadata_update.side_effect = asyncio.coroutine(
-            lambda: False)
+        client.force_metadata_update.side_effect = force_metadata_update
         client.send = mock.MagicMock()
 
         builder = LegacyRecordBatchBuilder(
@@ -236,9 +239,13 @@ class TestFetcher(unittest.TestCase):
         builder.append(offset=4, value=b"test msg", key=None, timestamp=None)
         raw_batch = bytes(builder.build())
 
-        client.send.side_effect = asyncio.coroutine(
-            lambda n, r: FetchResponse(
-                [('test', [(0, 0, 9, raw_batch)])]))
+        fetch_response = FetchResponse([('test', [(0, 0, 9, raw_batch)])])
+
+        async def send(node, request):
+            nonlocal fetch_response
+            return fetch_response
+
+        client.send.side_effect = send
         subscriptions.assign_from_user({tp})
         assignment = subscriptions.subscription.assignment
         tp_state = assignment.state_value(tp)
@@ -284,9 +291,7 @@ class TestFetcher(unittest.TestCase):
         # error -> no partition found (UnknownTopicOrPartitionError)
         subscriptions.seek(tp, 4)
         fetcher._records.clear()
-        client.send.side_effect = asyncio.coroutine(
-            lambda n, r: FetchResponse(
-                [('test', [(0, 3, 9, raw_batch)])]))
+        fetch_response = FetchResponse([('test', [(0, 3, 9, raw_batch)])])
         cc = client.force_metadata_update.call_count
         needs_wake_up = await fetcher._proc_fetch_request(
             assignment, 0, req)
@@ -294,9 +299,7 @@ class TestFetcher(unittest.TestCase):
         self.assertEqual(client.force_metadata_update.call_count, cc + 1)
 
         # error -> topic auth failed (TopicAuthorizationFailedError)
-        client.send.side_effect = asyncio.coroutine(
-            lambda n, r: FetchResponse(
-                [('test', [(0, 29, 9, raw_batch)])]))
+        fetch_response = FetchResponse([('test', [(0, 29, 9, raw_batch)])])
         needs_wake_up = await fetcher._proc_fetch_request(
             assignment, 0, req)
         self.assertEqual(needs_wake_up, True)
@@ -304,17 +307,13 @@ class TestFetcher(unittest.TestCase):
             await fetcher.next_record([])
 
         # error -> unknown
-        client.send.side_effect = asyncio.coroutine(
-            lambda n, r: FetchResponse(
-                [('test', [(0, -1, 9, raw_batch)])]))
+        fetch_response = FetchResponse([('test', [(0, -1, 9, raw_batch)])])
         needs_wake_up = await fetcher._proc_fetch_request(
             assignment, 0, req)
         self.assertEqual(needs_wake_up, False)
 
         # error -> offset out of range with offset strategy
-        client.send.side_effect = asyncio.coroutine(
-            lambda n, r: FetchResponse(
-                [('test', [(0, 1, 9, raw_batch)])]))
+        fetch_response = FetchResponse([('test', [(0, 1, 9, raw_batch)])])
         needs_wake_up = await fetcher._proc_fetch_request(
             assignment, 0, req)
         self.assertEqual(needs_wake_up, False)
@@ -334,11 +333,10 @@ class TestFetcher(unittest.TestCase):
         await fetcher.close()
 
     def _setup_error_after_data(self):
-        subscriptions = SubscriptionState(loop=self.loop)
+        subscriptions = SubscriptionState()
         client = AIOKafkaClient(
-            loop=self.loop,
             bootstrap_servers=[])
-        fetcher = Fetcher(client, subscriptions, loop=self.loop)
+        fetcher = Fetcher(client, subscriptions)
         tp1 = TopicPartition('some_topic', 0)
         tp2 = TopicPartition('some_topic', 1)
 
@@ -358,11 +356,11 @@ class TestFetcher(unittest.TestCase):
             None, None, False, READ_UNCOMMITTED)
         partition_records._records_iterator = iter(messages)
         fetcher._records[tp2] = FetchResult(
-            tp2, assignment=assignment, loop=self.loop,
+            tp2, assignment=assignment,
             partition_records=partition_records, backoff=0)
         # Add some error
         fetcher._records[tp1] = FetchError(
-            loop=self.loop, error=OffsetOutOfRangeError({}), backoff=0)
+            error=OffsetOutOfRangeError({}), backoff=0)
         return fetcher, tp1, tp2, messages
 
     @run_until_complete
@@ -392,23 +390,28 @@ class TestFetcher(unittest.TestCase):
 
         with self.assertRaises(asyncio.TimeoutError):
             await asyncio.wait_for(
-                fetcher.next_record([]), timeout=0.1, loop=self.loop)
+                fetcher.next_record([]), timeout=0.1)
 
     @run_until_complete
     async def test_compacted_topic_consumption(self):
         # Compacted topics can have offsets skipped
         client = AIOKafkaClient(
-            loop=self.loop,
             bootstrap_servers=[])
+
+        async def ready(conn):
+            return True
+
+        async def force_metadata_update():
+            return False
+
         client.ready = mock.MagicMock()
-        client.ready.side_effect = asyncio.coroutine(lambda a: True)
+        client.ready.side_effect = ready
         client.force_metadata_update = mock.MagicMock()
-        client.force_metadata_update.side_effect = asyncio.coroutine(
-            lambda: False)
+        client.force_metadata_update.side_effect = force_metadata_update
         client.send = mock.MagicMock()
 
-        subscriptions = SubscriptionState(loop=self.loop)
-        fetcher = Fetcher(client, subscriptions, loop=self.loop)
+        subscriptions = SubscriptionState()
+        fetcher = Fetcher(client, subscriptions)
 
         tp = TopicPartition('test', 0)
         req = FetchRequest(
@@ -428,10 +431,13 @@ class TestFetcher(unittest.TestCase):
                 batch  # Batch raw bytes
             )])])
 
+        async def send(node, ready):
+            return resp
+
         subscriptions.assign_from_user({tp})
         assignment = subscriptions.subscription.assignment
         tp_state = assignment.state_value(tp)
-        client.send.side_effect = asyncio.coroutine(lambda n, r: resp)
+        client.send.side_effect = send
 
         tp_state.seek(155)
         fetcher._in_flight.add(0)
@@ -459,19 +465,24 @@ class TestFetcher(unittest.TestCase):
     @run_until_complete
     async def test_fetcher_offsets_for_times(self):
         client = AIOKafkaClient(
-            loop=self.loop,
             bootstrap_servers=[])
+
+        async def ready(conn):
+            return True
+
+        async def _maybe_wait_metadata():
+            return False
+
         client.ready = mock.MagicMock()
-        client.ready.side_effect = asyncio.coroutine(lambda a: True)
+        client.ready.side_effect = ready
         client._maybe_wait_metadata = mock.MagicMock()
-        client._maybe_wait_metadata.side_effect = asyncio.coroutine(
-            lambda: False)
+        client._maybe_wait_metadata.side_effect = _maybe_wait_metadata
         client.cluster.leader_for_partition = mock.MagicMock()
         client.cluster.leader_for_partition.return_value = 0
         client._api_version = (0, 10, 1)
 
-        subscriptions = SubscriptionState(loop=self.loop)
-        fetcher = Fetcher(client, subscriptions, loop=self.loop)
+        subscriptions = SubscriptionState()
+        fetcher = Fetcher(client, subscriptions)
         tp0 = TopicPartition("topic", 0)
         tp1 = TopicPartition("topic", 1)
 

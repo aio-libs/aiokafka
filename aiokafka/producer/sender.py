@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import logging
+import time
 
 import aiokafka.errors as Errors
 from aiokafka.client import ConnectionGroup, CoordinationType
@@ -34,7 +35,7 @@ class Sender:
 
     def __init__(
             self, client, *, acks, txn_manager, message_accumulator,
-            retry_backoff_ms, linger_ms, request_timeout_ms, loop):
+            retry_backoff_ms, linger_ms, request_timeout_ms):
         self.client = client
         self._txn_manager = txn_manager
         self._acks = acks
@@ -44,7 +45,6 @@ class Sender:
         self._in_flight = set()
         self._muted_partitions = set()
         self._coordinators = {}
-        self._loop = loop
         self._retry_backoff = retry_backoff_ms / 1000
         self._request_timeout_ms = request_timeout_ms
         self._linger_time = linger_ms / 1000
@@ -52,8 +52,7 @@ class Sender:
     async def start(self):
         # If producer is idempotent we need to assure we have PID found
         await self._maybe_wait_for_pid()
-        self._sender_task = ensure_future(
-            self._sender_routine(), loop=self._loop)
+        self._sender_task = ensure_future(self._sender_routine())
         self._sender_task.add_done_callback(self._fail_all)
 
     def _fail_all(self, task):
@@ -122,8 +121,7 @@ class Sender:
                 # create produce task for every batch
                 for node_id, batches in batches.items():
                     task = ensure_future(
-                        self._send_produce_req(node_id, batches),
-                        loop=self._loop)
+                        self._send_produce_req(node_id, batches))
                     self._in_flight.add(node_id)
                     for tp in batches:
                         self._muted_partitions.add(tp)
@@ -144,8 +142,7 @@ class Sender:
                 # * Metadata update if partition leader unknown
                 done, _ = await asyncio.wait(
                     waiters,
-                    return_when=asyncio.FIRST_COMPLETED,
-                    loop=self._loop)
+                    return_when=asyncio.FIRST_COMPLETED)
 
                 # done tasks should never produce errors, if they are it's a
                 # bug
@@ -204,7 +201,7 @@ class Sender:
                 raise err
             except Errors.CoordinatorNotAvailableError:
                 await self.client.force_metadata_update()
-                await asyncio.sleep(self._retry_backoff, loop=self._loop)
+                await asyncio.sleep(self._retry_backoff)
                 continue
             except Errors.KafkaError as err:
                 log.error("FindCoordinator Request failed: %s", err)
@@ -215,7 +212,7 @@ class Sender:
             ready = await self.client.ready(
                 coordinator_id, group=ConnectionGroup.COORDINATION)
             if not ready:
-                await asyncio.sleep(self._retry_backoff, loop=self._loop)
+                await asyncio.sleep(self._retry_backoff)
                 continue
 
             self._coordinators[coordinator_type] = coordinator_id
@@ -252,16 +249,16 @@ class Sender:
             node_id (int): kafka broker identifier
             batches (dict): dictionary of {TopicPartition: MessageBatch}
         """
-        t0 = self._loop.time()
+        t0 = time.monotonic()
 
         handler = SendProduceReqHandler(self, batches)
         await handler.do(node_id)
 
         # if batches for node is processed in less than a linger seconds
         # then waiting for the remaining time
-        sleep_time = self._linger_time - (self._loop.time() - t0)
+        sleep_time = self._linger_time - (time.monotonic() - t0)
         if sleep_time > 0:
-            await asyncio.sleep(sleep_time, loop=self._loop)
+            await asyncio.sleep(sleep_time)
 
         self._in_flight.remove(node_id)
         for tp in batches:
@@ -279,29 +276,25 @@ class Sender:
         tps = txn_manager.partitions_to_add()
         if tps:
             return ensure_future(
-                self._do_add_partitions_to_txn(tps),
-                loop=self._loop)
+                self._do_add_partitions_to_txn(tps))
 
         # We need to add group to transaction before we can commit the offset
         group_id = txn_manager.consumer_group_to_add()
         if group_id is not None:
             return ensure_future(
-                self._do_add_offsets_to_txn(group_id),
-                loop=self._loop)
+                self._do_add_offsets_to_txn(group_id))
 
         # Now commit the added group's offset
         commit_data = txn_manager.offsets_to_commit()
         if commit_data is not None:
             offsets, group_id = commit_data
             return ensure_future(
-                self._do_txn_offset_commit(offsets, group_id),
-                loop=self._loop)
+                self._do_txn_offset_commit(offsets, group_id))
 
         commit_result = txn_manager.needs_transaction_commit()
         if commit_result is not None:
             return ensure_future(
-                self._do_txn_commit(commit_result),
-                loop=self._loop)
+                self._do_txn_commit(commit_result))
 
     async def _do_add_partitions_to_txn(self, tps):
         # First assert we have a valid coordinator to send the request to
@@ -368,7 +361,6 @@ class BaseHandler:
     def __init__(self, sender):
         self._sender = sender
         self._default_backoff = sender._retry_backoff
-        self._loop = sender._loop
 
     async def do(self, node_id):
         req = self.create_request()
@@ -377,12 +369,12 @@ class BaseHandler:
                 node_id, req, group=self.group)
         except KafkaError as err:
             log.warning("Could not send %r: %r", req.__class__, err)
-            await asyncio.sleep(self._default_backoff, loop=self._loop)
+            await asyncio.sleep(self._default_backoff)
             return False
 
         retry_backoff = self.handle_response(resp)
         if retry_backoff is not None:
-            await asyncio.sleep(retry_backoff, loop=self._loop)
+            await asyncio.sleep(retry_backoff)
             return False  # Failure
         else:
             return True  # Success
@@ -730,7 +722,7 @@ class SendProduceReqHandler(BaseHandler):
 
         if self._to_reenqueue:
             # Wait backoff before reequeue
-            await asyncio.sleep(self._default_backoff, loop=self._loop)
+            await asyncio.sleep(self._default_backoff)
 
             for batch in self._to_reenqueue:
                 self._sender._message_accumulator.reenqueue(batch)

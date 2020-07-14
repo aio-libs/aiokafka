@@ -20,10 +20,9 @@ class TestMessageAccumulator(unittest.TestCase):
     @run_until_complete
     async def test_basic(self):
         cluster = ClusterMetadata(metadata_max_age_ms=10000)
-        ma = MessageAccumulator(cluster, 1000, 0, 30, loop=self.loop)
+        ma = MessageAccumulator(cluster, 1000, 0, 30)
         data_waiter = ma.data_waiter()
-        done, _ = await asyncio.wait(
-            [data_waiter], timeout=0.2, loop=self.loop)
+        done, _ = await asyncio.wait([data_waiter], timeout=0.2)
         self.assertFalse(bool(done))  # no data in accumulator yet...
 
         tp0 = TopicPartition("test-topic", 0)
@@ -31,8 +30,7 @@ class TestMessageAccumulator(unittest.TestCase):
         await ma.add_message(tp0, b'key', b'value', timeout=2)
         await ma.add_message(tp1, None, b'value without key', timeout=2)
 
-        done, _ = await asyncio.wait(
-            [data_waiter], timeout=0.2, loop=self.loop)
+        done, _ = await asyncio.wait([data_waiter], timeout=0.2)
         self.assertTrue(bool(done))
 
         batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[])
@@ -57,9 +55,8 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertEqual(type(m_set1), MessageBatch)
         self.assertEqual(m_set0.expired(), False)
 
-        data_waiter = ensure_future(ma.data_waiter(), loop=self.loop)
-        done, _ = await asyncio.wait(
-            [data_waiter], timeout=0.2, loop=self.loop)
+        data_waiter = asyncio.ensure_future(ma.data_waiter())
+        done, _ = await asyncio.wait([data_waiter], timeout=0.2)
         self.assertFalse(bool(done))  # no data in accumulator again...
 
         # testing batch overflow
@@ -76,10 +73,8 @@ class TestMessageAccumulator(unittest.TestCase):
         # as we have buffer_size=1000 coroutine will block until data will be
         # drained
         add_task = ensure_future(
-            ma.add_message(tp1, None, b'0123456789' * 50, timeout=2),
-            loop=self.loop)
-        done, _ = await asyncio.wait(
-            [add_task], timeout=0.2, loop=self.loop)
+            ma.add_message(tp1, None, b'0123456789' * 50, timeout=2))
+        done, _ = await asyncio.wait([add_task], timeout=0.2)
         self.assertFalse(bool(done))
 
         batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[1, 2])
@@ -89,8 +84,7 @@ class TestMessageAccumulator(unittest.TestCase):
         m_set1 = batches[1].get(tp1)
         self.assertEqual(m_set1, None)
 
-        done, _ = await asyncio.wait(
-            [add_task], timeout=0.1, loop=self.loop)
+        done, _ = await asyncio.wait([add_task], timeout=0.1)
         self.assertFalse(bool(done))  # we still not drained data for tp1
 
         batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[])
@@ -101,7 +95,7 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertEqual(m_set1._builder._relative_offset, 1)
 
         done, _ = await asyncio.wait(
-            [add_task], timeout=0.2, loop=self.loop)
+            [add_task], timeout=0.2)
         self.assertTrue(bool(done))
         batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(unknown_leaders_exist, True)
@@ -128,7 +122,7 @@ class TestMessageAccumulator(unittest.TestCase):
         cluster.leader_for_partition = mock.MagicMock()
         cluster.leader_for_partition.side_effect = mocked_leader_for_partition
 
-        ma = MessageAccumulator(cluster, 1000, 0, 1, loop=self.loop)
+        ma = MessageAccumulator(cluster, 1000, 0, 1)
         fut1 = await ma.add_message(
             tp2, None, b'msg for tp@2', timeout=2)
         fut2 = await ma.add_message(
@@ -186,7 +180,6 @@ class TestMessageAccumulator(unittest.TestCase):
         fut01.cancel()
         batches[0][tp0].done(base_offset=21)  # no error in this case
 
-    @run_until_complete
     def test_message_batch_builder_basic(self):
         magic = 0
         batch_size = 1000
@@ -241,7 +234,7 @@ class TestMessageAccumulator(unittest.TestCase):
         cluster.leader_for_partition = mock.MagicMock()
         cluster.leader_for_partition.side_effect = mocked_leader_for_partition
 
-        ma = MessageAccumulator(cluster, 1000, 0, 1, loop=self.loop)
+        ma = MessageAccumulator(cluster, 1000, 0, 1)
         builder0 = ma.create_builder()
         builder1_1 = ma.create_builder()
         builder1_2 = ma.create_builder()
@@ -284,7 +277,7 @@ class TestMessageAccumulator(unittest.TestCase):
         cluster.leader_for_partition = mock.MagicMock()
         cluster.leader_for_partition.side_effect = mocked_leader_for_partition
 
-        ma = MessageAccumulator(cluster, 1000, 0, 1, loop=self.loop)
+        ma = MessageAccumulator(cluster, 1000, 0, 1)
         fut1 = await ma.add_message(
             tp0, b'key', b'value', timeout=2)
 
@@ -327,7 +320,7 @@ class TestMessageAccumulator(unittest.TestCase):
             self.assertEqual(len(batch.future._callbacks), 1)
 
         batch.done_noack()
-        await asyncio.sleep(0.01, loop=self.loop)
+        await asyncio.sleep(0.01)
         self.assertEqual(batch.retry_count, 3)
         self.assertFalse(ma._pending_batches)
         self.assertFalse(ma._batches)
