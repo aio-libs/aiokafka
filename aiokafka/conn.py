@@ -7,6 +7,7 @@ import hmac
 import logging
 import struct
 import sys
+import time
 import traceback
 import uuid
 import warnings
@@ -20,7 +21,7 @@ from kafka.protocol.commit import (
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
 import aiokafka.errors as Errors
-from aiokafka.util import ensure_future, create_future
+from aiokafka.util import ensure_future, create_future, get_running_loop
 
 from aiokafka.abc import AbstractTokenProvider
 
@@ -68,7 +69,7 @@ class VersionInfo:
 
 
 async def create_conn(
-    host, port, *, loop=None, client_id='aiokafka',
+    host, port, *, client_id='aiokafka',
     request_timeout_ms=40000, api_version=(0, 8, 2),
     ssl_context=None, security_protocol="PLAINTEXT",
     max_idle_ms=None, on_close=None,
@@ -80,10 +81,8 @@ async def create_conn(
     sasl_oauth_token_provider=None,
     version_hint=None
 ):
-    if loop is None:
-        loop = asyncio.get_event_loop()
     conn = AIOKafkaConnection(
-        host, port, loop=loop, client_id=client_id,
+        host, port, client_id=client_id,
         request_timeout_ms=request_timeout_ms,
         api_version=api_version,
         ssl_context=ssl_context, security_protocol=security_protocol,
@@ -119,7 +118,7 @@ class AIOKafkaConnection:
     _reader = None  # For __del__ to work properly, just in case
     _source_traceback = None
 
-    def __init__(self, host, port, *, loop, client_id='aiokafka',
+    def __init__(self, host, port, *, client_id='aiokafka',
                  request_timeout_ms=40000, api_version=(0, 8, 2),
                  ssl_context=None, security_protocol='PLAINTEXT',
                  max_idle_ms=None, on_close=None, sasl_mechanism=None,
@@ -128,6 +127,8 @@ class AIOKafkaConnection:
                  sasl_kerberos_domain_name=None,
                  sasl_oauth_token_provider=None,
                  version_hint=None):
+        loop = get_running_loop()
+
         if sasl_mechanism == "GSSAPI":
             assert gssapi is not None, "gssapi library required"
 
@@ -171,7 +172,7 @@ class AIOKafkaConnection:
         self._closed_fut = None
 
         self._max_idle_ms = max_idle_ms
-        self._last_action = loop.time()
+        self._last_action = time.monotonic()
         self._idle_handle = None
 
         self._on_close_cb = on_close
@@ -202,7 +203,7 @@ class AIOKafkaConnection:
 
     async def connect(self):
         loop = self._loop
-        self._closed_fut = create_future(loop=loop)
+        self._closed_fut = create_future()
         if self._security_protocol in ["PLAINTEXT", "SASL_PLAINTEXT"]:
             ssl = None
         else:
@@ -215,7 +216,7 @@ class AIOKafkaConnection:
         transport, _ = await asyncio.wait_for(
             loop.create_connection(
                 lambda: protocol, self.host, self.port, ssl=ssl),
-            loop=loop, timeout=self._request_timeout)
+            timeout=self._request_timeout)
         writer = asyncio.StreamWriter(transport, protocol, reader, loop)
         self._reader, self._writer, self._protocol = reader, writer, protocol
 
@@ -224,7 +225,7 @@ class AIOKafkaConnection:
 
         # Start idle checker
         if self._max_idle_ms is not None:
-            self._idle_handle = self._loop.call_soon(
+            self._idle_handle = loop.call_soon(
                 self._idle_check, weakref.ref(self))
 
         if self._version_hint and self._version_hint >= (0, 10):
@@ -383,7 +384,7 @@ class AIOKafkaConnection:
     @staticmethod
     def _idle_check(self_ref):
         self = self_ref()
-        idle_for = self._loop.time() - self._last_action
+        idle_for = time.monotonic() - self._last_action
         timeout = self._max_idle_ms / 1000
         # If we have any pending requests, we are assumed to be not idle.
         # it's up to `request_timeout_ms` to break those.
@@ -435,9 +436,9 @@ class AIOKafkaConnection:
 
         if not expect_response:
             return self._writer.drain()
-        fut = create_future(loop=self._loop)
+        fut = create_future()
         self._requests.append((correlation_id, request.RESPONSE_TYPE, fut))
-        return asyncio.wait_for(fut, self._request_timeout, loop=self._loop)
+        return asyncio.wait_for(fut, self._request_timeout)
 
     def _send_sasl_token(self, payload, expect_response=True):
         if self._writer is None:
@@ -457,9 +458,9 @@ class AIOKafkaConnection:
         if not expect_response:
             return self._writer.drain()
 
-        fut = create_future(loop=self._loop)
+        fut = create_future()
         self._requests.append((None, None, fut))
-        return asyncio.wait_for(fut, self._request_timeout, loop=self._loop)
+        return asyncio.wait_for(fut, self._request_timeout)
 
     def connected(self):
         return bool(self._reader is not None and not self._reader.at_eof())
@@ -494,7 +495,7 @@ class AIOKafkaConnection:
 
     def _create_reader_task(self):
         self_ref = weakref.ref(self)
-        read_task = ensure_future(self._read(self_ref), loop=self._loop)
+        read_task = ensure_future(self._read(self_ref))
         read_task.add_done_callback(
             functools.partial(self._on_read_task_error, self_ref))
         return read_task
@@ -549,7 +550,7 @@ class AIOKafkaConnection:
                 fut.set_result(response)
 
         # Update idle timer.
-        self._last_action = self._loop.time()
+        self._last_action = time.monotonic()
         # We should clear the request future only after all code is done and
         # future is resolved. If any fails it's up to close() method to fail
         # this future.

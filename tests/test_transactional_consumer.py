@@ -19,7 +19,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_consumer_transactions_not_supported(self):
         consumer = AIOKafkaConsumer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             isolation_level="read_committed")
         with self.assertRaises(UnsupportedVersionError):
             await consumer.start()
@@ -29,18 +29,18 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_consumer_transactional_commit(self):
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer")
         await producer.start()
         self.add_cleanup(producer.stop)
 
         producer2 = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts)
+            bootstrap_servers=self.hosts)
         await producer2.start()
         self.add_cleanup(producer2.stop)
 
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop,
+            self.topic,
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest",
             isolation_level="read_committed")
@@ -59,7 +59,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
 
         # The transaction blocked consumption
         task = self.loop.create_task(consumer.getone())
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
         self.assertFalse(task.done())
 
         tp = TopicPartition(self.topic, 0)
@@ -91,18 +91,18 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_consumer_transactional_abort(self):
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer")
         await producer.start()
         self.add_cleanup(producer.stop)
 
         producer2 = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts)
+            bootstrap_servers=self.hosts)
         await producer2.start()
         self.add_cleanup(producer2.stop)
 
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop,
+            self.topic,
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest",
             isolation_level="read_committed")
@@ -121,7 +121,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
 
         # The transaction blocked consumption
         task = self.loop.create_task(consumer.getone())
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
         self.assertFalse(task.done())
 
         tp = TopicPartition(self.topic, 0)
@@ -140,7 +140,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
 
         with self.assertRaises(asyncio.TimeoutError):
             await asyncio.wait_for(
-                consumer.getone(), timeout=0.5, loop=self.loop)
+                consumer.getone(), timeout=0.5)
 
         tp = TopicPartition(self.topic, 0)
         self.assertEqual(consumer.last_stable_offset(tp), 3)
@@ -148,7 +148,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
 
     async def _test_control_record(self, isolation_level):
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -158,7 +158,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
                 self.topic, b'Hello from transaction', partition=0)
 
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop,
+            self.topic,
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest",
             isolation_level=isolation_level,
@@ -171,7 +171,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
 
         with self.assertRaises(asyncio.TimeoutError):
             await asyncio.wait_for(
-                consumer.getone(), timeout=0.5, loop=self.loop)
+                consumer.getone(), timeout=0.5)
 
         # We must not be stuck on previous position
         position = await consumer.position(meta.topic_partition)
@@ -202,7 +202,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_consumer_several_transactions(self):
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -219,7 +219,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
                 await producer.abort_transaction()
 
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop,
+            self.topic,
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest",
             isolation_level="read_committed")
@@ -233,4 +233,4 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
 
         with self.assertRaises(asyncio.TimeoutError):
             await asyncio.wait_for(
-                consumer.getone(), timeout=0.5, loop=self.loop)
+                consumer.getone(), timeout=0.5)

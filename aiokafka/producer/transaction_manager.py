@@ -53,13 +53,13 @@ class TransactionState(Enum):
 
 class TransactionManager:
 
-    def __init__(self, transactional_id, transaction_timeout_ms, *, loop):
+    def __init__(self, transactional_id, transaction_timeout_ms):
         self.transactional_id = transactional_id
         self.transaction_timeout_ms = transaction_timeout_ms
         self.state = TransactionState.UNINITIALIZED
 
         self._pid_and_epoch = PidAndEpoch(NO_PRODUCER_ID, NO_PRODUCER_EPOCH)
-        self._pid_waiter = create_future(loop)
+        self._pid_waiter = create_future()
         self._sequence_numbers = defaultdict(lambda: 0)
         self._transaction_waiter = None
         self._task_waiter = None
@@ -68,8 +68,6 @@ class TransactionManager:
         self._pending_txn_partitions = set()
         self._txn_consumer_group = None
         self._pending_txn_offsets = deque()
-
-        self._loop = loop
 
     # INDEMPOTANCE PART
 
@@ -116,7 +114,7 @@ class TransactionManager:
 
     def begin_transaction(self):
         self._transition_to(TransactionState.IN_TRANSACTION)
-        self._transaction_waiter = create_future(loop=self._loop)
+        self._transaction_waiter = create_future()
 
     def committing_transaction(self):
         if self.state == TransactionState.ABORTABLE_ERROR:
@@ -131,7 +129,7 @@ class TransactionManager:
 
         # If we had an abortable error we need to create a new waiter
         if self._transaction_waiter.done():
-            self._transaction_waiter = create_future(loop=self._loop)
+            self._transaction_waiter = create_future()
         self.notify_task_waiter()
 
     def complete_transaction(self):
@@ -163,7 +161,7 @@ class TransactionManager:
         self._pending_txn_offsets.clear()
         # There may be an abortable error. We just override it
         if self._transaction_waiter.done():
-            self._transaction_waiter = create_future(loop=self._loop)
+            self._transaction_waiter = create_future()
         self._transaction_waiter.set_exception(exc)
 
     def maybe_add_partition_to_txn(self, tp: TopicPartition):
@@ -177,7 +175,7 @@ class TransactionManager:
     def add_offsets_to_txn(self, offsets, group_id):
         assert self.is_in_transaction()
         assert self.transactional_id
-        fut = create_future(loop=self._loop)
+        fut = create_future()
         self._pending_txn_offsets.append(
             (group_id, offsets, fut)
         )
@@ -249,5 +247,5 @@ class TransactionManager:
             self._task_waiter.set_result(None)
 
     def make_task_waiter(self):
-        self._task_waiter = create_future(loop=self._loop)
+        self._task_waiter = create_future()
         return self._task_waiter

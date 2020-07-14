@@ -1,7 +1,8 @@
 import logging
 import contextlib
 import copy
-from asyncio import AbstractEventLoop as ALoop, shield, Event, Future
+import time
+from asyncio import shield, Event, Future
 from enum import Enum
 
 from typing import Set, Pattern, Dict, List
@@ -41,14 +42,13 @@ class SubscriptionState:
     _subscription = None  # type: Subscription
     _listener = None  # type: ConsumerRebalanceListener
 
-    def __init__(self, *, loop: ALoop):
+    def __init__(self):
         self._subscription_waiters = []  # type: List[Future]
         self._assignment_waiters = []  # type: List[Future]
-        self._loop = loop  # type: ALoop
 
         # Fetch contexts
         self._fetch_count = 0
-        self._last_fetch_ended = loop.time()
+        self._last_fetch_ended = time.monotonic()
 
     @property
     def subscription(self) -> "Subscription":
@@ -145,7 +145,7 @@ class SubscriptionState:
                 isinstance(listener, ConsumerRebalanceListener))
         self._set_subscription_type(SubscriptionType.AUTO_TOPICS)
 
-        self._change_subscription(Subscription(topics, loop=self._loop))
+        self._change_subscription(Subscription(topics))
         self._listener = listener
         self._notify_subscription_waiters()
 
@@ -175,7 +175,7 @@ class SubscriptionState:
         self._set_subscription_type(SubscriptionType.USER_ASSIGNED)
 
         self._change_subscription(
-            ManualSubscription(partitions, loop=self._loop))
+            ManualSubscription(partitions))
         self._notify_assignment_waiters()
 
     def unsubscribe(self):
@@ -204,7 +204,7 @@ class SubscriptionState:
         Affects: SubscriptionState.subscription
         """
         assert self._subscription_type == SubscriptionType.AUTO_PATTERN
-        self._change_subscription(Subscription(topics, loop=self._loop))
+        self._change_subscription(Subscription(topics))
 
     def assign_from_subscribed(self, assignment: Set[TopicPartition]):
         """ Set assignment if automatic assignment is used.
@@ -244,7 +244,7 @@ class SubscriptionState:
         """ Wait for subscription change. This will always wait for next
         subscription.
         """
-        fut = create_future(loop=self._loop)
+        fut = create_future()
         self._subscription_waiters.append(fut)
         return fut
 
@@ -252,7 +252,7 @@ class SubscriptionState:
         """ Wait for next assignment. Be careful, as this will always wait for
         next assignment, even if the current one is active.
         """
-        fut = create_future(loop=self._loop)
+        fut = create_future()
         self._assignment_waiters.append(fut)
         return fut
 
@@ -294,13 +294,13 @@ class SubscriptionState:
         yield
         self._fetch_count -= 1
         if self._fetch_count == 0:
-            self._last_fetch_ended = self._loop.time()
+            self._last_fetch_ended = time.monotonic()
 
     @property
     def fetcher_idle_time(self):
         """ How much time (in seconds) spent without consuming any records """
         if self._fetch_count == 0:
-            return self._loop.time() - self._last_fetch_ended
+            return time.monotonic() - self._last_fetch_ended
         else:
             return 0
 
@@ -316,11 +316,10 @@ class Subscription:
         * Unsubscribed
     """
 
-    def __init__(self, topics: Set[str], *, loop: ALoop):
+    def __init__(self, topics: Set[str]):
         self._topics = frozenset(topics)  # type: Set[str]
         self._assignment = None  # type: Assignment
-        self._loop = loop  # type: ALoop
-        self.unsubscribe_future = create_future(loop)  # type: Future
+        self.unsubscribe_future = create_future()  # type: Future
         self._reassignment_in_progress = True
 
     @property
@@ -343,7 +342,7 @@ class Subscription:
         if self._assignment is not None:
             self._assignment._unassign()
 
-        self._assignment = Assignment(topic_partitions, loop=self._loop)
+        self._assignment = Assignment(topic_partitions)
         self._reassignment_in_progress = False
 
     def _unsubscribe(self):
@@ -359,15 +358,14 @@ class ManualSubscription(Subscription):
     """ Describes a user assignment
     """
 
-    def __init__(self, user_assignment: Set[TopicPartition], *, loop):
+    def __init__(self, user_assignment: Set[TopicPartition]):
         topics = set([])
         for tp in user_assignment:
             topics.add(tp.topic)
 
         self._topics = frozenset(topics)
-        self._assignment = Assignment(user_assignment, loop=loop)
-        self._loop = loop
-        self.unsubscribe_future = create_future(loop)
+        self._assignment = Assignment(user_assignment)
+        self.unsubscribe_future = create_future()
 
     def _assign(
             self, topic_partitions: Set[TopicPartition]):  # pragma: no cover
@@ -390,18 +388,17 @@ class Assignment:
         * Unassigned
     """
 
-    def __init__(self, topic_partitions: Set[TopicPartition], *, loop):
+    def __init__(self, topic_partitions: Set[TopicPartition]):
         assert isinstance(topic_partitions, (list, set, tuple))
 
         self._topic_partitions = frozenset(topic_partitions)
 
         self._tp_state = {}  # type: Dict[TopicPartition, TopicPartitionState]
         for tp in self._topic_partitions:
-            self._tp_state[tp] = TopicPartitionState(self, loop=loop)
+            self._tp_state[tp] = TopicPartitionState(self)
 
-        self._loop = loop
-        self.unassign_future = create_future(loop)
-        self.commit_refresh_needed = Event(loop=loop)
+        self.unassign_future = create_future()
+        self.commit_refresh_needed = Event()
 
     @property
     def tps(self):
@@ -457,7 +454,7 @@ class TopicPartitionState(object):
 
     """
 
-    def __init__(self, assignment, *, loop):
+    def __init__(self, assignment):
         # Synchronized values
         self._committed_futs = []
 
@@ -465,7 +462,7 @@ class TopicPartitionState(object):
         self.lso = None  # Last fetched stable offset mark
         self.timestamp = None  # timestamp of last poll
         self._position = None  # The current position of the topic
-        self._position_fut = create_future(loop=loop)
+        self._position_fut = create_future()
 
         # Will be set by `seek_to_beginning` or `seek_to_end` if called by user
         # or by Fetcher after confirming that current position is no longer
@@ -473,7 +470,6 @@ class TopicPartitionState(object):
         self._reset_strategy = None  # type: int
         self._status = PartitionStatus.AWAITING_RESET  # type: PartitionStatus
 
-        self._loop = loop
         self._assignment = assignment
 
         self._paused = False
@@ -511,13 +507,13 @@ class TopicPartitionState(object):
         self._reset_strategy = strategy
         self._position = None
         if self._position_fut.done():
-            self._position_fut = create_future(loop=self._loop)
+            self._position_fut = create_future()
         self._status = PartitionStatus.AWAITING_RESET
 
     # Committed manipulation
 
     def fetch_committed(self):
-        fut = create_future(loop=self._loop)
+        fut = create_future()
         self._committed_futs.append(fut)
         self._assignment.commit_refresh_needed.set()
         return fut
@@ -559,14 +555,14 @@ class TopicPartitionState(object):
             self._position_fut.set_result(None)
 
     def wait_for_position(self):
-        return shield(self._position_fut, loop=self._loop)
+        return shield(self._position_fut)
 
     # Pause/Unpause
     def pause(self):
         if not self._paused:
             self._paused = True
             assert self._resume_fut is None
-            self._resume_fut = create_future(loop=self._loop)
+            self._resume_fut = create_future()
 
     def resume(self):
         if self._paused:

@@ -229,7 +229,7 @@ else:
 @pytest.yield_fixture(scope='class')
 def loop(request):
     loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(None)
+    asyncio.set_event_loop(loop)
 
     yield loop
 

@@ -6,10 +6,13 @@ from aiokafka.errors import IllegalStateError
 from aiokafka.structs import TopicPartition
 from aiokafka.abc import ConsumerRebalanceListener
 
+# All test coroutines will be treated as marked.
+pytestmark = pytest.mark.asyncio
+
 
 @pytest.fixture
-def subscription_state(loop):
-    return SubscriptionState(loop=loop)
+def subscription_state():
+    return SubscriptionState()
 
 
 class MockListener(ConsumerRebalanceListener):
@@ -21,7 +24,7 @@ class MockListener(ConsumerRebalanceListener):
         pass
 
 
-def test_subscribe_topic(subscription_state):
+async def test_subscribe_topic(subscription_state):
     mock_listener = MockListener()
     subscription_state.subscribe({"tp1", "tp2"}, listener=mock_listener)
     assert subscription_state.subscription is not None
@@ -51,7 +54,7 @@ def test_subscribe_topic(subscription_state):
     assert old_subsciption.unsubscribe_future.done() is True
 
 
-def test_subscribe_pattern(subscription_state):
+async def test_subscribe_pattern(subscription_state):
     mock_listener = MockListener()
     pattern = re.compile("^tests-.*$")
     subscription_state.subscribe_pattern(
@@ -69,7 +72,7 @@ def test_subscribe_pattern(subscription_state):
         subscription_state.assign_from_user([TopicPartition("topic", 0)])
 
 
-def test_user_assignment(subscription_state):
+async def test_user_assignment(subscription_state):
     topic_partitions = {
         TopicPartition("topic1", 0),
         TopicPartition("topic1", 1),
@@ -113,7 +116,7 @@ def test_user_assignment(subscription_state):
     assert assignment.unassign_future.done() is True
 
 
-def test_unsubscribe(subscription_state):
+async def test_unsubscribe(subscription_state):
     subscription_state.subscribe({"tp1", "tp2"})
     assert subscription_state.subscription is not None
 
@@ -127,7 +130,7 @@ def test_unsubscribe(subscription_state):
     assert subscription_state.subscription is not None
 
 
-def test_seek(subscription_state):
+async def test_seek(subscription_state):
     tp = TopicPartition("topic1", 0)
     tp2 = TopicPartition("topic2", 0)
     subscription_state.assign_from_user({tp, tp2})
@@ -142,7 +145,7 @@ def test_seek(subscription_state):
     assert assignment.state_value(tp).position == 1000
 
 
-def test_assigned_partitions(subscription_state):
+async def test_assigned_partitions(subscription_state):
     assert subscription_state.assigned_partitions() == set([])
     subscription_state.subscribe(topics=set(["tp1"]))
     assert subscription_state.assigned_partitions() == set([])
@@ -151,7 +154,7 @@ def test_assigned_partitions(subscription_state):
     assert subscription_state.assigned_partitions() == assignment
 
 
-def test_is_assigned(subscription_state):
+async def test_is_assigned(subscription_state):
     tp1 = TopicPartition("topic", 0)
     tp2 = TopicPartition("topic", 1)
     assert not subscription_state.is_assigned(tp1)
@@ -162,7 +165,7 @@ def test_is_assigned(subscription_state):
     assert not subscription_state.is_assigned(tp2)
 
 
-def test_assigned_state(subscription_state):
+async def test_assigned_state(subscription_state):
     tp1 = TopicPartition("topic", 0)
     tp2 = TopicPartition("topic", 1)
 
@@ -179,7 +182,7 @@ def test_assigned_state(subscription_state):
     )
 
 
-def test_begin_reassignment(subscription_state):
+async def test_begin_reassignment(subscription_state):
     subscription_state.subscribe({"tp1", "tp2"})
     subscription_state.unsubscribe()
 

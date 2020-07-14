@@ -7,18 +7,25 @@ from typing import Dict, Tuple, TypeVar, Union
 from .structs import OffsetAndMetadata, TopicPartition
 
 
-__all__ = ["ensure_future", "create_future"]
-
+__all__ = [
+    "ensure_future", "create_future", "NO_EXTENSIONS", "INTEGER_MAX_VALUE",
+    "INTEGER_MIN_VALUE"]
 
 try:
-    from asyncio import ensure_future
+    from asyncio import create_task
+
+    def ensure_future(coro):
+        return create_task(coro)
+
 except ImportError:
-    exec("from asyncio import async as ensure_future")
+    from asyncio import ensure_future
 
 T = TypeVar("T")
 
 
-def create_future(loop: AbstractEventLoop) -> "asyncio.Future[T]":
+def create_future(loop: AbstractEventLoop = None) -> "asyncio.Future[T]":
+    if loop is None:
+        loop = get_running_loop()
     try:
         return loop.create_future()
     except AttributeError:

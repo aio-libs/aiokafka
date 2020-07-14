@@ -46,19 +46,18 @@ LOG_APPEND_TIME = 1
 class TestSender(KafkaIntegrationTestCase):
 
     async def _setup_sender(self, no_init=False):
-        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
         self.add_cleanup(client.close)
         await self.wait_topic(client, self.topic)
 
-        tm = TransactionManager("test_tid", 30000, loop=self.loop)
+        tm = TransactionManager("test_tid", 30000)
         if not no_init:
             tm.set_pid_and_epoch(120, 22)
-        ma = MessageAccumulator(client.cluster, 1000, 0, 30, loop=self.loop)
+        ma = MessageAccumulator(client.cluster, 1000, 0, 30)
         sender = Sender(
             client, acks=-1, txn_manager=tm, message_accumulator=ma,
-            retry_backoff_ms=100, linger_ms=0, request_timeout_ms=40000,
-            loop=self.loop)
+            retry_backoff_ms=100, linger_ms=0, request_timeout_ms=40000)
         self.add_cleanup(sender.close)
         return sender
 
