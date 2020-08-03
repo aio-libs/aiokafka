@@ -3,7 +3,7 @@ flake8==3.8.3
 black==19.10b0
 mypy==0.782
 isort==5.2.2
-pytest==5.4.3
+pytest==6.0.1
 pytest-cov==2.10.0
 pytest-asyncio==0.12.0
 docker==4.2.1
