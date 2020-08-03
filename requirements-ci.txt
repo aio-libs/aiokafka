@@ -13,5 +13,5 @@ python-snappy==0.5.4
 docutils==0.16
 Pygments==2.6.1
 gssapi==1.6.2 # pyup: <= 1.6.2  # For some reason 1.6.5 does not install with py35
-dataclasses==0.5; python_version<"3.7"
+dataclasses==0.7; python_version<"3.7"
 async_generator==1.10; python_version<"3.7"
