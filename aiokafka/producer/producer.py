@@ -396,6 +396,9 @@ class AIOKafkaProducer(object):
                 key_serializer.
             timestamp_ms (int, optional): epoch milliseconds (from Jan 1 1970
                 UTC) to use as the message timestamp. Defaults to current time.
+            headers (optional): Kafka headers to be included in the message using
+                the format [("key", b"value")]. Iterable of tuples where key is a
+                normal string and value is a byte string.
 
         Returns:
             asyncio.Future: object that will be set when message is
