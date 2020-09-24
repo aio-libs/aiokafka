@@ -523,7 +523,7 @@ class GroupCoordinator(BaseCoordinator):
 
         async with self._coordinator_lookup_lock:
             retry_backoff = self._retry_backoff_ms / 1000
-            while self.coordinator_id is None:
+            while self.coordinator_id is None and not self._closing.done():
                 try:
                     coordinator_id = (
                         await self._client.coordinator_lookup(
