@@ -39,6 +39,11 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         return "{}:{}".format(self.kafka_host, self.kafka_sasl_plain_port)
 
     @property
+    def sasl_ssl_hosts(self):
+        # Produce/consume by SASL_SSL
+        return "{}:{}".format(self.kafka_host, self.kafka_sasl_ssl_port)
+
+    @property
     def group_id(self):
         return self.topic + "_group"
 
@@ -142,6 +147,42 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         await consumer.start()
         return consumer
 
+    async def ssl_producer_factory(self, user="test", **kw):
+        ssl_context = self.create_ssl_context(ca_cert_only=True)
+        producer = AIOKafkaProducer(
+            loop=self.loop,
+            bootstrap_servers=[self.sasl_ssl_hosts],
+            security_protocol="SASL_SSL",
+            sasl_mechanism="PLAIN",
+            sasl_plain_username=user,
+            sasl_plain_password=user,
+            ssl_context=ssl_context,
+            **kw)
+        self.add_cleanup(producer.stop)
+        await producer.start()
+        return producer
+
+    async def ssl_consumer_factory(self, user="test", **kw):
+        kwargs = dict(
+            enable_auto_commit=True,
+            auto_offset_reset="earliest",
+            group_id=self.group_id,
+            ssl_context=self.create_ssl_context(ca_cert_only=True),
+        )
+        kwargs.update(kw)
+
+        consumer = AIOKafkaConsumer(
+            self.topic, loop=self.loop,
+            bootstrap_servers=[self.sasl_ssl_hosts],
+            security_protocol="SASL_SSL",
+            sasl_mechanism="PLAIN",
+            sasl_plain_username=user,
+            sasl_plain_password=user,
+            **kwargs)
+        self.add_cleanup(consumer.stop)
+        await consumer.start()
+        return consumer
+
     @kafka_versions('>=0.10.0')
     @run_until_complete
     async def test_sasl_plaintext_basic(self):
@@ -180,6 +221,18 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         consumer = await self.scram_consumer_factory()
         msg = await consumer.getone()
         self.assertEqual(msg.value, b"Super scram msg")
+
+    @kafka_versions('>=0.10.2')
+    @pytest.mark.ssl
+    @run_until_complete
+    async def test_sasl_ssl(self):
+        producer = await self.ssl_producer_factory()
+        await producer.send_and_wait(topic=self.topic,
+                                     value=b"Super sasl ssl msg")
+
+        consumer = await self.ssl_consumer_factory()
+        msg = await consumer.getone()
+        self.assertEqual(msg.value, b"Super sasl ssl msg")
 
     ##########################################################################
     # Topic Resource

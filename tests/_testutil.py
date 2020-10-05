@@ -392,12 +392,21 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         # Make sure there are no duplicates
         self.assertEqual(len(set(messages)), num_messages)
 
-    def create_ssl_context(self):
+    def create_ssl_context(self, ca_cert_only: bool = False):
+        certfile = None
+        keyfile = None
+
+        if not ca_cert_only:
+            certfile = str(self.ssl_folder / "cl_client.pem")
+            keyfile = str(self.ssl_folder / "cl_client.key")
+
         context = create_ssl_context(
             cafile=str(self.ssl_folder / "ca-cert"),
-            certfile=str(self.ssl_folder / "cl_client.pem"),
-            keyfile=str(self.ssl_folder / "cl_client.key"),
-            password="abcdefgh")
+            certfile=certfile,
+            keyfile=keyfile,
+            password="abcdefgh",
+        )
+
         context.check_hostname = False
         return context
 
