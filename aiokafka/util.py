@@ -1,6 +1,5 @@
 import asyncio
 import os
-import sys
 from asyncio import AbstractEventLoop
 from distutils.version import StrictVersion
 from typing import Dict, Tuple, TypeVar, Union
@@ -8,7 +7,7 @@ from typing import Dict, Tuple, TypeVar, Union
 from .structs import OffsetAndMetadata, TopicPartition
 
 
-__all__ = ["ensure_future", "create_future", "PY_35"]
+__all__ = ["ensure_future", "create_future"]
 
 
 try:
@@ -70,9 +69,6 @@ def get_running_loop() -> asyncio.AbstractEventLoop:
     return loop
 
 
-PY_35 = sys.version_info >= (3, 5)
-PY_352 = sys.version_info >= (3, 5, 2)
-PY_36 = sys.version_info >= (3, 6)
 NO_EXTENSIONS = bool(os.environ.get("AIOKAFKA_NO_EXTENSIONS"))
 
 INTEGER_MAX_VALUE = 2 ** 31 - 1

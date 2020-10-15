@@ -16,7 +16,7 @@ from aiokafka.errors import (
 )
 from aiokafka.structs import TopicPartition
 from aiokafka.util import (
-    PY_36, commit_structure_validate, get_running_loop
+    commit_structure_validate, get_running_loop
 )
 from aiokafka import __version__
 
@@ -318,13 +318,9 @@ class AIOKafkaConsumer(object):
 
     def __del__(self, _warnings=warnings):
         if self._closed is False:
-            if PY_36:
-                kwargs = {'source': self}
-            else:
-                kwargs = {}
             _warnings.warn("Unclosed AIOKafkaConsumer {!r}".format(self),
                            ResourceWarning,
-                           **kwargs)
+                           source=self)
             context = {'consumer': self,
                        'message': 'Unclosed AIOKafkaConsumer'}
             if self._source_traceback is not None:

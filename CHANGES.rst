@@ -7,6 +7,9 @@ Fix memory leak in kafka consumer when consumer is in idle state not consuming a
 =======
 618.feature
 added `OAUTHBEARER` as a new `sasl_mechanism`.
+=======
+667.bugfix
+Drop support for Python 3.5
 
 0.6.0 (2020-05-15)
 ==================

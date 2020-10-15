@@ -275,9 +275,3 @@ def setup_test_class(request, loop, kafka_server, ssl_folder, acl_manager,
     docker_image = request.config.getoption('--docker-image')
     kafka_version = docker_image.split(":")[-1].split("_")[-1]
     request.cls.kafka_version = kafka_version
-
-
-def pytest_ignore_collect(path, config):
-    if 'pep492' in str(path):
-        if sys.version_info < (3, 5, 0):
-            return True

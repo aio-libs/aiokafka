@@ -26,7 +26,19 @@ log = logging.getLogger(__name__)
 
 __all__ = ['KafkaIntegrationTestCase', 'random_string']
 
-run_until_complete = pytest.mark.asyncio
+
+def run_until_complete(fun):
+    if not asyncio.iscoroutinefunction(fun):
+        fun = asyncio.coroutine(fun)
+
+    @wraps(fun)
+    def wrapper(test, *args, **kw):
+        loop = test.loop
+        timeout = getattr(test, "TEST_TIMEOUT", 120)
+        ret = loop.run_until_complete(
+            asyncio.wait_for(fun(test, *args, **kw), timeout, loop=loop))
+        return ret
+    return wrapper
 
 
 def kafka_versions(*versions):
@@ -378,7 +390,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         self.assertEqual(len(messages), num_messages)
 
         # Make sure there are no duplicates
-        self.assertEqual(len(set(messages)), num_messages)
+        self.assertTrue(all(messages.count(m) == 1 for m in messages))
 
     def create_ssl_context(self):
         context = create_ssl_context(
