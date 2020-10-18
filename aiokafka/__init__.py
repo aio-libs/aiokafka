@@ -8,7 +8,7 @@ from .producer import AIOKafkaProducer
 from .structs import (
     TopicPartition, ConsumerRecord, OffsetAndTimestamp, OffsetAndMetadata
 )
-from .util import PY_35, ensure_future
+from .util import ensure_future
 
 
 __all__ = [
@@ -24,4 +24,4 @@ __all__ = [
     "OffsetAndMetadata"
 ]
 
-(PY_35, ensure_future, AIOKafkaClient)
+(ensure_future, AIOKafkaClient)

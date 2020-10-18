@@ -1,5 +1,4 @@
 import ssl
-import sys
 import unittest
 
 from aiokafka.helpers import create_ssl_context
@@ -21,8 +20,6 @@ class TestHelpers(unittest.TestCase):
         self.assertTrue(keyfile.exists(), str(keyfile))
         return cafile, certfile, keyfile
 
-    @pytest.mark.skipif(sys.version_info < (3, 4),
-                        reason="requires python3.4")
     def test_create_ssl_context(self):
         cafile, certfile, keyfile = self._check_ssl_dir()
 

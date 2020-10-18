@@ -46,7 +46,6 @@ jobs:
           # On windows and mac we should have z library preinstalled
           CIBW_BEFORE_BUILD: pip install -r requirements-cython.txt
           CIBW_BUILD_VERBOSITY: 2
-          CIBW_SKIP: cp27-* cp35-* pp27-*
         run: |
           python -m pip install --upgrade pip setuptools
           pip install cibuildwheel

@@ -20,7 +20,7 @@ from kafka.protocol.commit import (
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
 import aiokafka.errors as Errors
-from aiokafka.util import ensure_future, create_future, PY_36
+from aiokafka.util import ensure_future, create_future
 
 from aiokafka.abc import AbstractTokenProvider
 
@@ -183,13 +183,9 @@ class AIOKafkaConnection:
     # that
     def __del__(self, _warnings=warnings):
         if self.connected():
-            if PY_36:
-                kwargs = {'source': self}
-            else:
-                kwargs = {}
             _warnings.warn("Unclosed AIOKafkaConnection {!r}".format(self),
                            ResourceWarning,
-                           **kwargs)
+                           source=self)
             if self._loop.is_closed():
                 return
 

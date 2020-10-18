@@ -87,11 +87,7 @@ class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
         pass
 
 
-# This statement is compatible with both Python 2.7 & 3+
-ABC = abc.ABCMeta('ABC', (object,), {'__slots__': ()})
-
-
-class AbstractTokenProvider(ABC):
+class AbstractTokenProvider(abc.ABC):
     """
     A Token Provider must be used for the SASL OAuthBearer protocol.
     The implementation should ensure token reuse so that multiple

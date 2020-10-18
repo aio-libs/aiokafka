@@ -35,21 +35,6 @@ matrix:
       - make check-readme
 
     # All Package build combinations for newest Kafka
-    - stage: *stage_functional
-      sudo: true
-      python: 3.5
-      services:
-      - docker
-      env: KAFKA_VERSION=2.4.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1
-      script:
-      - make ci-test-all
-    - sudo: true
-      python: 3.5
-      services:
-      - docker
-      env: KAFKA_VERSION=2.4.0 SCALA_VERSION=2.12 PYTHONASYNCIODEBUG=1 AIOKAFKA_NO_EXTENSIONS=1
-      script:
-      - make ci-test-all
     - sudo: true
       python: 3.6
       services:
