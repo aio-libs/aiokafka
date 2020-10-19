@@ -8,14 +8,19 @@ from .structs import OffsetAndMetadata, TopicPartition
 
 
 __all__ = [
-    "ensure_future", "create_future", "NO_EXTENSIONS", "INTEGER_MAX_VALUE",
-    "INTEGER_MIN_VALUE"]
+    "ensure_future",
+    "create_future",
+    "NO_EXTENSIONS",
+    "INTEGER_MAX_VALUE",
+    "INTEGER_MIN_VALUE",
+]
 
 try:
     from asyncio import create_task
 
     def ensure_future(coro):
         return create_task(coro)
+
 
 except ImportError:
     from asyncio import ensure_future
