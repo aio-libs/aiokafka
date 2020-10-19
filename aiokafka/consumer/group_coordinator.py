@@ -15,7 +15,7 @@ from kafka.protocol.group import (
 import aiokafka.errors as Errors
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.client import ConnectionGroup, CoordinationType
-from aiokafka.util import ensure_future, create_future
+from aiokafka.util import create_future, create_task
 
 log = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ class NoGroupCoordinator(BaseCoordinator):
     def __init__(self, *args, **kw):
         super().__init__(*args, **kw)
         # Reset all committed points, as the GroupCoordinator would
-        self._reset_committed_task = ensure_future(
+        self._reset_committed_task = create_task(
             self._reset_committed_routine())
 
     def _on_metadata_change(self):
@@ -141,7 +141,7 @@ class NoGroupCoordinator(BaseCoordinator):
                     tp_state.update_committed(
                         OffsetAndMetadata(UNKNOWN_OFFSET, ""))
 
-                event_waiter = ensure_future(commit_refresh_needed.wait())
+                event_waiter = create_task(commit_refresh_needed.wait())
 
                 await asyncio.wait(
                     [assignment.unassign_future, event_waiter],
@@ -248,7 +248,7 @@ class GroupCoordinator(BaseCoordinator):
         self._rejoin_needed_fut = create_future()
         self._coordinator_dead_fut = create_future()
 
-        self._coordination_task = ensure_future(self._coordination_routine())
+        self._coordination_task = create_task(self._coordination_routine())
 
         # Will be started/stopped by coordination task
         self._heartbeat_task = None
@@ -342,7 +342,7 @@ class GroupCoordinator(BaseCoordinator):
         await self._maybe_leave_group()
 
     def maybe_leave_group(self):
-        task = ensure_future(self._maybe_leave_group())
+        task = create_task(self._maybe_leave_group())
         return task
 
     async def _maybe_leave_group(self):
@@ -701,7 +701,7 @@ class GroupCoordinator(BaseCoordinator):
 
     def _start_heartbeat_task(self):
         if self._heartbeat_task is None:
-            self._heartbeat_task = ensure_future(self._heartbeat_routine())
+            self._heartbeat_task = create_task(self._heartbeat_routine())
 
     async def _stop_heartbeat_task(self):
         if self._heartbeat_task is not None:
@@ -821,7 +821,7 @@ class GroupCoordinator(BaseCoordinator):
     def start_commit_offsets_refresh_task(self, assignment):
         if self._commit_refresh_task is not None:
             self._commit_refresh_task.cancel()
-        self._commit_refresh_task = ensure_future(
+        self._commit_refresh_task = create_task(
             self._commit_refresh_routine(assignment))
 
     async def _stop_commit_offsets_refresh_task(self):
@@ -850,7 +850,7 @@ class GroupCoordinator(BaseCoordinator):
                     timeout = retry_backoff_ms
                 else:
                     timeout = None
-                    event_waiter = ensure_future(
+                    event_waiter = create_task(
                         commit_refresh_needed.wait())
                     wait_futures.append(event_waiter)
 

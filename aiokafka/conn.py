@@ -21,7 +21,7 @@ from kafka.protocol.commit import (
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
 import aiokafka.errors as Errors
-from aiokafka.util import ensure_future, create_future, get_running_loop
+from aiokafka.util import create_future, create_task, get_running_loop
 
 from aiokafka.abc import AbstractTokenProvider
 
@@ -495,7 +495,7 @@ class AIOKafkaConnection:
 
     def _create_reader_task(self):
         self_ref = weakref.ref(self)
-        read_task = ensure_future(self._read(self_ref))
+        read_task = create_task(self._read(self_ref))
         read_task.add_done_callback(
             functools.partial(self._on_read_task_error, self_ref))
         return read_task

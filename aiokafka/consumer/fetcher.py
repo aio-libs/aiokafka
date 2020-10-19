@@ -14,7 +14,7 @@ from aiokafka.errors import (
 from aiokafka.record.memory_records import MemoryRecords
 from aiokafka.record.control_record import ControlRecord, ABORT_MARKER
 from aiokafka.structs import OffsetAndTimestamp, TopicPartition, ConsumerRecord
-from aiokafka.util import ensure_future, create_future
+from aiokafka.util import create_future, create_task
 
 log = logging.getLogger(__name__)
 
@@ -411,7 +411,7 @@ class Fetcher:
             req_version = 1
         self._fetch_request_class = FetchRequest[req_version]
 
-        self._fetch_task = ensure_future(self._fetch_requests_routine())
+        self._fetch_task = create_task(self._fetch_requests_routine())
 
         self._closed = False
 
@@ -471,7 +471,7 @@ class Fetcher:
             assignment = None
 
             def start_pending_task(coro, node_id, self=self):
-                task = ensure_future(coro)
+                task = create_task(coro)
                 self._pending_tasks.add(task)
                 self._in_flight.add(node_id)
 

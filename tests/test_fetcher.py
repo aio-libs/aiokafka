@@ -21,7 +21,7 @@ from aiokafka.consumer.fetcher import (
     PartitionRecords, READ_UNCOMMITTED
 )
 from aiokafka.consumer.subscription_state import SubscriptionState
-from aiokafka.util import ensure_future, create_future
+from aiokafka.util import create_future, create_task
 from ._testutil import run_until_complete
 
 
@@ -86,7 +86,7 @@ class TestFetcher(unittest.TestCase):
             await fetcher._fetch_task
         except asyncio.CancelledError:
             pass
-        fetcher._fetch_task = ensure_future(
+        fetcher._fetch_task = create_task(
             asyncio.sleep(1000000))
 
         partition = TopicPartition('test', 0)
@@ -109,7 +109,7 @@ class TestFetcher(unittest.TestCase):
 
         # CASE: reset from committed
         # In basic case we will need to wait for committed
-        update_task = ensure_future(
+        update_task = create_task(
             fetcher._update_fetch_positions(assignment, 0, [partition]),
         )
         await asyncio.sleep(0.1)
@@ -135,7 +135,7 @@ class TestFetcher(unittest.TestCase):
 
         # CASE: seeked while waiting for committed to be resolved
         assignment, tp_state = reset_assignment()
-        update_task = ensure_future(
+        update_task = create_task(
             fetcher._update_fetch_positions(assignment, 0, [partition]),
         )
         await asyncio.sleep(0.1)
@@ -149,7 +149,7 @@ class TestFetcher(unittest.TestCase):
 
         # CASE: awaiting_reset during waiting for committed
         assignment, tp_state = reset_assignment()
-        update_task = ensure_future(
+        update_task = create_task(
             fetcher._update_fetch_positions(assignment, 0, [partition]),
         )
         await asyncio.sleep(0.1)

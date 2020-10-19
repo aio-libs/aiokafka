@@ -14,7 +14,7 @@ from aiokafka.consumer import fetcher
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.record import MemoryRecords
 from aiokafka.client import AIOKafkaClient
-from aiokafka.util import ensure_future
+from aiokafka.util import create_task
 from aiokafka.structs import (
     OffsetAndTimestamp, TopicPartition, OffsetAndMetadata
 )
@@ -214,8 +214,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.assertEqual(m.partition, tp.partition)
                 messages.append(m)
 
-        task1 = ensure_future(task(p0, messages))
-        task2 = ensure_future(task(p1, messages))
+        task1 = create_task(task(p0, messages))
+        task2 = create_task(task(p1, messages))
         await asyncio.wait([task1, task2])
         self.assert_message_count(messages, 200)
 
@@ -865,7 +865,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         assert tp in consumer.assignment()
         # At this moment the assignment is done, but position should be
         # undefined
-        position_task = ensure_future(consumer.position(tp))
+        position_task = create_task(consumer.position(tp))
         await asyncio.sleep(0.0001)
         self.assertFalse(position_task.done())
 
@@ -878,7 +878,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer.subscribe((self.topic, another_topic))
         await consumer._subscription.wait_for_assignment()
 
-        position_task = ensure_future(consumer.position(tp))
+        position_task = create_task(consumer.position(tp))
         await asyncio.sleep(0.0001)
         self.assertFalse(position_task.done())
 
@@ -1949,7 +1949,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(seen_partitions, {0, 1})
 
         # Message send in fetch process
-        get_task = ensure_future(consumer.getone())
+        get_task = create_task(consumer.getone())
         await asyncio.sleep(0.1)
         self.assertFalse(get_task.done())
 

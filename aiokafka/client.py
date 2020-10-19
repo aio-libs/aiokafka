@@ -23,7 +23,7 @@ from aiokafka.errors import (
     UnrecognizedBrokerVersion,
     StaleMetadata)
 from aiokafka.util import (
-    ensure_future, create_future, parse_kafka_version, get_running_loop
+    create_task, create_future, parse_kafka_version, get_running_loop
 )
 
 
@@ -248,7 +248,7 @@ class AIOKafkaClient:
 
         if self._sync_task is None:
             # starting metadata synchronizer task
-            self._sync_task = ensure_future(self._md_synchronizer())
+            self._sync_task = create_task(self._md_synchronizer())
 
     async def _md_synchronizer(self):
         """routine (async task) for synchronize cluster metadata every
@@ -546,7 +546,7 @@ class AIOKafkaClient:
                 assert conn, 'no connection to node with id {}'.format(node_id)
                 # request can be ignored by Kafka broker,
                 # so we send metadata request and wait response
-                task = ensure_future(conn.send(request))
+                task = create_task(conn.send(request))
                 await asyncio.wait([task], timeout=0.1)
                 try:
                     await conn.send(MetadataRequest_v0([]))

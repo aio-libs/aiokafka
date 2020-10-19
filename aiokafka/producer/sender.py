@@ -20,7 +20,7 @@ from aiokafka.protocol.transaction import (
     AddOffsetsToTxnRequest, TxnOffsetCommitRequest
 )
 from aiokafka.structs import TopicPartition
-from aiokafka.util import ensure_future
+from aiokafka.util import create_task
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class Sender:
     async def start(self):
         # If producer is idempotent we need to assure we have PID found
         await self._maybe_wait_for_pid()
-        self._sender_task = ensure_future(self._sender_routine())
+        self._sender_task = create_task(self._sender_routine())
         self._sender_task.add_done_callback(self._fail_all)
 
     def _fail_all(self, task):
@@ -120,7 +120,7 @@ class Sender:
 
                 # create produce task for every batch
                 for node_id, batches in batches.items():
-                    task = ensure_future(
+                    task = create_task(
                         self._send_produce_req(node_id, batches))
                     self._in_flight.add(node_id)
                     for tp in batches:
@@ -275,25 +275,25 @@ class Sender:
         # we need to do that before committing
         tps = txn_manager.partitions_to_add()
         if tps:
-            return ensure_future(
+            return create_task(
                 self._do_add_partitions_to_txn(tps))
 
         # We need to add group to transaction before we can commit the offset
         group_id = txn_manager.consumer_group_to_add()
         if group_id is not None:
-            return ensure_future(
+            return create_task(
                 self._do_add_offsets_to_txn(group_id))
 
         # Now commit the added group's offset
         commit_data = txn_manager.offsets_to_commit()
         if commit_data is not None:
             offsets, group_id = commit_data
-            return ensure_future(
+            return create_task(
                 self._do_txn_offset_commit(offsets, group_id))
 
         commit_result = txn_manager.needs_transaction_commit()
         if commit_result is not None:
-            return ensure_future(
+            return create_task(
                 self._do_txn_commit(commit_result))
 
     async def _do_add_partitions_to_txn(self, tps):

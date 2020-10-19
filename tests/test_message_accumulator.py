@@ -9,7 +9,7 @@ from kafka.errors import (KafkaTimeoutError,
                           LeaderNotAvailableError)
 from kafka.structs import TopicPartition
 from ._testutil import run_until_complete
-from aiokafka.util import ensure_future
+from aiokafka.util import create_task
 from aiokafka.producer.message_accumulator import (
     MessageAccumulator, MessageBatch, BatchBuilder
 )
@@ -72,7 +72,7 @@ class TestMessageAccumulator(unittest.TestCase):
         # next we try to add message with len=500,
         # as we have buffer_size=1000 coroutine will block until data will be
         # drained
-        add_task = ensure_future(
+        add_task = create_task(
             ma.add_message(tp1, None, b'0123456789' * 50, timeout=2))
         done, _ = await asyncio.wait([add_task], timeout=0.2)
         self.assertFalse(bool(done))

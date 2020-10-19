@@ -22,7 +22,7 @@ from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.consumer.group_coordinator import (
     GroupCoordinator, CoordinatorGroupRebalance, NoGroupCoordinator)
 from aiokafka.consumer.subscription_state import SubscriptionState
-from aiokafka.util import create_future, ensure_future
+from aiokafka.util import create_future, create_task
 
 UNKNOWN_MEMBER_ID = JoinGroupRequest.UNKNOWN_MEMBER_ID
 
@@ -804,7 +804,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             topics=set(['topic1']), listener=WaitingListener())
 
         # Close task should be loyal to rebalance and wait for it to finish
-        close_task = ensure_future(coordinator.close())
+        close_task = create_task(coordinator.close())
         await asyncio.sleep(0.1)
         self.assertFalse(close_task.done())
 
@@ -837,7 +837,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         mocked.side_effect = commit_offsets
 
         # Close task should call autocommit last time
-        close_task = ensure_future(coordinator.close())
+        close_task = create_task(coordinator.close())
         await asyncio.sleep(0.1)
         # self.assertFalse(close_task.done())
 
@@ -1038,7 +1038,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             ensure_coordinator_known
         )
 
-        routine = ensure_future(
+        routine = create_task(
             coordinator._heartbeat_routine())
 
         def cleanup():
@@ -1222,7 +1222,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         def start_coordination():
             if coordinator._coordination_task:
                 coordinator._coordination_task.cancel()
-            coordinator._coordination_task = task = ensure_future(
+            coordinator._coordination_task = task = create_task(
                 coordinator._coordination_routine())
             return task
 
