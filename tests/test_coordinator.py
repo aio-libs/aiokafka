@@ -558,10 +558,10 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         _perform_assignment = coordinator._perform_assignment
         with mock.patch.object(coordinator, '_perform_assignment') as mocked:
 
-            def _new(*args, **kw):
+            async def _new(*args, **kw):
                 # Change the subscription to different topic before we finish
                 # rebalance
-                res = _perform_assignment(*args, **kw)
+                res = await _perform_assignment(*args, **kw)
                 if subscription.subscription.topics == set(["topic1"]):
                     subscription.subscribe(topics=set(['topic2']))
                     client.set_topics(('topic2', ))
@@ -596,10 +596,10 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         _perform_assignment = coordinator._perform_assignment
         with mock.patch.object(coordinator, '_perform_assignment') as mocked:
 
-            def _new(*args, **kw):
+            async def _new(*args, **kw):
                 # Change the subscription to different topic before we finish
                 # rebalance
-                res = _perform_assignment(*args, **kw)
+                res = await _perform_assignment(*args, **kw)
                 if subscription.subscription.topics == set(["topic1"]):
                     subscription.subscribe(topics=set(['topic1', 'topic2']))
                     client.set_topics(('topic1', 'topic2', ))
