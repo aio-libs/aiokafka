@@ -337,7 +337,7 @@ class AIOKafkaConsumer(object):
         assert self._loop is asyncio.get_event_loop(), (
             "Please create objects with the same loop as running with"
         )
-        log.debug("start loop", asyncio.get_event_loop())
+        log.debug("start loop %s", id(asyncio.get_event_loop()))
         assert self._fetcher is None, "Did you call `start` twice?"
         await self._client.bootstrap()
         await self._wait_topics()
@@ -474,7 +474,7 @@ class AIOKafkaConsumer(object):
             return
         assert self._loop is asyncio.get_event_loop()
         log.debug("Closing the KafkaConsumer.")
-        log.debug("Coordinator", self._coordinator)
+        log.debug("Coordinator %s", self._coordinator)
         self._closed = True
         if self._coordinator:
             log.debug('self._coordinator.close()')
