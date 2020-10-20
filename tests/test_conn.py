@@ -24,6 +24,7 @@ from aiokafka.errors import (
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 from aiokafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
+from aiokafka.util import get_running_loop
 
 
 @pytest.mark.usefixtures('setup_test_class')
@@ -40,17 +41,14 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_global_loop_for_create_conn(self):
-        asyncio.set_event_loop(self.loop)
-        try:
-            host, port = self.kafka_host, self.kafka_port
-            conn = await create_conn(host, port)
-            self.assertIs(conn._loop, self.loop)
-            conn.close()
-            # make sure second closing does nothing and we have full coverage
-            # of *if self._reader:* condition
-            conn.close()
-        finally:
-            asyncio.set_event_loop(None)
+        loop = get_running_loop()
+        host, port = self.kafka_host, self.kafka_port
+        conn = await create_conn(host, port)
+        self.assertIs(conn._loop, loop)
+        conn.close()
+        # make sure second closing does nothing and we have full coverage
+        # of *if self._reader:* condition
+        conn.close()
 
     @run_until_complete
     async def test_conn_warn_unclosed(self):

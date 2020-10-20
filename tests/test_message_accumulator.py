@@ -9,7 +9,7 @@ from kafka.errors import (KafkaTimeoutError,
                           LeaderNotAvailableError)
 from kafka.structs import TopicPartition
 from ._testutil import run_until_complete
-from aiokafka.util import create_task
+from aiokafka.util import create_task, get_running_loop
 from aiokafka.producer.message_accumulator import (
     MessageAccumulator, MessageBatch, BatchBuilder
 )
@@ -253,7 +253,7 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertEqual(len(ma._batches[tp1]), 1)
 
         # second batch gets added once the others are cleared out
-        self.loop.call_later(0.1, ma.drain_by_nodes, [])
+        get_running_loop().call_later(0.1, ma.drain_by_nodes, [])
         await ma.add_batch(builder1_2, tp1, 1)
         self.assertTrue(ma._wait_data_future.done())
         self.assertEqual(len(ma._batches[tp0]), 0)

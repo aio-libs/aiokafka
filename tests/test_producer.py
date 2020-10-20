@@ -485,7 +485,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # 1st step is to force an error in produce sequense and force a
         # reenqueue on 1 batch.
         with mock.patch.object(producer.client, 'send') as mocked:
-            send_fut = create_future(self.loop)
+            send_fut = create_future()
 
             async def mocked_func(node_id, request):
                 if not send_fut.done():

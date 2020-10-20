@@ -15,7 +15,7 @@ from kafka.protocol.fetch import FetchRequest_v0
 
 from aiokafka.client import AIOKafkaClient, ConnectionGroup, CoordinationType
 from aiokafka.conn import AIOKafkaConnection, CloseReason
-from aiokafka.util import create_task
+from aiokafka.util import create_task, get_running_loop
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
@@ -480,15 +480,16 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
               )])
         vanila_request = MetadataRequest([])
 
-        send_time = self.loop.time()
-        long_task = self.loop.create_task(
+        loop = get_running_loop()
+        send_time = loop.time()
+        long_task = create_task(
             client.send(node_id, wait_request)
         )
         await asyncio.sleep(0.0001)
         self.assertFalse(long_task.done())
 
         await client.send(node_id, vanila_request)
-        resp_time = self.loop.time()
+        resp_time = loop.time()
         fetch_resp = await long_task
         # Check error code like resp->topics[0]->partitions[0]->error_code
         self.assertEqual(fetch_resp.topics[0][1][0][1], 0)
@@ -541,8 +542,9 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
               )])
         vanila_request = MetadataRequest([])
 
-        send_time = self.loop.time()
-        long_task = self.loop.create_task(
+        loop = get_running_loop()
+        send_time = loop.time()
+        long_task = create_task(
             client.send(node_id, wait_request)
         )
         await asyncio.sleep(0.0001)
@@ -550,7 +552,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
         await client.send(
             node_id, vanila_request, group=ConnectionGroup.COORDINATION)
-        resp_time = self.loop.time()
+        resp_time = loop.time()
         self.assertFalse(long_task.done())
 
         fetch_resp = await long_task

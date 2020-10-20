@@ -21,7 +21,7 @@ from aiokafka.consumer.fetcher import (
     PartitionRecords, READ_UNCOMMITTED
 )
 from aiokafka.consumer.subscription_state import SubscriptionState
-from aiokafka.util import create_future, create_task
+from aiokafka.util import create_future, create_task, get_running_loop
 from ._testutil import run_until_complete
 
 
@@ -163,7 +163,8 @@ class TestFetcher(unittest.TestCase):
 
         # CASE: reset using default strategy if committed offset undefined
         assignment, tp_state = reset_assignment()
-        self.loop.call_later(
+        loop = get_running_loop()
+        loop.call_later(
             0.01, tp_state.update_committed, OffsetAndMetadata(-1, ""))
         await fetcher._update_fetch_positions(assignment, 0, [partition])
         self.assertEqual(tp_state._position, 12)
@@ -171,7 +172,7 @@ class TestFetcher(unittest.TestCase):
 
         # CASE: set error if _default_reset_strategy = OffsetResetStrategy.NONE
         assignment, tp_state = reset_assignment()
-        self.loop.call_later(
+        loop.call_later(
             0.01, tp_state.update_committed, OffsetAndMetadata(-1, ""))
         fetcher._default_reset_strategy = OffsetResetStrategy.NONE
         needs_wakeup = await fetcher._update_fetch_positions(
@@ -198,7 +199,7 @@ class TestFetcher(unittest.TestCase):
         tp_state = assignment.state_value(partition)
         tp_state2 = assignment.state_value(partition2)
         tp_state.await_reset(OffsetResetStrategy.LATEST)
-        self.loop.call_later(
+        loop.call_later(
             0.01, tp_state2.update_committed, OffsetAndMetadata(5, ""))
         await fetcher._update_fetch_positions(
             assignment, 0, [partition, partition2])

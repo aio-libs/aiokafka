@@ -22,7 +22,7 @@ from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.consumer.group_coordinator import (
     GroupCoordinator, CoordinatorGroupRebalance, NoGroupCoordinator)
 from aiokafka.consumer.subscription_state import SubscriptionState
-from aiokafka.util import create_future, create_task
+from aiokafka.util import create_future, create_task, get_running_loop
 
 UNKNOWN_MEMBER_ID = JoinGroupRequest.UNKNOWN_MEMBER_ID
 
@@ -128,7 +128,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             await coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = self.loop.create_task(
+        coordinator._coordination_task = create_task(
             asyncio.sleep(0.1)
         )
         coordinator.coordinator_id = 15
@@ -246,7 +246,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             await coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = self.loop.create_task(
+        coordinator._coordination_task = create_task(
             asyncio.sleep(0.1)
         )
         coordinator.coordinator_id = 15
@@ -859,7 +859,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             await coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = self.loop.create_task(
+        coordinator._coordination_task = create_task(
             asyncio.sleep(0.1,)
         )
         self.add_cleanup(coordinator.close)
@@ -931,7 +931,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             await coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = self.loop.create_task(
+        coordinator._coordination_task = create_task(
             asyncio.sleep(0.1)
         )
         self.add_cleanup(coordinator.close)
@@ -1015,7 +1015,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             await coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = self.loop.create_task(
+        coordinator._coordination_task = create_task(
             asyncio.sleep(0.1)
         )
         self.add_cleanup(coordinator.close)
@@ -1083,7 +1083,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             await coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = self.loop.create_task(
+        coordinator._coordination_task = create_task(
             asyncio.sleep(0.1)
         )
         self.add_cleanup(coordinator.close)
@@ -1147,7 +1147,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             await coordinator._coordination_task
         except asyncio.CancelledError:
             pass
-        coordinator._coordination_task = self.loop.create_task(
+        coordinator._coordination_task = create_task(
             asyncio.sleep(0.1)
         )
         self.add_cleanup(coordinator.close)
@@ -1174,7 +1174,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator._enable_auto_commit = True
 
         # Successful case should count time to next autocommit
-        now = self.loop.time()
+        loop = get_running_loop()
+        now = loop.time()
         interval = 1
         coordinator._next_autocommit_deadline = 0
         timeout = await coordinator._maybe_do_autocommit(assignment)
@@ -1187,7 +1188,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # Retriable errors should backoff and retry, no skip autocommit
         coordinator._next_autocommit_deadline = 0
         mocked.side_effect = Errors.NotCoordinatorForGroupError()
-        now = self.loop.time()
+        now = loop.time()
         timeout = await coordinator._maybe_do_autocommit(assignment)
         self.assertEqual(timeout, 0.05)
         # Dealine should be set into future, not depending on commit time, to
@@ -1199,13 +1200,13 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # UnknownMemberId should also retry
         coordinator._next_autocommit_deadline = 0
         mocked.side_effect = Errors.UnknownMemberIdError()
-        now = self.loop.time()
+        now = loop.time()
         timeout = await coordinator._maybe_do_autocommit(assignment)
         self.assertEqual(timeout, 0.05)
 
         # Not retriable errors should skip autocommit and log
         mocked.side_effect = Errors.UnknownError()
-        now = self.loop.time()
+        now = loop.time()
         coordinator._next_autocommit_deadline = 0
         with self.assertRaises(Errors.KafkaError):
             await coordinator._maybe_do_autocommit(assignment)
@@ -1234,7 +1235,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 await coordinator._coordination_task
             except asyncio.CancelledError:
                 pass
-            coordinator._coordination_task = self.loop.create_task(
+            coordinator._coordination_task = create_task(
                 asyncio.sleep(0.1))
 
         await stop_coordination()

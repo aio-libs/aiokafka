@@ -7,6 +7,7 @@ from ._testutil import (
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.structs import TopicPartition
+from aiokafka.util import create_task
 
 from aiokafka.errors import (
     UnsupportedVersionError,
@@ -58,7 +59,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
             self.topic, b'Hello from non-transaction', partition=0)
 
         # The transaction blocked consumption
-        task = self.loop.create_task(consumer.getone())
+        task = create_task(consumer.getone())
         await asyncio.sleep(1)
         self.assertFalse(task.done())
 
@@ -120,7 +121,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
             self.topic, b'Hello from non-transaction', partition=0)
 
         # The transaction blocked consumption
-        task = self.loop.create_task(consumer.getone())
+        task = create_task(consumer.getone())
         await asyncio.sleep(1)
         self.assertFalse(task.done())
 

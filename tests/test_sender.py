@@ -25,6 +25,7 @@ from aiokafka.protocol.produce import (
 from aiokafka.producer.message_accumulator import MessageAccumulator
 from aiokafka.client import AIOKafkaClient, CoordinationType, ConnectionGroup
 from aiokafka.structs import TopicPartition, OffsetAndMetadata
+from aiokafka.util import get_running_loop
 
 from aiokafka.errors import (
     NoError, UnknownError,
@@ -192,11 +193,12 @@ class TestSender(KafkaIntegrationTestCase):
         success = await mock_handler.do(node_id=0)
         self.assertTrue(success)
 
-        time = self.loop.time()
+        loop = get_running_loop()
+        time = loop.time()
         sender.client.send = mock.Mock(side_effect=UnknownError())
         success = await mock_handler.do(node_id=0)
         self.assertFalse(success)
-        self.assertAlmostEqual(self.loop.time() - time, 0.1, 1)
+        self.assertAlmostEqual(loop.time() - time, 0.1, 1)
 
     @run_until_complete
     async def test_sender__do_init_pid_create(self):
