@@ -864,8 +864,10 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         )
         self.add_cleanup(coordinator.close)
 
-        async def force_metadata_update():
-            return True
+        def force_metadata_update():
+            fut = create_future()
+            fut.set_result(True)
+            return fut
 
         client.ready = mock.Mock()
         client.force_metadata_update = mock.Mock()

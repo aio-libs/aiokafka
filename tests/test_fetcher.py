@@ -225,7 +225,6 @@ class TestFetcher(unittest.TestCase):
         def force_metadata_update():
             fut = create_future()
             fut.set_result(False)
-            fut.result()
             return fut
 
         client.ready = mock.MagicMock()
@@ -401,8 +400,10 @@ class TestFetcher(unittest.TestCase):
         async def ready(conn):
             return True
 
-        async def force_metadata_update():
-            return False
+        def force_metadata_update():
+            fut = create_future()
+            fut.set_result(True)
+            return fut
 
         client.ready = mock.MagicMock()
         client.ready.side_effect = ready
