@@ -152,7 +152,7 @@ class NoGroupCoordinator(BaseCoordinator):
                     event_waiter = None
 
         except asyncio.CancelledError:
-            print("cancelled")
+            log.debug("cancelled")
             pass
 
         # Just to make sure we properly close started tasks we cancel
@@ -167,7 +167,7 @@ class NoGroupCoordinator(BaseCoordinator):
 
     async def close(self):
         self._reset_committed_task.cancel()
-        print("cancel reset task")
+        log.debug("cancel reset task")
         await self._reset_committed_task
         self._reset_committed_task = None
 
