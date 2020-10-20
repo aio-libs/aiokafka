@@ -168,9 +168,11 @@ class AIOKafkaClient:
     async def close(self):
         if self._sync_task:
             self._sync_task.cancel()
+            log.debug("Cancel task")
             try:
                 await self._sync_task
             except asyncio.CancelledError:
+                log.debug("cancelled")
                 pass
             self._sync_task = None
         # Be careful to wait for graceful closure of all connections, so we
