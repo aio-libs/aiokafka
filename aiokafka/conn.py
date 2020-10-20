@@ -102,10 +102,12 @@ class AIOKafkaProtocol(asyncio.StreamReaderProtocol):
 
     def __init__(self, closed_fut, *args, loop, **kw):
         self._closed_fut = closed_fut
+        log.debug("Connection created %s", self)
         super().__init__(*args, loop=loop, **kw)
 
     def connection_lost(self, exc):
         super().connection_lost(exc)
+        log.debug("Connection lost %s", self)
         if not self._closed_fut.cancelled():
             self._closed_fut.set_result(None)
 
