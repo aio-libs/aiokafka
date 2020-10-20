@@ -180,6 +180,7 @@ class AIOKafkaClient:
         futs = []
         for conn in self._conns.values():
             futs.append(conn.close(reason=CloseReason.SHUTDOWN))
+        log.debug("Connections: %s", self._conns)
         if futs:
             await asyncio.gather(*futs)
 
