@@ -474,9 +474,12 @@ class AIOKafkaConsumer(object):
         log.debug("Closing the KafkaConsumer.")
         self._closed = True
         if self._coordinator:
+            log.debug('self._coordinator.close()')
             await self._coordinator.close()
         if self._fetcher:
+            log.debug('self._fetcher.close()')
             await self._fetcher.close()
+        log.debug('self._client.close()')
         await self._client.close()
         log.debug("The KafkaConsumer has closed.")
 
