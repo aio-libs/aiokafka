@@ -40,7 +40,7 @@ ci-test-unit:
 	py.test -s --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml --color=yes $(FLAGS) tests
 
 ci-test-all:
-	py.test -s -v --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	py.test -s -v --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes -k test_consumer_seek_on_unassigned --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
 coverage.xml: .coverage
 	coverage xml
