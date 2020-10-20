@@ -13,8 +13,6 @@ import uuid
 import warnings
 import weakref
 
-log = logging.getLogger(__name__)
-
 from kafka.protocol.api import RequestHeader
 from kafka.protocol.admin import (
     SaslHandShakeRequest, SaslAuthenticateRequest, ApiVersionRequest
@@ -33,6 +31,7 @@ except ImportError:
     gssapi = None
 
 __all__ = ['AIOKafkaConnection', 'create_conn']
+log = logging.getLogger(__name__)
 
 
 READER_LIMIT = 2 ** 16
