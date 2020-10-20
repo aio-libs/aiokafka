@@ -173,6 +173,8 @@ class AIOKafkaClient:
                 await self._sync_task
             except asyncio.CancelledError:
                 log.debug("cancelled")
+                import traceback
+                traceback.print_exc()
                 pass
             self._sync_task = None
         # Be careful to wait for graceful closure of all connections, so we
