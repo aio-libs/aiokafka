@@ -173,8 +173,6 @@ class AIOKafkaClient:
                 await self._sync_task
             except asyncio.CancelledError:
                 log.debug("cancelled")
-                import traceback
-                traceback.print_exc()
                 pass
             self._sync_task = None
         # Be careful to wait for graceful closure of all connections, so we
@@ -258,26 +256,31 @@ class AIOKafkaClient:
     async def _md_synchronizer(self):
         """routine (async task) for synchronize cluster metadata every
         `metadata_max_age_ms` milliseconds"""
-        while True:
-            await asyncio.wait(
-                [self._md_update_waiter],
-                timeout=self._metadata_max_age_ms / 1000)
+        try:
+            while True:
+                await asyncio.wait(
+                    [self._md_update_waiter],
+                    timeout=self._metadata_max_age_ms / 1000)
 
-            topics = self._topics
-            if self._md_update_fut is None:
-                self._md_update_fut = create_future()
-            ret = await self._metadata_update(self.cluster, topics)
-            # If list of topics changed during metadata update we must update
-            # it again right away.
-            if topics != self._topics:
-                continue
-            # Earlier this waiter was set before sending metadata_request,
-            # but that was to avoid topic list changes being unnoticed, which
-            # is handled explicitly now.
-            self._md_update_waiter = create_future()
+                topics = self._topics
+                if self._md_update_fut is None:
+                    self._md_update_fut = create_future()
+                ret = await self._metadata_update(self.cluster, topics)
+                # If list of topics changed during metadata update we must update
+                # it again right away.
+                if topics != self._topics:
+                    continue
+                # Earlier this waiter was set before sending metadata_request,
+                # but that was to avoid topic list changes being unnoticed, which
+                # is handled explicitly now.
+                self._md_update_waiter = create_future()
 
-            self._md_update_fut.set_result(ret)
-            self._md_update_fut = None
+                self._md_update_fut.set_result(ret)
+                self._md_update_fut = None
+        except CancelledError:
+            import traceback
+            traceback.print_exc()
+            raise
 
     def get_random_node(self):
         """choice random node from known cluster brokers
