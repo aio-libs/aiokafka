@@ -167,6 +167,7 @@ class AIOKafkaClient:
 
     async def close(self):
         if self._sync_task:
+            self._sync_task.print_stack()
             self._sync_task.cancel()
             log.debug("Cancel task")
             try:
