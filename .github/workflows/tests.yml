@@ -70,7 +70,7 @@ jobs:
           - python: 3.7
             snappy_whl: tools/python_snappy-0.5.4-cp37-cp37m-win_amd64.whl
           - python: 3.8
-            snappy_whl: tools/python_snappy-0.5.4-cp38-cp38m-win_amd64.whl
+            snappy_whl: tools/python_snappy-0.5.4-cp38-cp38-win_amd64.whl
 
     steps:
     - uses: actions/checkout@v2
