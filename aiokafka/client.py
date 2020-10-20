@@ -277,7 +277,7 @@ class AIOKafkaClient:
 
                 self._md_update_fut.set_result(ret)
                 self._md_update_fut = None
-        except CancelledError:
+        except asyncio.CancelledError:
             import traceback
             traceback.print_exc()
             raise
