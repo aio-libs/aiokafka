@@ -12,7 +12,6 @@ import traceback
 import uuid
 import warnings
 import weakref
-import logging
 
 log = logging.getLogger(__name__)
 
