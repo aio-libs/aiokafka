@@ -12,6 +12,9 @@ import traceback
 import uuid
 import warnings
 import weakref
+import logging
+
+log = logging.getLogger(__name__)
 
 from kafka.protocol.api import RequestHeader
 from kafka.protocol.admin import (
