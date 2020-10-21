@@ -173,11 +173,11 @@ class AIOKafkaClient:
             f.seek(0)
             log.debug("_sync_task stack: %s", f.read())
             log.debug("Call cancel()")
-            print("{")
+            print("{", end="")
             while not self._sync_task.done():
                 self._sync_task.cancel()
                 log.debug("Wait for task to cancel")
-                print(1)
+                print(1, end="")
                 await asyncio.sleep(0.01)
             try:
                 self._sync_task.result()
