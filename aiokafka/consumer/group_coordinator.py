@@ -169,7 +169,10 @@ class NoGroupCoordinator(BaseCoordinator):
         self._reset_committed_task.cancel()
         log.debug("cancel reset task")
         log.debug("cancel loop %s", id(asyncio.get_event_loop()))
-        await self._reset_committed_task
+        try:
+            await self._reset_committed_task
+        except asyncio.CancelledError:
+            pass
         self._reset_committed_task = None
 
     def check_errors(self):

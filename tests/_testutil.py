@@ -337,8 +337,9 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 
     def tearDown(self):
         super().tearDown()
+        log.debug("TEAR_DOWN")
         for coro, args, kw in reversed(self._cleanup):
-            task = asyncio.wait_for(coro(*args, **kw), 60)
+            task = asyncio.wait_for(coro(*args, **kw), 180)
             self.loop.run_until_complete(task)
 
     def add_cleanup(self, cb_or_coro, *args, **kw):
