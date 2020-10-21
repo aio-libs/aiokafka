@@ -63,13 +63,13 @@ jobs:
 
     strategy:
       matrix:
-        python: [3.6, 3.7, 3.8]
+        python: [3.6, 3.7, 3.8.5]
         include:
           - python: 3.6
             snappy_whl: tools/python_snappy-0.5.4-cp36-cp36m-win_amd64.whl
           - python: 3.7
             snappy_whl: tools/python_snappy-0.5.4-cp37-cp37m-win_amd64.whl
-          - python: 3.8
+          - python: 3.8.5
             snappy_whl: tools/python_snappy-0.5.4-cp38-cp38-win_amd64.whl
 
     steps:
@@ -139,7 +139,7 @@ jobs:
 
     strategy:
       matrix:
-        python: [3.6, 3.7, 3.8]
+        python: [3.6, 3.7, 3.8.5]
 
     steps:
     - uses: actions/checkout@v2
@@ -212,7 +212,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - python: 3.8
+          # FIXME Stick to 3.8.5 as 3.8.6 has broken `wait_for`
+          - python: 3.8.5
             kafka: "2.4.0"
             scala: "2.12"
 
@@ -228,25 +229,25 @@ jobs:
 
 
           # Older brokers against latest python version
-          - python: 3.8
+          - python: 3.8.5
             kafka: "0.9.0.1"
             scala: "2.11"
-          - python: 3.8
+          - python: 3.8.5
             kafka: "0.10.2.1"
             scala: "2.11"
-          - python: 3.8
+          - python: 3.8.5
             kafka: "0.11.0.3"
             scala: "2.12"
-          - python: 3.8
+          - python: 3.8.5
             kafka: "1.1.1"
             scala: "2.12"
-          - python: 3.8
+          - python: 3.8.5
             kafka: "2.1.1"
             scala: "2.12"
-          - python: 3.8
+          - python: 3.8.5
             kafka: "2.2.2"
             scala: "2.12"
-          - python: 3.8
+          - python: 3.8.5
             kafka: "2.3.1"
             scala: "2.12"
       fail-fast: false
