@@ -1,8 +1,7 @@
 import asyncio
-import pytest
-import unittest
 import socket
 import types
+from typing import Any
 from unittest import mock
 
 from kafka.errors import (
@@ -16,7 +15,7 @@ from kafka.protocol.fetch import FetchRequest_v0
 
 from aiokafka.client import AIOKafkaClient, ConnectionGroup, CoordinationType
 from aiokafka.conn import AIOKafkaConnection, CloseReason
-from aiokafka.util import ensure_future
+from aiokafka.util import create_task, get_running_loop
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
@@ -29,13 +28,12 @@ UNKNOWN_ERROR = -1
 TOPIC_AUTHORIZATION_FAILED = 29
 
 
-@pytest.mark.usefixtures('setup_test_class')
-class TestAIOKafkaClient(unittest.TestCase):
+class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
-    def test_init_with_list(self):
-        client = AIOKafkaClient(
-            loop=self.loop, bootstrap_servers=[
-                '127.0.0.1:9092', '127.0.0.2:9092', '127.0.0.3:9092'])
+    @run_until_complete
+    async def test_init_with_list(self):
+        client = AIOKafkaClient(bootstrap_servers=[
+            '127.0.0.1:9092', '127.0.0.2:9092', '127.0.0.3:9092'])
         self.assertEqual(
             '<AIOKafkaClient client_id=aiokafka-0.6.1.dev0>',
             client.__repr__())
@@ -48,9 +46,9 @@ class TestAIOKafkaClient(unittest.TestCase):
         node = client.get_random_node()
         self.assertEqual(node, None)  # unknown cluster metadata
 
-    def test_init_with_csv(self):
+    @run_until_complete
+    async def test_init_with_csv(self):
         client = AIOKafkaClient(
-            loop=self.loop,
             bootstrap_servers='127.0.0.1:9092,127.0.0.2:9092,127.0.0.3:9092')
 
         self.assertEqual(
@@ -59,7 +57,8 @@ class TestAIOKafkaClient(unittest.TestCase):
                     ('127.0.0.3', 9092, socket.AF_INET)]),
             sorted(client.hosts))
 
-    def test_load_metadata(self):
+    @run_until_complete
+    async def test_load_metadata(self):
         brokers = [
             (0, 'broker_1', 4567),
             (1, 'broker_2', 5678)
@@ -95,13 +94,12 @@ class TestAIOKafkaClient(unittest.TestCase):
 
         mocked_conns = {(0, 0): mock.MagicMock()}
         mocked_conns[(0, 0)].send.side_effect = send
-        client = AIOKafkaClient(loop=self.loop,
-                                bootstrap_servers=['broker_1:4567'])
-        task = ensure_future(client._md_synchronizer(), loop=self.loop)
+        client = AIOKafkaClient(bootstrap_servers=['broker_1:4567'])
+        task = create_task(client._md_synchronizer())
         client._conns = mocked_conns
         client.cluster.update_metadata(MetadataResponse(brokers[:1], []))
 
-        self.loop.run_until_complete(client.force_metadata_update())
+        await client.force_metadata_update()
         task.cancel()
 
         md = client.cluster
@@ -122,14 +120,14 @@ class TestAIOKafkaClient(unittest.TestCase):
             md.available_partitions_for_topic('topic_2'), set([1]))
 
         mocked_conns[(0, 0)].connected.return_value = False
-        is_ready = self.loop.run_until_complete(client.ready(0))
+        is_ready = await client.ready(0)
         self.assertEqual(is_ready, False)
-        is_ready = self.loop.run_until_complete(client.ready(1))
+        is_ready = await client.ready(1)
         self.assertEqual(is_ready, False)
         self.assertEqual(mocked_conns, {})
 
         with self.assertRaises(NodeNotReadyError):
-            self.loop.run_until_complete(client.send(0, None))
+            await client.send(0, None)
 
         self.assertEqual(md.unauthorized_topics, {'topic_auth_error'})
 
@@ -162,8 +160,7 @@ class TestAIOKafkaClient(unittest.TestCase):
         conn.send.side_effect = send_exception
         conn.connected.return_value = True
         mocked_conns = {(node_id, 0): conn}
-        client = AIOKafkaClient(loop=self.loop,
-                                bootstrap_servers=['broker_1:4567'])
+        client = AIOKafkaClient(bootstrap_servers=['broker_1:4567'])
         client._conns = mocked_conns
         client._get_conn = types.MethodType(get_conn, client)
 
@@ -193,13 +190,15 @@ class TestAIOKafkaClient(unittest.TestCase):
         async def send(*args, **kwargs):
             return bad_response
 
-        client = AIOKafkaClient(loop=self.loop,
-                                bootstrap_servers=['broker_1:4567'],
+        client = AIOKafkaClient(bootstrap_servers=['broker_1:4567'],
                                 api_version="0.10")
         conn = mock.Mock()
         client._conns = [mock.Mock()]
+
+        async def _get_conn(*args: Any, **kwargs: Any):
+            return conn
         client._get_conn = mock.Mock()
-        client._get_conn.side_effect = asyncio.coroutine(lambda x: conn)
+        client._get_conn.side_effect = _get_conn
         conn.send = mock.Mock()
         conn.send.side_effect = send
         client.cluster.update_metadata(correct_meta)
@@ -222,13 +221,16 @@ class TestAIOKafkaClient(unittest.TestCase):
         async def send(*args, **kwargs):
             raise asyncio.TimeoutError()
 
-        client = AIOKafkaClient(loop=self.loop,
-                                bootstrap_servers=['broker_1:4567'],
+        client = AIOKafkaClient(bootstrap_servers=['broker_1:4567'],
                                 api_version="0.10")
         conn = mock.Mock()
         client._conns = [mock.Mock()]
+
+        async def _get_conn(*args: Any, **kwargs: Any):
+            return conn
+
         client._get_conn = mock.Mock()
-        client._get_conn.side_effect = asyncio.coroutine(lambda x: conn)
+        client._get_conn.side_effect = _get_conn
         conn.send = mock.Mock()
         conn.send.side_effect = send
         client.cluster.update_metadata(correct_meta)
@@ -240,17 +242,13 @@ class TestAIOKafkaClient(unittest.TestCase):
         self.assertNotEqual(client.cluster.brokers(), set([]))
         self.assertEqual(client.cluster.brokers(), brokers_before)
 
-
-class TestKafkaClientIntegration(KafkaIntegrationTestCase):
-
     @run_until_complete
     async def test_bootstrap(self):
-        client = AIOKafkaClient(loop=self.loop,
-                                bootstrap_servers='0.42.42.42:444')
+        client = AIOKafkaClient(bootstrap_servers='0.42.42.42:444')
         with self.assertRaises(KafkaConnectionError):
             await client.bootstrap()
 
-        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
         await self.wait_topic(client, 'test_topic')
 
@@ -266,7 +264,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_failed_bootstrap(self):
-        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(bootstrap_servers=self.hosts)
         with mock.patch.object(AIOKafkaConnection, 'send') as mock_send:
             mock_send.side_effect = KafkaError('some kafka error')
             with self.assertRaises(KafkaConnectionError):
@@ -274,7 +272,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_failed_bootstrap_timeout(self):
-        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(bootstrap_servers=self.hosts)
         with mock.patch.object(AIOKafkaConnection, 'send') as mock_send:
             mock_send.side_effect = asyncio.TimeoutError('Timeout error')
             with self.assertRaises(KafkaConnectionError):
@@ -282,7 +280,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_send_request(self):
-        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
         node_id = client.get_random_node()
         resp = await client.send(node_id, MetadataRequest([]))
@@ -293,7 +291,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
     async def test_check_version(self):
         kafka_version = tuple(int(x) for x in self.kafka_version.split("."))
 
-        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
         ver = await client.check_version()
 
@@ -316,7 +314,10 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
             with self.assertRaises(UnrecognizedBrokerVersion):
                 await client.check_version(client.get_random_node())
 
-        client._get_conn = asyncio.coroutine(lambda _, **kw: None)
+        async def _get_conn(*args: Any, **kw: Any):
+            return None
+
+        client._get_conn = _get_conn
         with self.assertRaises(KafkaConnectionError):
             await client.check_version()
         await client.close()
@@ -324,7 +325,6 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_metadata_synchronizer(self):
         client = AIOKafkaClient(
-            loop=self.loop,
             bootstrap_servers=self.hosts,
             api_version="0.9",
             metadata_max_age_ms=10)
@@ -337,7 +337,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
             await client.bootstrap()
             # wait synchronizer task timeout
-            await asyncio.sleep(0.1, loop=self.loop)
+            await asyncio.sleep(0.1)
 
             self.assertNotEqual(
                 len(client._metadata_update.mock_calls), 0)
@@ -345,7 +345,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_metadata_update_fail(self):
-        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
         # Make sure the connection is initialize before mock to avoid crashing
         # api_version routine
@@ -366,7 +366,6 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_force_metadata_update_multiple_times(self):
         client = AIOKafkaClient(
-            loop=self.loop,
             bootstrap_servers=self.hosts,
             metadata_max_age_ms=10000)
         await client.bootstrap()
@@ -375,27 +374,26 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         orig = client._metadata_update
         with mock.patch.object(client, '_metadata_update') as mocked:
             async def new(*args, **kw):
-                await asyncio.sleep(0.2, loop=self.loop)
+                await asyncio.sleep(0.2)
                 return (await orig(*args, **kw))
             mocked.side_effect = new
 
             client.force_metadata_update()
-            await asyncio.sleep(0.01, loop=self.loop)
+            await asyncio.sleep(0.01)
             self.assertEqual(
                 len(client._metadata_update.mock_calls), 1)
             client.force_metadata_update()
-            await asyncio.sleep(0.01, loop=self.loop)
+            await asyncio.sleep(0.01)
             self.assertEqual(
                 len(client._metadata_update.mock_calls), 1)
             client.force_metadata_update()
-            await asyncio.sleep(0.5, loop=self.loop)
+            await asyncio.sleep(0.5)
             self.assertEqual(
                 len(client._metadata_update.mock_calls), 1)
 
     @run_until_complete
     async def test_set_topics_trigger_metadata_update(self):
         client = AIOKafkaClient(
-            loop=self.loop,
             bootstrap_servers=self.hosts,
             metadata_max_age_ms=10000)
         await client.bootstrap()
@@ -404,7 +402,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         orig = client._metadata_update
         with mock.patch.object(client, '_metadata_update') as mocked:
             async def new(*args, **kw):
-                await asyncio.sleep(0.01, loop=self.loop)
+                await asyncio.sleep(0.01)
                 return (await orig(*args, **kw))
             mocked.side_effect = new
 
@@ -431,7 +429,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
             # Changing topics during refresh should trigger 2 refreshes
             client.set_topics(["topic3"])
-            await asyncio.sleep(0.001, loop=self.loop)
+            await asyncio.sleep(0.001)
             self.assertEqual(
                 len(client._metadata_update.mock_calls), 4)
             await client.set_topics(["topic3", "topics4"])
@@ -444,7 +442,6 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         # connection to the node, or we have a node failure. In both cases
         # there's a high probability that Leader distribution will also change.
         client = AIOKafkaClient(
-            loop=self.loop,
             bootstrap_servers=self.hosts,
             metadata_max_age_ms=10000)
         await client.bootstrap()
@@ -467,7 +464,6 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_no_concurrent_send_on_connection(self):
         client = AIOKafkaClient(
-            loop=self.loop,
             bootstrap_servers=self.hosts,
             metadata_max_age_ms=10000)
         await client.bootstrap()
@@ -484,15 +480,16 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
               )])
         vanila_request = MetadataRequest([])
 
-        send_time = self.loop.time()
-        long_task = self.loop.create_task(
+        loop = get_running_loop()
+        send_time = loop.time()
+        long_task = create_task(
             client.send(node_id, wait_request)
         )
-        await asyncio.sleep(0.0001, loop=self.loop)
+        await asyncio.sleep(0.0001)
         self.assertFalse(long_task.done())
 
         await client.send(node_id, vanila_request)
-        resp_time = self.loop.time()
+        resp_time = loop.time()
         fetch_resp = await long_task
         # Check error code like resp->topics[0]->partitions[0]->error_code
         self.assertEqual(fetch_resp.topics[0][1][0][1], 0)
@@ -503,7 +500,6 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_different_connections_in_conn_groups(self):
         client = AIOKafkaClient(
-            loop=self.loop,
             bootstrap_servers=self.hosts,
             metadata_max_age_ms=10000)
         await client.bootstrap()
@@ -525,7 +521,6 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_concurrent_send_on_different_connection_groups(self):
         client = AIOKafkaClient(
-            loop=self.loop,
             bootstrap_servers=self.hosts,
             metadata_max_age_ms=10000)
         await client.bootstrap()
@@ -547,16 +542,17 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
               )])
         vanila_request = MetadataRequest([])
 
-        send_time = self.loop.time()
-        long_task = self.loop.create_task(
+        loop = get_running_loop()
+        send_time = loop.time()
+        long_task = create_task(
             client.send(node_id, wait_request)
         )
-        await asyncio.sleep(0.0001, loop=self.loop)
+        await asyncio.sleep(0.0001)
         self.assertFalse(long_task.done())
 
         await client.send(
             node_id, vanila_request, group=ConnectionGroup.COORDINATION)
-        resp_time = self.loop.time()
+        resp_time = loop.time()
         self.assertFalse(long_task.done())
 
         fetch_resp = await long_task

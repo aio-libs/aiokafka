@@ -10,6 +10,9 @@ added `OAUTHBEARER` as a new `sasl_mechanism`.
 =======
 667.bugfix
 Drop support for Python 3.5
+=======
+569.bugfix
+Support Python 3.8
 
 0.6.0 (2020-05-15)
 ==================

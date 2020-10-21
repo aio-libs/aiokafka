@@ -37,10 +37,10 @@ cov cover coverage: flake
 	@echo "open file://`pwd`/htmlcov/index.html"
 
 ci-test-unit:
-	py.test -s --log-level DEBUG --cov aiokafka --cov-report xml --color=yes $(FLAGS) tests
+	py.test -s --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml --color=yes $(FLAGS) tests
 
 ci-test-all:
-	py.test -s -v --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	py.test -s -v --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
 coverage.xml: .coverage
 	coverage xml

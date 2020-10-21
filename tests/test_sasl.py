@@ -44,7 +44,7 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
 
     async def producer_factory(self, user="test", **kw):
         producer = AIOKafkaProducer(
-            loop=self.loop,
+
             bootstrap_servers=[self.sasl_hosts],
             security_protocol="SASL_PLAINTEXT",
             sasl_mechanism="PLAIN",
@@ -63,7 +63,7 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         )
         kwargs.update(kw)
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop,
+            self.topic,
             bootstrap_servers=[self.sasl_hosts],
             security_protocol="SASL_PLAINTEXT",
             sasl_mechanism="PLAIN",
@@ -79,7 +79,7 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             kw['api_version'] = "0.9"
 
         producer = AIOKafkaProducer(
-            loop=self.loop,
+
             bootstrap_servers=[self.sasl_hosts],
             security_protocol="SASL_PLAINTEXT",
             sasl_mechanism="GSSAPI",
@@ -100,7 +100,7 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         )
         kwargs.update(kw)
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop,
+            self.topic,
             bootstrap_servers=[self.sasl_hosts],
             security_protocol="SASL_PLAINTEXT",
             sasl_mechanism="GSSAPI",
@@ -112,7 +112,7 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
 
     async def scram_producer_factory(self, user="test", **kw):
         producer = AIOKafkaProducer(
-            loop=self.loop,
+
             bootstrap_servers=[self.sasl_hosts],
             security_protocol="SASL_PLAINTEXT",
             sasl_mechanism='SCRAM-SHA-256',
@@ -131,7 +131,7 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         )
         kwargs.update(kw)
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop,
+            self.topic,
             bootstrap_servers=[self.sasl_hosts],
             security_protocol="SASL_PLAINTEXT",
             sasl_mechanism='SCRAM-SHA-256',

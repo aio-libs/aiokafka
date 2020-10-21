@@ -14,7 +14,7 @@ from aiokafka.errors import (
 from aiokafka.record.memory_records import MemoryRecords
 from aiokafka.record.control_record import ControlRecord, ABORT_MARKER
 from aiokafka.structs import OffsetAndTimestamp, TopicPartition, ConsumerRecord
-from aiokafka.util import ensure_future, create_future
+from aiokafka.util import create_future, create_task
 
 log = logging.getLogger(__name__)
 
@@ -58,18 +58,17 @@ class OffsetResetStrategy:
 
 class FetchResult:
     def __init__(
-            self, tp, *, assignment, loop, partition_records, backoff):
+            self, tp, *, assignment, partition_records, backoff):
         self._topic_partition = tp
         self._partition_records = partition_records
 
-        self._created = loop.time()
+        self._created = time.monotonic()
         self._backoff = backoff
-        self._loop = loop
 
         self._assignment = assignment
 
     def calculate_backoff(self):
-        lifetime = self._loop.time() - self._created
+        lifetime = time.monotonic() - self._created
         if lifetime < self._backoff:
             return self._backoff - lifetime
         return 0
@@ -151,14 +150,13 @@ class FetchResult:
 
 
 class FetchError:
-    def __init__(self, *, loop, error, backoff):
+    def __init__(self, *, error, backoff):
         self._error = error
-        self._created = loop.time()
+        self._created = time.monotonic()
         self._backoff = backoff
-        self._loop = loop
 
     def calculate_backoff(self):
-        lifetime = self._loop.time() - self._created
+        lifetime = time.monotonic() - self._created
         if lifetime < self._backoff:
             return self._backoff - lifetime
         return 0
@@ -356,7 +354,7 @@ class Fetcher:
     """
 
     def __init__(
-            self, client, subscriptions, *, loop,
+            self, client, subscriptions, *,
             key_deserializer=None,
             value_deserializer=None,
             fetch_min_bytes=1,
@@ -370,7 +368,6 @@ class Fetcher:
             auto_offset_reset='latest',
             isolation_level="read_uncommitted"):
         self._client = client
-        self._loop = loop
         self._key_deserializer = key_deserializer
         self._value_deserializer = value_deserializer
         self._fetch_min_bytes = fetch_min_bytes
@@ -414,8 +411,7 @@ class Fetcher:
             req_version = 1
         self._fetch_request_class = FetchRequest[req_version]
 
-        self._fetch_task = ensure_future(
-            self._fetch_requests_routine(), loop=loop)
+        self._fetch_task = create_task(self._fetch_requests_routine())
 
         self._closed = False
 
@@ -444,7 +440,7 @@ class Fetcher:
         # Creating a fetch waiter is usually not that frequent of an operation,
         # (get methods will return all data first, before a waiter is created)
 
-        fut = create_future(loop=self._loop)
+        fut = create_future()
         self._fetch_waiters.add(fut)
         fut.add_done_callback(
             lambda f, waiters=self._fetch_waiters: waiters.remove(f))
@@ -475,7 +471,7 @@ class Fetcher:
             assignment = None
 
             def start_pending_task(coro, node_id, self=self):
-                task = ensure_future(coro, loop=self._loop)
+                task = create_task(coro)
                 self._pending_tasks.add(task)
                 self._in_flight.add(node_id)
 
@@ -510,7 +506,7 @@ class Fetcher:
                 assert assignment is not None and assignment.active
 
                 # Reset consuming signal future.
-                self._wait_consume_future = create_future(loop=self._loop)
+                self._wait_consume_future = create_future()
                 # Determine what action to take per node
                 (fetch_requests, reset_requests, timeout, invalid_metadata,
                  resume_futures) = self._get_actions_per_node(assignment)
@@ -535,7 +531,6 @@ class Fetcher:
 
                 done_set, _ = await asyncio.wait(
                     chain(self._pending_tasks, other_futs, resume_futures),
-                    loop=self._loop,
                     timeout=timeout,
                     return_when=asyncio.FIRST_COMPLETED)
 
@@ -659,7 +654,7 @@ class Fetcher:
             response = await self._client.send(node_id, request)
         except Errors.KafkaError as err:
             log.error("Failed fetch messages from %s: %s", node_id, err)
-            await asyncio.sleep(self._retry_backoff, loop=self._loop)
+            await asyncio.sleep(self._retry_backoff)
             return False
         except asyncio.CancelledError:
             # Either `close()` or partition unassigned. Either way the result
@@ -720,8 +715,7 @@ class Fetcher:
                         self._records[tp] = FetchResult(
                             tp, partition_records=partition_records,
                             assignment=assignment,
-                            backoff=self._prefetch_backoff,
-                            loop=self._loop)
+                            backoff=self._prefetch_backoff)
 
                         # We added at least 1 successful record
                         needs_wakeup = True
@@ -768,7 +762,7 @@ class Fetcher:
     def _set_error(self, tp, error):
         assert tp not in self._records, self._records[tp]
         self._records[tp] = FetchError(
-            error=error, backoff=self._prefetch_backoff, loop=self._loop)
+            error=error, backoff=self._prefetch_backoff)
 
     async def _update_fetch_positions(self, assignment, node_id, tps):
         """ This task will be called if there is no valid position for
@@ -834,7 +828,7 @@ class Fetcher:
                     node_id, topic_data)
             except Errors.KafkaError as err:
                 log.error("Failed fetch offsets from %s: %s", node_id, err)
-                await asyncio.sleep(self._retry_backoff, loop=self._loop)
+                await asyncio.sleep(self._retry_backoff)
                 return needs_wakeup
         except asyncio.CancelledError:
             return needs_wakeup
@@ -869,14 +863,13 @@ class Fetcher:
             return {}
 
         timeout = timeout_ms / 1000
-        start_time = self._loop.time()
+        start_time = time.monotonic()
         remaining = timeout
         while True:
             try:
                 offsets = await asyncio.wait_for(
                     self._proc_offset_requests(timestamps),
-                    timeout=None if remaining == float("inf") else remaining,
-                    loop=self._loop
+                    timeout=None if remaining == float("inf") else remaining
                 )
             except asyncio.TimeoutError:
                 break
@@ -885,11 +878,11 @@ class Fetcher:
                     raise error
                 if error.invalid_metadata:
                     self._client.force_metadata_update()
-                elapsed = self._loop.time() - start_time
+                elapsed = time.monotonic() - start_time
                 remaining = max(0, remaining - elapsed)
                 if remaining < self._retry_backoff:
                     break
-                await asyncio.sleep(self._retry_backoff, loop=self._loop)
+                await asyncio.sleep(self._retry_backoff)
             else:
                 return offsets
         raise KafkaTimeoutError(
@@ -937,7 +930,7 @@ class Fetcher:
                 self._proc_offset_request(node_id, topic_data)
             )
         offsets = {}
-        res = await asyncio.gather(*futs, loop=self._loop)
+        res = await asyncio.gather(*futs)
         for partial_offsets in res:
             offsets.update(partial_offsets)
         return offsets
@@ -1059,7 +1052,7 @@ class Fetcher:
             if self._subscriptions.reassignment_in_progress:
                 await self._subscriptions.wait_for_assignment()
 
-            start_time = self._loop.time()
+            start_time = time.monotonic()
             drained = {}
             for tp in list(self._records.keys()):
                 if partitions and tp not in partitions:
@@ -1097,8 +1090,7 @@ class Fetcher:
                 return drained
 
             waiter = self._create_fetch_waiter()
-            done, pending = await asyncio.wait(
-                [waiter], timeout=timeout, loop=self._loop)
+            done, pending = await asyncio.wait([waiter], timeout=timeout)
 
             if not done or self._closed:
                 if pending:
@@ -1110,7 +1102,7 @@ class Fetcher:
                 waiter.result()  # Check for authorization errors
 
             # Decrease timeout accordingly
-            timeout = timeout - (self._loop.time() - start_time)
+            timeout = timeout - (time.monotonic() - start_time)
             timeout = max(0, timeout)
 
     async def get_offsets_by_times(self, timestamps, timeout_ms):
@@ -1159,7 +1151,7 @@ class Fetcher:
         # describing the purpose.
         self._notify(self._wait_consume_future)
 
-        return asyncio.gather(*waiters, loop=self._loop)
+        return asyncio.gather(*waiters)
 
     def seek_to(self, tp, offset):
         """ Force a position change to specific offset. Called from

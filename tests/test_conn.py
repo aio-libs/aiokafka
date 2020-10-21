@@ -2,8 +2,9 @@ import asyncio
 import gc
 import pytest
 import struct
-import unittest
+from typing import Any
 from unittest import mock
+
 from kafka.protocol.metadata import (
     MetadataRequest_v0 as MetadataRequest,
     MetadataResponse_v0 as MetadataResponse)
@@ -23,42 +24,37 @@ from aiokafka.errors import (
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 from aiokafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
-
-
-@pytest.mark.usefixtures('setup_test_class')
-class ConnTest(unittest.TestCase):
-
-    def test_ctor(self):
-        conn = AIOKafkaConnection('localhost', 1234, loop=self.loop)
-        self.assertEqual('localhost', conn.host)
-        self.assertEqual(1234, conn.port)
-        self.assertTrue('KafkaConnection' in conn.__repr__())
-        self.assertIsNone(conn._reader)
-        self.assertIsNone(conn._writer)
+from aiokafka.util import get_running_loop
 
 
 @pytest.mark.usefixtures('setup_test_class')
 class ConnIntegrationTest(KafkaIntegrationTestCase):
 
     @run_until_complete
+    async def test_ctor(self):
+        conn = AIOKafkaConnection('localhost', 1234)
+        self.assertEqual('localhost', conn.host)
+        self.assertEqual(1234, conn.port)
+        self.assertTrue('KafkaConnection' in conn.__repr__())
+        self.assertIsNone(conn._reader)
+        self.assertIsNone(conn._writer)
+
+    @run_until_complete
     async def test_global_loop_for_create_conn(self):
-        asyncio.set_event_loop(self.loop)
-        try:
-            host, port = self.kafka_host, self.kafka_port
-            conn = await create_conn(host, port)
-            self.assertIs(conn._loop, self.loop)
-            conn.close()
-            # make sure second closing does nothing and we have full coverage
-            # of *if self._reader:* condition
-            conn.close()
-        finally:
-            asyncio.set_event_loop(None)
+        loop = get_running_loop()
+        host, port = self.kafka_host, self.kafka_port
+        conn = await create_conn(host, port)
+        self.assertIs(conn._loop, loop)
+        conn.close()
+        # make sure second closing does nothing and we have full coverage
+        # of *if self._reader:* condition
+        conn.close()
 
     @run_until_complete
     async def test_conn_warn_unclosed(self):
         host, port = self.kafka_host, self.kafka_port
         conn = await create_conn(
-            host, port, loop=self.loop, max_idle_ms=100000)
+            host, port, max_idle_ms=100000)
 
         with self.silence_loop_exception_handler():
             with self.assertWarnsRegex(
@@ -69,7 +65,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_basic_connection_load_meta(self):
         host, port = self.kafka_host, self.kafka_port
-        conn = await create_conn(host, port, loop=self.loop)
+        conn = await create_conn(host, port)
 
         self.assertEqual(conn.connected(), True)
         request = MetadataRequest([])
@@ -81,13 +77,13 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
     async def test_connections_max_idle_ms(self):
         host, port = self.kafka_host, self.kafka_port
         conn = await create_conn(
-            host, port, loop=self.loop, max_idle_ms=200)
+            host, port, max_idle_ms=200)
         self.assertEqual(conn.connected(), True)
-        await asyncio.sleep(0.1, loop=self.loop)
+        await asyncio.sleep(0.1)
         # Do some work
         request = MetadataRequest([])
         await conn.send(request)
-        await asyncio.sleep(0.15, loop=self.loop)
+        await asyncio.sleep(0.15)
         # Check if we're still connected after 250ms, as we were not idle
         self.assertEqual(conn.connected(), True)
 
@@ -95,13 +91,13 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         readexactly = conn._reader.readexactly
         with mock.patch.object(conn._reader, 'readexactly') as mocked:
             async def long_read(n):
-                await asyncio.sleep(0.2, loop=self.loop)
+                await asyncio.sleep(0.2)
                 return (await readexactly(n))
             mocked.side_effect = long_read
             await conn.send(MetadataRequest([]))
         self.assertEqual(conn.connected(), True)
 
-        await asyncio.sleep(0.2, loop=self.loop)
+        await asyncio.sleep(0.2)
         self.assertEqual(conn.connected(), False)
 
     @run_until_complete
@@ -111,7 +107,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         futures do not stuck in queue forever"""
 
         host, port = self.kafka_host, self.kafka_port
-        conn = await create_conn(host, port, loop=self.loop)
+        conn = await create_conn(host, port)
 
         # prepare message
         builder = LegacyRecordBatchBuilder(
@@ -134,7 +130,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_send_to_closed(self):
         host, port = self.kafka_host, self.kafka_port
-        conn = AIOKafkaConnection(host=host, port=port, loop=self.loop)
+        conn = AIOKafkaConnection(host=host, port=port)
         request = MetadataRequest([])
         with self.assertRaises(KafkaConnectionError):
             await conn.send(request)
@@ -152,7 +148,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         request = MetadataRequest([])
 
         # setup connection with mocked reader and writer
-        conn = AIOKafkaConnection(host=host, port=port, loop=self.loop)
+        conn = AIOKafkaConnection(host=host, port=port)
 
         # setup reader
         reader = mock.MagicMock()
@@ -160,9 +156,14 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         resp = MetadataResponse(brokers=[], topics=[])
         resp = resp.encode()
         resp = int32.pack(999) + resp  # set invalid correlation id
-        reader.readexactly.side_effect = [
-            asyncio.coroutine(lambda *a, **kw: int32.pack(len(resp)))(),
-            asyncio.coroutine(lambda *a, **kw: resp)()]
+
+        async def first_resp(*args: Any, **kw: Any):
+            return int32.pack(len(resp))
+
+        async def second_resp(*args: Any, **kw: Any):
+            return resp
+
+        reader.readexactly.side_effect = [first_resp(), second_resp()]
         writer = mock.MagicMock()
 
         conn._reader = reader
@@ -180,7 +181,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         request = GroupCoordinatorRequest(consumer_group='test')
 
         # setup connection with mocked reader and writer
-        conn = AIOKafkaConnection(host=host, port=port, loop=self.loop)
+        conn = AIOKafkaConnection(host=host, port=port)
 
         # setup reader
         reader = mock.MagicMock()
@@ -190,9 +191,14 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
             host='127.0.0.1', port=3333)
         resp = resp.encode()
         resp = int32.pack(0) + resp  # set correlation id to 0
-        reader.readexactly.side_effect = [
-            asyncio.coroutine(lambda *a, **kw: int32.pack(len(resp)))(),
-            asyncio.coroutine(lambda *a, **kw: resp)()]
+
+        async def first_resp(*args: Any, **kw: Any):
+            return int32.pack(len(resp))
+
+        async def second_resp(*args: Any, **kw: Any):
+            return resp
+
+        reader.readexactly.side_effect = [first_resp(), second_resp()]
         writer = mock.MagicMock()
 
         conn._reader = reader
@@ -212,12 +218,12 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         host, port = self.kafka_host, self.kafka_port
 
         async def invoke_osserror(*a, **kw):
-            await asyncio.sleep(0.1, loop=self.loop)
+            await asyncio.sleep(0.1)
             raise OSError('test oserror')
 
         request = MetadataRequest([])
         # setup connection with mocked reader and writer
-        conn = AIOKafkaConnection(host=host, port=port, loop=self.loop)
+        conn = AIOKafkaConnection(host=host, port=port)
 
         # setup reader
         reader = mock.MagicMock()
@@ -236,7 +242,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_close_disconnects_connection(self):
         host, port = self.kafka_host, self.kafka_port
-        conn = await create_conn(host, port, loop=self.loop)
+        conn = await create_conn(host, port)
         self.assertTrue(conn.connected())
         conn.close()
         self.assertFalse(conn.connected())
@@ -279,7 +285,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
         # setup connection with mocked send and send_bytes
         conn = AIOKafkaConnection(
-            host=host, port=port, loop=self.loop,
+            host=host, port=port,
             sasl_mechanism="PLAIN",
             sasl_plain_username="admin",
             sasl_plain_password="123"
@@ -324,7 +330,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
         # setup connection with mocked send and send_bytes
         conn = AIOKafkaConnection(
-            host=host, port=port, loop=self.loop,
+            host=host, port=port,
             sasl_mechanism="PLAIN",
             sasl_plain_username="admin",
             sasl_plain_password="123",
@@ -386,9 +392,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         # function to send `raw` data with only length prefixed
 
         # setup connection with mocked transport and protocol
-        conn = AIOKafkaConnection(
-            host="", port=9999, loop=self.loop
-        )
+        conn = AIOKafkaConnection(host="", port=9999)
         conn.close = mock.MagicMock()
         conn._writer = mock.MagicMock()
         out_buffer = []

@@ -25,6 +25,7 @@ from aiokafka.protocol.produce import (
 from aiokafka.producer.message_accumulator import MessageAccumulator
 from aiokafka.client import AIOKafkaClient, CoordinationType, ConnectionGroup
 from aiokafka.structs import TopicPartition, OffsetAndMetadata
+from aiokafka.util import get_running_loop
 
 from aiokafka.errors import (
     NoError, UnknownError,
@@ -46,19 +47,18 @@ LOG_APPEND_TIME = 1
 class TestSender(KafkaIntegrationTestCase):
 
     async def _setup_sender(self, no_init=False):
-        client = AIOKafkaClient(loop=self.loop, bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
         self.add_cleanup(client.close)
         await self.wait_topic(client, self.topic)
 
-        tm = TransactionManager("test_tid", 30000, loop=self.loop)
+        tm = TransactionManager("test_tid", 30000)
         if not no_init:
             tm.set_pid_and_epoch(120, 22)
-        ma = MessageAccumulator(client.cluster, 1000, 0, 30, loop=self.loop)
+        ma = MessageAccumulator(client.cluster, 1000, 0, 30)
         sender = Sender(
             client, acks=-1, txn_manager=tm, message_accumulator=ma,
-            retry_backoff_ms=100, linger_ms=0, request_timeout_ms=40000,
-            loop=self.loop)
+            retry_backoff_ms=100, linger_ms=0, request_timeout_ms=40000)
         self.add_cleanup(sender.close)
         return sender
 
@@ -193,11 +193,12 @@ class TestSender(KafkaIntegrationTestCase):
         success = await mock_handler.do(node_id=0)
         self.assertTrue(success)
 
-        time = self.loop.time()
+        loop = get_running_loop()
+        time = loop.time()
         sender.client.send = mock.Mock(side_effect=UnknownError())
         success = await mock_handler.do(node_id=0)
         self.assertFalse(success)
-        self.assertAlmostEqual(self.loop.time() - time, 0.1, 1)
+        self.assertAlmostEqual(loop.time() - time, 0.1, 1)
 
     @run_until_complete
     async def test_sender__do_init_pid_create(self):

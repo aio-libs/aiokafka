@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import random
+import time
 
 from kafka.conn import collect_hosts
 from kafka.protocol.metadata import MetadataRequest
@@ -22,7 +23,7 @@ from aiokafka.errors import (
     UnrecognizedBrokerVersion,
     StaleMetadata)
 from aiokafka.util import (
-    ensure_future, create_future, get_running_loop, parse_kafka_version
+    create_task, create_future, parse_kafka_version, get_running_loop
 )
 
 
@@ -147,8 +148,8 @@ class AIOKafkaClient:
         self._sync_task = None
 
         self._md_update_fut = None
-        self._md_update_waiter = create_future(loop=self._loop)
-        self._get_conn_lock = asyncio.Lock(loop=loop)
+        self._md_update_waiter = create_future()
+        self._get_conn_lock = asyncio.Lock()
 
     def __repr__(self):
         return '<AIOKafkaClient client_id=%s>' % self._client_id
@@ -178,10 +179,13 @@ class AIOKafkaClient:
         for conn in self._conns.values():
             futs.append(conn.close(reason=CloseReason.SHUTDOWN))
         if futs:
-            await asyncio.gather(*futs, loop=self._loop)
+            await asyncio.gather(*futs)
 
     async def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
+        assert self._loop is asyncio.get_event_loop(), (
+            "Please create objects with the same loop as running with"
+        )
         # using request v0 for bootstrap if not sure v1 is available
         if self._api_version == "auto" or self._api_version < (0, 10):
             metadata_request = MetadataRequest[0]([])
@@ -197,7 +201,7 @@ class AIOKafkaClient:
 
             try:
                 bootstrap_conn = await create_conn(
-                    host, port, loop=self._loop, client_id=self._client_id,
+                    host, port, client_id=self._client_id,
                     request_timeout_ms=self._request_timeout_ms,
                     ssl_context=self._ssl_context,
                     security_protocol=self._security_protocol,
@@ -244,8 +248,7 @@ class AIOKafkaClient:
 
         if self._sync_task is None:
             # starting metadata synchronizer task
-            self._sync_task = ensure_future(
-                self._md_synchronizer(), loop=self._loop)
+            self._sync_task = create_task(self._md_synchronizer())
 
     async def _md_synchronizer(self):
         """routine (async task) for synchronize cluster metadata every
@@ -253,12 +256,11 @@ class AIOKafkaClient:
         while True:
             await asyncio.wait(
                 [self._md_update_waiter],
-                timeout=self._metadata_max_age_ms / 1000,
-                loop=self._loop)
+                timeout=self._metadata_max_age_ms / 1000)
 
             topics = self._topics
             if self._md_update_fut is None:
-                self._md_update_fut = create_future(loop=self._loop)
+                self._md_update_fut = create_future()
             ret = await self._metadata_update(self.cluster, topics)
             # If list of topics changed during metadata update we must update
             # it again right away.
@@ -267,7 +269,7 @@ class AIOKafkaClient:
             # Earlier this waiter was set before sending metadata_request,
             # but that was to avoid topic list changes being unnoticed, which
             # is handled explicitly now.
-            self._md_update_waiter = create_future(loop=self._loop)
+            self._md_update_waiter = create_future()
 
             self._md_update_fut.set_result(ret)
             self._md_update_fut = None
@@ -342,9 +344,9 @@ class AIOKafkaClient:
             # Wake up the `_md_synchronizer` task
             if not self._md_update_waiter.done():
                 self._md_update_waiter.set_result(None)
-            self._md_update_fut = create_future(loop=self._loop)
+            self._md_update_fut = create_future()
         # Metadata will be updated in the background by syncronizer
-        return asyncio.shield(self._md_update_fut, loop=self._loop)
+        return asyncio.shield(self._md_update_fut)
 
     async def fetch_all_metadata(self):
         cluster_md = ClusterMetadata(
@@ -362,7 +364,7 @@ class AIOKafkaClient:
             topic (str): topic to track
         """
         if topic in self._topics:
-            res = create_future(loop=self._loop)
+            res = create_future()
             res.set_result(True)
         else:
             res = self.force_metadata_update()
@@ -379,7 +381,7 @@ class AIOKafkaClient:
         if not topics or set(topics).difference(self._topics):
             res = self.force_metadata_update()
         else:
-            res = create_future(loop=self._loop)
+            res = create_future()
             res.set_result(True)
         self._topics = set(topics)
         return res
@@ -432,7 +434,7 @@ class AIOKafkaClient:
                     version_hint = None
 
                 self._conns[conn_id] = await create_conn(
-                    broker.host, broker.port, loop=self._loop,
+                    broker.host, broker.port,
                     client_id=self._client_id,
                     request_timeout_ms=self._request_timeout_ms,
                     ssl_context=self._ssl_context,
@@ -544,8 +546,8 @@ class AIOKafkaClient:
                 assert conn, 'no connection to node with id {}'.format(node_id)
                 # request can be ignored by Kafka broker,
                 # so we send metadata request and wait response
-                task = self._loop.create_task(conn.send(request))
-                await asyncio.wait([task], timeout=0.1, loop=self._loop)
+                task = create_task(conn.send(request))
+                await asyncio.wait([task], timeout=0.1)
                 try:
                     await conn.send(MetadataRequest_v0([]))
                 except KafkaError:
@@ -617,23 +619,22 @@ class AIOKafkaClient:
         # add topic to metadata topic list if it is not there already.
         self.add_topic(topic)
 
-        t0 = self._loop.time()
+        t0 = time.monotonic()
         while True:
             await self.force_metadata_update()
             if topic in self.cluster.topics():
                 break
-            if (self._loop.time() - t0) > (self._request_timeout_ms / 1000):
+            if (time.monotonic() - t0) > (self._request_timeout_ms / 1000):
                 raise UnknownTopicOrPartitionError()
             if topic in self.cluster.unauthorized_topics:
                 raise Errors.TopicAuthorizationFailedError(topic)
-            await asyncio.sleep(self._retry_backoff, loop=self._loop)
+            await asyncio.sleep(self._retry_backoff)
 
         return self.cluster.partitions_for_topic(topic)
 
     async def _maybe_wait_metadata(self):
         if self._md_update_fut is not None:
-            await asyncio.shield(
-                self._md_update_fut, loop=self._loop)
+            await asyncio.shield(self._md_update_fut)
 
     async def coordinator_lookup(self, coordinator_type, coordinator_key):
         """ Lookup which node in the cluster is the coordinator for a certain
