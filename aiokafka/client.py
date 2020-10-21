@@ -172,9 +172,13 @@ class AIOKafkaClient:
             self._sync_task.print_stack(file=f)
             f.seek(0)
             log.debug("_sync_task stack: %s", f.read())
-            self._sync_task.cancel()
+            log.debug("Call cancel()")
+            while not self._sync_task.done():
+                self._sync_task.cancel()
+                log.debug("Wait for task to cancel")
+                await asyncio.sleep(0.01)
             try:
-                await self._sync_task
+                self._sync_task.result()
             except asyncio.CancelledError:
                 log.debug("cancelled")
                 pass
