@@ -651,7 +651,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             await consumer.seek_to_committed(tp1)
         with self.assertRaises(IllegalStateError):
             await consumer.seek_to_end(tp1)
-        await consumer.stop()
+        # await consumer.stop()
 
     @run_until_complete
     async def test_consumer_seek_errors(self):
