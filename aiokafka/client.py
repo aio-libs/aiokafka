@@ -173,6 +173,7 @@ class AIOKafkaClient:
             f.seek(0)
             log.debug("_sync_task stack: %s", f.read())
             log.debug("Call cancel()")
+            print("{")
             while not self._sync_task.done():
                 self._sync_task.cancel()
                 log.debug("Wait for task to cancel")
@@ -183,6 +184,7 @@ class AIOKafkaClient:
             except asyncio.CancelledError:
                 log.debug("cancelled")
                 pass
+            print("}")
             self._sync_task = None
         # Be careful to wait for graceful closure of all connections, so we
         # process all pending buffers.
