@@ -530,7 +530,9 @@ class Fetcher:
                     other_futs.append(fut)
 
                 done_set, _ = await asyncio.wait(
-                    chain(self._pending_tasks, other_futs, resume_futures),
+                    set(
+                        chain(self._pending_tasks, other_futs, resume_futures)
+                    ),
                     timeout=timeout,
                     return_when=asyncio.FIRST_COMPLETED)
 
