@@ -201,10 +201,6 @@ class MessageBatch:
         if not self._drain_waiter.done():
             self._drain_waiter.set_exception(exception)
 
-    def wait_deliver(self, timeout=None):
-        """Wait until all message from this batch is processed"""
-        return asyncio.wait([self.future], timeout=timeout)
-
     async def wait_drain(self, timeout=None):
         """Wait until all message from this batch is processed"""
         waiter = self._drain_waiter
@@ -269,12 +265,14 @@ class MessageAccumulator:
         self._api_version = api_version
 
     async def flush(self):
-        # NOTE: we copy to avoid mutation during `await` below
-        for batches in list(self._batches.values()):
+        waiters = []
+        for batches in self._batches.values():
             for batch in list(batches):
-                await batch.wait_deliver()
+                waiters.append(batch.future)
         for batch in list(self._pending_batches):
-            await batch.wait_deliver()
+            waiters.append(batch.future)
+        if waiters:
+            await asyncio.wait(waiters)
 
     async def flush_for_commit(self):
         waiters = []
@@ -283,9 +281,9 @@ class MessageAccumulator:
                 # We force all buffers to close to finalyze the transaction
                 # scope. We should not add anything to this transaction.
                 batch._builder.close()
-                waiters.append(batch.wait_deliver())
+                waiters.append(batch.future)
         for batch in self._pending_batches:
-            waiters.append(batch.wait_deliver())
+            waiters.append(batch.future)
         # Wait for all waiters to finish. We only wait for the scope we defined
         # above, other batches should not be delivered as part of this
         # transaction
