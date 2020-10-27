@@ -12,15 +12,15 @@ setup:
 	pip install -Ue .
 
 format:
-	isort -rc $(FORMATTED_AREAS) setup.py
+	isort $(FORMATTED_AREAS) setup.py
 	black $(FORMATTED_AREAS) setup.py
 
 flake: lint
 lint:
 	black --check $(FORMATTED_AREAS) setup.py
-	@if ! isort -c -rc $(FORMATTED_AREAS) setup.py; then \
+	@if ! isort -c $(FORMATTED_AREAS) setup.py; then \
             echo "Import sort errors, run 'make format' to fix them!!!"; \
-            isort --diff -rc $(FORMATTED_AREAS) setup.py; \
+            isort --diff --color $(FORMATTED_AREAS) setup.py; \
             false; \
         fi
 	flake8 aiokafka tests setup.py
