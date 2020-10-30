@@ -298,7 +298,10 @@ class AIOKafkaClient:
             nodeids.append('bootstrap')
         random.shuffle(nodeids)
         for node_id in nodeids:
-            conn = await self._get_conn(node_id)
+            try:
+                conn = await self._get_conn(node_id)
+            except StaleMetadata:
+                conn = None
 
             if conn is None:
                 continue
