@@ -9,13 +9,15 @@ from kafka.coordinator.protocol import ConsumerProtocol
 from kafka.protocol.commit import (
     OffsetCommitRequest_v2 as OffsetCommitRequest,
     OffsetFetchRequest_v1 as OffsetFetchRequest)
-from kafka.protocol.group import (
+from aiokafka.protocol.group import (
     HeartbeatRequest, JoinGroupRequest, LeaveGroupRequest, SyncGroupRequest)
 
 import aiokafka.errors as Errors
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.client import ConnectionGroup, CoordinationType
 from aiokafka.util import create_future, create_task
+from aiokafka.consumer.assignors import AbstractStaticPartitionAssignor
+
 
 log = logging.getLogger(__name__)
 
@@ -210,6 +212,7 @@ class GroupCoordinator(BaseCoordinator):
 
     def __init__(self, client, subscription, *,
                  group_id='aiokafka-default-group',
+                 group_instance_id=None,
                  session_timeout_ms=10000, heartbeat_interval_ms=3000,
                  retry_backoff_ms=100,
                  enable_auto_commit=True, auto_commit_interval_ms=5000,
@@ -241,6 +244,7 @@ class GroupCoordinator(BaseCoordinator):
         self.generation = OffsetCommitRequest.DEFAULT_GENERATION_ID
         self.member_id = JoinGroupRequest[0].UNKNOWN_MEMBER_ID
         self.group_id = group_id
+        self._group_instance_id = group_instance_id
         self.coordinator_id = None
 
         # Coordination flags and futures
@@ -346,9 +350,11 @@ class GroupCoordinator(BaseCoordinator):
         return task
 
     async def _maybe_leave_group(self):
-        if self.generation > 0:
+        if self.generation > 0 and self._group_instance_id is None:
             # this is a minimal effort attempt to leave the group. we do not
             # attempt any resending if the request fails or times out.
+            # Note: do not send this leave request if we are running in static
+            # partition assignment mode (when group_instance_id has been set).
             version = 0 if self._client.api_version < (0, 11, 0) else 1
             request = LeaveGroupRequest[version](self.group_id, self.member_id)
             try:
@@ -402,8 +408,10 @@ class GroupCoordinator(BaseCoordinator):
             'Invalid assignment protocol: %s' % assignment_strategy
         member_metadata = {}
         all_subscribed_topics = set()
-        for member_id, metadata_bytes in members:
+        group_instance_id_mapping = {}
+        for member_id, group_instance_id, metadata_bytes in members:
             metadata = ConsumerProtocol.METADATA.decode(metadata_bytes)
+            group_instance_id_mapping = group_instance_id
             member_metadata[member_id] = metadata
             all_subscribed_topics.update(metadata.subscription)
 
@@ -421,7 +429,12 @@ class GroupCoordinator(BaseCoordinator):
                   " with subscriptions %s", self.group_id, assignor.name,
                   member_metadata)
 
-        assignments = assignor.assign(self._cluster, member_metadata)
+        assignments = None
+        if isinstance(assignor, AbstractStaticPartitionAssignor) :
+            assignments = assignor.assign(self._cluster, member_metadata,
+                                          group_instance_id_mapping)
+        else :
+            assignments = assignor.assign(self._cluster, member_metadata)
         log.debug("Finished assignment for group %s: %s",
                   self.group_id, assignments)
 
@@ -1203,46 +1216,63 @@ class CoordinatorGroupRebalance:
                 metadata = metadata.encode()
             group_protocol = (assignor.name, metadata)
             metadata_list.append(group_protocol)
+            # for KIP-394 we may have to send a second join request
+            try_join = True
+            while (try_join) :
+                try_join = False
 
-        if self._api_version < (0, 10, 1):
-            request = JoinGroupRequest[0](
-                self.group_id,
-                self._session_timeout_ms,
-                self._coordinator.member_id,
-                ConsumerProtocol.PROTOCOL_TYPE,
-                metadata_list)
-        elif self._api_version < (0, 11, 0):
-            request = JoinGroupRequest[1](
-                self.group_id,
-                self._session_timeout_ms,
-                self._rebalance_timeout_ms,
-                self._coordinator.member_id,
-                ConsumerProtocol.PROTOCOL_TYPE,
-                metadata_list)
-        else:
-            request = JoinGroupRequest[2](
-                self.group_id,
-                self._session_timeout_ms,
-                self._rebalance_timeout_ms,
-                self._coordinator.member_id,
-                ConsumerProtocol.PROTOCOL_TYPE,
-                metadata_list)
+                if self._api_version < (0, 10, 1) :
+                    request = JoinGroupRequest[0](
+                        self.group_id,
+                        self._session_timeout_ms,
+                        self._coordinator.member_id,
+                        ConsumerProtocol.PROTOCOL_TYPE,
+                        metadata_list)
+                elif self._api_version < (0, 11, 0) :
+                    request = JoinGroupRequest[1](
+                        self.group_id,
+                        self._session_timeout_ms,
+                        self._rebalance_timeout_ms,
+                        self._coordinator.member_id,
+                        ConsumerProtocol.PROTOCOL_TYPE,
+                        metadata_list)
+                elif self._api_version < (2, 3, 0) :
+                    request = JoinGroupRequest[2](
+                        self.group_id,
+                        self._session_timeout_ms,
+                        self._rebalance_timeout_ms,
+                        self._coordinator.member_id,
+                        ConsumerProtocol.PROTOCOL_TYPE,
+                        metadata_list)
+                else :
+                    request = JoinGroupRequest[3](
+                        self.group_id,
+                        self._session_timeout_ms,
+                        self._rebalance_timeout_ms,
+                        self._coordinator.member_id,
+                        self._coordinator._group_instance_id,
+                        ConsumerProtocol.PROTOCOL_TYPE,
+                        metadata_list)
 
-        # create the request for the coordinator
-        log.debug("Sending JoinGroup (%s) to coordinator %s",
-                  request, self.coordinator_id)
-        try:
-            response = await self._coordinator._send_req(request)
-        except Errors.KafkaError:
-            # Return right away. It's a connection error, so backoff will be
-            # handled by coordinator lookup
-            return None
+                # create the request for the coordinator
+                log.debug("Sending JoinGroup (%s) to coordinator %s",
+                          request, self.coordinator_id)
+                try :
+                    response = await T(self._coordinator._send_req)(request)
+                except Errors.KafkaError :
+                    # Return right away. It's a connection error, so backoff will be
+                    # handled by coordinator lookup
+                    return None
+                if not self._subscription.active :
+                    # Subscription changed. Ignore response and restart group join
+                    return None
 
-        if not self._subscription.active:
-            # Subscription changed. Ignore response and restart group join
-            return None
+                error_type = Errors.for_code(response.error_code)
 
-        error_type = Errors.for_code(response.error_code)
+                if error_type is Errors.MemberIdRequired :
+                    self._coordinator.member_id = response.member_id
+                    try_join = True
+
         if error_type is Errors.NoError:
             log.debug("Join group response %s", response)
             self._coordinator.member_id = response.member_id
@@ -1295,18 +1325,26 @@ class CoordinatorGroupRebalance:
             err = error_type()
             log.error(
                 "Unexpected error in join group '%s' response: %s",
-                self.group_id, err)
+                self.group_id, error_type)
             raise Errors.KafkaError(repr(err))
         return None
 
     async def _on_join_follower(self):
         # send follower's sync group with an empty assignment
-        version = 0 if self._api_version < (0, 11, 0) else 1
-        request = SyncGroupRequest[version](
-            self.group_id,
-            self._coordinator.generation,
-            self._coordinator.member_id,
-            [])
+        if self._api_version < (2, 3, 0) :
+            version = 0 if self._api_version < (0, 11, 0) else 1
+            request = SyncGroupRequest[version](
+                self.group_id,
+                self._coordinator.generation,
+                self._coordinator.member_id,
+                [])
+        else :
+            request = SyncGroupRequest[2](
+                self.group_id,
+                self._coordinator.generation,
+                self._coordinator.member_id,
+                self._coordinator._group_instance_id,
+                [])
         log.debug(
             "Sending follower SyncGroup for group %s to coordinator %s: %s",
             self.group_id, self.coordinator_id, request)
@@ -1338,12 +1376,20 @@ class CoordinatorGroupRebalance:
                 assignment = assignment.encode()
             assignment_req.append((member_id, assignment))
 
-        version = 0 if self._api_version < (0, 11, 0) else 1
-        request = SyncGroupRequest[version](
-            self.group_id,
-            self._coordinator.generation,
-            self._coordinator.member_id,
-            assignment_req)
+        if self._api_version < (2, 3, 0) :
+            version = 0 if self._api_version < (0, 11, 0) else 1
+            request = SyncGroupRequest[version](
+                self.group_id,
+                self._coordinator.generation,
+                self._coordinator.member_id,
+                assignment_req)
+        else :
+            request = SyncGroupRequest[2](
+                self.group_id,
+                self._coordinator.generation,
+                self._coordinator.member_id,
+                self._coordinator._group_instance_id,
+                assignment_req)
 
         log.debug(
             "Sending leader SyncGroup for group %s to coordinator %s: %s",
