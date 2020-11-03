@@ -61,6 +61,8 @@ class AIOKafkaConsumer(object):
             committing offsets. If None, auto-partition assignment (via
             group coordinator) and offset commits are disabled.
             Default: None
+        group_instance_id (str or None): name of the group instance ID used for
+            static membership (KIP-345)
         key_deserializer (callable): Any callable that takes a
             raw message key and returns a deserialized key.
         value_deserializer (callable, optional): Any callable that takes a
@@ -222,6 +224,7 @@ class AIOKafkaConsumer(object):
                  bootstrap_servers='localhost',
                  client_id='aiokafka-' + __version__,
                  group_id=None,
+                 group_instance_id=None,
                  key_deserializer=None, value_deserializer=None,
                  fetch_max_wait_ms=500,
                  fetch_max_bytes=52428800,
@@ -280,6 +283,7 @@ class AIOKafkaConsumer(object):
             sasl_oauth_token_provider=sasl_oauth_token_provider)
 
         self._group_id = group_id
+        self._group_instance_id = group_instance_id
         self._heartbeat_interval_ms = heartbeat_interval_ms
         self._session_timeout_ms = session_timeout_ms
         self._retry_backoff_ms = retry_backoff_ms
@@ -370,6 +374,7 @@ class AIOKafkaConsumer(object):
             self._coordinator = GroupCoordinator(
                 self._client, self._subscription,
                 group_id=self._group_id,
+                group_instance_id=self._group_instance_id,
                 heartbeat_interval_ms=self._heartbeat_interval_ms,
                 session_timeout_ms=self._session_timeout_ms,
                 retry_backoff_ms=self._retry_backoff_ms,

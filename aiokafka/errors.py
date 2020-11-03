@@ -411,7 +411,13 @@ class ListenerNotFound(BrokerResponseError):
         'There is no listener on the leader broker that matches the'
         ' listener on which metadata request was processed'
     )
-
+class MemberIdRequired(BrokerResponseError):
+    errno = 79
+    message = 'MEMBER_ID_REQUIRED'
+    description = (
+        'Consumer needs to have a valid member '
+        'id before actually entering group'
+    )
 
 def _iter_broker_errors():
     for name, obj in inspect.getmembers(sys.modules[__name__]):

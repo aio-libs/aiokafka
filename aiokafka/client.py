@@ -25,6 +25,7 @@ from aiokafka.errors import (
 from aiokafka.util import (
     create_task, create_future, parse_kafka_version, get_running_loop
 )
+from aiokafka.protocol.group import SyncGroupRequest
 
 
 __all__ = ['AIOKafkaClient']
@@ -574,6 +575,7 @@ class AIOKafkaClient:
         # in descending order. As soon as we find one that works, return it
         test_cases = [
             # format (<broker version>, <needed struct>)
+            ((2, 3, 0), SyncGroupRequest[0].API_KEY, 3),
             ((2, 3, 0), FetchRequest[0].API_KEY, 11),
             ((2, 1, 0), MetadataRequest[0].API_KEY, 7),
             ((1, 1, 0), FetchRequest[0].API_KEY, 7),
