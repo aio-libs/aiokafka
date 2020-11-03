@@ -27,6 +27,7 @@ from aiokafka.errors import (
 from aiokafka.util import (
     create_future, create_task, parse_kafka_version, get_running_loop
 )
+from aiokafka.protocol.group import SyncGroupRequest
 
 
 __all__ = ['AIOKafkaClient']
@@ -587,6 +588,7 @@ class AIOKafkaClient:
             # ((2, 6, 0), DescribeClientQuotasRequest[0]),
             ((2, 5, 0), DescribeAclsRequest_v2),
             ((2, 4, 0), ProduceRequest[8]),
+            ((2, 3, 0), SyncGroupRequest[3]),
             ((2, 3, 0), FetchRequest[11]),
             ((2, 2, 0), OffsetRequest[5]),
             ((2, 1, 0), FetchRequest[10]),
