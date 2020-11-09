@@ -1,5 +1,5 @@
 -r requirements-cython.txt
-flake8==3.8.3
+flake8==3.8.4
 black==19.10b0
 mypy==0.782
 isort[colors]==5.6.4
