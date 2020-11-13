@@ -13,7 +13,7 @@ from aiokafka.errors import (
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import TopicPartition
 from aiokafka.util import (
-    INTEGER_MAX_VALUE, PY_36, commit_structure_validate, get_running_loop
+    INTEGER_MAX_VALUE, commit_structure_validate, create_task, get_running_loop
 )
 
 from .message_accumulator import MessageAccumulator
@@ -218,7 +218,7 @@ class AIOKafkaProducer(object):
                     "acks={} not supported if enable_idempotence=True"
                     .format(acks))
             self._txn_manager = TransactionManager(
-                transactional_id, transaction_timeout_ms, loop=loop)
+                transactional_id, transaction_timeout_ms)
         else:
             self._txn_manager = None
 
@@ -256,14 +256,12 @@ class AIOKafkaProducer(object):
         self._metadata = self.client.cluster
         self._message_accumulator = MessageAccumulator(
             self._metadata, max_batch_size, compression_attrs,
-            self._request_timeout_ms / 1000, txn_manager=self._txn_manager,
-            loop=loop)
+            self._request_timeout_ms / 1000, txn_manager=self._txn_manager)
         self._sender = Sender(
             self.client, acks=acks, txn_manager=self._txn_manager,
             retry_backoff_ms=retry_backoff_ms, linger_ms=linger_ms,
             message_accumulator=self._message_accumulator,
-            request_timeout_ms=request_timeout_ms,
-            loop=loop)
+            request_timeout_ms=request_timeout_ms)
 
         self._loop = loop
         if loop.get_debug():
@@ -274,13 +272,9 @@ class AIOKafkaProducer(object):
     # We don't attempt to close the Consumer, as __del__ is synchronous
     def __del__(self, _warnings=warnings):
         if self._closed is False:
-            if PY_36:
-                kwargs = {'source': self}
-            else:
-                kwargs = {}
             _warnings.warn("Unclosed AIOKafkaProducer {!r}".format(self),
                            ResourceWarning,
-                           **kwargs)
+                           source=self)
             context = {'producer': self,
                        'message': 'Unclosed AIOKafkaProducer'}
             if self._source_traceback is not None:
@@ -289,6 +283,9 @@ class AIOKafkaProducer(object):
 
     async def start(self):
         """Connect to Kafka cluster and check server version"""
+        assert self._loop is asyncio.get_event_loop(), (
+            "Please create objects with the same loop as running with"
+        )
         log.debug("Starting the Kafka producer")  # trace
         await self.client.bootstrap()
 
@@ -319,10 +316,9 @@ class AIOKafkaProducer(object):
         # If the sender task is down there is no way for accumulator to flush
         if self._sender is not None and self._sender.sender_task is not None:
             await asyncio.wait([
-                self._message_accumulator.close(),
+                create_task(self._message_accumulator.close()),
                 self._sender.sender_task],
-                return_when=asyncio.FIRST_COMPLETED,
-                loop=self._loop)
+                return_when=asyncio.FIRST_COMPLETED)
 
             await self._sender.close()
 
@@ -396,6 +392,9 @@ class AIOKafkaProducer(object):
                 key_serializer.
             timestamp_ms (int, optional): epoch milliseconds (from Jan 1 1970
                 UTC) to use as the message timestamp. Defaults to current time.
+            headers (optional): Kafka headers to be included in the message using
+                the format [("key", b"value")]. Iterable of tuples where key is a
+                normal string and value is a byte string.
 
         Returns:
             asyncio.Future: object that will be set when message is
@@ -510,8 +509,7 @@ class AIOKafkaProducer(object):
             "Beginning a new transaction for id %s",
             self._txn_manager.transactional_id)
         await asyncio.shield(
-            self._txn_manager.wait_for_pid(),
-            loop=self._loop
+            self._txn_manager.wait_for_pid()
         )
         self._txn_manager.begin_transaction()
 
@@ -523,7 +521,6 @@ class AIOKafkaProducer(object):
         self._txn_manager.committing_transaction()
         await asyncio.shield(
             self._txn_manager.wait_for_transaction_end(),
-            loop=self._loop
         )
 
     async def abort_transaction(self):
@@ -534,7 +531,6 @@ class AIOKafkaProducer(object):
         self._txn_manager.aborting_transaction()
         await asyncio.shield(
             self._txn_manager.wait_for_transaction_end(),
-            loop=self._loop
         )
 
     def transaction(self):
@@ -556,7 +552,7 @@ class AIOKafkaProducer(object):
             "Begin adding offsets %s for consumer group %s to transaction",
             formatted_offsets, group_id)
         fut = self._txn_manager.add_offsets_to_txn(formatted_offsets, group_id)
-        await asyncio.shield(fut, loop=self._loop)
+        await asyncio.shield(fut)
 
     async def __aenter__(self):
         await self.start()

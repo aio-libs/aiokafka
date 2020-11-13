@@ -16,7 +16,7 @@ from aiokafka.errors import (
 )
 from aiokafka.structs import TopicPartition
 from aiokafka.util import (
-    PY_36, commit_structure_validate, get_running_loop
+    commit_structure_validate, get_running_loop
 )
 from aiokafka import __version__
 
@@ -302,7 +302,7 @@ class AIOKafkaConsumer(object):
         self._max_poll_interval_ms = max_poll_interval_ms
 
         self._check_crcs = check_crcs
-        self._subscription = SubscriptionState(loop=loop)
+        self._subscription = SubscriptionState()
         self._fetcher = None
         self._coordinator = None
         self._loop = loop
@@ -318,13 +318,9 @@ class AIOKafkaConsumer(object):
 
     def __del__(self, _warnings=warnings):
         if self._closed is False:
-            if PY_36:
-                kwargs = {'source': self}
-            else:
-                kwargs = {}
             _warnings.warn("Unclosed AIOKafkaConsumer {!r}".format(self),
                            ResourceWarning,
-                           **kwargs)
+                           source=self)
             context = {'consumer': self,
                        'message': 'Unclosed AIOKafkaConsumer'}
             if self._source_traceback is not None:
@@ -338,6 +334,9 @@ class AIOKafkaConsumer(object):
             * Wait for possible topic autocreation
             * Join group if ``group_id`` provided
         """
+        assert self._loop is asyncio.get_event_loop(), (
+            "Please create objects with the same loop as running with"
+        )
         assert self._fetcher is None, "Did you call `start` twice?"
         await self._client.bootstrap()
         await self._wait_topics()
@@ -353,7 +352,7 @@ class AIOKafkaConsumer(object):
                 "0.11 and above")
 
         self._fetcher = Fetcher(
-            self._client, self._subscription, loop=self._loop,
+            self._client, self._subscription,
             key_deserializer=self._key_deserializer,
             value_deserializer=self._value_deserializer,
             fetch_min_bytes=self._fetch_min_bytes,
@@ -369,7 +368,7 @@ class AIOKafkaConsumer(object):
         if self._group_id is not None:
             # using group coordinator for automatic partitions assignment
             self._coordinator = GroupCoordinator(
-                self._client, self._subscription, loop=self._loop,
+                self._client, self._subscription,
                 group_id=self._group_id,
                 heartbeat_interval_ms=self._heartbeat_interval_ms,
                 session_timeout_ms=self._session_timeout_ms,
@@ -396,7 +395,7 @@ class AIOKafkaConsumer(object):
             # Using a simple assignment coordinator for reassignment on
             # metadata changes
             self._coordinator = NoGroupCoordinator(
-                self._client, self._subscription, loop=self._loop,
+                self._client, self._subscription,
                 exclude_internal_topics=self._exclude_internal_topics)
 
             if self._subscription.subscription is not None:
@@ -637,7 +636,7 @@ class AIOKafkaConsumer(object):
                     [tp_state.wait_for_position(),
                      assignment.unassign_future],
                     timeout=self._request_timeout_ms / 1000,
-                    return_when=asyncio.FIRST_COMPLETED, loop=self._loop,
+                    return_when=asyncio.FIRST_COMPLETED
                 )
                 if not tp_state.has_valid_position:
                     if self._subscription.subscription is None:
@@ -780,8 +779,7 @@ class AIOKafkaConsumer(object):
         await asyncio.wait(
             [fut, assignment.unassign_future],
             timeout=self._request_timeout_ms / 1000,
-            return_when=asyncio.FIRST_COMPLETED,
-            loop=self._loop
+            return_when=asyncio.FIRST_COMPLETED
         )
         self._coordinator.check_errors()
         return fut.done()
@@ -822,8 +820,7 @@ class AIOKafkaConsumer(object):
         await asyncio.wait(
             [fut, assignment.unassign_future],
             timeout=self._request_timeout_ms / 1000,
-            return_when=asyncio.FIRST_COMPLETED,
-            loop=self._loop
+            return_when=asyncio.FIRST_COMPLETED
         )
         self._coordinator.check_errors()
         return fut.done()

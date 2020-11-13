@@ -2,14 +2,26 @@
 Changelog
 =========
 
+
 659.bugfix
 Allow group coordinator to close when all brokers are unavailable
 
-628.bugfix
-Fix memory leak in kafka consumer when consumer is in idle state not consuming any message
 
-618.feature
-added `OAUTHBEARER` as a new `sasl_mechanism`.
+0.7.0 (2020-10-28)
+==================
+
+New features:
+
+* Add support for Python 3.8 and 3.9. (issue #569, pr #669 and #676 by @ods)
+* Drop support for Python 3.5. (pr #667 by @ods)
+* Add `OAUTHBEARER` as a new `sasl_mechanism`. (issue #618 and pr #630 by @oulydna)
+
+
+Bugfixes:
+
+* Fix memory leak in kafka consumer when consumer is in idle state not consuming any message.
+  (issue #628 and pr #629 by @iamsinghrajat)
+
 
 0.6.0 (2020-05-15)
 ==================

@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 import gc
 import docker as libdocker
 import logging
@@ -60,7 +61,7 @@ def acl_manager(kafka_server, request):
     tag = image.split(":")[-1].replace('_', '-')
 
     from ._testutil import ACLManager
-    manager = ACLManager(kafka_server[-1], tag)
+    manager = ACLManager(kafka_server.container, tag)
     return manager
 
 
@@ -70,7 +71,7 @@ def kafka_config(kafka_server, request):
     tag = image.split(":")[-1].replace('_', '-')
 
     from ._testutil import KafkaConfig
-    manager = KafkaConfig(kafka_server[-1], tag)
+    manager = KafkaConfig(kafka_server.container, tag)
     return manager
 
 
@@ -79,7 +80,7 @@ if sys.platform != 'win32':
     @pytest.fixture(scope='class')
     def kerberos_utils(kafka_server):
         from ._testutil import KerberosUtils
-        utils = KerberosUtils(kafka_server[-1])
+        utils = KerberosUtils(kafka_server.container)
         utils.create_keytab()
         return utils
 else:
@@ -136,6 +137,20 @@ def unused_port():
 @pytest.fixture(scope='session')
 def session_id():
     return str(uuid.uuid4())
+
+
+@dataclass
+class KafkaServer:
+    host: str
+    port: int
+    ssl_port: int
+    sasl_plain_port: int
+    sasl_ssl_port: int
+    container: libdocker.models.containers.Container
+
+    @property
+    def hosts(self):
+        return ['{}:{}'.format(self.host, self.port)]
 
 
 if sys.platform != 'win32':
@@ -211,7 +226,7 @@ if sys.platform != 'win32':
                 print(output.decode(), file=sys.stderr)
                 pytest.exit("Could not start Kafka Server")
 
-            yield (
+            yield KafkaServer(
                 kafka_host, kafka_port, kafka_ssl_port, kafka_sasl_plain_port,
                 kafka_sasl_ssl_port, container
             )
@@ -229,7 +244,7 @@ else:
 @pytest.yield_fixture(scope='class')
 def loop(request):
     loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(None)
+    asyncio.set_event_loop(loop)
 
     yield loop
 
@@ -259,25 +274,17 @@ def setup_test_class_serverless(request, loop, ssl_folder):
 def setup_test_class(request, loop, kafka_server, ssl_folder, acl_manager,
                      kerberos_utils, kafka_config):
     request.cls.loop = loop
-    request.cls.kafka_host = kafka_server[0]
-    request.cls.kafka_port = kafka_server[1]
-    request.cls.kafka_ssl_port = kafka_server[2]
-    request.cls.kafka_sasl_plain_port = kafka_server[3]
-    request.cls.kafka_sasl_ssl_port = kafka_server[4]
+    request.cls.kafka_host = kafka_server.host
+    request.cls.kafka_port = kafka_server.port
+    request.cls.kafka_ssl_port = kafka_server.ssl_port
+    request.cls.kafka_sasl_plain_port = kafka_server.sasl_plain_port
+    request.cls.kafka_sasl_ssl_port = kafka_server.sasl_ssl_port
     request.cls.ssl_folder = ssl_folder
     request.cls.acl_manager = acl_manager
     request.cls.kerberos_utils = kerberos_utils
     request.cls.kafka_config = kafka_config
-    request.cls.hosts = [
-        '{}:{}'.format(request.cls.kafka_host, request.cls.kafka_port)
-    ]
+    request.cls.hosts = kafka_server.hosts
 
     docker_image = request.config.getoption('--docker-image')
     kafka_version = docker_image.split(":")[-1].split("_")[-1]
     request.cls.kafka_version = kafka_version
-
-
-def pytest_ignore_collect(path, config):
-    if 'pep492' in str(path):
-        if sys.version_info < (3, 5, 0):
-            return True

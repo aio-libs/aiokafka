@@ -1,4 +1,4 @@
-__version__ = '0.6.1.dev0'  # noqa
+__version__ = '0.7.0'  # noqa
 
 from .abc import ConsumerRebalanceListener
 from .client import AIOKafkaClient
@@ -8,7 +8,6 @@ from .producer import AIOKafkaProducer
 from .structs import (
     TopicPartition, ConsumerRecord, OffsetAndTimestamp, OffsetAndMetadata
 )
-from .util import PY_35, ensure_future
 
 
 __all__ = [
@@ -24,4 +23,4 @@ __all__ = [
     "OffsetAndMetadata"
 ]
 
-(PY_35, ensure_future, AIOKafkaClient)
+AIOKafkaClient

@@ -12,15 +12,15 @@ setup:
 	pip install -Ue .
 
 format:
-	isort -rc $(FORMATTED_AREAS) setup.py
+	isort $(FORMATTED_AREAS) setup.py
 	black $(FORMATTED_AREAS) setup.py
 
 flake: lint
 lint:
 	black --check $(FORMATTED_AREAS) setup.py
-	@if ! isort -c -rc $(FORMATTED_AREAS) setup.py; then \
+	@if ! isort -c $(FORMATTED_AREAS) setup.py; then \
             echo "Import sort errors, run 'make format' to fix them!!!"; \
-            isort --diff -rc $(FORMATTED_AREAS) setup.py; \
+            isort --diff --color $(FORMATTED_AREAS) setup.py; \
             false; \
         fi
 	flake8 aiokafka tests setup.py
@@ -37,10 +37,10 @@ cov cover coverage: flake
 	@echo "open file://`pwd`/htmlcov/index.html"
 
 ci-test-unit:
-	py.test -s --log-level DEBUG --cov aiokafka --cov-report xml --color=yes $(FLAGS) tests
+	py.test -s --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml --color=yes $(FLAGS) tests
 
 ci-test-all:
-	py.test -s -v --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	py.test -s -v --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
 coverage.xml: .coverage
 	coverage xml

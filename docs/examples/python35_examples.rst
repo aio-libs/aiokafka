@@ -1,8 +1,8 @@
 
-Python 3.5 async usage
+Python async for usage
 ======================
 
-``aiokafka`` supports Python3.5 ``async def`` syntax and adds some sugar using
+``aiokafka`` supports ``async for`` syntax and adds some sugar using
 this syntax.
 
 

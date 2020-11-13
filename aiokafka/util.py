@@ -1,29 +1,33 @@
 import asyncio
 import os
-import sys
 from asyncio import AbstractEventLoop
 from distutils.version import StrictVersion
-from typing import Dict, Tuple, TypeVar, Union
+from typing import Awaitable, Dict, Tuple, TypeVar, Union
 
 from .structs import OffsetAndMetadata, TopicPartition
 
 
-__all__ = ["ensure_future", "create_future", "PY_35"]
+__all__ = [
+    "create_task",
+    "create_future",
+    "NO_EXTENSIONS",
+    "INTEGER_MAX_VALUE",
+    "INTEGER_MIN_VALUE",
+]
 
-
-try:
-    from asyncio import ensure_future
-except ImportError:
-    exec("from asyncio import async as ensure_future")
 
 T = TypeVar("T")
 
 
-def create_future(loop: AbstractEventLoop) -> "asyncio.Future[T]":
-    try:
-        return loop.create_future()
-    except AttributeError:
-        return asyncio.Future(loop=loop)
+def create_task(coro: Awaitable[T]) -> "asyncio.Task[T]":
+    loop = get_running_loop()
+    return loop.create_task(coro)
+
+
+def create_future(loop: AbstractEventLoop = None) -> "asyncio.Future[T]":
+    if loop is None:
+        loop = get_running_loop()
+    return loop.create_future()
 
 
 def parse_kafka_version(api_version: str) -> Tuple[int, int, int]:
@@ -70,9 +74,6 @@ def get_running_loop() -> asyncio.AbstractEventLoop:
     return loop
 
 
-PY_35 = sys.version_info >= (3, 5)
-PY_352 = sys.version_info >= (3, 5, 2)
-PY_36 = sys.version_info >= (3, 6)
 NO_EXTENSIONS = bool(os.environ.get("AIOKAFKA_NO_EXTENSIONS"))
 
 INTEGER_MAX_VALUE = 2 ** 31 - 1

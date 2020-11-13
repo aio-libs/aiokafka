@@ -5,6 +5,7 @@ import time
 import unittest
 import pytest
 import operator
+import inspect
 import subprocess
 import pathlib
 import shutil
@@ -26,7 +27,20 @@ log = logging.getLogger(__name__)
 
 __all__ = ['KafkaIntegrationTestCase', 'random_string']
 
-run_until_complete = pytest.mark.asyncio
+
+def run_until_complete(fun):
+    assert inspect.iscoroutinefunction(fun), (
+        "Can not decorate ordinary function, only async ones"
+    )
+
+    @wraps(fun)
+    def wrapper(test, *args, **kw):
+        loop = test.loop
+        timeout = getattr(test, "TEST_TIMEOUT", 120)
+        ret = loop.run_until_complete(
+            asyncio.wait_for(fun(test, *args, **kw), timeout))
+        return ret
+    return wrapper
 
 
 def kafka_versions(*versions):
@@ -82,9 +96,9 @@ def kafka_versions(*versions):
 
 class StubRebalanceListener(ConsumerRebalanceListener):
 
-    def __init__(self, *, loop):
-        self.assigns = asyncio.Queue(loop=loop)
-        self.revokes = asyncio.Queue(loop=loop)
+    def __init__(self):
+        self.assigns = asyncio.Queue()
+        self.revokes = asyncio.Queue()
         self.assigned = None
         self.revoked = None
 
@@ -324,7 +338,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         for coro, args, kw in reversed(self._cleanup):
-            task = asyncio.wait_for(coro(*args, **kw), 30, loop=self.loop)
+            task = asyncio.wait_for(coro(*args, **kw), 30)
             self.loop.run_until_complete(task)
 
     def add_cleanup(self, cb_or_coro, *args, **kw):
@@ -337,7 +351,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
             if ok:
                 ok = topic in client.cluster.topics()
             if not ok:
-                await asyncio.sleep(1, loop=self.loop)
+                await asyncio.sleep(1)
             else:
                 return
         raise AssertionError('No topic "{}" exists'.format(topic))
@@ -348,8 +362,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
     ):
         topic = topic or self.topic
         ret = []
-        producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts)
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         await producer.start()
         try:
             await self.wait_topic(producer.client, topic)
@@ -378,7 +391,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         self.assertEqual(len(messages), num_messages)
 
         # Make sure there are no duplicates
-        self.assertEqual(len(set(messages)), num_messages)
+        self.assertTrue(all(messages.count(m) == 1 for m in messages))
 
     def create_ssl_context(self):
         context = create_ssl_context(
@@ -396,16 +409,22 @@ def random_string(length):
 
 
 def wait_kafka(kafka_host, kafka_port, timeout=60):
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(
+        _wait_kafka(kafka_host, kafka_port, timeout)
+    )
+
+
+async def _wait_kafka(kafka_host, kafka_port, timeout):
     hosts = ['{}:{}'.format(kafka_host, kafka_port)]
     loop = asyncio.get_event_loop()
 
     # Reconnecting until Kafka in docker becomes available
     start = loop.time()
     while True:
-        client = AIOKafkaClient(
-            loop=loop, bootstrap_servers=hosts)
+        client = AIOKafkaClient(bootstrap_servers=hosts)
         try:
-            loop.run_until_complete(client.bootstrap())
+            await client.bootstrap()
             # Broker can still be loading cluster layout, so we can get 0
             # brokers. That counts as still not available
             if client.cluster.brokers():
@@ -413,7 +432,7 @@ def wait_kafka(kafka_host, kafka_port, timeout=60):
         except KafkaConnectionError:
             pass
         finally:
-            loop.run_until_complete(client.close())
+            await client.close()
         time.sleep(0.5)
         if loop.time() - start > timeout:
             return False

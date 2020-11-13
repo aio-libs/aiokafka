@@ -1,6 +1,7 @@
 import asyncio
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import ConsumerStoppedError, NoOffsetForPartitionError
+from aiokafka.util import create_task
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, random_string)
 
@@ -12,7 +13,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         await self.send_messages(1, list(range(10, 20)))
 
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop,
+            self.topic,
             bootstrap_servers=self.hosts,
             auto_offset_reset='earliest')
         await consumer.start()
@@ -40,7 +41,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         small_messages = await self.send_messages(0, r_msgs)
 
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop,
+            self.topic,
             bootstrap_servers=self.hosts,
             auto_offset_reset='earliest',
             max_partition_fetch_bytes=4000,
@@ -71,7 +72,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         await self.send_messages(0, [b'test'])
 
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop,
+            self.topic,
             bootstrap_servers=self.hosts,
             auto_offset_reset="none")
         await consumer.start()
@@ -84,7 +85,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_consumer_stops_iter(self):
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop,
+            self.topic,
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest")
         await consumer.start()
@@ -94,8 +95,8 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
             async for msg in consumer:  # pragma: no cover
                 assert False, "No items should be here, got {}".format(msg)
 
-        task = self.loop.create_task(iterator())
-        await asyncio.sleep(0.1, loop=self.loop)
+        task = create_task(iterator())
+        await asyncio.sleep(0.1)
         # As we didn't input any data into Kafka
         self.assertFalse(task.done())
 

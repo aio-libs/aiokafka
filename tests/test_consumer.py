@@ -14,7 +14,7 @@ from aiokafka.consumer import fetcher
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.record import MemoryRecords
 from aiokafka.client import AIOKafkaClient
-from aiokafka.util import ensure_future
+from aiokafka.util import create_task, get_running_loop
 from aiokafka.structs import (
     OffsetAndTimestamp, TopicPartition, OffsetAndMetadata
 )
@@ -167,7 +167,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 ("0.12.1", (0, 12, 1)),
                 ("1.0.2", (1, 0, 2))]:
             consumer = AIOKafkaConsumer(
-                loop=self.loop, bootstrap_servers=self.hosts,
+                bootstrap_servers=self.hosts,
                 api_version=text_version)
             self.assertEqual(consumer._client.api_version, api_version)
             await consumer.stop()
@@ -176,18 +176,18 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         for version in ["0", "1", "0.10.0.1"]:
             with self.assertRaises(ValueError):
                 AIOKafkaConsumer(
-                    loop=self.loop, bootstrap_servers=self.hosts,
+                    bootstrap_servers=self.hosts,
                     api_version=version)
         for version in [(0, 9), (0, 9, 1)]:
             with self.assertRaises(TypeError):
                 AIOKafkaConsumer(
-                    loop=self.loop, bootstrap_servers=self.hosts,
+                    bootstrap_servers=self.hosts,
                     api_version=version)
 
     @run_until_complete
     async def test_consumer_warn_unclosed(self):
         consumer = AIOKafkaConsumer(
-            loop=self.loop, group_id=None,
+            group_id=None,
             bootstrap_servers=self.hosts)
         await consumer.start()
 
@@ -195,7 +195,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             with self.assertWarnsRegex(
                     ResourceWarning, "Unclosed AIOKafkaConsumer"):
                 del consumer
-                await asyncio.sleep(0, loop=self.loop)
+                await asyncio.sleep(0)
                 gc.collect()
 
     @run_until_complete
@@ -214,9 +214,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.assertEqual(m.partition, tp.partition)
                 messages.append(m)
 
-        task1 = ensure_future(task(p0, messages), loop=self.loop)
-        task2 = ensure_future(task(p1, messages), loop=self.loop)
-        await asyncio.wait([task1, task2], loop=self.loop)
+        task1 = create_task(task(p0, messages))
+        task2 = create_task(task(p1, messages))
+        await asyncio.wait([task1, task2])
         self.assert_message_count(messages, 200)
 
     @run_until_complete
@@ -420,7 +420,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         available_msgs = msgs1 + msgs2
 
         consumer = AIOKafkaConsumer(
-            loop=self.loop, group_id='test-group',
+            group_id='test-group',
             bootstrap_servers=self.hosts, auto_offset_reset='earliest',
             enable_auto_commit=False)
         consumer.subscribe(pattern="topic-test_manual_subs*")
@@ -444,7 +444,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # subscribe by topic
         consumer = AIOKafkaConsumer(
-            loop=self.loop, group_id='test-group',
+            group_id='test-group',
             bootstrap_servers=self.hosts, auto_offset_reset='earliest',
             enable_auto_commit=False)
         consumer.subscribe(topics=(self.topic,))
@@ -475,7 +475,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_compress_decompress(self):
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             compression_type="gzip")
         await producer.start()
         await self.wait_topic(producer.client, self.topic)
@@ -494,7 +494,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_compress_decompress_lz4(self):
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             compression_type="lz4")
         await producer.start()
         await self.wait_topic(producer.client, self.topic)
@@ -615,8 +615,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await consumer.seek_to_end()
         pos = await consumer.position(tp)
         self.assertEqual(pos, start_position + 3)
-        task = self.loop.create_task(consumer.getone())
-        await asyncio.sleep(0.1, loop=self.loop)
+        task = create_task(consumer.getone())
+        await asyncio.sleep(0.1)
         self.assertEqual(task.done(), False)
 
         await self.send_messages(0, [4, 5, 6])
@@ -624,8 +624,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(rmsg.value, b"4")
 
         await consumer.seek_to_end(tp)
-        task = self.loop.create_task(consumer.getone())
-        await asyncio.sleep(0.1, loop=self.loop)
+        task = create_task(consumer.getone())
+        await asyncio.sleep(0.1)
         self.assertEqual(task.done(), False)
 
         await self.send_messages(0, [7, 8, 9])
@@ -640,7 +640,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         tp0 = TopicPartition(self.topic, 0)
         tp1 = TopicPartition(self.topic, 1)
         consumer = AIOKafkaConsumer(
-            loop=self.loop, group_id=None, bootstrap_servers=self.hosts)
+            group_id=None, bootstrap_servers=self.hosts)
         await consumer.start()
         self.add_cleanup(consumer.stop)
         consumer.assign([tp0])
@@ -675,7 +675,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         available_msgs = msgs1 + msgs2
 
         consumer = AIOKafkaConsumer(
-            loop=self.loop, group_id=None,
+            group_id=None,
             bootstrap_servers=self.hosts, auto_offset_reset='earliest',
             enable_auto_commit=False)
         consumer.subscribe(topics=(self.topic,))
@@ -691,7 +691,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     async def test_check_extended_message_record(self):
         s_time_ms = time.time() * 1000
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts)
+            bootstrap_servers=self.hosts)
         await producer.start()
         await self.wait_topic(producer.client, self.topic)
         msg1 = b'some-message#1'
@@ -752,7 +752,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         context = self.create_ssl_context()
         group = "group-{}".format(self.id())
         consumer = AIOKafkaConsumer(
-            self.topic, loop=self.loop, group_id=group,
+            self.topic, group_id=group,
             bootstrap_servers=[
                 "{}:{}".format(self.kafka_host, self.kafka_ssl_port)],
             enable_auto_commit=True,
@@ -770,20 +770,20 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         with self.assertRaisesRegex(
                 ValueError, "`security_protocol` should be SSL or PLAINTEXT"):
             AIOKafkaConsumer(
-                self.topic, loop=self.loop,
+                self.topic,
                 bootstrap_servers=self.hosts,
                 security_protocol="SOME")
         with self.assertRaisesRegex(
                 ValueError, "`ssl_context` is mandatory if "
                             "security_protocol=='SSL'"):
             AIOKafkaConsumer(
-                self.topic, loop=self.loop,
+                self.topic,
                 bootstrap_servers=self.hosts,
                 security_protocol="SSL", ssl_context=None)
         with self.assertRaisesRegex(
                 ValueError, "Incorrect isolation level READ_CCC"):
             consumer = AIOKafkaConsumer(
-                self.topic, loop=self.loop,
+                self.topic,
                 bootstrap_servers=self.hosts,
                 isolation_level="READ_CCC")
             self.add_cleanup(consumer.stop)
@@ -793,7 +793,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 "sasl_plain_username and sasl_plain_password required for "
                 "PLAIN sasl"):
             consumer = AIOKafkaConsumer(
-                self.topic, loop=self.loop,
+                self.topic,
                 bootstrap_servers=self.hosts,
                 security_protocol="SASL_PLAINTEXT")
 
@@ -831,7 +831,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             await consumer.commit({tp: 1000})
 
         consumer = AIOKafkaConsumer(
-            loop=self.loop,
             group_id='group-{}'.format(self.id()),
             bootstrap_servers=self.hosts)
         await consumer.start()
@@ -866,8 +865,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         assert tp in consumer.assignment()
         # At this moment the assignment is done, but position should be
         # undefined
-        position_task = ensure_future(consumer.position(tp), loop=self.loop)
-        await asyncio.sleep(0.0001, loop=self.loop)
+        position_task = create_task(consumer.position(tp))
+        await asyncio.sleep(0.0001)
         self.assertFalse(position_task.done())
 
         # We change subscription to imitate a rebalance
@@ -879,8 +878,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer.subscribe((self.topic, another_topic))
         await consumer._subscription.wait_for_assignment()
 
-        position_task = ensure_future(consumer.position(tp), loop=self.loop)
-        await asyncio.sleep(0.0001, loop=self.loop)
+        position_task = create_task(consumer.position(tp))
+        await asyncio.sleep(0.0001)
         self.assertFalse(position_task.done())
 
         # We can't recover after subscription is lost
@@ -923,30 +922,29 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_consumer_group_without_subscription(self):
         consumer = AIOKafkaConsumer(
-            loop=self.loop,
             group_id='group-{}'.format(self.id()),
             bootstrap_servers=self.hosts,
             enable_auto_commit=False,
             auto_offset_reset='earliest',
             heartbeat_interval_ms=100)
         await consumer.start()
-        await asyncio.sleep(0.2, loop=self.loop)
+        await asyncio.sleep(0.2)
         await consumer.stop()
 
     @run_until_complete
     async def test_consumer_wait_topic(self):
         topic = "some-test-topic-for-autocreate"
         consumer = AIOKafkaConsumer(
-            topic, loop=self.loop, bootstrap_servers=self.hosts)
+            topic, bootstrap_servers=self.hosts)
         await consumer.start()
         self.add_cleanup(consumer.stop)
-        consume_task = self.loop.create_task(consumer.getone())
+        consume_task = create_task(consumer.getone())
         # just to be sure getone does not fail (before produce)
-        await asyncio.sleep(0.5, loop=self.loop)
+        await asyncio.sleep(0.5)
         self.assertFalse(consume_task.done())
 
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts)
+            bootstrap_servers=self.hosts)
         await producer.start()
         await producer.send(topic, b'test msg')
         await producer.stop()
@@ -958,7 +956,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     async def test_consumer_subscribe_pattern_with_autocreate(self):
         pattern = "^some-autocreate-pattern-.*$"
         consumer = AIOKafkaConsumer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             metadata_max_age_ms=200, group_id="some_group",
             fetch_max_wait_ms=50,
             auto_offset_reset="earliest")
@@ -966,20 +964,20 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await consumer.start()
         consumer.subscribe(pattern=pattern)
         # Start getter for the topics. Should not create any topics
-        consume_task = self.loop.create_task(consumer.getone())
-        await asyncio.sleep(0.3, loop=self.loop)
+        consume_task = create_task(consumer.getone())
+        await asyncio.sleep(0.3)
         self.assertFalse(consume_task.done())
         self.assertEqual(consumer.subscription(), set())
 
         # Now lets autocreate the topic by fetching metadata for it.
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts)
+            bootstrap_servers=self.hosts)
         self.add_cleanup(producer.stop)
         await producer.start()
         my_topic = "some-autocreate-pattern-1"
         await producer.client._wait_on_metadata(my_topic)
         # Wait for consumer to refresh metadata with new topic
-        await asyncio.sleep(0.3, loop=self.loop)
+        await asyncio.sleep(0.3)
         self.assertFalse(consume_task.done())
         self.assertTrue(consumer._client.cluster.topics() >= {my_topic})
         self.assertEqual(consumer.subscription(), {my_topic})
@@ -988,7 +986,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         my_topic2 = "some-autocreate-pattern-2"
         await producer.client._wait_on_metadata(my_topic2)
         # Wait for consumer to refresh metadata with new topic
-        await asyncio.sleep(0.3, loop=self.loop)
+        await asyncio.sleep(0.3)
         self.assertFalse(consume_task.done())
         self.assertTrue(consumer._client.cluster.topics() >=
                         {my_topic, my_topic2})
@@ -997,14 +995,14 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Now lets actually produce some data and verify that it is consumed
         await producer.send(my_topic, b'test msg')
         data = await asyncio.wait_for(
-            consume_task, timeout=2, loop=self.loop)
+            consume_task, timeout=2)
         self.assertEqual(data.value, b'test msg')
 
     @run_until_complete
     async def test_consumer_subscribe_pattern_autocreate_no_group_id(self):
         pattern = "^no-group-pattern-.*$"
         consumer = AIOKafkaConsumer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             metadata_max_age_ms=200, group_id=None,
             fetch_max_wait_ms=50,
             auto_offset_reset="earliest")
@@ -1012,20 +1010,20 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await consumer.start()
         consumer.subscribe(pattern=pattern)
         # Start getter for the topics. Should not create any topics
-        consume_task = self.loop.create_task(consumer.getone())
-        await asyncio.sleep(0.3, loop=self.loop)
+        consume_task = create_task(consumer.getone())
+        await asyncio.sleep(0.3)
         self.assertFalse(consume_task.done())
         self.assertEqual(consumer.subscription(), set())
 
         # Now lets autocreate the topic by fetching metadata for it.
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts)
+            bootstrap_servers=self.hosts)
         self.add_cleanup(producer.stop)
         await producer.start()
         my_topic = "no-group-pattern-1"
         await producer.client._wait_on_metadata(my_topic)
         # Wait for consumer to refresh metadata with new topic
-        await asyncio.sleep(0.3, loop=self.loop)
+        await asyncio.sleep(0.3)
         self.assertFalse(consume_task.done())
         self.assertTrue(consumer._client.cluster.topics() >= {my_topic})
         self.assertEqual(consumer.subscription(), {my_topic})
@@ -1034,7 +1032,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         my_topic2 = "no-group-pattern-2"
         await producer.client._wait_on_metadata(my_topic2)
         # Wait for consumer to refresh metadata with new topic
-        await asyncio.sleep(0.3, loop=self.loop)
+        await asyncio.sleep(0.3)
         self.assertFalse(consume_task.done())
         self.assertTrue(consumer._client.cluster.topics() >=
                         {my_topic, my_topic2})
@@ -1043,7 +1041,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Now lets actually produce some data and verify that it is consumed
         await producer.send(my_topic, b'test msg')
         data = await asyncio.wait_for(
-            consume_task, timeout=2, loop=self.loop)
+            consume_task, timeout=2)
         self.assertEqual(data.value, b'test msg')
 
     @run_until_complete
@@ -1052,24 +1050,24 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # will trigger a group rebalance and assign partitions
         pattern = "^another-autocreate-pattern-.*$"
         client = AIOKafkaClient(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             client_id="test_autocreate")
         await client.bootstrap()
-        listener1 = StubRebalanceListener(loop=self.loop)
-        listener2 = StubRebalanceListener(loop=self.loop)
+        listener1 = StubRebalanceListener()
+        listener2 = StubRebalanceListener()
         consumer1 = AIOKafkaConsumer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             metadata_max_age_ms=200, group_id="test-autocreate-rebalance",
             heartbeat_interval_ms=100)
         consumer1.subscribe(pattern=pattern, listener=listener1)
         await consumer1.start()
         consumer2 = AIOKafkaConsumer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             metadata_max_age_ms=200, group_id="test-autocreate-rebalance",
             heartbeat_interval_ms=100)
         consumer2.subscribe(pattern=pattern, listener=listener2)
         await consumer2.start()
-        await asyncio.sleep(0.5, loop=self.loop)
+        await asyncio.sleep(0.5)
         # bootstrap will take care of the initial group assignment
         self.assertEqual(consumer1.assignment(), set())
         self.assertEqual(consumer2.assignment(), set())
@@ -1118,8 +1116,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # If we have a fetch in progress it should be cancelled if consumer is
         # stopped
         consumer = await self.consumer_factory()
-        task = self.loop.create_task(consumer.getone())
-        await asyncio.sleep(0.1, loop=self.loop)
+        task = create_task(consumer.getone())
+        await asyncio.sleep(0.1)
         # As we didn't input any data into Kafka
         self.assertFalse(task.done())
 
@@ -1136,8 +1134,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # If we have a fetch in progress it should be cancelled if consumer is
         # stopped
         consumer = await self.consumer_factory()
-        task = self.loop.create_task(consumer.getmany(timeout_ms=10000))
-        await asyncio.sleep(0.1, loop=self.loop)
+        task = create_task(consumer.getmany(timeout_ms=10000))
+        await asyncio.sleep(0.1)
         # As we didn't input any data into Kafka
         self.assertFalse(task.done())
 
@@ -1149,11 +1147,11 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Any later call will raise ConsumerStoppedError as consumer closed
         # all connections and can't continue operating.
         with self.assertRaises(ConsumerStoppedError):
-            await self.loop.create_task(
+            await create_task(
                 consumer.getmany(timeout_ms=10000))
         # Just check no spetial case on timeout_ms=0
         with self.assertRaises(ConsumerStoppedError):
-            await self.loop.create_task(
+            await create_task(
                 consumer.getmany(timeout_ms=0))
 
     @run_until_complete
@@ -1161,7 +1159,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Create random topic
         my_topic = "some_noninternal_topic"
         client = AIOKafkaClient(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             client_id="test_autocreate")
         await client.bootstrap()
         await client._wait_on_metadata(my_topic)
@@ -1170,7 +1168,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Check if only it will be subscribed
         pattern = "^.*$"
         consumer = AIOKafkaConsumer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             metadata_max_age_ms=200, group_id="some_group_1",
             auto_offset_reset="earliest",
             exclude_internal_topics=False)
@@ -1187,7 +1185,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         consumer = AIOKafkaConsumer(
             self.topic,
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             metadata_max_age_ms=200, group_id="offset_reset_group",
             auto_offset_reset="none")
         await consumer.start()
@@ -1294,7 +1292,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 await self.consumer.commit()
                 # Confirm that coordinator is actually waiting for callback to
                 # complete
-                await asyncio.sleep(0.2, loop=main_self.loop)
+                await asyncio.sleep(0.2)
                 main_self.assertTrue(
                     self.consumer._coordinator.needs_join_prepare)
 
@@ -1302,14 +1300,14 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.assign_mock(assigned)
                 # Confirm that coordinator is actually waiting for callback to
                 # complete
-                await asyncio.sleep(0.2, loop=main_self.loop)
+                await asyncio.sleep(0.2)
                 main_self.assertFalse(
                     self.consumer._coordinator.needs_join_prepare)
 
         tp0 = TopicPartition(self.topic, 0)
         tp1 = TopicPartition(self.topic, 1)
         consumer1 = AIOKafkaConsumer(
-            loop=self.loop, group_id="test_rebalance_listener_with_coroutines",
+            group_id="test_rebalance_listener_with_coroutines",
             bootstrap_servers=self.hosts, enable_auto_commit=False,
             auto_offset_reset="earliest")
         listener1 = SimpleRebalanceListener(consumer1)
@@ -1326,7 +1324,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # By adding a 2nd consumer we trigger rebalance
         consumer2 = AIOKafkaConsumer(
-            loop=self.loop, group_id="test_rebalance_listener_with_coroutines",
+            group_id="test_rebalance_listener_with_coroutines",
             bootstrap_servers=self.hosts, enable_auto_commit=False,
             auto_offset_reset="earliest")
         listener2 = SimpleRebalanceListener(consumer2)
@@ -1385,7 +1383,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 return committed, position, position2
 
         consumer = AIOKafkaConsumer(
-            loop=self.loop, group_id="test_rebalance_listener_with_coroutines",
+            group_id="test_rebalance_listener_with_coroutines",
             bootstrap_servers=self.hosts, enable_auto_commit=False,
             auto_offset_reset="earliest")
         listener = SimpleRebalanceListener(consumer)
@@ -1406,14 +1404,15 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # This should prefetch next batch right away and long-poll
         await consumer.getmany(timeout_ms=1000)
-        long_poll_task = self.loop.create_task(
+        long_poll_task = create_task(
             consumer.getmany(timeout_ms=1000))
-        await asyncio.sleep(0.2, loop=self.loop)
+        await asyncio.sleep(0.2)
         self.assertFalse(long_poll_task.done())
 
-        start_time = self.loop.time()
+        loop = get_running_loop()
+        start_time = loop.time()
         await consumer.commit()
-        end_time = self.loop.time()
+        end_time = loop.time()
 
         self.assertFalse(long_poll_task.done())
         self.assertLess(end_time - start_time, 500)
@@ -1421,7 +1420,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @kafka_versions('>=0.10.1')
     @run_until_complete
     async def test_offsets_for_times_single(self):
-        high_time = int(self.loop.time() * 1000)
+        high_time = int(get_running_loop().time() * 1000)
         middle_time = high_time - 1000
         low_time = high_time - 2000
         tp = TopicPartition(self.topic, 0)
@@ -1569,11 +1568,11 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     async def test_consumer_fast_unsubscribe(self):
         # Unsubscribe before coordination finishes
         consumer = AIOKafkaConsumer(
-            loop=self.loop, group_id="test_consumer_fast_unsubscribe",
+            group_id="test_consumer_fast_unsubscribe",
             bootstrap_servers=self.hosts)
         await consumer.start()
         consumer.subscribe([self.topic])
-        await asyncio.sleep(0.01, loop=self.loop)
+        await asyncio.sleep(0.01)
         consumer.unsubscribe()
         await consumer.stop()
 
@@ -1585,7 +1584,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await self.send_messages(0, list(range(0, 10)))
 
         consumer = AIOKafkaConsumer(
-            loop=self.loop,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
             group_id='group-%s' % self.id(), bootstrap_servers=self.hosts)
@@ -1604,7 +1602,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Start the next consumer after closing this one. It should have
         # committed the offset to the group
         consumer = AIOKafkaConsumer(
-            loop=self.loop,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
             group_id='group-%s' % self.id(), bootstrap_servers=self.hosts)
@@ -1625,7 +1622,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await self.send_messages(0, list(range(0, 10)))
 
         consumer = AIOKafkaConsumer(
-            loop=self.loop,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
             group_id=None, bootstrap_servers=self.hosts)
@@ -1646,7 +1642,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await self.send_messages(0, list(range(0, 10)))
 
         consumer = AIOKafkaConsumer(
-            loop=self.loop,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
             group_id=None, bootstrap_servers=self.hosts)
@@ -1669,7 +1664,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         consumer = AIOKafkaConsumer(
             self.topic,
-            loop=self.loop,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
             group_id="group-" + self.id(), bootstrap_servers=self.hosts,
@@ -1700,7 +1694,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 return res
             m.side_effect = mock_send
             # Make sure we do the mocked send, not wait for old fetch
-            await asyncio.sleep(0.5, loop=self.loop)
+            await asyncio.sleep(0.5)
 
             await self.send_messages(0, [0])
 
@@ -1755,7 +1749,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             return json.loads(value.decode())
 
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             key_serializer=serialize, value_serializer=serialize)
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -1776,7 +1770,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # middle the broker will return the WHOLE batch, including old offsets
         # Those should be omitted and not returned to user.
         producer = AIOKafkaProducer(
-            loop=self.loop, bootstrap_servers=self.hosts,
+            bootstrap_servers=self.hosts,
             compression_type="gzip")
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -1827,7 +1821,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Original issue #294
 
         consumer = AIOKafkaConsumer(
-            loop=self.loop,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
             group_id="group-" + self.id(),
@@ -1864,7 +1857,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_consumer_propagates_heartbeat_errors(self):
         consumer = AIOKafkaConsumer(
-            loop=self.loop,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
             group_id="group-" + self.id(),
@@ -1887,7 +1879,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_consumer_propagates_commit_refresh_errors(self):
         consumer = AIOKafkaConsumer(
-            loop=self.loop,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
             group_id="group-" + self.id(),
@@ -1959,8 +1950,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(seen_partitions, {0, 1})
 
         # Message send in fetch process
-        get_task = ensure_future(consumer.getone(), loop=self.loop)
-        await asyncio.sleep(0.1, loop=self.loop)
+        get_task = create_task(consumer.getone())
+        await asyncio.sleep(0.1)
         self.assertFalse(get_task.done())
 
         # NOTE: we pause after sending fetch requests. We just don't return
@@ -1969,7 +1960,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await self.send_messages(0, [10])
 
         with self.assertRaises(asyncio.TimeoutError):
-            await asyncio.wait_for(get_task, timeout=0.5, loop=self.loop)
+            await asyncio.wait_for(get_task, timeout=0.5)
 
     @run_until_complete
     async def test_max_poll_interval_ms(self):
@@ -1983,10 +1974,10 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             heartbeat_interval_ms=100, client_id="c2")
 
         class MyListener(ConsumerRebalanceListener):
-            def __init__(self, loop):
+            def __init__(self):
                 self.revoked = []
                 self.assigned = []
-                self.assignment_ready = asyncio.Event(loop=loop)
+                self.assignment_ready = asyncio.Event()
 
             async def on_partitions_revoked(self, revoked):
                 self.revoked.append(revoked)
@@ -1996,8 +1987,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.assigned.append(assigned)
                 self.assignment_ready.set()
 
-        listener1 = MyListener(self.loop)
-        listener2 = MyListener(self.loop)
+        listener1 = MyListener()
+        listener2 = MyListener()
         consumer1.subscribe([self.topic], listener=listener1)
         consumer2.subscribe([self.topic], listener=listener2)
 
@@ -2009,7 +2000,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # After 3 seconds the first consumer should be considered stuck and
         # leave the group as per configuration.
-        start_time = self.loop.time()
+        loop = get_running_loop()
+        start_time = loop.time()
         seen = []
         for i in range(20):
             msg = await consumer2.getone()
@@ -2017,7 +2009,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         self.assertEqual(set(seen), set(range(0, 20)))
 
-        took = self.loop.time() - start_time
+        took = loop.time() - start_time
         self.assertAlmostEqual(took, 3, delta=1)
 
         # The first consumer should be able to consume messages if it's

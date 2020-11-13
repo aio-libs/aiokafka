@@ -102,12 +102,8 @@ install_requires = ["kafka-python>=2.0.0"]
 
 PY_VER = sys.version_info
 
-if PY_VER >= (3, 5):
-    pass
-elif PY_VER >= (3, 4):
-    install_requires.append("typing")
-else:
-    raise RuntimeError("aiokafka doesn't support Python earlier than 3.4")
+if PY_VER < (3, 6):
+    raise RuntimeError("aiokafka doesn't support Python earlier than 3.6")
 
 
 def read(f):
@@ -135,7 +131,6 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.5",
     "Programming Language :: Python :: 3.6",
     "Programming Language :: Python :: 3.7",
     "Operating System :: OS Independent",
