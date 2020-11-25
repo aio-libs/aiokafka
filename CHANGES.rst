@@ -2,6 +2,14 @@
 Changelog
 =========
 
+
+659.bugfix
+Allow group coordinator to close when all brokers are unavailable
+
+681.bugfix
+Exclude `.so` from source distribution
+
+
 0.7.0 (2020-10-28)
 ==================
 

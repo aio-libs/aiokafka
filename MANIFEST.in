@@ -3,4 +3,5 @@ include CHANGES.rst
 include README.rst
 graft aiokafka
 global-exclude *.pyc
+global-exclude *.so
 exclude tests/**
