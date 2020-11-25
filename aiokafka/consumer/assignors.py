@@ -1,11 +1,11 @@
 from kafka.coordinator.assignors.abstract import AbstractPartitionAssignor
 import abc
 
+
 class AbstractStaticPartitionAssignor(AbstractPartitionAssignor):
     """
     Abstract assignor implementation that also supports static assignments (KIP-345)
     """
-
 
     @abc.abstractmethod
     def assign(self, cluster, members, member_group_instance_ids):
