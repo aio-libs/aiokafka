@@ -302,7 +302,7 @@ class AIOKafkaConsumer(object):
         self._max_poll_interval_ms = max_poll_interval_ms
 
         self._check_crcs = check_crcs
-        self._subscription = SubscriptionState()
+        self._subscription = SubscriptionState(loop=loop)
         self._fetcher = None
         self._coordinator = None
         self._loop = loop

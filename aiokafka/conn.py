@@ -436,7 +436,7 @@ class AIOKafkaConnection:
 
         if not expect_response:
             return self._writer.drain()
-        fut = create_future()
+        fut = self._loop.create_future()
         self._requests.append((correlation_id, request.RESPONSE_TYPE, fut))
         return asyncio.wait_for(fut, self._request_timeout)
 
@@ -458,7 +458,7 @@ class AIOKafkaConnection:
         if not expect_response:
             return self._writer.drain()
 
-        fut = create_future()
+        fut = self._loop.create_future()
         self._requests.append((None, None, fut))
         return asyncio.wait_for(fut, self._request_timeout)
 

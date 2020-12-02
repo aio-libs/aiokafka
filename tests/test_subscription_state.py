@@ -11,7 +11,7 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture
-def subscription_state():
+async def subscription_state():
     return SubscriptionState()
 
 

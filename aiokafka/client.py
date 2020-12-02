@@ -23,7 +23,7 @@ from aiokafka.errors import (
     UnrecognizedBrokerVersion,
     StaleMetadata)
 from aiokafka.util import (
-    create_task, create_future, parse_kafka_version, get_running_loop
+    create_future, create_task, parse_kafka_version, get_running_loop
 )
 
 
@@ -148,7 +148,7 @@ class AIOKafkaClient:
         self._sync_task = None
 
         self._md_update_fut = None
-        self._md_update_waiter = create_future()
+        self._md_update_waiter = loop.create_future()
         self._get_conn_lock = asyncio.Lock()
 
     def __repr__(self):
@@ -344,7 +344,7 @@ class AIOKafkaClient:
             # Wake up the `_md_synchronizer` task
             if not self._md_update_waiter.done():
                 self._md_update_waiter.set_result(None)
-            self._md_update_fut = create_future()
+            self._md_update_fut = self._loop.create_future()
         # Metadata will be updated in the background by syncronizer
         return asyncio.shield(self._md_update_fut)
 
@@ -364,7 +364,7 @@ class AIOKafkaClient:
             topic (str): topic to track
         """
         if topic in self._topics:
-            res = create_future()
+            res = self._loop.create_future()
             res.set_result(True)
         else:
             res = self.force_metadata_update()
@@ -381,7 +381,7 @@ class AIOKafkaClient:
         if not topics or set(topics).difference(self._topics):
             res = self.force_metadata_update()
         else:
-            res = create_future()
+            res = self._loop.create_future()
             res.set_result(True)
         self._topics = set(topics)
         return res

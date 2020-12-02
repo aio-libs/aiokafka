@@ -368,6 +368,7 @@ class Fetcher:
             auto_offset_reset='latest',
             isolation_level="read_uncommitted"):
         self._client = client
+        self._loop = client._loop
         self._key_deserializer = key_deserializer
         self._value_deserializer = value_deserializer
         self._fetch_min_bytes = fetch_min_bytes
@@ -440,7 +441,7 @@ class Fetcher:
         # Creating a fetch waiter is usually not that frequent of an operation,
         # (get methods will return all data first, before a waiter is created)
 
-        fut = create_future()
+        fut = self._loop.create_future()
         self._fetch_waiters.add(fut)
         fut.add_done_callback(
             lambda f, waiters=self._fetch_waiters: waiters.remove(f))

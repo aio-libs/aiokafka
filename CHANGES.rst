@@ -11,6 +11,7 @@ Exclude `.so` from source distribution
 
 689.bugfix
 Add `dataclasses` backport package to dependencies for Python 3.6
+Fix initialization without running loop
 
 693.doc
 Update docs and examples to not use deprecated practices like passing loop explicitly
