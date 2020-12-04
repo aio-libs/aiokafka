@@ -27,7 +27,11 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
+<<<<<<< HEAD
         sudo apt-get install -y libsnappy-dev libzstd-dev libkrb5-dev
+=======
+        sudo apt-get install -y libsnappy-dev libkrb5-dev
+>>>>>>> 757a793 (Update tests.yml)
 
     - name: Get pip cache dir
       id: pip-cache
