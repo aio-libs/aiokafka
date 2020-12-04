@@ -10,12 +10,9 @@ from kafka.protocol.commit import (
     OffsetCommitRequest_v2 as OffsetCommitRequest,
     OffsetFetchRequest_v1 as OffsetFetchRequest,
 )
-from aiokafka.protocol.group import (
-    HeartbeatRequest,
-    JoinGroupRequest,
-    LeaveGroupRequest,
-    SyncGroupRequest,
-)
+from aiokafka.protocol.group import JoinGroupRequest, SyncGroupRequest
+
+from kafka.protocol.group import HeartbeatRequest, LeaveGroupRequest
 
 import aiokafka.errors as Errors
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
@@ -1339,7 +1336,7 @@ class CoordinatorGroupRebalance:
                     self.coordinator_id,
                 )
                 try:
-                    response = await T(self._coordinator._send_req)(request)
+                    response = await self._coordinator._send_req(request)
                 except Errors.KafkaError:
                     # Return right away. It's a connection error, so backoff will be
                     # handled by coordinator lookup

@@ -1,9 +1,19 @@
 from __future__ import absolute_import
 
 from kafka.protocol.api import Request, Response
-from kafka.protocol.struct import Struct
 from kafka.protocol.types import Array, Bytes, Int16, Int32, Schema, String
-from kafka.protocol.group import *
+from kafka.protocol.group import (
+    JoinGroupRequest_v0,
+    JoinGroupRequest_v1,
+    JoinGroupRequest_v2,
+    JoinGroupResponse_v0,
+    JoinGroupResponse_v1,
+    SyncGroupRequest_v0,
+    SyncGroupRequest_v1,
+    SyncGroupResponse_v0,
+    SyncGroupResponse_v1
+    )
+
 
 
 class JoinGroupResponse_v5(Response):
