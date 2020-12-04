@@ -8,8 +8,7 @@ Producer client
 :ref:`AIOKafkaProducer <aiokafka-producer>` is a client that publishes records
 to the Kafka cluster. Most simple usage would be::
 
-    producer = aiokafka.AIOKafkaProducer(
-        loop=loop, bootstrap_servers='localhost:9092')
+    producer = aiokafka.AIOKafkaProducer(bootstrap_servers='localhost:9092')
     await producer.start()
     try:
         await producer.send_and_wait("my_topic", b"Super message")
@@ -101,7 +100,7 @@ the Producer from creating duplicates on retries. *aiokafka* supports this mode
 by passing the parameter ``enable_idempotence=True`` to ``AIOKafkaProducer``::
 
     producer = aiokafka.AIOKafkaProducer(
-        loop=loop, bootstrap_servers='localhost:9092',
+        bootstrap_servers='localhost:9092',
         enable_idempotence=True)
     await producer.start()
     try:
@@ -132,7 +131,7 @@ after the transaction is committed. To use the transactional producer and the
 attendant APIs, you must set the ``transactional_id`` configuration property::
 
     producer = aiokafka.AIOKafkaProducer(
-        loop=loop, bootstrap_servers='localhost:9092',
+        bootstrap_servers='localhost:9092',
         transactional_id="transactional_test")
     await producer.start()
     try:
@@ -148,7 +147,7 @@ are included in transactions should be configured for durability. In
 particular, the ``replication.factor`` should be at least ``3``, and the
 ``min.insync.replicas`` for these topics should be set to ``2``. Finally, in
 order for transactional guarantees to be realized from end-to-end, the
-consumers must be configured to read only committed messages as well. See 
+consumers must be configured to read only committed messages as well. See
 :ref:`Reading Transactional Messages <transactional-consume>`.
 
 The purpose of the ``transactional_id`` is to enable transaction recovery
@@ -186,7 +185,7 @@ Returned RecordMetadata object
 After a message is sent the user receives a ``RecordMetadata`` object
 containing fields:
 
-    * ``offset`` - unique offset of the message in this partition. See 
+    * ``offset`` - unique offset of the message in this partition. See
       :ref:`Offsets and Consumer Position <offset_and_position>` for
       more details on offsets.
     * ``topic`` - *string* topic name

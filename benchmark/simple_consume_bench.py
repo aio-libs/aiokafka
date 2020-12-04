@@ -50,8 +50,7 @@ class Benchmark:
         consumer = AIOKafkaConsumer(
             topic, group_id="test_group", auto_offset_reset="earliest",
             enable_auto_commit=False,
-            bootstrap_servers=self._bootstrap_servers,
-            loop=loop)
+            bootstrap_servers=self._bootstrap_servers)
         await consumer.start()
 
         # We start from after producer connect
@@ -116,21 +115,7 @@ def main():
         import uvloop
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
-    loop = asyncio.get_event_loop()
-    task = loop.create_task(Benchmark(args).bench_simple())
-    task.add_done_callback(lambda _, loop=loop: loop.stop())
-
-    def signal_hndl(_task=task):
-        _task.cancel()
-    loop.add_signal_handler(signal.SIGTERM, signal_hndl)
-    loop.add_signal_handler(signal.SIGINT, signal_hndl)
-
-    try:
-        loop.run_forever()
-    finally:
-        loop.close()
-        if not task.cancelled():
-            task.result()
+    asyncio.run(Benchmark(args).bench_simple())
 
 
 if __name__ == "__main__":

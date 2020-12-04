@@ -42,9 +42,9 @@ process data and produce the resut to ``OUT_TOPIC`` in a transactional manner.
         return res
 
 
-    async def transactional_process(loop):
+    async def transactional_process():
         consumer = AIOKafkaConsumer(
-            IN_TOPIC, loop=loop,
+            IN_TOPIC,
             bootstrap_servers=BOOTSTRAP_SERVERS,
             enable_auto_commit=False,
             group_id=GROUP_ID,
@@ -53,7 +53,7 @@ process data and produce the resut to ``OUT_TOPIC`` in a transactional manner.
         await consumer.start()
 
         producer = AIOKafkaProducer(
-            loop=loop, bootstrap_servers=BOOTSTRAP_SERVERS,
+            bootstrap_servers=BOOTSTRAP_SERVERS,
             transactional_id=TRANSACTIONAL_ID
         )
         await producer.start()
@@ -84,21 +84,6 @@ process data and produce the resut to ``OUT_TOPIC`` in a transactional manner.
             await consumer.stop()
             await producer.stop()
 
-    def run_async(async_main):
-        # Setup to properly handle KeyboardInterrupt exception
-        loop = asyncio.get_event_loop()
-        m_task = loop.create_task(async_main(loop))
-        m_task.add_done_callback(lambda task, loop=loop: loop.stop())
-
-        try:
-            loop.run_forever()
-        except KeyboardInterrupt:
-            m_task.cancel()
-            loop.run_forever()
-        finally:
-            if not m_task.cancelled():
-                m_task.result()
 
     if __name__ == "__main__":
-        run_async(transactional_process)
-
+        asyncio.run(transactional_process())

@@ -183,7 +183,7 @@ class AIOKafkaClient:
 
     async def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
-        assert self._loop is asyncio.get_event_loop(), (
+        assert self._loop is get_running_loop(), (
             "Please create objects with the same loop as running with"
         )
         # using request v0 for bootstrap if not sure v1 is available

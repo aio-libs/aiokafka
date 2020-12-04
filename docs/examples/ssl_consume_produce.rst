@@ -21,10 +21,10 @@ information.
         password="123123"
     )
 
-    async def produce_and_consume(loop):
+    async def produce_and_consume():
         # Produce
         producer = AIOKafkaProducer(
-            loop=loop, bootstrap_servers='localhost:9093',
+            bootstrap_servers='localhost:9093',
             security_protocol="SSL", ssl_context=context)
 
         await producer.start()
@@ -35,7 +35,7 @@ information.
             await producer.stop()
 
         consumer = AIOKafkaConsumer(
-            "my_topic", loop=loop, bootstrap_servers='localhost:9093',
+            "my_topic", bootstrap_servers='localhost:9093',
             security_protocol="SSL", ssl_context=context)
         await consumer.start()
         try:
@@ -47,17 +47,7 @@ information.
         print("Success", msg, fetch_msg)
 
     if __name__ == "__main__":
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(produce_and_consume(loop))
-        try:
-            loop.run_until_complete(task)
-        finally:
-            loop.run_until_complete(asyncio.sleep(0, loop=loop))
-            task.cancel()
-            try:
-                loop.run_until_complete(task)
-            except asyncio.CancelledError:
-                pass
+        asyncio.run(produce_and_consume())
 
 Output:
 

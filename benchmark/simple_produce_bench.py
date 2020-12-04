@@ -65,7 +65,7 @@ class Benchmark:
         partition = self._partition
         loop = asyncio.get_event_loop()
 
-        producer = AIOKafkaProducer(loop=loop, **self._producer_kwargs)
+        producer = AIOKafkaProducer(**self._producer_kwargs)
         await producer.start()
 
         # We start from after producer connect
@@ -139,21 +139,7 @@ def main():
         import uvloop
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
-    loop = asyncio.get_event_loop()
-    task = loop.create_task(Benchmark(args).bench_simple())
-    task.add_done_callback(lambda _, loop=loop: loop.stop())
-
-    def signal_hndl(_task=task):
-        _task.cancel()
-    loop.add_signal_handler(signal.SIGTERM, signal_hndl)
-    loop.add_signal_handler(signal.SIGINT, signal_hndl)
-
-    try:
-        loop.run_forever()
-    finally:
-        loop.close()
-        if not task.cancelled():
-            task.result()
+    asyncio.run(Benchmark(args).bench_simple())
 
 
 if __name__ == "__main__":

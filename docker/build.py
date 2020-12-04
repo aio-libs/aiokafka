@@ -5,8 +5,7 @@ import yaml
 import argparse
 
 
-@asyncio.coroutine
-def build(versions_file, args, *, loop):
+async def build(versions_file, args, *, loop):
 
     with open(versions_file) as f:
         config = yaml.load(f.read())
@@ -21,18 +20,16 @@ def build(versions_file, args, *, loop):
                                    action=action,
                                    image_name=config['image_name'],
                                    **version_map))
-            proc = yield from asyncio.create_subprocess_exec(*args, loop=loop)
+            proc = await asyncio.create_subprocess_exec(*args)
             procs.append(proc.wait())
 
-        res = yield from asyncio.gather(*procs, loop=loop)
+        res = await asyncio.gather(*procs)
         if any(res):  # If any of statuses are not 0 return right away
             return res
     return res
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-
     parser = argparse.ArgumentParser(
         description='Build and push images in parallel.')
     parser.add_argument(
@@ -41,6 +38,5 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    statuses = loop.run_until_complete(build('config.yml', args, loop=loop))
-    loop.close()
+    statuses = asyncio.run(build('config.yml', args))
     sys.exit(max(statuses))

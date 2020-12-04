@@ -4,9 +4,9 @@ import random
 from aiokafka.producer import AIOKafkaProducer
 
 
-async def send_many(num, loop):
+async def send_many(num):
     topic  = "my_topic"
-    producer = AIOKafkaProducer(loop=loop)
+    producer = AIOKafkaProducer()
     await producer.start()
 
     batch = producer.create_batch()
@@ -32,6 +32,4 @@ async def send_many(num, loop):
     await producer.stop()
 
 
-loop = asyncio.get_event_loop()
-loop.run_until_complete(send_many(1000, loop))
-loop.close()
+asyncio.run(send_many(1000))

@@ -10,7 +10,7 @@ from a Kafka cluster. Most simple usage would be::
 
     consumer = aiokafka.AIOKafkaConsumer(
         "my_topic",
-        loop=loop, bootstrap_servers='localhost:9092'
+        bootstrap_servers='localhost:9092'
     )
     await consumer.start()
     try:
@@ -24,7 +24,7 @@ from a Kafka cluster. Most simple usage would be::
         await consumer.stop()
 
 .. note:: ``msg.value`` and ``msg.key`` are raw bytes, use **key_deserializer**
-  and **value_deserializer** configuration if you need to decode them. 
+  and **value_deserializer** configuration if you need to decode them.
 
 .. note:: **Consumer** maintains TCP connections as well as a few background
   tasks to fetch data and coordinate assignments. Failure to call
@@ -41,7 +41,7 @@ balance consumption using **Consumer Groups**.
 Offsets and Consumer Position
 -----------------------------
 
-Kafka maintains a numerical *offset* for each record in a partition. This 
+Kafka maintains a numerical *offset* for each record in a partition. This
 *offset* acts as a `unique identifier` of a record within that partition and
 also denotes the *position* of the consumer in the partition. For example::
 
@@ -62,8 +62,8 @@ also denotes the *position* of the consumer in the partition. For example::
     to set ``group_id`` to something other than ``None``. See
     `Consumer Groups and Topic Subscriptions`_ below.
 
-Here if the consumer is at *position* **5** it has consumed records with 
-*offsets* **0** through **4** and will next receive the record with 
+Here if the consumer is at *position* **5** it has consumed records with
+*offsets* **0** through **4** and will next receive the record with
 *offset* **5**.
 
 There are actually two *notions of position*:
@@ -89,7 +89,7 @@ For most simple use cases auto committing is probably the best choice::
 
     consumer = AIOKafkaConsumer(
         "my_topic",
-        loop=loop, bootstrap_servers='localhost:9092',
+        bootstrap_servers='localhost:9092',
         group_id="my_group",           # Consumer must be in a group to commit
         enable_auto_commit=True,       # Is True by default anyway
         auto_commit_interval_ms=1000,  # Autocommit every second
@@ -108,7 +108,7 @@ batch operations you should use *manual commit*::
 
     consumer = AIOKafkaConsumer(
         "my_topic",
-        loop=loop, bootstrap_servers='localhost:9092',
+        bootstrap_servers='localhost:9092',
         group_id="my_group",           # Consumer must be in a group to commit
         enable_auto_commit=False,      # Will disable autocommit
         auto_offset_reset="earliest",  # If committed offset not found, start
@@ -134,7 +134,7 @@ batch operations you should use *manual commit*::
 This example will hold on to messages until we have enough to process in
 bulk. The algorithm can be enhanced by taking advantage of:
 
-  * ``await consumer.getmany()`` to avoid multiple calls to get a batch of 
+  * ``await consumer.getmany()`` to avoid multiple calls to get a batch of
     messages.
   * ``await consumer.highwater(partition)`` to understand if we have more
     unconsumed messages or this one is the last one in the partition.
@@ -168,7 +168,7 @@ start from `latest` offset::
 
     consumer = AIOKafkaConsumer(
         "my_topic",
-        loop=loop, bootstrap_servers='localhost:9092',
+        bootstrap_servers='localhost:9092',
         auto_offset_reset="latest",
     )
     await consumer.start()
@@ -205,9 +205,9 @@ records, but rather just skip to the most recent records. Or you can use
 
 *Another use case* is for a **system that maintains local state**. In such a
 system the consumer will want to initialize its position on startup to
-whatever is contained in the local store. Likewise, if the local state is 
+whatever is contained in the local store. Likewise, if the local state is
 destroyed (say because the disk is lost) the state may be recreated on a new
-machine by re-consuming all the data and recreating the state (assuming that 
+machine by re-consuming all the data and recreating the state (assuming that
 Kafka is retaining sufficient history).
 
 See also related configuration params and API docs:
@@ -243,7 +243,7 @@ counts in Redis::
 
     tp = TopicPartition("my_topic", 0)
     consumer = AIOKafkaConsumer(
-        loop=loop, bootstrap_servers='localhost:9092',
+        bootstrap_servers='localhost:9092',
         enable_auto_commit=False,
     )
     await consumer.start()
@@ -293,14 +293,14 @@ Consumer Groups and Topic Subscriptions
 Kafka uses the concept of **Consumer Groups** to allow a pool of processes to
 divide the work of consuming and processing records. These processes can either
 be running on the same machine or they can be distributed over many machines to
-provide scalability and fault tolerance for processing. 
+provide scalability and fault tolerance for processing.
 
 All **Consumer** instances sharing the same ``group_id`` will be part of the
 same **Consumer Group**::
 
     # Process 1
     consumer = AIOKafkaConsumer(
-        "my_topic", loop=loop, bootstrap_servers='localhost:9092',
+        "my_topic", bootstrap_servers='localhost:9092',
         group_id="MyGreatConsumerGroup"  # This will enable Consumer Groups
     )
     await consumer.start()
@@ -310,7 +310,7 @@ same **Consumer Group**::
 
     # Process 2
     consumer2 = AIOKafkaConsumer(
-        "my_topic", loop=loop, bootstrap_servers='localhost:9092',
+        "my_topic", bootstrap_servers='localhost:9092',
         group_id="MyGreatConsumerGroup"  # This will enable Consumer Groups
     )
     await consumer2.start()
@@ -328,13 +328,13 @@ consumer** in the group. So if there is a topic with *four* partitions and a
 consumer group with *two* processes, each process would consume from *two*
 partitions.
 
-Membership in a consumer group is maintained dynamically: if a process fails, 
-the partitions assigned to it `will be reassigned to other consumers` in the 
-same group. Similarly, if a new consumer joins the group, partitions will be 
-`moved from existing consumers to the new one`. This is known as **rebalancing 
+Membership in a consumer group is maintained dynamically: if a process fails,
+the partitions assigned to it `will be reassigned to other consumers` in the
+same group. Similarly, if a new consumer joins the group, partitions will be
+`moved from existing consumers to the new one`. This is known as **rebalancing
 the group**.
 
-.. note:: Conceptually you can think of a **Consumer Group** as being a `single 
+.. note:: Conceptually you can think of a **Consumer Group** as being a `single
    logical subscriber` that happens to be made up of multiple processes.
 
 In addition, when group reassignment happens automatically, consumers can be
@@ -369,7 +369,7 @@ etc. See :meth:`aiokafka.AIOKafkaConsumer.subscribe` docs for more details.
     You need to put ``consumer.getmany(timeout_ms=1000)`` call outside of the
     lock.
 
-For more information on how **Consumer Groups** are organized see 
+For more information on how **Consumer Groups** are organized see
 `Official Kafka Docs <https://kafka.apache.org/documentation/#intro_consumers>`_.
 
 
@@ -381,7 +381,7 @@ notice when new partitions are added to one of the subscribed topics or when a
 new topic matching a *subscribed regex* is created. For example::
 
     consumer = AIOKafkaConsumer(
-        loop=loop, bootstrap_servers='localhost:9092',
+        bootstrap_servers='localhost:9092',
         metadata_max_age_ms=30000,  # This controls the polling interval
     )
     await consumer.start()
@@ -393,7 +393,7 @@ new topic matching a *subscribed regex* is created. For example::
 Here **Consumer** will automatically detect new topics like ``MyGreatTopic-1``
 or ``MyGreatTopic-2`` and start consuming them.
 
-If you use **Consumer Groups** the group's *Leader* will trigger a 
+If you use **Consumer Groups** the group's *Leader* will trigger a
 **group rebalance** when it notices metadata changes. It's because only the
 *Leader* has full knowledge of which topics are assigned to the group.
 
@@ -401,12 +401,12 @@ If you use **Consumer Groups** the group's *Leader* will trigger a
 Manual partition assignment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-It is also possible for the consumer to manually assign specific partitions 
+It is also possible for the consumer to manually assign specific partitions
 using ``assign([tp1, tp2])``. In this case, dynamic partition assignment and
 consumer group coordination will be disabled. For example::
 
     consumer = AIOKafkaConsumer(
-        loop=loop, bootstrap_servers='localhost:9092'
+        bootstrap_servers='localhost:9092'
     )
     tp1 = TopicPartition("my_topic", 1)
     tp2 = TopicPartition("my_topic", 2)
@@ -415,10 +415,10 @@ consumer group coordination will be disabled. For example::
     async for msg in consumer:
         print("Consumed msg %s %s %s", msg.topic, msg.partition, msg.value)
 
-``group_id`` can still be used for committing position, but be careful to 
+``group_id`` can still be used for committing position, but be careful to
 avoid **collisions** with multiple instances sharing the same group.
 
-It is not possible to mix manual partition assignment ``consumer.assign()`` 
+It is not possible to mix manual partition assignment ``consumer.assign()``
 and topic subscription ``consumer.subscribe()``. An attempt to do so will
 result in an ``IllegalStateError``.
 
@@ -450,7 +450,7 @@ catch up). For example::
             if position_lag > POSITION_THRESHOLD or time_lag > TIME_THRESHOLD:
                 partitions.append(partition)
 
-.. note:: This interface differs from `pause()`/`resume()` interface of 
+.. note:: This interface differs from `pause()`/`resume()` interface of
   `kafka-python` and Java clients.
 
 Here we will consume all partitions if they do not lag behind, but if some
@@ -481,7 +481,7 @@ the consumer's configuration::
 
     consumer = aiokafka.AIOKafkaConsumer(
         "my_topic",
-        loop=loop, bootstrap_servers='localhost:9092',
+        bootstrap_servers='localhost:9092',
         isolation_level="read_committed"
     )
     await consumer.start()
@@ -493,7 +493,7 @@ messages which have been successfully committed. It will continue to read
 non-transactional messages as before. There is no client-side buffering in
 `read_committed` mode. Instead, the end offset of a partition for a
 `read_committed` consumer would be the offset of the first message in the
-partition belonging to an open transaction. This offset is known as the 
+partition belonging to an open transaction. This offset is known as the
 **Last Stable Offset** (LSO).
 
 A `read_committed` consumer will only read up to the LSO and filter out any
@@ -520,7 +520,7 @@ which indicate the result of a transaction. There markers are not returned to
 applications, yet have an offset in the log. As a result, applications reading
 from topics with transactional messages will see gaps in the consumed offsets.
 These missing messages would be the transaction markers, and they are filtered
-out for consumers in both isolation levels. Additionally, applications using 
+out for consumers in both isolation levels. Additionally, applications using
 `read_committed` consumers may also see gaps due to aborted transactions, since
 those messages would not be returned by the consumer and yet would have valid
 offsets.
@@ -532,7 +532,7 @@ Detecting Consumer Failures
 People who worked with ``kafka-python`` or Java Client probably know that
 the ``poll()`` API is designed to ensure liveness of a **Consumer Group**. In
 other words, Consumer will only be considered alive if it consumes messages.
-It's not the same for ``aiokafka``, for more details read 
+It's not the same for ``aiokafka``, for more details read
 :ref:`Difference between aiokafka and kafka-python <kafka_python_difference>`.
 
 ``aiokafka`` will join the group on ``consumer.start()`` and will send

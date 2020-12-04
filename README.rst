@@ -25,11 +25,8 @@ Example of AIOKafkaProducer usage:
     from aiokafka import AIOKafkaProducer
     import asyncio
 
-    loop = asyncio.get_event_loop()
-
     async def send_one():
-        producer = AIOKafkaProducer(
-            loop=loop, bootstrap_servers='localhost:9092')
+        producer = AIOKafkaProducer(bootstrap_servers='localhost:9092')
         # Get cluster layout and initial topic/partition leadership information
         await producer.start()
         try:
@@ -39,14 +36,14 @@ Example of AIOKafkaProducer usage:
             # Wait for all pending messages to be delivered or expire.
             await producer.stop()
 
-    loop.run_until_complete(send_one())
+    asyncio.run(send_one())
 
 
 AIOKafkaConsumer
 ****************
 
 AIOKafkaConsumer is a high-level, asynchronous message consumer.
-It interacts with the assigned Kafka Group Coordinator node to allow multiple 
+It interacts with the assigned Kafka Group Coordinator node to allow multiple
 consumers to load balance consumption of topics (requires kafka >= 0.9.0.0).
 
 Example of AIOKafkaConsumer usage:
@@ -56,12 +53,10 @@ Example of AIOKafkaConsumer usage:
     from aiokafka import AIOKafkaConsumer
     import asyncio
 
-    loop = asyncio.get_event_loop()
-
     async def consume():
         consumer = AIOKafkaConsumer(
             'my_topic', 'my_other_topic',
-            loop=loop, bootstrap_servers='localhost:9092',
+            bootstrap_servers='localhost:9092',
             group_id="my-group")
         # Get cluster layout and join group `my-group`
         await consumer.start()
@@ -74,7 +69,7 @@ Example of AIOKafkaConsumer usage:
             # Will leave consumer group; perform autocommit if enabled.
             await consumer.stop()
 
-    loop.run_until_complete(consume())
+    asyncio.run(consume())
 
 Running tests
 -------------
