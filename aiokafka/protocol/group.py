@@ -15,7 +15,6 @@ from kafka.protocol.group import (
     )
 
 
-
 class JoinGroupResponse_v5(Response):
     API_KEY = 11
     API_VERSION = 5

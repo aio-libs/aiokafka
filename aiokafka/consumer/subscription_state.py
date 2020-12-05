@@ -14,8 +14,6 @@ from aiokafka.util import create_future, get_running_loop
 
 log = logging.getLogger(__name__)
 
-(List, Future)
-
 
 class SubscriptionType(Enum):
 
