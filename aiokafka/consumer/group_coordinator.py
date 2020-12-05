@@ -10,12 +10,9 @@ from kafka.protocol.commit import (
     OffsetCommitRequest_v2 as OffsetCommitRequest,
     OffsetFetchRequest_v1 as OffsetFetchRequest,
 )
-from aiokafka.protocol.group import (
-    HeartbeatRequest,
-    JoinGroupRequest,
-    LeaveGroupRequest,
-    SyncGroupRequest,
-)
+from aiokafka.protocol.group import JoinGroupRequest, SyncGroupRequest
+
+from kafka.protocol.group import HeartbeatRequest, LeaveGroupRequest
 
 import aiokafka.errors as Errors
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
@@ -431,7 +428,15 @@ class GroupCoordinator(BaseCoordinator):
         member_metadata = {}
         all_subscribed_topics = set()
         group_instance_id_mapping = {}
-        for member_id, group_instance_id, metadata_bytes in members:
+        # for member_id, group_instance_id, metadata_bytes in members:
+        for member in members:
+            if len(member) == 2:
+                member_id, metadata_bytes = member
+                group_instance_id = None
+            elif len(member) == 3:
+                member_id, group_instance_id, metadata_bytes = member
+            else:
+                raise Exception("unknown protocol returned from assignment")
             metadata = ConsumerProtocol.METADATA.decode(metadata_bytes)
             group_instance_id_mapping = group_instance_id
             member_metadata[member_id] = metadata
@@ -455,7 +460,6 @@ class GroupCoordinator(BaseCoordinator):
             member_metadata,
         )
 
-        assignments = None
         if isinstance(assignor, AbstractStaticPartitionAssignor):
             assignments = assignor.assign(
                 self._cluster, member_metadata, group_instance_id_mapping
@@ -1339,7 +1343,7 @@ class CoordinatorGroupRebalance:
                     self.coordinator_id,
                 )
                 try:
-                    response = await T(self._coordinator._send_req)(request)
+                    response = await self._coordinator._send_req(request)
                 except Errors.KafkaError:
                     # Return right away. It's a connection error, so backoff will be
                     # handled by coordinator lookup
