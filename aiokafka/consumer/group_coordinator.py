@@ -428,7 +428,15 @@ class GroupCoordinator(BaseCoordinator):
         member_metadata = {}
         all_subscribed_topics = set()
         group_instance_id_mapping = {}
-        for member_id, group_instance_id, metadata_bytes in members:
+        # for member_id, group_instance_id, metadata_bytes in members:
+        for member in members:
+            if len(member) == 2:
+                member_id, metadata_bytes = member
+                group_instance_id = None
+            elif len(member) == 3:
+                member_id, group_instance_id, metadata_bytes = member
+            else:
+                raise Exception("unknown protocol returned from assignment")
             metadata = ConsumerProtocol.METADATA.decode(metadata_bytes)
             group_instance_id_mapping = group_instance_id
             member_metadata[member_id] = metadata
