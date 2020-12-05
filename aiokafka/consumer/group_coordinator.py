@@ -452,7 +452,6 @@ class GroupCoordinator(BaseCoordinator):
             member_metadata,
         )
 
-        assignments = None
         if isinstance(assignor, AbstractStaticPartitionAssignor):
             assignments = assignor.assign(
                 self._cluster, member_metadata, group_instance_id_mapping
