@@ -9,7 +9,7 @@ from unittest import mock
 from kafka.cluster import ClusterMetadata
 
 from ._testutil import (
-    KafkaIntegrationTestCase, run_until_complete, kafka_versions
+    KafkaIntegrationTestCase, run_until_complete, run_in_thread, kafka_versions
 )
 
 from aiokafka.protocol.produce import ProduceResponse
@@ -133,6 +133,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(ProducerClosed):
             await producer.send(self.topic, b'value', key=b'KEY')
 
+    @run_in_thread
     def test_create_producer_no_running_loop(self):
         loop = asyncio.new_event_loop()
         producer = AIOKafkaProducer(bootstrap_servers=self.hosts, loop=loop)

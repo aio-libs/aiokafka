@@ -149,7 +149,13 @@ class AIOKafkaClient:
 
         self._md_update_fut = None
         self._md_update_waiter = loop.create_future()
-        self._get_conn_lock = asyncio.Lock()
+        self._get_conn_lock_value = None
+
+    @property
+    def _get_conn_lock(self):
+        if self._get_conn_lock_value is None:
+            self._get_conn_lock_value = asyncio.Lock()
+        return self._get_conn_lock_value
 
     def __repr__(self):
         return '<AIOKafkaClient client_id=%s>' % self._client_id
