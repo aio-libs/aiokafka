@@ -1,14 +1,10 @@
 from aiokafka import AIOKafkaProducer
 import asyncio
 
-loop = asyncio.get_event_loop()
-
-
 async def send_one():
     producer = AIOKafkaProducer(
         bootstrap_servers='localhost:9092',
-        transactional_id="transactional_test",
-        loop=loop)
+        transactional_id="transactional_test")
 
     # Get cluster layout and topic/partition allocation
     await producer.start()
@@ -23,4 +19,4 @@ async def send_one():
         await producer.stop()
     print(res)
 
-loop.run_until_complete(send_one())
+asyncio.run(send_one())

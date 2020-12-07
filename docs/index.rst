@@ -38,12 +38,10 @@ Here's a consumer example:
     from aiokafka import AIOKafkaConsumer
     import asyncio
 
-    loop = asyncio.get_event_loop()
-
     async def consume():
         consumer = AIOKafkaConsumer(
             'my_topic', 'my_other_topic',
-            loop=loop, bootstrap_servers='localhost:9092',
+            bootstrap_servers='localhost:9092',
             group_id="my-group")
         # Get cluster layout and join group `my-group`
         await consumer.start()
@@ -56,7 +54,7 @@ Here's a consumer example:
             # Will leave consumer group; perform autocommit if enabled.
             await consumer.stop()
 
-    loop.run_until_complete(consume())
+    asyncio.run(consume())
 
 Read more in :ref:`Consumer client <consumer-usage>` section.
 
@@ -72,11 +70,9 @@ Here's a producer example:
     from aiokafka import AIOKafkaProducer
     import asyncio
 
-    loop = asyncio.get_event_loop()
-
     async def send_one():
         producer = AIOKafkaProducer(
-            loop=loop, bootstrap_servers='localhost:9092')
+            bootstrap_servers='localhost:9092')
         # Get cluster layout and initial topic/partition leadership information
         await producer.start()
         try:
@@ -86,7 +82,7 @@ Here's a producer example:
             # Wait for all pending messages to be delivered or expire.
             await producer.stop()
 
-    loop.run_until_complete(send_one())
+    asyncio.run(send_one())
 
 Read more in :ref:`Producer client <producer-usage>` section.
 

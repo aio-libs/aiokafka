@@ -22,14 +22,12 @@ Producer:
         import asyncio
         from aiokafka import AIOKafkaProducer
 
-        @asyncio.coroutine
-        def produce(loop, value, partition):
-            producer = AIOKafkaProducer(
-                loop=loop, bootstrap_servers='localhost:9092')
+        async def produce(value, partition):
+            producer = AIOKafkaProducer(bootstrap_servers='localhost:9092')
 
-            yield from producer.start()
-            yield from producer.send('some-topic', value, partition=partition)
-            yield from producer.stop()
+            await producer.start()
+            await producer.send('some-topic', value, partition=partition)
+            await producer.stop()
 
         if len(sys.argv) != 3:
             print("usage: producer.py <partition> <message>")
@@ -37,18 +35,28 @@ Producer:
         value = sys.argv[2].encode()
         partition = int(sys.argv[1])
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(produce(loop, value, partition))
-        loop.close()
+        asyncio.run(produce(value, partition))
 
 
 Consumer:
 
 .. code:: python
- 
+
         import sys
         import asyncio
         from aiokafka import AIOKafkaConsumer
+
+        async def consume():
+            consumer = AIOKafkaConsumer(
+                'some-topic',
+                group_id=group_id,
+                bootstrap_servers='localhost:9092',
+                auto_offset_reset='earliest')
+            await consumer.start()
+            for _ in range(msg_cnt):
+                msg = await consumer.getone()
+                print(f"Message from partition [{msg.partition}]: {msg.value}")
+            await consumer.stop()
 
         if len(sys.argv) < 3:
             print("usage: consumer.py <group_id> <wait messages count>")
@@ -56,18 +64,7 @@ Consumer:
         group_id = sys.argv[1]
         msg_cnt = int(sys.argv[2])
 
-        loop = asyncio.get_event_loop()
-        consumer = AIOKafkaConsumer(
-            'some-topic', loop=loop,
-            group_id=group_id,
-            bootstrap_servers='localhost:9092',
-            auto_offset_reset='earliest')
-        loop.run_until_complete(consumer.start())
-        for _ in range(msg_cnt):
-            msg = loop.run_until_complete(consumer.getone())
-            print("Message from partition [{}]: {}".format(msg.partition, msg.value))
-        loop.run_until_complete(consumer.stop())
-        loop.close()
+        asyncio.run(consume(group_id, msg_cnt))
 
 
 

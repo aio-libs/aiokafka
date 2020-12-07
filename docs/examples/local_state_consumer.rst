@@ -104,9 +104,9 @@ Local State consumer:
             local_state.dump_local_state()
 
 
-    async def consume(loop):
+    async def consume():
         consumer = AIOKafkaConsumer(
-            loop=loop, bootstrap_servers='localhost:9092',
+            bootstrap_servers='localhost:9092',
             group_id="my_group",           # Consumer must be in a group to commit
             enable_auto_commit=False,      # Will disable autocommit
             auto_offset_reset="none",
@@ -118,7 +118,7 @@ Local State consumer:
         listener = RebalanceListener(consumer, local_state)
         consumer.subscribe(topics=["test"], listener=listener)
 
-        save_task = loop.create_task(save_state_every_second(local_state))
+        save_task = asyncio.create_task(save_state_every_second(local_state))
 
         try:
 
@@ -146,23 +146,8 @@ Local State consumer:
             await save_task
 
 
-    def main(async_main):
-        # Setup to properly handle KeyboardInterrupt exception
-        loop = asyncio.get_event_loop()
-        m_task = loop.create_task(async_main(loop))
-        m_task.add_done_callback(lambda task, loop=loop: loop.stop())
-
-        try:
-            loop.run_forever()
-        except KeyboardInterrupt:
-            m_task.cancel()
-            loop.run_forever()
-        finally:
-            if not m_task.cancelled():
-                m_task.result()
-
     if __name__ == "__main__":
-        main(consume)
+        asyncio.run(consume())
 
 There are several points of interest in this example:
 
@@ -196,7 +181,7 @@ Process TopicPartition(topic='test', partition=2) 2
 
 Output for 2nd consumer:
 
->>> python examples/local_state_consumer.py 
+>>> python examples/local_state_consumer.py
 Revoked set()
 Assigned {TopicPartition(topic='test', partition=1)}
 Process TopicPartition(topic='test', partition=1) 321

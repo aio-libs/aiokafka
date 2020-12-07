@@ -17,4 +17,4 @@ async def send_one():
             await producer.stop()
             raise
 
-loop.run_until_complete(send_one())
+asyncio.run(send_one())

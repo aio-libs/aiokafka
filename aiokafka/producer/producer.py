@@ -283,7 +283,7 @@ class AIOKafkaProducer(object):
 
     async def start(self):
         """Connect to Kafka cluster and check server version"""
-        assert self._loop is asyncio.get_event_loop(), (
+        assert self._loop is get_running_loop(), (
             "Please create objects with the same loop as running with"
         )
         log.debug("Starting the Kafka producer")  # trace

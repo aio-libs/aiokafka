@@ -22,27 +22,23 @@ Producer
                return all_partitions[-1]
            return random.choice(all_partitions)
 
-        @asyncio.coroutine
-        def produce_one(producer, key, value):
-            future = yield from producer.send('foobar', value, key=key)
-            resp = yield from future
+        async def produce_one(producer, key, value):
+            future = await producer.send('foobar', value, key=key)
+            resp = await future
             print("'%s' produced in partition: %i"%(value.decode(), resp.partition))
 
-        @asyncio.coroutine
-        def produce_task(loop):
+        async def produce_task():
             producer = AIOKafkaProducer(
-                loop=loop, bootstrap_servers='localhost:9092',
+                bootstrap_servers='localhost:9092',
                 partitioner=my_partitioner)
 
-            yield from producer.start()
-            yield from produce_one(producer, b'last', b'1')
-            yield from produce_one(producer, b'some', b'2')
-            yield from produce_one(producer, b'first', b'3')
-            yield from producer.stop()
+            await producer.start()
+            await produce_one(producer, b'last', b'1')
+            await produce_one(producer, b'some', b'2')
+            await produce_one(producer, b'first', b'3')
+            await producer.stop()
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(produce_task(loop))
-        loop.close()
+        asyncio.run(produce_task())
 
 
 
