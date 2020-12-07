@@ -27,6 +27,7 @@ UNKNOWN_OFFSET = -1
 
 
 class BaseCoordinator(object):
+
     def __init__(self, client, subscription, *,
                  exclude_internal_topics=True):
         self._client = client
@@ -212,7 +213,7 @@ class GroupCoordinator(BaseCoordinator):
     """
 
     def __init__(self, client, subscription, *,
-                 group_id="aiokafka-default-group",
+                 group_id='aiokafka-default-group',
                  group_instance_id=None,
                  session_timeout_ms=10000, heartbeat_interval_ms=3000,
                  retry_backoff_ms=100,
@@ -221,7 +222,7 @@ class GroupCoordinator(BaseCoordinator):
                  exclude_internal_topics=True,
                  max_poll_interval_ms=300000,
                  rebalance_timeout_ms=30000
-                ):
+                 ):
         """Initialize the coordination manager.
 
         Parameters (see AIOKafkaConsumer)
@@ -291,7 +292,7 @@ class GroupCoordinator(BaseCoordinator):
                 node_id, request, group=ConnectionGroup.COORDINATION)
         except Errors.KafkaError as err:
             log.error(
-                "Error sending %s to node %s [%s] -- marking coordinator dead",
+                'Error sending %s to node %s [%s] -- marking coordinator dead',
                 request.__class__.__name__, node_id, err)
             self.coordinator_dead()
             raise err
@@ -402,7 +403,7 @@ class GroupCoordinator(BaseCoordinator):
                               self._subscription.listener, self.group_id)
 
     async def _perform_assignment(
-            self, leader_id, assignment_strategy, members
+        self, leader_id, assignment_strategy, members
     ):
         assignor = self._lookup_assignor(assignment_strategy)
         assert assignor, \
@@ -546,7 +547,7 @@ class GroupCoordinator(BaseCoordinator):
                     coordinator_id = (
                         await self._client.coordinator_lookup(
                             CoordinationType.GROUP, self.group_id)
-                        )
+                    )
                 except Errors.GroupAuthorizationFailedError:
                     err = Errors.GroupAuthorizationFailedError(self.group_id)
                     raise err
@@ -810,8 +811,8 @@ class GroupCoordinator(BaseCoordinator):
             self.coordinator_dead()
         elif error_type is Errors.RebalanceInProgressError:
             log.warning(
-                "Heartbeat failed for group %s because it is rebalancing", self.group_id
-            )
+                "Heartbeat failed for group %s because it is rebalancing",
+                self.group_id)
             self.request_rejoin()
             # it is valid to continue heartbeating while the group is
             # rebalancing. This ensures that the coordinator keeps the
@@ -822,7 +823,7 @@ class GroupCoordinator(BaseCoordinator):
             return True
         elif error_type is Errors.IllegalGenerationError:
             log.warning(
-                "Heartbeat failed for group %s: generation id is not " 
+                "Heartbeat failed for group %s: generation id is not "
                 " current.", self.group_id)
             self.reset_generation()
         elif error_type is Errors.UnknownMemberIdError:
@@ -951,8 +952,8 @@ class GroupCoordinator(BaseCoordinator):
         return error.retriable or isinstance(error, (
             Errors.UnknownMemberIdError,
             Errors.IllegalGenerationError,
-            Errors.RebalanceInProgressError,
-            ))
+            Errors.RebalanceInProgressError
+        ))
 
     async def _maybe_do_last_autocommit(self, assignment):
         if not self._enable_auto_commit:
@@ -976,7 +977,7 @@ class GroupCoordinator(BaseCoordinator):
                         self._do_commit_offsets(assignment, offsets))
             except (Errors.UnknownMemberIdError,
                     Errors.IllegalGenerationError,
-                    Errors.RebalanceInProgressError,):
+                    Errors.RebalanceInProgressError):
                 raise Errors.CommitFailedError(
                     "Commit cannot be completed since the group has already "
                     "rebalanced and may have assigned the partitions "
@@ -1012,9 +1013,8 @@ class GroupCoordinator(BaseCoordinator):
             [(topic, tp_offsets) for topic, tp_offsets in offset_data.items()]
         )
 
-        log.debug(
-            "Sending offset-commit request with %s for group %s to %s",
-            offsets, self.group_id, self.coordinator_id)
+        log.debug("Sending offset-commit request with %s for group %s to %s",
+                  offsets, self.group_id, self.coordinator_id)
 
         response = await self._send_req(request)
 
@@ -1058,11 +1058,9 @@ class GroupCoordinator(BaseCoordinator):
                         " and retry", self.group_id, error_type.__name__)
                     self.coordinator_dead()
                     errored[tp] = error_type()
-                elif error_type in (
-                    Errors.UnknownMemberIdError,
-                    Errors.IllegalGenerationError,
-                    Errors.RebalanceInProgressError,
-                ):
+                elif error_type in (Errors.UnknownMemberIdError,
+                                    Errors.IllegalGenerationError,
+                                    Errors.RebalanceInProgressError):
                     # need to re-join group
                     error = error_type(self.group_id)
                     log.error(
@@ -1366,7 +1364,7 @@ class CoordinatorGroupRebalance:
         log.debug(
             "Sending follower SyncGroup for group %s to coordinator %s: %s",
             self.group_id, self.coordinator_id, request)
-        return await self._send_sync_group_request(request)
+        return (await self._send_sync_group_request(request))
 
     async def _on_join_leader(self, response):
         """
@@ -1414,7 +1412,7 @@ class CoordinatorGroupRebalance:
         log.debug(
             "Sending leader SyncGroup for group %s to coordinator %s: %s",
             self.group_id, self.coordinator_id, request)
-        return await self._send_sync_group_request(request)
+        return (await self._send_sync_group_request(request))
 
     async def _send_sync_group_request(self, request):
         # We need to reset the rejoin future right after the assignment to
@@ -1439,7 +1437,7 @@ class CoordinatorGroupRebalance:
         # Error case
         self._coordinator.request_rejoin()
         if error_type is Errors.RebalanceInProgressError:
-            log.debug("SyncGroup for group %s failed due to group" 
+            log.debug("SyncGroup for group %s failed due to group"
                       " rebalance", self.group_id)
         elif error_type in (Errors.UnknownMemberIdError,
                             Errors.IllegalGenerationError):

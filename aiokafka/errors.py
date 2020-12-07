@@ -17,6 +17,7 @@ from kafka.errors import (
     AuthenticationMethodNotSupported,
     AuthenticationFailedError,
     BrokerResponseError,
+
     # Numbered errors
     NoError,  # 0
     UnknownError,  # -1
@@ -64,6 +65,7 @@ from kafka.errors import (
     InvalidRequestError,  # 42
     UnsupportedForMessageFormatError,  # 43
     PolicyViolationError,  # 44
+
     KafkaUnavailableError,
     KafkaTimeoutError,
     KafkaConnectionError,
@@ -301,9 +303,9 @@ class KafkaStorageError(BrokerResponseError):
 
 class LogDirNotFound(BrokerResponseError):
     errno = 57
-    message = "LOG_DIR_NOT_FOUND"
+    message = 'LOG_DIR_NOT_FOUND'
     description = (
-        "The user-specified log directory is not found in the broker config."
+        'The user-specified log directory is not found in the broker config.'
     )
 
 
