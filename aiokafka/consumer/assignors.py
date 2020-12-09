@@ -8,8 +8,8 @@ class AbstractStaticPartitionAssignor(AbstractPartitionAssignor):
     """
 
     @abc.abstractmethod
-    def assign(self, cluster, members,
-               member_group_instance_ids):  # lgtm[py/inheritance/signature-mismatch]
+    def assign(self, cluster, members,  # lgtm[py/inheritance/signature-mismatch]
+               member_group_instance_ids):
         """Perform group assignment given cluster metadata, member subscriptions
            and group_instance_ids
         Arguments:
