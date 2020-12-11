@@ -27,7 +27,7 @@ from aiokafka.errors import (
 
 from ._testutil import (
     KafkaIntegrationTestCase, StubRebalanceListener,
-    run_until_complete, random_string, kafka_versions)
+    run_until_complete, run_in_thread, random_string, kafka_versions)
 
 
 class TestConsumerIntegration(KafkaIntegrationTestCase):
@@ -115,6 +115,20 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # will ignore, no exception expected
         await consumer.stop()
+
+    @run_in_thread
+    def test_create_consumer_no_running_loop(self):
+        loop = asyncio.new_event_loop()
+        consumer = AIOKafkaConsumer(
+            self.topic, bootstrap_servers=self.hosts, loop=loop)
+        loop.run_until_complete(consumer.start())
+        try:
+            loop.run_until_complete(
+                self.send_messages(0, list(range(0, 10))))
+            for _ in range(10):
+                loop.run_until_complete(consumer.getone())
+        finally:
+            loop.run_until_complete(consumer.stop())
 
     @run_until_complete
     async def test_consumer_context_manager(self):

@@ -12,6 +12,7 @@ import shutil
 import sys
 import os
 
+from concurrent import futures
 from contextlib import contextmanager
 from functools import wraps
 
@@ -40,6 +41,18 @@ def run_until_complete(fun):
         ret = loop.run_until_complete(
             asyncio.wait_for(fun(test, *args, **kw), timeout))
         return ret
+    return wrapper
+
+
+def run_in_thread(fun):
+
+    @wraps(fun)
+    def wrapper(test, *args, **kw):
+        timeout = getattr(test, "TEST_TIMEOUT", 120)
+        with futures.ThreadPoolExecutor() as executor:
+            fut = executor.submit(fun, test, *args, **kw)
+            fut.result(timeout=timeout)
+
     return wrapper
 
 

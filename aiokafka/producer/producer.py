@@ -192,6 +192,9 @@ class AIOKafkaProducer(object):
                  sasl_oauth_token_provider=None):
         if loop is None:
             loop = get_running_loop()
+        if loop.get_debug():
+            self._source_traceback = traceback.extract_stack(sys._getframe(1))
+        self._loop = loop
 
         if acks not in (0, 1, -1, 'all', _missing):
             raise ValueError("Invalid ACKS parameter")
@@ -256,16 +259,14 @@ class AIOKafkaProducer(object):
         self._metadata = self.client.cluster
         self._message_accumulator = MessageAccumulator(
             self._metadata, max_batch_size, compression_attrs,
-            self._request_timeout_ms / 1000, txn_manager=self._txn_manager)
+            self._request_timeout_ms / 1000, txn_manager=self._txn_manager,
+            loop=loop)
         self._sender = Sender(
             self.client, acks=acks, txn_manager=self._txn_manager,
             retry_backoff_ms=retry_backoff_ms, linger_ms=linger_ms,
             message_accumulator=self._message_accumulator,
             request_timeout_ms=request_timeout_ms)
 
-        self._loop = loop
-        if loop.get_debug():
-            self._source_traceback = traceback.extract_stack(sys._getframe(1))
         self._closed = False
 
     # Warn if producer was not closed properly

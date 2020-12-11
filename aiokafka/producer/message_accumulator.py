@@ -10,7 +10,7 @@ from aiokafka.errors import (KafkaTimeoutError,
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
 from aiokafka.structs import RecordMetadata
-from aiokafka.util import create_future
+from aiokafka.util import create_future, get_running_loop
 
 
 class BatchBuilder:
@@ -247,14 +247,17 @@ class MessageAccumulator:
     """
     def __init__(
             self, cluster, batch_size, compression_type, batch_ttl, *,
-            txn_manager=None):
+            txn_manager=None, loop=None):
+        if loop is None:
+            loop = get_running_loop()
+        self._loop = loop
         self._batches = collections.defaultdict(collections.deque)
         self._pending_batches = set([])
         self._cluster = cluster
         self._batch_size = batch_size
         self._compression_type = compression_type
         self._batch_ttl = batch_ttl
-        self._wait_data_future = create_future()
+        self._wait_data_future = loop.create_future()
         self._closed = False
         self._api_version = (0, 9)
         self._txn_manager = txn_manager
@@ -413,7 +416,7 @@ class MessageAccumulator:
         # task
         if not self._wait_data_future.done():
             self._wait_data_future.set_result(None)
-        self._wait_data_future = create_future()
+        self._wait_data_future = self._loop.create_future()
 
         return nodes, unknown_leaders_exist
 

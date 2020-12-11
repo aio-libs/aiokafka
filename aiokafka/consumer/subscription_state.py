@@ -5,12 +5,12 @@ import time
 from asyncio import shield, Event, Future
 from enum import Enum
 
-from typing import Set, Pattern, Dict, List
+from typing import Dict, FrozenSet, Iterable, List, Pattern, Set
 
 from aiokafka.errors import IllegalStateError
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.abc import ConsumerRebalanceListener
-from aiokafka.util import create_future
+from aiokafka.util import create_future, get_running_loop
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +42,11 @@ class SubscriptionState:
     _subscription = None  # type: Subscription
     _listener = None  # type: ConsumerRebalanceListener
 
-    def __init__(self):
+    def __init__(self, loop=None):
+        if loop is None:
+            loop = get_running_loop()
+        self._loop = loop
+
         self._subscription_waiters = []  # type: List[Future]
         self._assignment_waiters = []  # type: List[Future]
 
@@ -145,7 +149,7 @@ class SubscriptionState:
                 isinstance(listener, ConsumerRebalanceListener))
         self._set_subscription_type(SubscriptionType.AUTO_TOPICS)
 
-        self._change_subscription(Subscription(topics))
+        self._change_subscription(Subscription(topics, loop=self._loop))
         self._listener = listener
         self._notify_subscription_waiters()
 
@@ -165,7 +169,7 @@ class SubscriptionState:
         self._subscribed_pattern = pattern
         self._listener = listener
 
-    def assign_from_user(self, partitions: Set[TopicPartition]):
+    def assign_from_user(self, partitions: Iterable[TopicPartition]):
         """ Manually assign partitions. After this call automatic assignment
         will be impossible and will raise an ``IllegalStateError``.
 
@@ -175,7 +179,7 @@ class SubscriptionState:
         self._set_subscription_type(SubscriptionType.USER_ASSIGNED)
 
         self._change_subscription(
-            ManualSubscription(partitions))
+            ManualSubscription(partitions, loop=self._loop))
         self._notify_assignment_waiters()
 
     def unsubscribe(self):
@@ -316,10 +320,13 @@ class Subscription:
         * Unsubscribed
     """
 
-    def __init__(self, topics: Set[str]):
-        self._topics = frozenset(topics)  # type: Set[str]
+    def __init__(self, topics: Iterable[str], loop=None):
+        if loop is None:
+            loop = get_running_loop()
+
+        self._topics = frozenset(topics)  # type: FrozenSet[str]
         self._assignment = None  # type: Assignment
-        self.unsubscribe_future = create_future()  # type: Future
+        self.unsubscribe_future = loop.create_future()  # type: Future
         self._reassignment_in_progress = True
 
     @property
@@ -334,7 +341,7 @@ class Subscription:
     def assignment(self):
         return self._assignment
 
-    def _assign(self, topic_partitions: Set[TopicPartition]):
+    def _assign(self, topic_partitions: Iterable[TopicPartition]):
         for tp in topic_partitions:
             assert tp.topic in self._topics, \
                 "Received an assignment for unsubscribed topic: %s" % (tp, )
@@ -358,14 +365,10 @@ class ManualSubscription(Subscription):
     """ Describes a user assignment
     """
 
-    def __init__(self, user_assignment: Set[TopicPartition]):
-        topics = set([])
-        for tp in user_assignment:
-            topics.add(tp.topic)
-
-        self._topics = frozenset(topics)
+    def __init__(self, user_assignment: Iterable[TopicPartition], loop=None):
+        topics = (tp.topic for tp in user_assignment)
+        super().__init__(topics, loop=loop)
         self._assignment = Assignment(user_assignment)
-        self.unsubscribe_future = create_future()
 
     def _assign(
             self, topic_partitions: Set[TopicPartition]):  # pragma: no cover
@@ -374,6 +377,10 @@ class ManualSubscription(Subscription):
     @property
     def _reassignment_in_progress(self):
         return False
+
+    @_reassignment_in_progress.setter
+    def _reassignment_in_progress(self, value):
+        pass
 
     def _begin_reassignment(self):  # pragma: no cover
         assert False, "Should not be called"
@@ -388,7 +395,7 @@ class Assignment:
         * Unassigned
     """
 
-    def __init__(self, topic_partitions: Set[TopicPartition]):
+    def __init__(self, topic_partitions: Iterable[TopicPartition]):
         assert isinstance(topic_partitions, (list, set, tuple))
 
         self._topic_partitions = frozenset(topic_partitions)
