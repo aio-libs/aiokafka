@@ -417,7 +417,7 @@ class MemberIdRequired(BrokerResponseError):
     errno = 79
     message = 'MEMBER_ID_REQUIRED'
     description = (
-        'Consumer needs to have a valid member ' 
+        'Consumer needs to have a valid member '
         'id before actually entering group'
     )
 
