@@ -255,6 +255,10 @@ class AIOKafkaConsumer(object):
                  sasl_oauth_token_provider=None):
         if loop is None:
             loop = get_running_loop()
+        else:
+            warnings.warn("The loop argument is deprecated since 0.7.1, "
+                          "and scheduled for removal in 0.8.0",
+                          DeprecationWarning, stacklevel=2)
 
         if max_poll_records is not None and (
                 not isinstance(max_poll_records, int) or max_poll_records < 1):

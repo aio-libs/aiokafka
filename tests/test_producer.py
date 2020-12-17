@@ -136,7 +136,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @run_in_thread
     def test_create_producer_no_running_loop(self):
         loop = asyncio.new_event_loop()
-        producer = AIOKafkaProducer(bootstrap_servers=self.hosts, loop=loop)
+        with pytest.deprecated_call():
+            producer = AIOKafkaProducer(bootstrap_servers=self.hosts, loop=loop)
         loop.run_until_complete(producer.start())
         try:
             future = loop.run_until_complete(
