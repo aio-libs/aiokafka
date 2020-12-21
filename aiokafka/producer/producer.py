@@ -192,6 +192,10 @@ class AIOKafkaProducer(object):
                  sasl_oauth_token_provider=None):
         if loop is None:
             loop = get_running_loop()
+        else:
+            warnings.warn("The loop argument is deprecated since 0.7.1, "
+                          "and scheduled for removal in 0.8.0",
+                          DeprecationWarning, stacklevel=2)
         if loop.get_debug():
             self._source_traceback = traceback.extract_stack(sys._getframe(1))
         self._loop = loop

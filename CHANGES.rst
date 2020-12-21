@@ -16,6 +16,10 @@ Fix initialization without running loop
 693.doc
 Update docs and examples to not use deprecated practices like passing loop explicitly
 
+699.removal
+Add deprecation warning when loop argument to AIOKafkaConsumer and AIOKafkaProducer is passed.
+It's scheduled for removal in 0.8.0 as a preparation step towards upcoming Python 3.10
+
 
 0.7.0 (2020-10-28)
 ==================

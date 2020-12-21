@@ -119,8 +119,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_in_thread
     def test_create_consumer_no_running_loop(self):
         loop = asyncio.new_event_loop()
-        consumer = AIOKafkaConsumer(
-            self.topic, bootstrap_servers=self.hosts, loop=loop)
+        with pytest.deprecated_call():
+            consumer = AIOKafkaConsumer(
+                self.topic, bootstrap_servers=self.hosts, loop=loop)
         loop.run_until_complete(consumer.start())
         try:
             loop.run_until_complete(
