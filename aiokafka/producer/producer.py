@@ -557,6 +557,7 @@ class AIOKafkaProducer(object):
 
     async def __aenter__(self):
         await self.start()
+        return self
 
     async def __aexit__(self, exc_type, exc, tb):
         await self.stop()
