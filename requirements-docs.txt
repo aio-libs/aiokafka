@@ -1,5 +1,5 @@
 -r requirements-cython.txt
 Sphinx==3.4.3
 sphinxcontrib-asyncio==0.3.0
-sphinxcontrib-spelling==5.1.1
+sphinxcontrib-spelling==7.1.0
 alabaster==0.7.12
