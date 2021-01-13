@@ -45,7 +45,8 @@ def test_read_write_serde_v0_v1_no_compression(magic, key, value, checksum):
 @pytest.mark.parametrize("compression_type", [
     LegacyRecordBatch.CODEC_GZIP,
     LegacyRecordBatch.CODEC_SNAPPY,
-    LegacyRecordBatch.CODEC_LZ4
+    LegacyRecordBatch.CODEC_LZ4,
+    LegacyRecordBatch.CODEC_ZSTD
 ])
 @pytest.mark.parametrize("magic", [0, 1])
 def test_read_write_serde_v0_v1_with_compression(compression_type, magic):

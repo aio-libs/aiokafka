@@ -5,7 +5,7 @@ import traceback
 import warnings
 
 from kafka.partitioner.default import DefaultPartitioner
-from kafka.codec import has_gzip, has_snappy, has_lz4
+from kafka.codec import has_gzip, has_snappy, has_lz4, has_zstd
 
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
@@ -169,6 +169,7 @@ class AIOKafkaProducer(object):
         'gzip': (has_gzip, LegacyRecordBatchBuilder.CODEC_GZIP),
         'snappy': (has_snappy, LegacyRecordBatchBuilder.CODEC_SNAPPY),
         'lz4': (has_lz4, LegacyRecordBatchBuilder.CODEC_LZ4),
+        'zstd': (has_zstd, LegacyRecordBatchBuilder.CODEC_ZSTD)
     }
 
     _closed = None  # Serves as an uninitialized flag for __del__
@@ -202,7 +203,7 @@ class AIOKafkaProducer(object):
 
         if acks not in (0, 1, -1, 'all', _missing):
             raise ValueError("Invalid ACKS parameter")
-        if compression_type not in ('gzip', 'snappy', 'lz4', None):
+        if compression_type not in ('gzip', 'snappy', 'lz4', 'zstd', None):
             raise ValueError("Invalid compression type!")
         if compression_type:
             checker, compression_attrs = self._COMPRESSORS[compression_type]

@@ -1,8 +1,8 @@
 #cython: language_level=3
 
 from kafka.codec import (
-    gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
-    gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka
+    gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka, zstd_encode,
+    gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka, zstd_decode
 )
 from aiokafka.errors import CorruptRecordException
 from zlib import crc32 as py_crc32  # needed for windows macro
@@ -54,6 +54,7 @@ cdef class LegacyRecordBatch:
     CODEC_GZIP = _ATTR_CODEC_GZIP
     CODEC_SNAPPY = _ATTR_CODEC_SNAPPY
     CODEC_LZ4 = _ATTR_CODEC_LZ4
+    CODEC_ZSTD = _ATTR_CODEC_ZSTD
 
     is_control_batch = False
     is_transactional = False
@@ -126,6 +127,8 @@ cdef class LegacyRecordBatch:
                 uncompressed = lz4_decode_old_kafka(value)
             else:
                 uncompressed = lz4_decode(value)
+        elif compression_type == _ATTR_CODEC_ZSTD:
+            uncompressed = zstd_decode(value)
 
         PyBuffer_Release(&self._buffer)
         PyObject_GetBuffer(uncompressed, &self._buffer, PyBUF_SIMPLE)
@@ -339,6 +342,7 @@ cdef class LegacyRecordBatchBuilder:
     CODEC_GZIP = _ATTR_CODEC_GZIP
     CODEC_SNAPPY = _ATTR_CODEC_SNAPPY
     CODEC_LZ4 = _ATTR_CODEC_LZ4
+    CODEC_ZSTD = _ATTR_CODEC_ZSTD
 
     def __cinit__(self, char magic, char compression_type,
                   Py_ssize_t batch_size):
@@ -420,6 +424,8 @@ cdef class LegacyRecordBatchBuilder:
                     compressed = lz4_encode_old_kafka(bytes(self._buffer))
                 else:
                     compressed = lz4_encode(bytes(self._buffer))
+            elif self._compression_type == _ATTR_CODEC_ZSTD:
+                    compressed = zstd_encode(self._buffer)
             else:
                 return 0
             size = _size_in_bytes(self._magic, key=None, value=compressed)

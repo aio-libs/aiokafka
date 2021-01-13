@@ -1,5 +1,5 @@
 from kafka.client_async import KafkaClient as KafkaClient
-from kafka.codec import has_gzip as has_gzip, has_lz4 as has_lz4, has_snappy as has_snappy
+from kafka.codec import has_gzip as has_gzip, has_lz4 as has_lz4, has_snappy as has_snappy, has_zstd as has_zstd
 from kafka.metrics import MetricConfig as MetricConfig, Metrics as Metrics
 from kafka.partitioner.default import DefaultPartitioner as DefaultPartitioner
 from kafka.producer.future import FutureProduceResult as FutureProduceResult, FutureRecordMetadata as FutureRecordMetadata

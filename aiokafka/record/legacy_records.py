@@ -6,8 +6,8 @@ from binascii import crc32
 from aiokafka.errors import CorruptRecordException
 from aiokafka.util import NO_EXTENSIONS
 from kafka.codec import (
-    gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
-    gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka
+    gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka, zstd_encode,
+    gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka, zstd_decode
 )
 
 
@@ -68,6 +68,7 @@ class LegacyRecordBase:
     CODEC_GZIP = 0x01
     CODEC_SNAPPY = 0x02
     CODEC_LZ4 = 0x03
+    CODEC_ZSTD = 0x04
     TIMESTAMP_TYPE_MASK = 0x08
 
     LOG_APPEND_TIME = 1
@@ -144,6 +145,8 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
                 uncompressed = lz4_decode_old_kafka(data.tobytes())
             else:
                 uncompressed = lz4_decode(data.tobytes())
+        elif compression_type == self.CODEC_ZSTD:
+            uncompressed = zstd_decode(data)
         return uncompressed
 
     def _read_header(self, pos):
@@ -400,6 +403,8 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
                     compressed = lz4_encode_old_kafka(bytes(buf))
                 else:
                     compressed = lz4_encode(bytes(buf))
+            elif self._compression_type == self.CODEC_ZSTD:
+                compressed = zstd_encode(buf)
             compressed_size = len(compressed)
             size = self._size_in_bytes(key_size=0, value_size=compressed_size)
             if size > len(self._buffer):

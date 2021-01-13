@@ -57,8 +57,8 @@
 
 from aiokafka.errors import CorruptRecordException
 from kafka.codec import (
-    gzip_encode, snappy_encode, lz4_encode,
-    gzip_decode, snappy_decode, lz4_decode
+    gzip_encode, snappy_encode, lz4_encode, zstd_encode,
+    gzip_decode, snappy_decode, lz4_decode, zstd_decode
 )
 
 from cpython cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_WRITABLE, \
@@ -117,6 +117,7 @@ cdef class DefaultRecordBatch:
     CODEC_GZIP = _ATTR_CODEC_GZIP
     CODEC_SNAPPY = _ATTR_CODEC_SNAPPY
     CODEC_LZ4 = _ATTR_CODEC_LZ4
+    CODEC_ZSTD = _ATTR_CODEC_ZSTD
 
     def __init__(self, object buffer):
         PyObject_GetBuffer(buffer, &self._buffer, PyBUF_SIMPLE)
@@ -222,6 +223,8 @@ cdef class DefaultRecordBatch:
                     uncompressed = snappy_decode(data.tobytes())
                 if compression_type == _ATTR_CODEC_LZ4:
                     uncompressed = lz4_decode(data.tobytes())
+                if compression_type == _ATTR_CODEC_ZSTD:
+                    uncompressed = zstd_decode(data)
         
                 PyBuffer_Release(&self._buffer)
                 PyObject_GetBuffer(uncompressed, &self._buffer, PyBUF_SIMPLE)
@@ -675,6 +678,8 @@ cdef class DefaultRecordBatchBuilder:
                 compressed = snappy_encode(data)
             elif self._compression_type == _ATTR_CODEC_LZ4:
                 compressed = lz4_encode(data)
+            elif self._compression_type == _ATTR_CODEC_ZSTD:
+                compressed = zstd_encode(data)
             size = (<Py_ssize_t> len(compressed)) + FIRST_RECORD_OFFSET
             # We will just write the result into the same memory space.
             PyByteArray_Resize(self._buffer, size)

@@ -8,7 +8,8 @@ from aiokafka.record.default_records import (
     (DefaultRecordBatch.CODEC_NONE, 3950153926),
     (DefaultRecordBatch.CODEC_GZIP, None),  # No idea why, but crc changes here
     (DefaultRecordBatch.CODEC_SNAPPY, 2171068483),
-    (DefaultRecordBatch.CODEC_LZ4, 462121143)
+    (DefaultRecordBatch.CODEC_LZ4, 462121143),
+    (DefaultRecordBatch.CODEC_ZSTD, None)
 ])
 def test_read_write_serde_v2(compression_type, crc):
     builder = DefaultRecordBatchBuilder(
