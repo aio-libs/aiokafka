@@ -12,3 +12,4 @@ xxhash==1.4.3
 python-snappy==0.5.4
 dataclasses==0.5; python_version<"3.7"
 async_generator==1.10; python_version<"3.7"
+zstandard==0.15.1
