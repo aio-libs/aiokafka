@@ -186,7 +186,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
                 if compression_type == self.CODEC_LZ4:
                     uncompressed = lz4_decode(data.tobytes())
                 if compression_type == self.CODEC_ZSTD:
-                    uncompressed == zstd_decode(data)
+                    uncompressed = zstd_decode(data)
                 self._buffer = bytearray(uncompressed)
                 self._pos = 0
         self._decompressed = True
