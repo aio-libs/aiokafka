@@ -1,0 +1,1 @@
+Added zstd, new compression type to AIOKafkaProducer.

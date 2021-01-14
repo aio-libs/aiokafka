@@ -113,9 +113,7 @@ def read(f):
     return open(os.path.join(os.path.dirname(__file__), f)).read().strip()
 
 
-extras_require = {
-    "snappy": ["python-snappy>=0.5"],
-}
+extras_require = {"snappy": ["python-snappy>=0.5"], "zstd": ["zstandard"]}
 
 
 def read_version():
