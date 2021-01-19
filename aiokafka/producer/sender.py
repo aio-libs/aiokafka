@@ -62,7 +62,8 @@ class Sender:
         try:
             task_exception = task.exception()
         except asyncio.CancelledError:
-            # Skip setting CancelledError on Futures. Cleanup is already done in _sender_routine()
+            # Skip setting CancelledError on Futures. Cleanup is already done in
+            # _sender_routine()
             return
 
         if task_exception is not None:
