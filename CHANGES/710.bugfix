@@ -1,0 +1,1 @@
+Fix asyncio.CancelledError handling in Sender._fail_all()

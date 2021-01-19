@@ -59,10 +59,16 @@ class Sender:
         """ Called when sender fails. Will fail all pending batches, as they
         will never be delivered as well as fail transaction
         """
-        if task.exception() is not None:
-            self._message_accumulator.fail_all(task.exception())
+        try:
+            task_exception = task.exception()
+        except asyncio.CancelledError:
+            # Skip setting CancelledError on Futures. Cleanup is already done in _sender_routine()
+            return
+
+        if task_exception is not None:
+            self._message_accumulator.fail_all(task_exception)
             if self._txn_manager is not None:
-                self._txn_manager.fatal_error(task.exception())
+                self._txn_manager.fatal_error(task_exception)
 
     @property
     def sender_task(self):
