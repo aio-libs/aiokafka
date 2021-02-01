@@ -5,7 +5,7 @@ mypy==0.800
 isort[colors]==5.7.0
 pytest==6.2.2
 pytest-cov==2.11.1
-pytest-asyncio==0.12.0
+pytest-asyncio==0.14.0
 docker==4.2.1
 lz4==3.1.0
 xxhash==1.4.3
