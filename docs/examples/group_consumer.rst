@@ -1,4 +1,3 @@
-
 Group consumer
 ==============
 
@@ -10,8 +9,9 @@ return messages for the assigned partitions.
 
 Note:
     Though Consumer will never return messages from not assigned partitions,
-    if you are in autocommit=False mode, you should re-check assignment
-    before processing next message returned by `getmany()` call.
+    if you are in ``autocommit=False`` mode, you should re-check assignment
+    before processing next message returned by
+    :meth:`~.AIOKafkaConsumer.getmany` call.
 
 
 Producer:
@@ -70,50 +70,54 @@ Consumer:
 
 Run example scripts:
 
-creating topic "some-topic" with 2 partitions using standard Kafka utility:
+* Creating topic ``some-topic`` with 2 partitions using standard Kafka utility::
 
->>> bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 2 --topic some-topic
+    bin/kafka-topics.sh --create \
+      --zookeeper localhost:2181 \
+      --replication-factor 1 \
+      --partitions 2 \
+      --topic some-topic
 
-terminal#1:
+* terminal#1::
 
->>> python3 consumer.py TEST_GROUP 2
+    python3 consumer.py TEST_GROUP 2
 
-terminal#2:
+* terminal#2::
 
->>> python3 consumer.py TEST_GROUP 2
+    python3 consumer.py TEST_GROUP 2
 
-terminal#3:
+* terminal#3::
 
->>> python3 consumer.py OTHER_GROUP 4
+    python3 consumer.py OTHER_GROUP 4
 
-terminal#4:
+* terminal#4::
 
->>> python3 producer.py 0 'message #1'
->>> python3 producer.py 0 'message #2'
->>> python3 producer.py 1 'message #3'
->>> python3 producer.py 1 'message #4'
+    python3 producer.py 0 'message #1'
+    python3 producer.py 0 'message #2'
+    python3 producer.py 1 'message #3'
+    python3 producer.py 1 'message #4'
 
 
 Output:
 
-terminal#1:
+* terminal#1::
 
-Message from partition [0]: b'message #1'
+    Message from partition [0]: b'message #1'
 
-Message from partition [0]: b'message #2'
+    Message from partition [0]: b'message #2'
 
-terminal#2:
+* terminal#2::
 
-Message from partition [1]: b'message #3'
+    Message from partition [1]: b'message #3'
 
-Message from partition [1]: b'message #4'
+    Message from partition [1]: b'message #4'
 
-terminal#3:
+* terminal#3::
 
-Message from partition [1]: b'message #3'
+    Message from partition [1]: b'message #3'
 
-Message from partition [1]: b'message #4'
+    Message from partition [1]: b'message #4'
 
-Message from partition [0]: b'message #1'
+    Message from partition [0]: b'message #1'
 
-Message from partition [0]: b'message #2'
+    Message from partition [0]: b'message #2'

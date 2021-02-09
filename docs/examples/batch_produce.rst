@@ -1,11 +1,11 @@
-
 Batch producer
 ==============
 
 If your application needs precise control over batch creation and submission
 and you're willing to forego the niceties of automatic serialization and
-partition selection, you  may use the simple ``create_batch()`` and
-``send_batch()`` interface.
+partition selection, you  may use the simple
+:meth:`~.AIOKafkaProducer.create_batch` and
+:meth:`~.AIOKafkaProducer.send_batch` interface.
 
 
 Producer
@@ -46,10 +46,10 @@ Producer
     asyncio.run(send_many(1000))
 
 
-Output (topic `my_topic` has 3 partitions):
+Output (topic ``my_topic`` has 3 partitions)::
 
->>> python3 batch_produce.py
-329 messages sent to partition 2
-327 messages sent to partition 0
-327 messages sent to partition 0
-17 messages sent to partition 1
+  >>> python3 batch_produce.py
+  329 messages sent to partition 2
+  327 messages sent to partition 0
+  327 messages sent to partition 0
+  17 messages sent to partition 1

@@ -5,19 +5,20 @@ Producer client
 
 .. _delivery semantics: https://kafka.apache.org/documentation/#semantics
 
-:ref:`AIOKafkaProducer <aiokafka-producer>` is a client that publishes records
+:class:`.AIOKafkaProducer` is a client that publishes records
 to the Kafka cluster. Most simple usage would be::
 
-    producer = aiokafka.AIOKafkaProducer(bootstrap_servers='localhost:9092')
+    producer = aiokafka.AIOKafkaProducer(bootstrap_servers="localhost:9092")
     await producer.start()
     try:
         await producer.send_and_wait("my_topic", b"Super message")
     finally:
         await producer.stop()
 
-Under the hood, **Producer** does quite some work on message delivery including
-batching, retries, etc. All of it can be configured, so let's go through some
-components for a better understanding of the configuration options.
+Under the hood, :class:`.AIOKafkaProducer` does quite some work on message
+delivery including batching, retries, etc. All of it can be configured, so let's
+go through some components for a better understanding of the configuration
+options.
 
 
 Message buffering
@@ -28,7 +29,7 @@ directly to the broker, it's actually not sent right away, but rather added to
 a **buffer space**. A background task will then get batches of messages and
 send them to appropriate nodes in the cluster. This batching scheme allows
 *more throughput and more efficient compression*. To see it more clearly lets
-avoid ``send_and_wait`` shortcut::
+avoid the :meth:`~.AIOKafkaProducer.send_and_wait` shortcut::
 
     # Will add the message to 1st partition's batch. If this method times out,
     # we can say for sure that message will never be sent.
@@ -41,24 +42,24 @@ avoid ``send_and_wait`` shortcut::
 
 
 Batches themselves are created **per partition** with a maximum size of
-``max_batch_size``. Messages in a batch are strictly in append order and only
-1 batch per partition is sent at a time (*aiokafka* does not support
+`max_batch_size`. Messages in a batch are strictly in append order and only
+1 batch per partition is sent at a time (**aiokafka** does not support
 ``max.inflight.requests.per.connection`` option present in Java client). This
 makes a strict guarantee on message order in a partition.
 
 By default, a new batch is sent immediately after the previous one (even if
 it's not full). If you want to reduce the number of requests you can set
-``linger_ms`` to something other than 0. This will add an additional delay
+`linger_ms` to something other than 0. This will add an additional delay
 before sending next batch if it's not yet full.
 
-``aiokafka`` does not (yet!) support some options, supported by Java's client:
+**aiokafka** does not (yet!) support some options, supported by Java's client:
 
-    * ``buffer.memory`` to limit how much buffer space is used by Producer to
-      schedule requests in *all partitions*.
-    * ``max.block.ms`` to limit the amount of time ``send()`` coroutine will
-      wait for buffer append when the memory limit is reached. For now use::
+* ``buffer.memory`` to limit how much buffer space is used by Producer to
+  schedule requests in *all partitions*.
+* ``max.block.ms`` to limit the amount of time :meth:`~.AIOKafkaProducer.send` coroutine will
+  wait for buffer append when the memory limit is reached. For now use::
 
-        await asyncio.wait_for(producer.send(...), timeout=timeout)
+    await asyncio.wait_for(producer.send(...), timeout=timeout)
 
 If your use case requires direct batching control, see `Direct batch control`_.
 
@@ -66,22 +67,22 @@ If your use case requires direct batching control, see `Direct batch control`_.
 Retries and Message acknowledgement
 -----------------------------------
 
-*aiokafka* will retry most errors automatically, but only until
-``request_timeout_ms``. If a request is expired, the last error will be raised
+**aiokafka** will retry most errors automatically, but only until
+`request_timeout_ms`. If a request is expired, the last error will be raised
 to the application. Retrying messages on application level after an error
 will potentially lead to duplicates, so it's up to the user to decide.
 
-For example, if ``RequestTimedOutError`` is raised, Producer can't be sure if
+For example, if :exc:`~.RequestTimedOutError` is raised, Producer can't be sure if
 the Broker wrote the request or not.
 
-The ``acks`` option controls when the produce request is considered
+The `acks` option controls when the produce request is considered
 acknowledged.
 
 The most durable setting is ``acks="all"``. Broker will wait for all
 available replicas to write the request before replying to Producer. Broker
 will consult it's ``min.insync.replicas`` setting to know the minimal amount of
 replicas to write. If there's not enough in sync replicas either
-``NotEnoughReplicasError`` or ``NotEnoughReplicasAfterAppendError`` will be
+:exc:`~.NotEnoughReplicasError` or :exc:`~.NotEnoughReplicasAfterAppendError` will be
 raised. It's up to the user what to do in those cases, as the errors are not
 retriable.
 
@@ -97,7 +98,7 @@ Idempotent produce
 
 As of Kafka 0.11 the Brokers support idempotent producing, that will prevent
 the Producer from creating duplicates on retries. *aiokafka* supports this mode
-by passing the parameter ``enable_idempotence=True`` to ``AIOKafkaProducer``::
+by passing the parameter ``enable_idempotence=True`` to :class:`~.AIOKafkaProducer`::
 
     producer = aiokafka.AIOKafkaProducer(
         bootstrap_servers='localhost:9092',
@@ -111,9 +112,9 @@ by passing the parameter ``enable_idempotence=True`` to ``AIOKafkaProducer``::
 This option will change a bit the logic on message delivery:
 
     * The above mentioned ``ack="all"`` will be forced. If any other value is
-      explicitly passed with ``enable_idempotence=True`` a ``ValueError`` will
+      explicitly passed with ``enable_idempotence=True`` a :exc:`ValueError` will
       be raised.
-    * I contrast to general mode, will not raise ``RequestTimedOutError``
+    * I contrast to general mode, will not raise :exc:`~.RequestTimedOutError`
       errors and will not expire batch delivery after ``request_timeout_ms``
       passed.
 
@@ -141,7 +142,7 @@ attendant APIs, you must set the ``transactional_id`` configuration property::
     finally:
         await producer.stop()
 
-If the ``transactional_id`` is set, idempotence is automatically enabled along
+If the `transactional_id` is set, idempotence is automatically enabled along
 with the producer configs which idempotence depends on. Further, topics which
 are included in transactions should be configured for durability. In
 particular, the ``replication.factor`` should be at least ``3``, and the
@@ -150,17 +151,17 @@ order for transactional guarantees to be realized from end-to-end, the
 consumers must be configured to read only committed messages as well. See
 :ref:`Reading Transactional Messages <transactional-consume>`.
 
-The purpose of the ``transactional_id`` is to enable transaction recovery
+The purpose of the `transactional_id` is to enable transaction recovery
 across  multiple sessions of a single producer instance. It would typically be
 derived from the shard identifier in a partitioned, stateful, application. As
 such, it should be unique to each producer instance running within a
-partitioned application. Using the same ``transactional_id`` will cause the
-previous instance to raise an exception ``ProducerFenced`` that is not
+partitioned application. Using the same `transactional_id` will cause the
+previous instance to raise an exception :exc:`~.ProducerFenced` that is not
 retriable and will force it to exit.
 
-Besides the ``transaction()`` shortcut producer also supports a set of API's
-similar to ones in Java Client. See :ref:`AIOKafkaProducer <aiokafka-producer>`
-API docs.
+Besides, the :meth:`~.AIOKafkaProducer.transaction` shortcut producer also
+supports a set of API's similar to ones in Java Client. See the
+:class:`.AIOKafkaProducer` API docs.
 
 Besides being able to commit several topics atomically, as offsets are also
 stored in a separate system topic it's possible to commit a consumer offset as
@@ -179,22 +180,11 @@ See a more full example in
 .. versionadded:: 0.5.0
 
 
-Returned RecordMetadata object
-------------------------------
+Returned ``RecordMetadata`` object
+----------------------------------
 
-After a message is sent the user receives a ``RecordMetadata`` object
-containing fields:
-
-    * ``offset`` - unique offset of the message in this partition. See
-      :ref:`Offsets and Consumer Position <offset_and_position>` for
-      more details on offsets.
-    * ``topic`` - *string* topic name
-    * ``partition`` - *int* partition number
-    * ``timestamp`` - *int* timestamp in epoch milliseconds (from Jan 1 1970
-      UTC)
-    * ``timestamp_type`` - *int* if broker respected the timestamp passed to
-      ``send()`` 0 will be returned (CreateTime). If Broker set it's own
-      timestamp 1 will be returned (LogAppendTime).
+After a message is sent, the user receives a :class:`~.structs.RecordMetadata`
+object.
 
 .. note:: In a very rare case, when Idempotent or Transactional producer is
     used and there was a long wait between batch initial send and a retry,
@@ -206,7 +196,8 @@ Direct batch control
 --------------------
 
 Users who need precise control over batch flow may use the lower-level
-``create_batch()`` and ``send_batch()`` interfaces::
+:meth:`~.AIOKafkaProducer.create_batch` and
+:meth:`~.AIOKafkaProducer.send_batch` interfaces::
 
     # Create the batch without queueing for delivery.
     batch = producer.create_batch()
@@ -230,7 +221,9 @@ Users who need precise control over batch flow may use the lower-level
     record = await fut
 
 While any number of batches may be created, only a single batch per partition
-is sent at a time. Additional calls to ``send_batch()`` against the same
-partition will wait for the inflight batch to be delivered before sending.
+is sent at a time. Additional calls to :meth:`~.AIOKafkaProducer.send_batch`
+against the same partition will wait for the inflight batch to be delivered
+before sending.
 
-Upon delivery, ``record.offset`` will match the batch's first message.
+Upon delivery, the ``record``'s :attr:`~.structs.RecordMetadata.offset` will match the
+batch's first message.

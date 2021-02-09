@@ -1,4 +1,3 @@
-
 Custom partitioner
 ==================
 
@@ -42,10 +41,10 @@ Producer
 
 
 
-Output (topic `foobar` has 10 partitions):
+Output (topic ``foobar`` has 10 partitions):
 
->>> python3 producer.py
-'1' produced in partition: 9
-'2' produced in partition: 6
-'3' produced in partition: 0
+  >>> python3 producer.py
+  '1' produced in partition: 9
+  '2' produced in partition: 6
+  '3' produced in partition: 0
 

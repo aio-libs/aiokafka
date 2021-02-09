@@ -1,8 +1,7 @@
-
 Serialization and compression
 =============================
 
-Kafka supports several compression types: 'gzip', 'snappy' and 'lz4'. You only
+Kafka supports several compression types: ``gzip``, ``snappy`` and ``lz4``. You only
 need to specify the compression in Kafka Producer, Consumer will decompress
 automatically.
 
@@ -11,9 +10,11 @@ Note:
     larger batches. You can consider setting `linger_ms` to batch more data
     before sending.
 
-By default ``msg.value`` and ``msg.key`` attributes of returned ``msg``
-instances are `bytes`. You can use custom serializer/deserializer hooks to
-operate on objects instead of bytes in those attributes.
+By default :attr:`~aiokafka.structs.ConsumerRecord.value` and
+:attr:`~aiokafka.structs.ConsumerRecord.key` attributes of returned
+:class:`~aiokafka.structs.ConsumerRecord` instances are :class:`bytes`. You can
+use custom serializer/deserializer hooks to operate on objects instead of
+:class:`bytes` in those attributes.
 
 Producer
 
@@ -73,8 +74,7 @@ Consumer
 
 Output:
 
->>> python3 producer.py
->>> python3 consumer.py
-<class 'dict'> {'a': 123.4, 'b': 'some string'}
-<class 'list'> [1,2,3,4]
-
+  >>> python3 producer.py
+  >>> python3 consumer.py
+  <class 'dict'> {'a': 123.4, 'b': 'some string'}
+  <class 'list'> [1,2,3,4]

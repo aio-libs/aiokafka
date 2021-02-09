@@ -3,7 +3,7 @@
 Using SSL with aiokafka
 =======================
 
-An example of SSL usage with `aiokafka`. Please read :ref:`ssl_auth` for more
+An example of SSL usage with **aiokafka**. Please read :ref:`ssl_auth` for more
 information.
 
 .. code:: python
@@ -51,6 +51,5 @@ information.
 
 Output:
 
->>> python3 ssl_consume_produce.py
-Success RecordMetadata(topic='my_topic', partition=0, topic_partition=TopicPartition(topic='my_topic', partition=0), offset=32) ConsumerRecord(topic='my_topic', partition=0, offset=32, timestamp=1479393347381, timestamp_type=0, key=None, value=b'Super Message', checksum=469650252, serialized_key_size=-1, serialized_value_size=13)
-
+  >>> python3 ssl_consume_produce.py
+  Success RecordMetadata(topic='my_topic', partition=0, topic_partition=TopicPartition(topic='my_topic', partition=0), offset=32) ConsumerRecord(topic='my_topic', partition=0, offset=32, timestamp=1479393347381, timestamp_type=0, key=None, value=b'Super Message', checksum=469650252, serialized_key_size=-1, serialized_value_size=13)
