@@ -153,7 +153,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     async def test_producer_context_manager(self):
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts)
-        async with producer:
+        async with producer as prod:
+            assert prod is producer
             assert producer._sender._sender_task is not None
             await producer.send(self.topic, b'value', key=b'KEY')
         assert producer._closed
@@ -162,7 +163,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts)
         with pytest.raises(ValueError):
-            async with producer:
+            async with producer as prod:
+                assert prod is producer
                 assert producer._sender._sender_task is not None
                 await producer.send(self.topic, b'value', key=b'KEY')
                 raise ValueError()
