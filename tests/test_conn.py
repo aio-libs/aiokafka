@@ -247,6 +247,34 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         conn.close()
         self.assertFalse(conn.connected())
 
+    @run_until_complete
+    async def test_semi_broken_connection(self):
+        """This testcase tries to replicate what happens on connection to semi-broken AWS MSK broker.
+
+        Connection could be established, but then some timeout occurs, and connection is not being destroyed
+        properly, producing 'Unclosed AIOKafkaConnection' and calling loop exception handler, which could lead to
+        failing the whole app for example if we're running via aiorun with `stop_on_unhandled_errors=True`.
+        """
+        host, port = self.kafka_host, self.kafka_port
+
+        def mock_connect(slf):
+            slf._reader = mock.MagicMock()
+            slf._reader.at_eof = mock.MagicMock(return_value=False)
+            raise asyncio.TimeoutError
+
+        # We cannot catch ResourceWarning from __del__, so just monitor `close()` call
+        close_called = False
+
+        def mock_close(slf):
+            slf._reader = None
+            nonlocal close_called
+            close_called = True
+
+        with mock.patch.object(AIOKafkaConnection, 'connect', mock_connect):
+            with mock.patch.object(AIOKafkaConnection, 'close', mock_close):
+                await create_conn(host, port)
+                self.assertTrue(close_called)
+
     def test_connection_version_info(self):
         # All version supported
         version_info = VersionInfo({

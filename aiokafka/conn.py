@@ -94,7 +94,12 @@ async def create_conn(
         sasl_kerberos_domain_name=sasl_kerberos_domain_name,
         sasl_oauth_token_provider=sasl_oauth_token_provider,
         version_hint=version_hint)
-    await conn.connect()
+    try:
+        await conn.connect()
+    except Exception:
+        # Cleanup to prevent `Unclosed AIOKafkaConnection` if we failed to connect here
+        conn.close()
+        raise
     return conn
 
 

@@ -1,0 +1,1 @@
+Fix Unclosed AIOKafkaConnection when connecting to semi-broken broker
