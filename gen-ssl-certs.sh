@@ -135,7 +135,7 @@ EOF
     else
 	# Standard OpenSSL keys
 	echo "############ Generating key"
-	openssl genrsa -des3 -passout "pass:$PASS" -out ${PFX}client.key 1024 
+	openssl genrsa -des3 -passout "pass:$PASS" -out ${PFX}client.key 2048
 	
 	echo "############ Generating request"
 	openssl req -passin "pass:$PASS" -passout "pass:$PASS" -key ${PFX}client.key -new -out ${PFX}client.req \
