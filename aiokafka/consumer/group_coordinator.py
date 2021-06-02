@@ -1356,6 +1356,9 @@ class CoordinatorGroupRebalance:
         # set it directly after JoinGroup to avoid a false rejoin in case
         # ``_perform_assignment()`` does a metadata update.
         self._coordinator._rejoin_needed_fut = create_future()
+        req_generation = self._coordinator.generation
+        req_member_id = self._coordinator.member_id
+
         try:
             response = await self._coordinator._send_req(request)
         except Errors.KafkaError:
@@ -1368,6 +1371,10 @@ class CoordinatorGroupRebalance:
         if error_type is Errors.NoError:
             log.info("Successfully synced group %s with generation %s",
                      self.group_id, self._coordinator.generation)
+            # try making sure to get the right member_id/generation in case they changed
+            # while the rejoin was taking place
+            self._coordinator.generation = req_generation
+            self._coordinator.member_id = req_member_id
             return response.member_assignment
 
         # Error case
