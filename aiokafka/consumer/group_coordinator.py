@@ -1371,7 +1371,7 @@ class CoordinatorGroupRebalance:
         if error_type is Errors.NoError:
             log.info("Successfully synced group %s with generation %s",
                      self.group_id, self._coordinator.generation)
-            # try making sure to get the right member_id/generation in case they changed
+            # make sure the right member_id/generation is set in case they changed
             # while the rejoin was taking place
             self._coordinator.generation = req_generation
             self._coordinator.member_id = req_member_id
