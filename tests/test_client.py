@@ -13,6 +13,7 @@ from kafka.protocol.metadata import (
     MetadataResponse_v0 as MetadataResponse)
 from kafka.protocol.fetch import FetchRequest_v0
 
+from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient, ConnectionGroup, CoordinationType
 from aiokafka.conn import AIOKafkaConnection, CloseReason
 from aiokafka.util import create_task, get_running_loop
@@ -35,7 +36,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(bootstrap_servers=[
             '127.0.0.1:9092', '127.0.0.2:9092', '127.0.0.3:9092'])
         self.assertEqual(
-            '<AIOKafkaClient client_id=aiokafka-0.7.0>',
+            '<AIOKafkaClient client_id=aiokafka-{}>'.format(__version__),
             client.__repr__())
         self.assertEqual(
             sorted([('127.0.0.1', 9092, socket.AF_INET),
