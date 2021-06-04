@@ -312,6 +312,41 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertEqual(coordinator.need_rejoin(subsc), True)
 
     @run_until_complete
+    async def test_generation_change_during_rejoin_sync(self):
+        coordinator = mock.MagicMock()
+        subscription = mock.MagicMock()
+        assignors = mock.MagicMock()
+        member_assignment = mock.Mock()
+
+        rebalance = CoordinatorGroupRebalance(
+            coordinator, "group_id", "coordinator_id", subscription,
+            assignors, 1000, 1000)
+
+        async def send_req(request):
+            await asyncio.sleep(0.1)
+            resp = mock.MagicMock()
+            resp.member_assignment = member_assignment
+            resp.error_code = 0
+            return resp
+
+        coordinator._send_req.side_effect = send_req
+
+        request = mock.MagicMock()
+        coordinator.generation = 1
+        coordinator.member_id = "member_id"
+        sync_req = asyncio.ensure_future(rebalance._send_sync_group_request(request))
+        await asyncio.sleep(0.05)
+
+        coordinator.generation = -1
+        coordinator.member_id = "member_id-changed"
+
+        assert await sync_req == member_assignment
+
+        # make sure values are set correctly
+        assert coordinator.generation == 1
+        assert coordinator.member_id == "member_id"
+
+    @run_until_complete
     async def test_subscribe_pattern(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
