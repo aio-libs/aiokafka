@@ -27,7 +27,7 @@ from .subscription_state import SubscriptionState
 log = logging.getLogger(__name__)
 
 
-class AIOKafkaConsumer(object):
+class AIOKafkaConsumer:
     """
     A client that consumes records from a Kafka cluster.
 
@@ -322,7 +322,7 @@ class AIOKafkaConsumer(object):
 
     def __del__(self, _warnings=warnings):
         if self._closed is False:
-            _warnings.warn("Unclosed AIOKafkaConsumer {!r}".format(self),
+            _warnings.warn(f"Unclosed AIOKafkaConsumer {self!r}",
                            ResourceWarning,
                            source=self)
             context = {'consumer': self,
@@ -549,7 +549,7 @@ class AIOKafkaConsumer(object):
             for tp in offsets:
                 if tp not in assignment.tps:
                     raise IllegalStateError(
-                        "Partition {} is not assigned".format(tp))
+                        f"Partition {tp} is not assigned")
 
         await self._coordinator.commit_offsets(assignment, offsets)
 
@@ -630,7 +630,7 @@ class AIOKafkaConsumer(object):
         while True:
             if not self._subscription.is_assigned(partition):
                 raise IllegalStateError(
-                    'Partition {} is not assigned'.format(partition))
+                    f'Partition {partition} is not assigned')
 
             assignment = self._subscription.subscription.assignment
             tp_state = assignment.state_value(partition)
@@ -645,7 +645,7 @@ class AIOKafkaConsumer(object):
                 if not tp_state.has_valid_position:
                     if self._subscription.subscription is None:
                         raise IllegalStateError(
-                            'Partition {} is not assigned'.format(partition))
+                            f'Partition {partition} is not assigned')
                     if self._subscription.subscription.assignment is None:
                         self._coordinator.check_errors()
                         await self._subscription.wait_for_assignment()
@@ -772,7 +772,7 @@ class AIOKafkaConsumer(object):
             )
             if not_assigned:
                 raise IllegalStateError(
-                    "Partitions {} are not assigned".format(not_assigned))
+                    f"Partitions {not_assigned} are not assigned")
 
         for tp in partitions:
             log.debug("Seeking to beginning of partition %s", tp)
@@ -814,7 +814,7 @@ class AIOKafkaConsumer(object):
             )
             if not_assigned:
                 raise IllegalStateError(
-                    "Partitions {} are not assigned".format(not_assigned))
+                    f"Partitions {not_assigned} are not assigned")
 
         for tp in partitions:
             log.debug("Seeking to end of partition %s", tp)
@@ -861,7 +861,7 @@ class AIOKafkaConsumer(object):
             )
             if not_assigned:
                 raise IllegalStateError(
-                    "Partitions {} are not assigned".format(not_assigned))
+                    f"Partitions {not_assigned} are not assigned")
 
         committed_offsets = {}
         for tp in partitions:
@@ -1044,7 +1044,7 @@ class AIOKafkaConsumer(object):
                 pattern = re.compile(pattern)
             except re.error as err:
                 raise ValueError(
-                    "{!r} is not a valid pattern: {}".format(pattern, err))
+                    f"{pattern!r} is not a valid pattern: {err}")
             self._subscription.subscribe_pattern(
                 pattern=pattern, listener=listener)
             # NOTE: set_topics will trigger a rebalance, so the coordinator

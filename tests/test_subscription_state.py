@@ -125,7 +125,7 @@ async def test_unsubscribe(subscription_state):
 
     # After unsubscribe you can change the type to say pattern.
     subscription_state.subscribe_pattern(re.compile("pattern"))
-    subscription_state.subscribe_from_pattern(set(["tp33"]))
+    subscription_state.subscribe_from_pattern({"tp33"})
 
     assert subscription_state.subscription is not None
 
@@ -146,9 +146,9 @@ async def test_seek(subscription_state):
 
 
 async def test_assigned_partitions(subscription_state):
-    assert subscription_state.assigned_partitions() == set([])
-    subscription_state.subscribe(topics=set(["tp1"]))
-    assert subscription_state.assigned_partitions() == set([])
+    assert subscription_state.assigned_partitions() == set()
+    subscription_state.subscribe(topics={"tp1"})
+    assert subscription_state.assigned_partitions() == set()
     assignment = {TopicPartition("tp1", 0)}
     subscription_state.assign_from_subscribed(assignment)
     assert subscription_state.assigned_partitions() == assignment
@@ -158,9 +158,9 @@ async def test_is_assigned(subscription_state):
     tp1 = TopicPartition("topic", 0)
     tp2 = TopicPartition("topic", 1)
     assert not subscription_state.is_assigned(tp1)
-    subscription_state.subscribe(set(["topic"]))
+    subscription_state.subscribe({"topic"})
     assert not subscription_state.is_assigned(tp1)
-    subscription_state.assign_from_subscribed(set([tp1]))
+    subscription_state.assign_from_subscribed({tp1})
     assert subscription_state.is_assigned(tp1)
     assert not subscription_state.is_assigned(tp2)
 
@@ -169,7 +169,7 @@ async def test_assigned_state(subscription_state):
     tp1 = TopicPartition("topic", 0)
     tp2 = TopicPartition("topic", 1)
 
-    subscription_state.assign_from_user(set([tp1]))
+    subscription_state.assign_from_user({tp1})
     with pytest.raises(IllegalStateError):
         subscription_state._assigned_state(tp2)
 

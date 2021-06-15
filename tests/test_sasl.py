@@ -36,7 +36,7 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
     @property
     def sasl_hosts(self):
         # Produce/consume by SASL_PLAINTEXT
-        return "{}:{}".format(self.kafka_host, self.kafka_sasl_plain_port)
+        return f"{self.kafka_host}:{self.kafka_sasl_plain_port}"
 
     @property
     def group_id(self):

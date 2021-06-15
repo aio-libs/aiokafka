@@ -184,7 +184,7 @@ class AIOKafkaConnection:
     # that
     def __del__(self, _warnings=warnings):
         if self.connected():
-            _warnings.warn("Unclosed AIOKafkaConnection {!r}".format(self),
+            _warnings.warn(f"Unclosed AIOKafkaConnection {self!r}",
                            ResourceWarning,
                            source=self)
             if self._loop.is_closed():
@@ -364,7 +364,7 @@ class AIOKafkaConnection:
         service = self._sasl_kerberos_service_name
         domain = self._sasl_kerberos_domain_name or self.host
 
-        return "{service}@{domain}".format(service=service, domain=domain)
+        return f"{service}@{domain}"
 
     @staticmethod
     def _on_read_task_error(self_ref, read_task):
@@ -414,7 +414,7 @@ class AIOKafkaConnection:
     def send(self, request, expect_response=True):
         if self._writer is None:
             raise Errors.KafkaConnectionError(
-                "No connection to broker at {0}:{1}"
+                "No connection to broker at {}:{}"
                 .format(self._host, self._port))
 
         correlation_id = self._next_correlation_id()
@@ -428,7 +428,7 @@ class AIOKafkaConnection:
         except OSError as err:
             self.close(reason=CloseReason.CONNECTION_BROKEN)
             raise Errors.KafkaConnectionError(
-                "Connection at {0}:{1} broken: {2}".format(
+                "Connection at {}:{} broken: {}".format(
                     self._host, self._port, err))
 
         self.log.debug(
@@ -443,7 +443,7 @@ class AIOKafkaConnection:
     def _send_sasl_token(self, payload, expect_response=True):
         if self._writer is None:
             raise Errors.KafkaConnectionError(
-                "No connection to broker at {0}:{1}"
+                "No connection to broker at {}:{}"
                 .format(self._host, self._port))
 
         size = struct.pack(">i", len(payload))
@@ -452,7 +452,7 @@ class AIOKafkaConnection:
         except OSError as err:
             self.close(reason=CloseReason.CONNECTION_BROKEN)
             raise Errors.KafkaConnectionError(
-                "Connection at {0}:{1} broken: {2}".format(
+                "Connection at {}:{} broken: {}".format(
                     self._host, self._port, err))
 
         if not expect_response:
@@ -476,7 +476,7 @@ class AIOKafkaConnection:
             for _, _, fut in self._requests:
                 if not fut.done():
                     error = Errors.KafkaConnectionError(
-                        "Connection at {0}:{1} closed".format(
+                        "Connection at {}:{} closed".format(
                             self._host, self._port))
                     if exc is not None:
                         error.__cause__ = exc
@@ -751,7 +751,7 @@ class OAuthAuthenticator(BaseSaslAuthenticator):
             extensions = self._sasl_oauth_token_provider.extensions()
             if len(extensions) > 0:
                 msg = "\x01".join(
-                    ["{}={}".format(k, v) for k, v in extensions.items()])
+                    [f"{k}={v}" for k, v in extensions.items()])
                 return "\x01" + msg
 
         return ""

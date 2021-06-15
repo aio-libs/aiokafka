@@ -241,7 +241,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
             h_key_len, pos = decode_varint(buffer, pos)
             if h_key_len < 0:
                 raise CorruptRecordException(
-                    "Invalid negative header key size {}".format(h_key_len))
+                    f"Invalid negative header key size {h_key_len}")
             h_key = buffer[pos: pos + h_key_len].decode("utf-8")
             pos += h_key_len
 
@@ -281,7 +281,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
             msg = self._read_msg()
         except (ValueError, IndexError) as err:
             raise CorruptRecordException(
-                "Found invalid record structure: {!r}".format(err))
+                f"Found invalid record structure: {err!r}")
         else:
             self._next_record_index += 1
         return msg
@@ -410,10 +410,10 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
             raise TypeError(timestamp)
         if not (key is None or get_type(key) in byte_like):
             raise TypeError(
-                "Not supported type for key: {}".format(type(key)))
+                f"Not supported type for key: {type(key)}")
         if not (value is None or get_type(value) in byte_like):
             raise TypeError(
-                "Not supported type for value: {}".format(type(value)))
+                f"Not supported type for value: {type(value)}")
 
         # We will always add the first message, so those will be set
         if self._first_timestamp is None:

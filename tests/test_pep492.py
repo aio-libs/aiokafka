@@ -93,7 +93,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
 
         async def iterator():
             async for msg in consumer:  # pragma: no cover
-                assert False, "No items should be here, got {}".format(msg)
+                assert False, f"No items should be here, got {msg}"
 
         task = create_task(iterator())
         await asyncio.sleep(0.1)

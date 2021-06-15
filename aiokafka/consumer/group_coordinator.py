@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 UNKNOWN_OFFSET = -1
 
 
-class BaseCoordinator(object):
+class BaseCoordinator:
 
     def __init__(self, client, subscription, *,
                  exclude_internal_topics=True):
@@ -378,7 +378,7 @@ class GroupCoordinator(BaseCoordinator):
                 log.error("OffsetCommit failed before join, ignoring: %s", err)
             revoked = previous_assignment.tps
         else:
-            revoked = set([])
+            revoked = set()
 
         # execute the user's callback before rebalance
         log.info("Revoking previously assigned partitions %s for group %s",
@@ -559,7 +559,7 @@ class GroupCoordinator(BaseCoordinator):
             log.error(
                 "Unexpected error in coordinator routine", exc_info=True)
             kafka_exc = Errors.KafkaError(
-                "Unexpected error during coordination {!r}".format(exc))
+                f"Unexpected error during coordination {exc!r}")
             self._subscription.abort_waiters(kafka_exc)
             raise kafka_exc
 
