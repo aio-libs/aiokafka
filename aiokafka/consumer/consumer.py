@@ -346,8 +346,9 @@ class AIOKafkaConsumer:
         await self._wait_topics()
 
         if self._client.api_version < (0, 9):
-            raise ValueError("Unsupported Kafka version: {}".format(
-                self._client.api_version))
+            raise ValueError(
+                f"Unsupported Kafka version: {self._client.api_version}"
+            )
 
         if self._isolation_level == "read_committed" and \
                 self._client.api_version < (0, 11):

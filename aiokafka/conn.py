@@ -63,8 +63,7 @@ class VersionInfo:
                         req_klass.API_VERSION <= supported_versions[1]:
                     return req_klass
         raise Errors.KafkaError(
-            "Could not pick a version for API_KEY={} from {}. ".format(
-                api_key, supported_versions)
+            f"Could not pick a version for API_KEY={api_key} from {supported_versions}."
         )
 
 
@@ -242,8 +241,7 @@ class AIOKafkaConnection:
         versions = {}
         for api_key, min_version, max_version in response.api_versions:
             assert min_version <= max_version, (
-                "{} should be less than or equal to {} for {}".format(
-                    min_version, max_version, api_key)
+                f"{min_version} should be less than or equal to {max_version} for {api_key}"
             )
             versions[api_key] = (min_version, max_version)
         self._version_info = VersionInfo(versions)
@@ -401,7 +399,7 @@ class AIOKafkaConnection:
                 wake_up_in, self._idle_check, self_ref)
 
     def __repr__(self):
-        return "<AIOKafkaConnection host={0.host} port={0.port}>".format(self)
+        return f"<AIOKafkaConnection host={self.host} port={self.port}>"
 
     @property
     def host(self):
@@ -414,8 +412,8 @@ class AIOKafkaConnection:
     def send(self, request, expect_response=True):
         if self._writer is None:
             raise Errors.KafkaConnectionError(
-                "No connection to broker at {}:{}"
-                .format(self._host, self._port))
+                f"No connection to broker at {self._host}:{self._port}"
+            )
 
         correlation_id = self._next_correlation_id()
         header = RequestHeader(request,
@@ -428,8 +426,8 @@ class AIOKafkaConnection:
         except OSError as err:
             self.close(reason=CloseReason.CONNECTION_BROKEN)
             raise Errors.KafkaConnectionError(
-                "Connection at {}:{} broken: {}".format(
-                    self._host, self._port, err))
+                f"Connection at {self._host}:{self._port} broken: {err}"
+            )
 
         self.log.debug(
             '%s Request %d: %s', self, correlation_id, request)
@@ -452,8 +450,8 @@ class AIOKafkaConnection:
         except OSError as err:
             self.close(reason=CloseReason.CONNECTION_BROKEN)
             raise Errors.KafkaConnectionError(
-                "Connection at {}:{} broken: {}".format(
-                    self._host, self._port, err))
+                f"Connection at {self._host}:{self._port} broken: {err}"
+            )
 
         if not expect_response:
             return self._writer.drain()
@@ -476,8 +474,7 @@ class AIOKafkaConnection:
             for _, _, fut in self._requests:
                 if not fut.done():
                     error = Errors.KafkaConnectionError(
-                        "Connection at {}:{} closed".format(
-                            self._host, self._port))
+                        f"Connection at {self._host}:{self._port} closed")
                     if exc is not None:
                         error.__cause__ = exc
                         error.__context__ = exc

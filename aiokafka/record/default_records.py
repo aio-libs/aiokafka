@@ -274,8 +274,9 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
         if self._next_record_index >= self._num_records:
             if self._pos != len(self._buffer):
                 raise CorruptRecordException(
-                    "{} unconsumed bytes after all records consumed".format(
-                        len(self._buffer) - self._pos))
+                    f"{len(self._buffer) - self._pos}"
+                    " unconsumed bytes after all records consumed"
+                )
             raise StopIteration
         try:
             msg = self._read_msg()

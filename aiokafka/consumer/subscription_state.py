@@ -578,5 +578,4 @@ class TopicPartitionState:
             self._resume_fut = None
 
     def __repr__(self):
-        return "TopicPartitionState<Status={} position={}>".format(
-            self._status, self._position)
+        return f"TopicPartitionState<Status={self._status} position={self._position}>"

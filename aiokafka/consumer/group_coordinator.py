@@ -812,8 +812,8 @@ class GroupCoordinator(BaseCoordinator):
             raise error_type(self.group_id)
         else:
             err = Errors.KafkaError(
-                "Unexpected exception in heartbeat task: {!r}".format(
-                    error_type()))
+                f"Unexpected exception in heartbeat task: {error_type()!r}"
+            )
             log.error("Heartbeat failed: %r", err)
             raise err
         return False

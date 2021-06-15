@@ -145,8 +145,7 @@ class FetchResult:
         return self._partition_records is not None
 
     def __repr__(self):
-        return "<FetchResult position={!r}>".format(
-            self._partition_records.next_fetch_offset)
+        return f"<FetchResult position={self._partition_records.next_fetch_offset!r}>"
 
 
 class FetchError:
