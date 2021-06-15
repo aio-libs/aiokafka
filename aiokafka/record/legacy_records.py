@@ -283,10 +283,9 @@ class _LegacyRecordPy:
 
     def __repr__(self):
         return (
-            "LegacyRecord(offset={!r}, timestamp={!r}, timestamp_type={!r},"
-            " key={!r}, value={!r}, crc={!r})".format(
-                self._offset, self._timestamp, self._timestamp_type,
-                self._key, self._value, self._crc)
+            f"LegacyRecord(offset={self._offset!r}, timestamp={self._timestamp!r},"
+            f" timestamp_type={self._timestamp_type!r},"
+            f" key={self._key!r}, value={self._value!r}, crc={self._crc!r})"
         )
 
 
@@ -476,9 +475,9 @@ class _LegacyRecordMetadataPy:
 
     def __repr__(self):
         return (
-            "LegacyRecordMetadata(offset={!r}, crc={!r}, size={!r},"
-            " timestamp={!r})".format(
-                self._offset, self._crc, self._size, self._timestamp)
+            f"LegacyRecordMetadata(offset={self._offset!r},"
+            f" crc={self._crc!r}, size={self._size!r},"
+            f" timestamp={self._timestamp!r})"
         )
 
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 #
 # aiokafka documentation build configuration file, created by
 # sphinx-quickstart on Sun Mar 27 22:02:31 2016.

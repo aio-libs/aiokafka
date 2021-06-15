@@ -233,15 +233,16 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
 
         header_count, pos = decode_varint(buffer, pos)
         if header_count < 0:
-            raise CorruptRecordException("Found invalid number of record "
-                                         "headers {}".format(header_count))
+            raise CorruptRecordException(
+                f"Found invalid number of record headers {header_count}"
+            )
         headers = []
         while header_count:
             # Header key is of type String, that can't be None
             h_key_len, pos = decode_varint(buffer, pos)
             if h_key_len < 0:
                 raise CorruptRecordException(
-                    "Invalid negative header key size {}".format(h_key_len))
+                    f"Invalid negative header key size {h_key_len}")
             h_key = buffer[pos: pos + h_key_len].decode("utf-8")
             pos += h_key_len
 
@@ -259,8 +260,9 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
         # validate whether we have read all header bytes in the current record
         if pos - start_pos != length:
             raise CorruptRecordException(
-                "Invalid record size: expected to read {} bytes in record "
-                "payload, but instead read {}".format(length, pos - start_pos))
+                f"Invalid record size: expected to read {length} bytes in record "
+                f"payload, but instead read {pos - start_pos}"
+            )
         self._pos = pos
 
         return DefaultRecord(
@@ -274,14 +276,15 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
         if self._next_record_index >= self._num_records:
             if self._pos != len(self._buffer):
                 raise CorruptRecordException(
-                    "{} unconsumed bytes after all records consumed".format(
-                        len(self._buffer) - self._pos))
+                    f"{len(self._buffer) - self._pos}"
+                    " unconsumed bytes after all records consumed"
+                )
             raise StopIteration
         try:
             msg = self._read_msg()
         except (ValueError, IndexError) as err:
             raise CorruptRecordException(
-                "Found invalid record structure: {!r}".format(err))
+                f"Found invalid record structure: {err!r}")
         else:
             self._next_record_index += 1
         return msg
@@ -349,10 +352,9 @@ class _DefaultRecordPy:
 
     def __repr__(self):
         return (
-            "DefaultRecord(offset={!r}, timestamp={!r}, timestamp_type={!r},"
-            " key={!r}, value={!r}, headers={!r})".format(
-                self._offset, self._timestamp, self._timestamp_type,
-                self._key, self._value, self._headers)
+            f"DefaultRecord(offset={self._offset!r}, timestamp={self._timestamp!r},"
+            f" timestamp_type={self._timestamp_type!r}, key={self._key!r},"
+            f" value={self._value!r}, headers={self._headers!r})"
         )
 
 
@@ -410,10 +412,10 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
             raise TypeError(timestamp)
         if not (key is None or get_type(key) in byte_like):
             raise TypeError(
-                "Not supported type for key: {}".format(type(key)))
+                f"Not supported type for key: {type(key)}")
         if not (value is None or get_type(value) in byte_like):
             raise TypeError(
-                "Not supported type for value: {}".format(type(value)))
+                f"Not supported type for value: {type(value)}")
 
         # We will always add the first message, so those will be set
         if self._first_timestamp is None:
@@ -628,8 +630,8 @@ class _DefaultRecordMetadataPy:
 
     def __repr__(self):
         return (
-            "DefaultRecordMetadata(offset={!r}, size={!r}, timestamp={!r})"
-            .format(self._offset, self._size, self._timestamp)
+            f"DefaultRecordMetadata(offset={self._offset!r},"
+            f" size={self._size!r}, timestamp={self._timestamp!r})"
         )
 
 

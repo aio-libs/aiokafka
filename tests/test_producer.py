@@ -42,7 +42,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertNotEqual(producer.client.api_version, 'auto')
         partitions = await producer.partitions_for('some_topic_name')
         self.assertEqual(len(partitions), 2)
-        self.assertEqual(partitions, set([0, 1]))
+        self.assertEqual(partitions, {0, 1})
         await producer.stop()
         self.assertEqual(producer._closed, True)
 
@@ -389,7 +389,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         context = self.create_ssl_context()
         producer = AIOKafkaProducer(
             bootstrap_servers=[
-                "{}:{}".format(self.kafka_host, self.kafka_ssl_port)],
+                f"{self.kafka_host}:{self.kafka_ssl_port}"],
             security_protocol="SSL", ssl_context=context)
         await producer.start()
         await producer.send_and_wait(topic=topic, value=b"Super msg")

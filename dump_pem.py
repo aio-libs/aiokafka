@@ -62,7 +62,7 @@ def main():
     else:
 
         def write(file, data):
-            print("File {}".format(file))
+            print(f"File {file}")
             print(data)
 
     ks = jks.KeyStore.load(str(args.jks), args.jks_pass)

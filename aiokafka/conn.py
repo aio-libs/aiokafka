@@ -63,8 +63,7 @@ class VersionInfo:
                         req_klass.API_VERSION <= supported_versions[1]:
                     return req_klass
         raise Errors.KafkaError(
-            "Could not pick a version for API_KEY={} from {}. ".format(
-                api_key, supported_versions)
+            f"Could not pick a version for API_KEY={api_key} from {supported_versions}."
         )
 
 
@@ -184,7 +183,7 @@ class AIOKafkaConnection:
     # that
     def __del__(self, _warnings=warnings):
         if self.connected():
-            _warnings.warn("Unclosed AIOKafkaConnection {!r}".format(self),
+            _warnings.warn(f"Unclosed AIOKafkaConnection {self!r}",
                            ResourceWarning,
                            source=self)
             if self._loop.is_closed():
@@ -242,8 +241,8 @@ class AIOKafkaConnection:
         versions = {}
         for api_key, min_version, max_version in response.api_versions:
             assert min_version <= max_version, (
-                "{} should be less than or equal to {} for {}".format(
-                    min_version, max_version, api_key)
+                f"{min_version} should be less than"
+                f" or equal to {max_version} for {api_key}"
             )
             versions[api_key] = (min_version, max_version)
         self._version_info = VersionInfo(versions)
@@ -270,9 +269,9 @@ class AIOKafkaConnection:
 
             if self._sasl_mechanism not in response.enabled_mechanisms:
                 exc = Errors.UnsupportedSaslMechanismError(
-                    'Kafka broker does not support %s sasl mechanism. '
-                    'Enabled mechanisms are: %s'
-                    % (self._sasl_mechanism, response.enabled_mechanisms))
+                    f"Kafka broker does not support {self._sasl_mechanism} sasl "
+                    f"mechanism. Enabled mechanisms are: {response.enabled_mechanisms}"
+                )
                 self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
                 raise exc
 
@@ -364,7 +363,7 @@ class AIOKafkaConnection:
         service = self._sasl_kerberos_service_name
         domain = self._sasl_kerberos_domain_name or self.host
 
-        return "{service}@{domain}".format(service=service, domain=domain)
+        return f"{service}@{domain}"
 
     @staticmethod
     def _on_read_task_error(self_ref, read_task):
@@ -401,7 +400,7 @@ class AIOKafkaConnection:
                 wake_up_in, self._idle_check, self_ref)
 
     def __repr__(self):
-        return "<AIOKafkaConnection host={0.host} port={0.port}>".format(self)
+        return f"<AIOKafkaConnection host={self.host} port={self.port}>"
 
     @property
     def host(self):
@@ -414,8 +413,8 @@ class AIOKafkaConnection:
     def send(self, request, expect_response=True):
         if self._writer is None:
             raise Errors.KafkaConnectionError(
-                "No connection to broker at {0}:{1}"
-                .format(self._host, self._port))
+                f"No connection to broker at {self._host}:{self._port}"
+            )
 
         correlation_id = self._next_correlation_id()
         header = RequestHeader(request,
@@ -428,8 +427,8 @@ class AIOKafkaConnection:
         except OSError as err:
             self.close(reason=CloseReason.CONNECTION_BROKEN)
             raise Errors.KafkaConnectionError(
-                "Connection at {0}:{1} broken: {2}".format(
-                    self._host, self._port, err))
+                f"Connection at {self._host}:{self._port} broken: {err}"
+            )
 
         self.log.debug(
             '%s Request %d: %s', self, correlation_id, request)
@@ -443,17 +442,16 @@ class AIOKafkaConnection:
     def _send_sasl_token(self, payload, expect_response=True):
         if self._writer is None:
             raise Errors.KafkaConnectionError(
-                "No connection to broker at {0}:{1}"
-                .format(self._host, self._port))
-
+                f"No connection to broker at {self._host}:{self._port}"
+            )
         size = struct.pack(">i", len(payload))
         try:
             self._writer.write(size + payload)
         except OSError as err:
             self.close(reason=CloseReason.CONNECTION_BROKEN)
             raise Errors.KafkaConnectionError(
-                "Connection at {0}:{1} broken: {2}".format(
-                    self._host, self._port, err))
+                f"Connection at {self._host}:{self._port} broken: {err}"
+            )
 
         if not expect_response:
             return self._writer.drain()
@@ -476,8 +474,8 @@ class AIOKafkaConnection:
             for _, _, fut in self._requests:
                 if not fut.done():
                     error = Errors.KafkaConnectionError(
-                        "Connection at {0}:{1} closed".format(
-                            self._host, self._port))
+                        f"Connection at {self._host}:{self._port} closed"
+                    )
                     if exc is not None:
                         error.__cause__ = exc
                         error.__context__ = exc
@@ -536,8 +534,9 @@ class AIOKafkaConnection:
 
             elif correlation_id != recv_correlation_id:
                 error = Errors.CorrelationIdError(
-                    'Correlation ids do not match: sent {}, recv {}'
-                    .format(correlation_id, recv_correlation_id))
+                    f"Correlation ids do not match: sent {correlation_id},"
+                    f" recv {recv_correlation_id}"
+                )
                 if not fut.done():
                     fut.set_exception(error)
                 self.close(reason=CloseReason.OUT_OF_SYNC)
@@ -660,8 +659,7 @@ class ScramAuthenticator(BaseSaslAuthenticator):
         self._authenticator = self.authenticator_scram()
 
     def first_message(self):
-        client_first_bare = 'n={},r={}'.format(
-            self._sasl_plain_username, self._nonce)
+        client_first_bare = f"n={self._sasl_plain_username},r={self._nonce}"
         self._auth_message += client_first_bare
         return 'n,,' + client_first_bare
 
@@ -689,8 +687,8 @@ class ScramAuthenticator(BaseSaslAuthenticator):
             self._server_key, self._auth_message.encode('utf-8'))
 
     def final_message(self):
-        return 'c=biws,r={},p={}'.format(
-            self._nonce, base64.b64encode(self._client_proof).decode('utf-8'))
+        client_proof = base64.b64encode(self._client_proof).decode('utf-8')
+        return f"c=biws,r={self._nonce},p={client_proof}"
 
     def process_server_final_message(self, server_final):
         params = dict(pair.split('=', 1) for pair in server_final.split(','))
@@ -734,9 +732,7 @@ class OAuthAuthenticator(BaseSaslAuthenticator):
             .encode("utf-8"), True
 
     def _build_oauth_client_request(self, token, token_extensions):
-        return "n,,\x01auth=Bearer {}{}\x01\x01".format(
-            token, token_extensions
-            )
+        return f"n,,\x01auth=Bearer {token}{token_extensions}\x01\x01"
 
     def _token_extensions(self):
         """
@@ -751,7 +747,7 @@ class OAuthAuthenticator(BaseSaslAuthenticator):
             extensions = self._sasl_oauth_token_provider.extensions()
             if len(extensions) > 0:
                 msg = "\x01".join(
-                    ["{}={}".format(k, v) for k, v in extensions.items()])
+                    [f"{k}={v}" for k, v in extensions.items()])
                 return "\x01" + msg
 
         return ""

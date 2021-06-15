@@ -252,7 +252,7 @@ class MessageAccumulator:
             loop = get_running_loop()
         self._loop = loop
         self._batches = collections.defaultdict(collections.deque)
-        self._pending_batches = set([])
+        self._pending_batches = set()
         self._cluster = cluster
         self._batch_size = batch_size
         self._compression_type = compression_type

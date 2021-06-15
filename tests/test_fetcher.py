@@ -340,7 +340,7 @@ class TestFetcher(unittest.TestCase):
         tp1 = TopicPartition('some_topic', 0)
         tp2 = TopicPartition('some_topic', 1)
 
-        subscriptions.subscribe(set(["some_topic"]))
+        subscriptions.subscribe({"some_topic"})
         subscriptions.assign_from_subscribed({tp1, tp2})
         assignment = subscriptions.subscription.assignment
         subscriptions.seek(tp1, 0)

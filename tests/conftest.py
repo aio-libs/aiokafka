@@ -99,7 +99,7 @@ def ssl_folder(docker_ip_address):
 
     ssl_dir.mkdir()
     p = subprocess.Popen(
-        "bash ../../gen-ssl-certs.sh ca ca-cert {}".format(docker_ip_address),
+        f"bash ../../gen-ssl-certs.sh ca ca-cert {docker_ip_address}",
         shell=True, stdout=subprocess.DEVNULL,
         cwd=str(ssl_dir), stderr=subprocess.DEVNULL)
     p.wait()
@@ -150,7 +150,7 @@ class KafkaServer:
 
     @property
     def hosts(self):
-        return ['{}:{}'.format(self.host, self.port)]
+        return [f'{self.host}:{self.port}']
 
 
 if sys.platform != 'win32':
