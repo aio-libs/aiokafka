@@ -241,7 +241,8 @@ class AIOKafkaConnection:
         versions = {}
         for api_key, min_version, max_version in response.api_versions:
             assert min_version <= max_version, (
-                f"{min_version} should be less than or equal to {max_version} for {api_key}"
+                f"{min_version} should be less than"
+                f" or equal to {max_version} for {api_key}"
             )
             versions[api_key] = (min_version, max_version)
         self._version_info = VersionInfo(versions)
@@ -268,8 +269,8 @@ class AIOKafkaConnection:
 
             if self._sasl_mechanism not in response.enabled_mechanisms:
                 exc = Errors.UnsupportedSaslMechanismError(
-                    f"Kafka broker does not support {self._sasl_mechanism} sasl mechanism. "
-                    f"Enabled mechanisms are: {response.enabled_mechanisms}"
+                    f"Kafka broker does not support {self._sasl_mechanism} sasl "
+                    f"mechanism. Enabled mechanisms are: {response.enabled_mechanisms}"
                 )
                 self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
                 raise exc

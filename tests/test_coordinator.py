@@ -73,8 +73,15 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertFalse(coordinator.need_rejoin(subscription.subscription))
 
         tp_list = subscription.assigned_partitions()
-        self.assertEqual(tp_list, {('topic1', 0), ('topic1', 1),
-                                       ('topic2', 0), ('topic2', 1)})
+        self.assertEqual(
+            tp_list,
+            {
+                ('topic1', 0),
+                ('topic1', 1),
+                ('topic2', 0),
+                ('topic2', 1)
+            }
+        )
 
         # Check if adding an additional coordinator will rebalance correctly
         client2 = AIOKafkaClient(bootstrap_servers=self.hosts)
@@ -96,18 +103,30 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         tp_list2 = subscription2.assigned_partitions()
         self.assertEqual(len(tp_list2), 2)
         tp_list |= tp_list2
-        self.assertEqual(tp_list, {('topic1', 0), ('topic1', 1),
-                                       ('topic2', 0), ('topic2', 1)})
-
+        self.assertEqual(
+            tp_list,
+            {
+                ('topic1', 0),
+                ('topic1', 1),
+                ('topic2', 0),
+                ('topic2', 1)
+            }
+        )
         # Check is closing the first coordinator will rebalance the second
         await coordinator.close()
         await client.close()
 
         await subscription2.wait_for_assignment()
         tp_list = subscription2.assigned_partitions()
-        self.assertEqual(tp_list, {('topic1', 0), ('topic1', 1),
-                                       ('topic2', 0), ('topic2', 1)})
-
+        self.assertEqual(
+            tp_list,
+            {
+                ('topic1', 0),
+                ('topic1', 1),
+                ('topic2', 0),
+                ('topic2', 1)
+            }
+        )
         await coordinator2.close()
         await client2.close()
 
@@ -369,8 +388,12 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertFalse(coordinator.need_rejoin(subscription.subscription))
 
         tp_list = subscription.assigned_partitions()
-        assigned = {('st-topic1', 0), ('st-topic1', 1),
-                        ('st-topic2', 0), ('st-topic2', 1)}
+        assigned = {
+            ('st-topic1', 0),
+            ('st-topic1', 1),
+            ('st-topic2', 0),
+            ('st-topic2', 1),
+        }
         self.assertEqual(tp_list, assigned)
 
         self.assertEqual(test_listener.revoked, [set()])
