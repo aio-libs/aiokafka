@@ -233,8 +233,9 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
 
         header_count, pos = decode_varint(buffer, pos)
         if header_count < 0:
-            raise CorruptRecordException("Found invalid number of record "
-                                         "headers {}".format(header_count))
+            raise CorruptRecordException(
+                f"Found invalid number of record headers {header_count}"
+            )
         headers = []
         while header_count:
             # Header key is of type String, that can't be None
@@ -259,8 +260,9 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
         # validate whether we have read all header bytes in the current record
         if pos - start_pos != length:
             raise CorruptRecordException(
-                "Invalid record size: expected to read {} bytes in record "
-                "payload, but instead read {}".format(length, pos - start_pos))
+                f"Invalid record size: expected to read {length} bytes in record "
+                f"payload, but instead read {pos - start_pos}"
+            )
         self._pos = pos
 
         return DefaultRecord(
@@ -350,10 +352,9 @@ class _DefaultRecordPy:
 
     def __repr__(self):
         return (
-            "DefaultRecord(offset={!r}, timestamp={!r}, timestamp_type={!r},"
-            " key={!r}, value={!r}, headers={!r})".format(
-                self._offset, self._timestamp, self._timestamp_type,
-                self._key, self._value, self._headers)
+            f"DefaultRecord(offset={self._offset!r}, timestamp={self._timestamp!r},"
+            f" timestamp_type={self._timestamp_type!r}, key={self._key!r},"
+            f" value={self._value!r}, headers={self._headers!r})"
         )
 
 
@@ -629,8 +630,8 @@ class _DefaultRecordMetadataPy:
 
     def __repr__(self):
         return (
-            "DefaultRecordMetadata(offset={!r}, size={!r}, timestamp={!r})"
-            .format(self._offset, self._size, self._timestamp)
+            f"DefaultRecordMetadata(offset={self._offset!r},"
+            f" size={self._size!r}, timestamp={self._timestamp!r})"
         )
 
 

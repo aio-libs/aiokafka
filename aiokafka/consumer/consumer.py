@@ -910,14 +910,16 @@ class AIOKafkaConsumer:
         """
         if self._client.api_version <= (0, 10, 0):
             raise UnsupportedVersionError(
-                "offsets_for_times API not supported for cluster version {}"
-                .format(self._client.api_version))
+                "offsets_for_times API not supported"
+                f" for cluster version {self._client.api_version}"
+            )
         for tp, ts in timestamps.items():
             timestamps[tp] = int(ts)
             if ts < 0:
                 raise ValueError(
-                    "The target time for partition {} is {}. The target time "
-                    "cannot be negative.".format(tp, ts))
+                    f"The target time for partition {tp} is {ts}."
+                    " The target time cannot be negative."
+                )
         offsets = await self._fetcher.get_offsets_by_times(
             timestamps, self._request_timeout_ms)
         return offsets
@@ -949,8 +951,9 @@ class AIOKafkaConsumer:
         """
         if self._client.api_version <= (0, 10, 0):
             raise UnsupportedVersionError(
-                "offsets_for_times API not supported for cluster version {}"
-                .format(self._client.api_version))
+                "offsets_for_times API not supported"
+                f" for cluster version {self._client.api_version}"
+            )
         offsets = await self._fetcher.beginning_offsets(
             partitions, self._request_timeout_ms)
         return offsets
@@ -984,8 +987,9 @@ class AIOKafkaConsumer:
         """
         if self._client.api_version <= (0, 10, 0):
             raise UnsupportedVersionError(
-                "offsets_for_times API not supported for cluster version {}"
-                .format(self._client.api_version))
+                "offsets_for_times API not supported"
+                f" for cluster version {self._client.api_version}"
+            )
         offsets = await self._fetcher.end_offsets(
             partitions, self._request_timeout_ms)
         return offsets
