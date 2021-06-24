@@ -365,24 +365,28 @@ class AIOKafkaConnection:
 
         return f"{service}@{domain}"
 
-    @staticmethod
-    def _on_read_task_error(self_ref, read_task):
+    @classmethod
+    def _on_read_task_error(cls, self_ref, read_task):
         # We don't want to react to cancelled errors
         if read_task.cancelled():
             return
 
         try:
             read_task.result()
-        except (OSError, EOFError, ConnectionError) as exc:
-            self_ref().close(reason=CloseReason.CONNECTION_BROKEN, exc=exc)
         except Exception as exc:
+            if not isinstance(exc, (OSError, EOFError, ConnectionError)):
+                cls.log.exception("Unexpected exception in AIOKafkaConnection")
+
             self = self_ref()
-            self.log.exception("Unexpected exception in AIOKafkaConnection")
-            self.close(reason=CloseReason.CONNECTION_BROKEN, exc=exc)
+            if self is not None:
+                self.close(reason=CloseReason.CONNECTION_BROKEN, exc=exc)
 
     @staticmethod
     def _idle_check(self_ref):
         self = self_ref()
+        if self is None:
+            return
+
         idle_for = time.monotonic() - self._last_action
         timeout = self._max_idle_ms / 1000
         # If we have any pending requests, we are assumed to be not idle.
@@ -498,20 +502,23 @@ class AIOKafkaConnection:
             functools.partial(self._on_read_task_error, self_ref))
         return read_task
 
-    @classmethod
-    async def _read(cls, self_ref):
+    @staticmethod
+    async def _read(self_ref):
         # XXX: I know that it become a bit more ugly once cyclic references
         # were removed, but it's needed to allow connections to properly
         # release resources if leaked.
         # NOTE: all errors will be handled by done callback
+        self = self_ref()
+        if self is None:
+            return
 
-        reader = self_ref()._reader
+        reader = self._reader
         while True:
             resp = await reader.readexactly(4)
             size, = struct.unpack(">i", resp)
 
             resp = await reader.readexactly(size)
-            self_ref()._handle_frame(resp)
+            self._handle_frame(resp)
 
     def _handle_frame(self, resp):
         correlation_id, resp_type, fut = self._requests[0]
