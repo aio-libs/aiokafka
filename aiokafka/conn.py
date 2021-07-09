@@ -511,14 +511,20 @@ class AIOKafkaConnection:
         self = self_ref()
         if self is None:
             return
-
         reader = self._reader
+        del self
+
         while True:
             resp = await reader.readexactly(4)
             size, = struct.unpack(">i", resp)
 
             resp = await reader.readexactly(size)
+
+            self = self_ref()
+            if self is None:
+                return
             self._handle_frame(resp)
+            del self
 
     def _handle_frame(self, resp):
         correlation_id, resp_type, fut = self._requests[0]
