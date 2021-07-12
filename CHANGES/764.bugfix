@@ -1,0 +1,2 @@
+Fix consumer's `start()` method hanging after being idle for more than
+`max_poll_interval_ms`

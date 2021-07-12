@@ -681,7 +681,7 @@ class GroupCoordinator(BaseCoordinator):
 
         # We will not attempt rejoin if there is no activity on consumer
         idle_time = self._subscription.fetcher_idle_time
-        if idle_time >= self._max_poll_interval:
+        if prev_assignment is not None and idle_time >= self._max_poll_interval:
             await asyncio.sleep(self._retry_backoff_ms / 1000)
             return None
 
