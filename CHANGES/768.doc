@@ -1,0 +1,1 @@
+Add SASL_PLAINTEXT and SASL_SSL to valid values in security protocol attribute.

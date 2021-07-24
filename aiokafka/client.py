@@ -73,7 +73,8 @@ class AIOKafkaClient:
             If set to 'auto', will attempt to infer the broker version by
             probing various APIs. Default: auto
         security_protocol (str): Protocol used to communicate with brokers.
-            Valid values are: PLAINTEXT, SSL. Default: PLAINTEXT.
+            Valid values are: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL.
+            Default: PLAINTEXT.
         ssl_context (ssl.SSLContext): pre-configured SSLContext for wrapping
             socket connections. For more information see :ref:`ssl_auth`.
             Default: None.
