@@ -1,7 +1,7 @@
 aiokafka
 ========
-.. image:: https://travis-ci.com/aio-libs/aiokafka.svg?branch=master
-    :target: https://travis-ci.com/aio-libs/aiokafka
+.. image:: https://github.com/aio-libs/aiokafka/actions/workflows/tests.yml/badge.svg?branch=master
+    :target: https://github.com/aio-libs/aiokafka/actions/workflows/tests.yml?query=branch%3Amaster
     :alt: |Build status|
 .. image:: https://codecov.io/github/aio-libs/aiokafka/coverage.svg?branch=master
     :target: https://codecov.io/gh/aio-libs/aiokafka/branch/master
