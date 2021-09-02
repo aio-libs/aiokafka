@@ -160,13 +160,13 @@ jobs:
         python: [3.6, 3.7, 3.8.5, 3.9]
         include:
           - python: 3.6
-            aiokafka_whl: dist/aiokafka-*-cp36-cp36m-manylinux1_x86_64.whl
+            aiokafka_whl: dist/aiokafka-*-cp36-cp36m-manylinux*_x86_64.whl
           - python: 3.7
-            aiokafka_whl: dist/aiokafka-*-cp37-cp37m-manylinux1_x86_64.whl
+            aiokafka_whl: dist/aiokafka-*-cp37-cp37m-manylinux*_x86_64.whl
           - python: 3.8.5
-            aiokafka_whl: dist/aiokafka-*-cp38-cp38-manylinux1_x86_64.whl
+            aiokafka_whl: dist/aiokafka-*-cp38-cp38-manylinux*_x86_64.whl
           - python: 3.9
-            aiokafka_whl: dist/aiokafka-*-cp39-cp39-manylinux1_x86_64.whl
+            aiokafka_whl: dist/aiokafka-*-cp39-cp39-manylinux*_x86_64.whl
 
     steps:
       - uses: actions/checkout@v2
