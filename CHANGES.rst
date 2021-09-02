@@ -3,6 +3,23 @@ Changelog
 =========
 
 
+0.7.2 (2021-09-02)
+==================
+
+Bugfixes:
+
+* Fix `CancelledError` handling in sender (issue #710)
+* Fix exception for weakref use after object deletion (issue #755)
+* Fix consumer's `start()` method hanging after being idle for more than
+  `max_poll_interval_ms` (issue #764)
+
+
+Improved Documentation:
+
+* Add `SASL_PLAINTEXT` and `SASL_SSL` to valid values of security protocol
+  attribute (pr #768 by @pawelrubin)
+
+
 0.7.1 (2021-06-04)
 ==================
 

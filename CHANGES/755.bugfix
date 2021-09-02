@@ -1,1 +1,0 @@
-Fix exception for weakref use after object deletion
