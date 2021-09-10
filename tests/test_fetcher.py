@@ -5,7 +5,9 @@ from unittest import mock
 
 from kafka.protocol.offset import OffsetResponse
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
-from aiokafka.record.default_records import DefaultRecordBatchBuilder
+from aiokafka.record.default_records import (
+    # NB: test_solitary_abort_marker relies on implementation details
+    _DefaultRecordBatchBuilderPy as DefaultRecordBatchBuilder)
 from aiokafka.record.memory_records import MemoryRecords
 
 from aiokafka.protocol.fetch import (
