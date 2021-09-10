@@ -542,9 +542,19 @@ class TestFetcher(unittest.TestCase):
         # An abort marker may not be preceded by any aborted messages
 
         builder = DefaultRecordBatchBuilder(
-            magic=2, compression_type=0, is_transactional=1,
+            magic=2, compression_type=0, is_transactional=True,
             producer_id=3, producer_epoch=1, base_sequence=-1,
             batch_size=999)
+        orig_get_attributes = builder._get_attributes
+        builder._get_attributes = lambda *args, **kwargs: (
+            # Make batch a control batch
+            orig_get_attributes(*args, **kwargs)
+            | DefaultRecordBatchBuilder.CONTROL_MASK)
+        builder.append(
+            offset=0, timestamp=1631276519572,
+            # transaction abort marker
+            key=b'\x00\x00\x00\x00', value=b'\x00\x00\x00\x00\x00\x00',
+            headers=[])
         buffer = builder.build()
 
         records = MemoryRecords(bytes(buffer))
