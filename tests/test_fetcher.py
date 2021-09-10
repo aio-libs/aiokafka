@@ -5,6 +5,8 @@ from unittest import mock
 
 from kafka.protocol.offset import OffsetResponse
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
+from aiokafka.record.default_records import DefaultRecordBatchBuilder
+from aiokafka.record.memory_records import MemoryRecords
 
 from aiokafka.protocol.fetch import (
     FetchRequest_v0 as FetchRequest, FetchResponse_v0 as FetchResponse)
@@ -18,7 +20,7 @@ from aiokafka.structs import (
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer.fetcher import (
     Fetcher, FetchResult, FetchError, ConsumerRecord, OffsetResetStrategy,
-    PartitionRecords, READ_UNCOMMITTED
+    PartitionRecords, READ_COMMITTED, READ_UNCOMMITTED
 )
 from aiokafka.consumer.subscription_state import SubscriptionState
 from aiokafka.util import create_future, create_task, get_running_loop
@@ -534,3 +536,27 @@ class TestFetcher(unittest.TestCase):
             if cm is not None:
                 self.assertIn(
                     "Received unknown topic or partition error", cm.output[0])
+
+    @run_until_complete
+    async def test_solitary_abort_marker(self):
+        # An abort marker may not be preceded by any aborted messages
+
+        builder = DefaultRecordBatchBuilder(
+            magic=2, compression_type=0, is_transactional=1,
+            producer_id=3, producer_epoch=1, base_sequence=-1,
+            batch_size=999)
+        buffer = builder.build()
+
+        records = MemoryRecords(bytes(buffer))
+
+        partition_recs = PartitionRecords(
+            tp=TopicPartition('test-topic', 0),
+            records=records,
+            aborted_transactions=[],
+            fetch_offset=0,
+            key_deserializer=None,
+            value_deserializer=None,
+            check_crcs=True,
+            isolation_level=READ_COMMITTED)
+
+        self.assertEqual(len(list(partition_recs)), 0)
