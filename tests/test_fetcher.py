@@ -543,6 +543,8 @@ class TestFetcher(unittest.TestCase):
     async def test_solitary_abort_marker(self):
         # An abort marker may not be preceded by any aborted messages
 
+        # Setup: Create a record batch (control batch) containing
+        # a single transaction abort marker.
         builder = DefaultRecordBatchBuilder(
             magic=2, compression_type=0, is_transactional=True,
             producer_id=3, producer_epoch=1, base_sequence=-1,
@@ -558,9 +560,14 @@ class TestFetcher(unittest.TestCase):
             key=b'\x00\x00\x00\x00', value=b'\x00\x00\x00\x00\x00\x00',
             headers=[])
         buffer = builder.build()
-
         records = MemoryRecords(bytes(buffer))
 
+        # Test: In aiokafka>=0.7.2, the following line would result in a an
+        # exception, because the implementation assumed that any transaction
+        # abort marker would be preceded by at least one aborted message
+        # originating from the same producer_id. However, this appears to
+        # not always be the case, as reported in
+        # https://github.com/aio-libs/aiokafka/issues/781 .
         partition_recs = PartitionRecords(
             tp=TopicPartition('test-topic', 0),
             records=records,
@@ -571,4 +578,6 @@ class TestFetcher(unittest.TestCase):
             check_crcs=True,
             isolation_level=READ_COMMITTED)
 
+        # Since isolation_level is READ_COMMITTED, no consumer records are
+        # expected to be returned here.
         self.assertEqual(len(list(partition_recs)), 0)
