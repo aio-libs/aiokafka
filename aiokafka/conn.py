@@ -332,9 +332,13 @@ class AIOKafkaConnection:
             self.log.info(
                 'Authenticated via OAUTHBEARER'
             )
+        elif self._sasl_mechanism.startswith('SCRAM-SHA-'):
+            self.log.info(
+                'Authenticated as %s via via %s',
+                self._sasl_plain_username,self._sasl_mechanism)
         else:
             self.log.info('Authenticated as %s via PLAIN',
-                          self._sasl_plain_username)
+                self._sasl_plain_username)
 
     def authenticator_plain(self):
         return SaslPlainAuthenticator(
