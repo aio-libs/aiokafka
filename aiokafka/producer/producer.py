@@ -4,7 +4,6 @@ import sys
 import traceback
 import warnings
 
-from kafka.partitioner.default import DefaultPartitioner
 from kafka.codec import has_gzip, has_snappy, has_lz4
 
 from aiokafka.client import AIOKafkaClient
@@ -17,6 +16,7 @@ from aiokafka.util import (
 )
 
 from .message_accumulator import MessageAccumulator
+from ..partitioner import DefaultPartitioner
 from .sender import Sender
 from .transaction_manager import TransactionManager
 

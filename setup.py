@@ -64,6 +64,13 @@ extensions = [
         extra_compile_args=CFLAGS,
         extra_link_args=LDFLAGS,
     ),
+    Extension(
+        'aiokafka.partitioner.murmur2',
+        ['aiokafka/partitioner/murmur2' + ext],
+        libraries=LIBRARIES,
+        extra_compile_args=CFLAGS,
+        extra_link_args=LDFLAGS
+    ),
 ]
 
 
