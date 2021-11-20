@@ -1,5 +1,4 @@
 from kafka.metrics import AnonMeasurable as AnonMeasurable, KafkaMetric as KafkaMetric, MetricConfig as MetricConfig, MetricName as MetricName
-from kafka.metrics.stats import Sensor as Sensor
 from typing import Any, Optional
 
 logger: Any
