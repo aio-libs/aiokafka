@@ -155,7 +155,7 @@ class KafkaServer:
 
 if sys.platform != 'win32':
 
-    @pytest.yield_fixture(scope='session')
+    @pytest.fixture(scope='session')
     def kafka_server(request, docker, docker_ip_address,
                      unused_port, session_id, ssl_folder):
         image = request.config.getoption('--docker-image')
@@ -241,7 +241,7 @@ else:
         return
 
 
-@pytest.yield_fixture(scope='class')
+@pytest.fixture(scope='class')
 def loop(request):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -256,7 +256,7 @@ def loop(request):
     asyncio.set_event_loop(None)
 
 
-@pytest.yield_fixture(autouse=True)
+@pytest.fixture(autouse=True)
 def collect_garbage():
     # This is used to have a better report on ResourceWarnings. Without it
     # all warnings will be filled in the end of last test-case.
