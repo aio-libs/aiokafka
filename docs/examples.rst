@@ -9,7 +9,6 @@ Examples
    Manual commit <examples/manual_commit>
    Group consumer <examples/group_consumer>
    Custom partitioner <examples/custom_partitioner>
-   Python async for syntax <examples/python35_examples>
    SSL usage <examples/ssl_consume_produce>
    Local state consumer <examples/local_state_consumer>
    Batch producer <examples/batch_produce>
