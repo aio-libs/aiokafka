@@ -4,7 +4,8 @@ from kafka.codec import (
     gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
     gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka
 )
-from aiokafka.errors import CorruptRecordException
+import kafka.codec as codecs
+from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from zlib import crc32 as py_crc32  # needed for windows macro
 
 from cpython cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_WRITABLE, \
@@ -44,6 +45,21 @@ DEF ATTRIBUTES_OFFSET = MAGIC_OFFSET + 1
 DEF TIMESTAMP_OFFSET = ATTRIBUTES_OFFSET + 1
 
 
+cdef _assert_has_codec(char compression_type):
+    if compression_type == _ATTR_CODEC_GZIP:
+        checker, name = codecs.has_gzip, "gzip"
+    elif compression_type == _ATTR_CODEC_SNAPPY:
+        checker, name = codecs.has_snappy, "snappy"
+    elif compression_type == _ATTR_CODEC_LZ4:
+        checker, name = codecs.has_lz4, "lz4"
+    else:
+        raise UnsupportedCodecError(
+            f"Unknown compression codec {compression_type:#04x}")
+    if not checker():
+        raise UnsupportedCodecError(
+            f"Libraries for {name} compression codec not found")
+
+
 @cython.no_gc_clear
 @cython.final
 @cython.freelist(_LEGACY_RECORD_BATCH_FREELIST_SIZE)
@@ -51,6 +67,7 @@ cdef class LegacyRecordBatch:
 
     RECORD_OVERHEAD_V0 = RECORD_OVERHEAD_V0_DEF
     RECORD_OVERHEAD_V1 = RECORD_OVERHEAD_V1_DEF
+    CODEC_MASK = _ATTR_CODEC_MASK
     CODEC_GZIP = _ATTR_CODEC_GZIP
     CODEC_SNAPPY = _ATTR_CODEC_SNAPPY
     CODEC_LZ4 = _ATTR_CODEC_LZ4
@@ -117,6 +134,7 @@ cdef class LegacyRecordBatch:
             raise CorruptRecordException("Value of compressed message is None")
         value = self._main_record.value
 
+        _assert_has_codec(compression_type)
         if compression_type == _ATTR_CODEC_GZIP:
             uncompressed = gzip_decode(value)
         elif compression_type == _ATTR_CODEC_SNAPPY:
@@ -336,6 +354,7 @@ cdef class LegacyRecordBatchBuilder:
         Py_ssize_t _batch_size
         bytearray _buffer
 
+    CODEC_MASK = _ATTR_CODEC_MASK
     CODEC_GZIP = _ATTR_CODEC_GZIP
     CODEC_SNAPPY = _ATTR_CODEC_SNAPPY
     CODEC_LZ4 = _ATTR_CODEC_LZ4
@@ -411,6 +430,7 @@ cdef class LegacyRecordBatchBuilder:
             uint32_t crc
 
         if self._compression_type != 0:
+            _assert_has_codec(self._compression_type)
             if self._compression_type == _ATTR_CODEC_GZIP:
                 compressed = gzip_encode(self._buffer)
             elif self._compression_type == _ATTR_CODEC_SNAPPY:
