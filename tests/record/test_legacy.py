@@ -1,6 +1,8 @@
 import struct
 from unittest import mock
 
+import kafka.codec
+from kafka.errors import UnsupportedCodecError
 import pytest
 from aiokafka.record.legacy_records import (
     LegacyRecordBatch, LegacyRecordBatchBuilder
@@ -187,6 +189,42 @@ def test_legacy_batch_size_limit(magic):
     meta = builder.append(2, timestamp=None, key=None, value=b"M" * 700)
     assert meta is None
     assert len(builder.build()) < 1000
+
+
+@pytest.mark.parametrize("compression_type,name,checker_name", [
+    (LegacyRecordBatch.CODEC_GZIP, "gzip", "has_gzip"),
+    (LegacyRecordBatch.CODEC_SNAPPY, "snappy", "has_snappy"),
+    (LegacyRecordBatch.CODEC_LZ4, "lz4", "has_lz4")
+])
+def test_unavailable_codec(compression_type, name, checker_name):
+    builder = LegacyRecordBatchBuilder(
+        magic=0, compression_type=compression_type, batch_size=1024)
+    builder.append(0, timestamp=None, key=None, value=b"M")
+    correct_buffer = builder.build()
+
+    with mock.patch.object(kafka.codec, checker_name) as mocked:
+        mocked.return_value = False
+        # Check that builder raises error
+        builder = LegacyRecordBatchBuilder(
+            magic=0, compression_type=compression_type, batch_size=1024)
+        error_msg = "Libraries for {} compression codec not found".format(name)
+        with pytest.raises(UnsupportedCodecError, match=error_msg):
+            builder.append(0, timestamp=None, key=None, value=b"M")
+            builder.build()
+
+        # Check that reader raises same error
+        batch = LegacyRecordBatch(bytes(correct_buffer), 0)
+        with pytest.raises(UnsupportedCodecError, match=error_msg):
+            list(batch)
+
+
+def test_unsupported_yet_codec():
+    compression_type = LegacyRecordBatch.CODEC_MASK  # It doesn't exist
+    builder = LegacyRecordBatchBuilder(
+        magic=0, compression_type=compression_type, batch_size=1024)
+    with pytest.raises(UnsupportedCodecError):
+        builder.append(0, timestamp=None, key=None, value=b"M")
+        builder.build()
 
 
 ATTRIBUTES_OFFSET = 17
