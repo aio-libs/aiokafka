@@ -10,9 +10,11 @@ from aiokafka.record.default_records import (
 
 @pytest.mark.parametrize("compression_type,crc", [
     (DefaultRecordBatch.CODEC_NONE, 3950153926),
-    (DefaultRecordBatch.CODEC_GZIP, None),  # No idea why, but crc changes here
+    # Gzip header includes timestamp, so checksum varies
+    (DefaultRecordBatch.CODEC_GZIP, None),
     (DefaultRecordBatch.CODEC_SNAPPY, 2171068483),
-    (DefaultRecordBatch.CODEC_LZ4, 462121143)
+    (DefaultRecordBatch.CODEC_LZ4, 462121143),
+    (DefaultRecordBatch.CODEC_ZSTD, 1679657554),
 ])
 def test_read_write_serde_v2(compression_type, crc):
     builder = DefaultRecordBatchBuilder(
@@ -183,6 +185,7 @@ def test_default_batch_size_limit():
     (DefaultRecordBatch.CODEC_GZIP, "gzip", "has_gzip"),
     (DefaultRecordBatch.CODEC_SNAPPY, "snappy", "has_snappy"),
     (DefaultRecordBatch.CODEC_LZ4, "lz4", "has_lz4"),
+    (DefaultRecordBatch.CODEC_ZSTD, "zstd", "has_zstd"),
 ])
 def test_unavailable_codec(compression_type, name, checker_name):
     builder = DefaultRecordBatchBuilder(

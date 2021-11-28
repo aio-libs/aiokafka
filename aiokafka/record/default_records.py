@@ -61,8 +61,8 @@ from .util import decode_varint, encode_varint, calc_crc32c, size_of_varint
 from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from aiokafka.util import NO_EXTENSIONS
 from kafka.codec import (
-    gzip_encode, snappy_encode, lz4_encode,
-    gzip_decode, snappy_decode, lz4_decode
+    gzip_encode, snappy_encode, lz4_encode, zstd_encode,
+    gzip_decode, snappy_decode, lz4_decode, zstd_decode
 )
 import kafka.codec as codecs
 
@@ -96,6 +96,7 @@ class DefaultRecordBase:
     CODEC_GZIP = 0x01
     CODEC_SNAPPY = 0x02
     CODEC_LZ4 = 0x03
+    CODEC_ZSTD = 0x04
     TIMESTAMP_TYPE_MASK = 0x08
     TRANSACTIONAL_MASK = 0x10
     CONTROL_MASK = 0x20
@@ -112,6 +113,8 @@ class DefaultRecordBase:
             checker, name = codecs.has_snappy, "snappy"
         elif compression_type == self.CODEC_LZ4:
             checker, name = codecs.has_lz4, "lz4"
+        elif compression_type == self.CODEC_ZSTD:
+            checker, name = codecs.has_zstd, "zstd"
         else:
             raise UnsupportedCodecError(
                 f"Unknown compression codec {compression_type:#04x}")
@@ -202,6 +205,8 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
                     uncompressed = snappy_decode(data.tobytes())
                 elif compression_type == self.CODEC_LZ4:
                     uncompressed = lz4_decode(data.tobytes())
+                if compression_type == self.CODEC_ZSTD:
+                    uncompressed = zstd_decode(data.tobytes())
                 self._buffer = bytearray(uncompressed)
                 self._pos = 0
         self._decompressed = True
@@ -531,6 +536,8 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
                 compressed = snappy_encode(data)
             elif self._compression_type == self.CODEC_LZ4:
                 compressed = lz4_encode(data)
+            elif self._compression_type == self.CODEC_ZSTD:
+                compressed = zstd_encode(data)
             compressed_size = len(compressed)
             if len(data) <= compressed_size:
                 # We did not get any benefit from compression, lets send

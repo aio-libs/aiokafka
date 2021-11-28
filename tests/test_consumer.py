@@ -487,43 +487,40 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(TypeError):
             consumer.subscribe(topics=["some_topic"], listener=object())
 
-    @run_until_complete
-    async def test_compress_decompress(self):
-        producer = AIOKafkaProducer(
+    # TODO Use `@pytest.mark.parametrize()` after moving to pytest-asyncio
+    async def _test_compress_decompress(self, compression_type):
+        async with AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            compression_type="gzip")
-        await producer.start()
-        await self.wait_topic(producer.client, self.topic)
-        msg1 = b'some-message' * 10
-        msg2 = b'other-message' * 30
-        await producer.send(self.topic, msg1, partition=1)
-        await producer.send(self.topic, msg2, partition=1)
-        await producer.stop()
+            compression_type=compression_type
+        ) as producer:
+            await self.wait_topic(producer.client, self.topic)
+            msg1 = b'some-message' * 10
+            msg2 = b'other-message' * 30
+            await (await producer.send(self.topic, msg1, partition=1))
+            await (await producer.send(self.topic, msg2, partition=1))
 
         consumer = await self.consumer_factory()
         rmsg1 = await consumer.getone()
         self.assertEqual(rmsg1.value, msg1)
         rmsg2 = await consumer.getone()
         self.assertEqual(rmsg2.value, msg2)
+
+    @run_until_complete
+    async def test_compress_decompress_gzip(self):
+        await self._test_compress_decompress("gzip")
+
+    @run_until_complete
+    async def test_compress_decompress_snappy(self):
+        await self._test_compress_decompress("snappy")
 
     @run_until_complete
     async def test_compress_decompress_lz4(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts,
-            compression_type="lz4")
-        await producer.start()
-        await self.wait_topic(producer.client, self.topic)
-        msg1 = b'some-message' * 10
-        msg2 = b'other-message' * 30
-        await producer.send(self.topic, msg1, partition=1)
-        await producer.send(self.topic, msg2, partition=1)
-        await producer.stop()
+        await self._test_compress_decompress("lz4")
 
-        consumer = await self.consumer_factory()
-        rmsg1 = await consumer.getone()
-        self.assertEqual(rmsg1.value, msg1)
-        rmsg2 = await consumer.getone()
-        self.assertEqual(rmsg2.value, msg2)
+    @kafka_versions('>=2.1.0')
+    @run_until_complete
+    async def test_compress_decompress_zstd(self):
+        await self._test_compress_decompress("zstd")
 
     @run_until_complete
     async def test_consumer_seek_backward(self):
