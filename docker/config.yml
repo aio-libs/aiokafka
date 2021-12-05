@@ -22,5 +22,20 @@ versions:
     kafka: "2.3.1"
     scala: "2.12"
   -
-    kafka: "2.4.0"
+    kafka: "2.4.1"
     scala: "2.12"
+  -
+    kafka: "2.5.1"
+    scala: "2.12"
+  -
+    kafka: "2.6.3"
+    scala: "2.12"
+  -
+    kafka: "2.7.2"
+    scala: "2.13"
+  -
+    kafka: "2.8.1"
+    scala: "2.13"
+  # -
+  #   kafka: "3.0.0"
+  #   scala: "2.13"
