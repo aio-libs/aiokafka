@@ -779,7 +779,7 @@ class TestSender(KafkaIntegrationTestCase):
         # Special case for DuplicateSequenceNumber
         resp = create_response(NoError)
         send_handler.handle_response(resp)
-        batch_mock.done.assert_called_with(100, 200)
+        batch_mock.done.assert_called_with(100, 200, None)
         self.assertEqual(send_handler._to_reenqueue, [])
 
     @run_until_complete
@@ -805,7 +805,7 @@ class TestSender(KafkaIntegrationTestCase):
         # Special case for DuplicateSequenceNumber
         resp = create_response(DuplicateSequenceNumber)
         send_handler.handle_response(resp)
-        batch_mock.done.assert_called_with(0, -1)
+        batch_mock.done.assert_called_with(0, -1, None)
         batch_mock.failure.assert_not_called()
         self.assertEqual(send_handler._to_reenqueue, [])
 

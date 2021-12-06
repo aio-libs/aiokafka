@@ -134,6 +134,7 @@ addons:
   apt:
     packages:
     - libsnappy-dev
+    - libzstd-dev
     - krb5-user
 
 install:

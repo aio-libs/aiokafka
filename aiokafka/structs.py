@@ -26,6 +26,7 @@ class RecordMetadata(NamedTuple):
     offset: int
     timestamp: Optional[int]  # Timestamp in millis, None for older Brokers
     timestamp_type: int
+    log_start_offset: Optional[int]
 
 
 KT = TypeVar("KT")
