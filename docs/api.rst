@@ -96,15 +96,15 @@ Exception handling example:
 
 .. code:: python
 
-        from aiokafka.errors import KafkaError, KafkaTimeoutError
-        # ...
-        try:
-            send_future = await producer.send('foobar', b'test data')
-            response = await send_future  #  wait until message is produced
-        except KafkaTimeoutError:
-            print("produce timeout... maybe we want to resend data again?")
-        except KafkaError as err:
-            print("some kafka error on produce: {}".format(err))
+  from aiokafka.errors import KafkaError, KafkaTimeoutError
+  # ...
+  try:
+      send_future = await producer.send('foobar', b'test data')
+      response = await send_future  #  wait until message is produced
+  except KafkaTimeoutError:
+      print("produce timeout... maybe we want to resend data again?")
+  except KafkaError as err:
+      print("some kafka error on produce: {}".format(err))
 
 
 Consumer errors
@@ -162,6 +162,8 @@ Errors
 Structs
 ^^^^^^^
 
+.. automodule:: aiokafka.structs
+
 .. autoclass:: kafka.structs.TopicPartition
     :members:
 
@@ -176,6 +178,14 @@ Structs
 .. autoclass:: aiokafka.structs.OffsetAndTimestamp
     :member-order: alphabetical
     :members:
+
+.. py:class:: KT
+
+    The type of a key.
+
+.. py:class:: VT
+
+    The type of a value.
 
 
 Protocols
