@@ -73,7 +73,8 @@ class AIOKafkaClient:
             If set to 'auto', will attempt to infer the broker version by
             probing various APIs. Default: auto
         security_protocol (str): Protocol used to communicate with brokers.
-            Valid values are: PLAINTEXT, SSL. Default: PLAINTEXT.
+            Valid values are: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL.
+            Default: PLAINTEXT.
         ssl_context (ssl.SSLContext): pre-configured SSLContext for wrapping
             socket connections. For more information see :ref:`ssl_auth`.
             Default: None.
@@ -246,7 +247,7 @@ class AIOKafkaClient:
             break
         else:
             raise KafkaConnectionError(
-                'Unable to bootstrap from {}'.format(self.hosts))
+                f'Unable to bootstrap from {self.hosts}')
 
         # detect api version if need
         if self._api_version == 'auto':
@@ -544,12 +545,12 @@ class AIOKafkaClient:
         conn = await self._get_conn(node_id, no_hint=True)
         if conn is None:
             raise KafkaConnectionError(
-                "No connection to node with id {}".format(node_id))
+                f"No connection to node with id {node_id}")
         for version, request in test_cases:
             try:
                 if not conn.connected():
                     await conn.connect()
-                assert conn, 'no connection to node with id {}'.format(node_id)
+                assert conn, f'no connection to node with id {node_id}'
                 # request can be ignored by Kafka broker,
                 # so we send metadata request and wait response
                 task = create_task(conn.send(request))
@@ -591,10 +592,10 @@ class AIOKafkaClient:
 
         error_type = Errors.for_code(response.error_code)
         assert error_type is Errors.NoError, "API version check failed"
-        max_versions = dict([
-            (api_key, max_version)
+        max_versions = {
+            api_key: max_version
             for api_key, _, max_version in response.api_versions
-        ])
+        }
         # Get the best match of test cases
         for broker_version, api_key, version in test_cases:
             if max_versions.get(api_key, -1) >= version:

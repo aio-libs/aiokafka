@@ -1,0 +1,1 @@
+Fix `KeyError` on solitary abort marker (issue #781, pr #782 by @pikulmar)

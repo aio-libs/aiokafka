@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 _missing = object()
 
 
-class AIOKafkaProducer(object):
+class AIOKafkaProducer:
     """A Kafka client that publishes records to the Kafka cluster.
 
     The producer consists of a pool of buffer space that holds records that
@@ -138,6 +138,7 @@ class AIOKafkaProducer(object):
             probing various APIs. Default: ``auto``
         security_protocol (str): Protocol used to communicate with brokers.
             Valid values are: ``PLAINTEXT``, ``SSL``. Default: ``PLAINTEXT``.
+            Default: ``PLAINTEXT``.
         ssl_context (ssl.SSLContext): pre-configured :class:`~ssl.SSLContext`
             for wrapping socket connections. Directly passed into asyncio's
             :meth:`~asyncio.loop.create_connection`. For more
@@ -286,7 +287,7 @@ class AIOKafkaProducer(object):
     # We don't attempt to close the Consumer, as __del__ is synchronous
     def __del__(self, _warnings=warnings):
         if self._closed is False:
-            _warnings.warn("Unclosed AIOKafkaProducer {!r}".format(self),
+            _warnings.warn(f"Unclosed AIOKafkaProducer {self!r}",
                            ResourceWarning,
                            source=self)
             context = {'producer': self,

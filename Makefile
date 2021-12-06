@@ -24,7 +24,7 @@ lint:
             false; \
         fi
 	flake8 aiokafka tests setup.py
-	mypy $(FORMATTED_AREAS)
+	mypy --install-types --non-interactive $(FORMATTED_AREAS)
 
 test: flake
 	py.test -s --show-capture=no --docker-image $(DOCKER_IMAGE) $(FLAGS) tests

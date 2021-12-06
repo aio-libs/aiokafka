@@ -69,6 +69,7 @@ from kafka.errors import (
     KafkaUnavailableError,
     KafkaTimeoutError,
     KafkaConnectionError,
+    UnsupportedCodecError,
 )
 
 __all__ = [
@@ -144,6 +145,7 @@ __all__ = [
     "KafkaUnavailableError",
     "KafkaTimeoutError",
     "KafkaConnectionError",
+    "UnsupportedCodecError",
 ]
 
 
@@ -420,7 +422,7 @@ def _iter_broker_errors():
             yield obj
 
 
-kafka_errors = dict([(x.errno, x) for x in _iter_broker_errors()])
+kafka_errors = {x.errno: x for x in _iter_broker_errors()}
 
 
 def for_code(error_code):
