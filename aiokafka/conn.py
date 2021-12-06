@@ -13,6 +13,7 @@ import uuid
 import warnings
 import weakref
 
+import async_timeout
 from kafka.protocol.api import RequestHeader
 from kafka.protocol.admin import (
     SaslHandShakeRequest, SaslAuthenticateRequest, ApiVersionRequest
@@ -21,7 +22,7 @@ from kafka.protocol.commit import (
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
 import aiokafka.errors as Errors
-from aiokafka.util import create_future, create_task, get_running_loop
+from aiokafka.util import create_future, create_task, get_running_loop, wait_for
 
 from aiokafka.abc import AbstractTokenProvider
 
@@ -212,10 +213,9 @@ class AIOKafkaConnection:
         # Create streams same as `open_connection`, but using custom protocol
         reader = asyncio.StreamReader(limit=READER_LIMIT, loop=loop)
         protocol = AIOKafkaProtocol(self._closed_fut, reader, loop=loop)
-        transport, _ = await asyncio.wait_for(
-            loop.create_connection(
-                lambda: protocol, self.host, self.port, ssl=ssl),
-            timeout=self._request_timeout)
+        async with async_timeout.timeout(self._request_timeout):
+            transport, _ = await loop.create_connection(
+                lambda: protocol, self.host, self.port, ssl=ssl)
         writer = asyncio.StreamWriter(transport, protocol, reader, loop)
         self._reader, self._writer, self._protocol = reader, writer, protocol
 
@@ -441,7 +441,7 @@ class AIOKafkaConnection:
             return self._writer.drain()
         fut = self._loop.create_future()
         self._requests.append((correlation_id, request.RESPONSE_TYPE, fut))
-        return asyncio.wait_for(fut, self._request_timeout)
+        return wait_for(fut, self._request_timeout)
 
     def _send_sasl_token(self, payload, expect_response=True):
         if self._writer is None:
@@ -462,7 +462,7 @@ class AIOKafkaConnection:
 
         fut = self._loop.create_future()
         self._requests.append((None, None, fut))
-        return asyncio.wait_for(fut, self._request_timeout)
+        return wait_for(fut, self._request_timeout)
 
     def connected(self):
         return bool(self._reader is not None and not self._reader.at_eof())

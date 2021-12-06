@@ -22,7 +22,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: 3.7
+        python-version: 3.9
 
     - name: Install system dependencies
       run: |
@@ -39,10 +39,10 @@ jobs:
       uses: actions/cache@v1
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
-        key: ${{ runner.os }}-py-3.7-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
+        key: ${{ runner.os }}-py-3.9-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
         # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
         restore-keys: |
-         ${{ runner.os }}-py-3.7-
+         ${{ runner.os }}-py-3.9-
 
     - name: Install python dependencies
       run: |
@@ -68,14 +68,16 @@ jobs:
 
     strategy:
       matrix:
-        python: [3.6, 3.7, 3.8.5]
+        python: [3.6, 3.7, 3.8, 3.9]
         include:
           - python: 3.6
             snappy_whl: tools/python_snappy-0.5.4-cp36-cp36m-win_amd64.whl
           - python: 3.7
             snappy_whl: tools/python_snappy-0.5.4-cp37-cp37m-win_amd64.whl
-          - python: 3.8.5
+          - python: 3.8
             snappy_whl: tools/python_snappy-0.5.4-cp38-cp38-win_amd64.whl
+          - python: 3.9
+            snappy_whl: tools/python_snappy-0.5.4-cp39-cp39-win_amd64.whl
 
     steps:
     - uses: actions/checkout@v2
@@ -144,7 +146,7 @@ jobs:
 
     strategy:
       matrix:
-        python: [3.6, 3.7, 3.8.5]
+        python: [3.6, 3.7, 3.8, 3.9]
 
     steps:
     - uses: actions/checkout@v2
@@ -217,8 +219,7 @@ jobs:
     strategy:
       matrix:
         include:
-          # FIXME Stick to 3.8.5 as 3.8.6 has broken `wait_for`
-          - python: 3.8.5
+          - python: 3.9
             kafka: "2.4.0"
             scala: "2.12"
 
@@ -226,33 +227,33 @@ jobs:
           - python: 3.6
             kafka: "2.4.0"
             scala: "2.12"
-
-          # Older python versions against latest broker
           - python: 3.7
             kafka: "2.4.0"
             scala: "2.12"
-
+          - python: 3.8
+            kafka: "2.4.0"
+            scala: "2.12"
 
           # Older brokers against latest python version
-          - python: 3.8.5
+          - python: 3.9
             kafka: "0.9.0.1"
             scala: "2.11"
-          - python: 3.8.5
+          - python: 3.9
             kafka: "0.10.2.1"
             scala: "2.11"
-          - python: 3.8.5
+          - python: 3.9
             kafka: "0.11.0.3"
             scala: "2.12"
-          - python: 3.8.5
+          - python: 3.9
             kafka: "1.1.1"
             scala: "2.12"
-          - python: 3.8.5
+          - python: 3.9
             kafka: "2.1.1"
             scala: "2.12"
-          - python: 3.8.5
+          - python: 3.9
             kafka: "2.2.2"
             scala: "2.12"
-          - python: 3.8.5
+          - python: 3.9
             kafka: "2.3.1"
             scala: "2.12"
       fail-fast: false

@@ -5,6 +5,7 @@ import random
 import time
 from itertools import chain
 
+import async_timeout
 from kafka.protocol.offset import OffsetRequest
 
 from aiokafka.protocol.fetch import FetchRequest
@@ -846,7 +847,7 @@ class Fetcher:
                 tp_state.reset_to(offset)
         return needs_wakeup
 
-    async def _retrieve_offsets(self, timestamps, timeout_ms=float("inf")):
+    async def _retrieve_offsets(self, timestamps, timeout_ms=None):
         """ Fetch offset for each partition passed in ``timestamps`` map.
 
         Blocks until offsets are obtained, a non-retriable exception is raised
@@ -867,31 +868,23 @@ class Fetcher:
         if not timestamps:
             return {}
 
-        timeout = timeout_ms / 1000
-        start_time = time.monotonic()
-        remaining = timeout
-        while True:
-            try:
-                offsets = await asyncio.wait_for(
-                    self._proc_offset_requests(timestamps),
-                    timeout=None if remaining == float("inf") else remaining
-                )
-            except asyncio.TimeoutError:
-                break
-            except Errors.KafkaError as error:
-                if not error.retriable:
-                    raise error
-                if error.invalid_metadata:
-                    self._client.force_metadata_update()
-                elapsed = time.monotonic() - start_time
-                remaining = max(0, remaining - elapsed)
-                if remaining < self._retry_backoff:
-                    break
-                await asyncio.sleep(self._retry_backoff)
-            else:
-                return offsets
-        raise KafkaTimeoutError(
-            "Failed to get offsets by times in %s ms" % timeout_ms)
+        timeout = None if timeout_ms is None else timeout_ms / 1000
+        try:
+            async with async_timeout.timeout(timeout):
+                while True:
+                    try:
+                        offsets = await self._proc_offset_requests(timestamps)
+                    except Errors.KafkaError as error:
+                        if not error.retriable:
+                            raise error
+                        if error.invalid_metadata:
+                            self._client.force_metadata_update()
+                        await asyncio.sleep(self._retry_backoff)
+                    else:
+                        return offsets
+        except asyncio.TimeoutError:
+            raise KafkaTimeoutError(
+                "Failed to get offsets by times in %s ms" % timeout_ms)
 
     async def _proc_offset_requests(self, timestamps):
         """ Fetch offsets for each partition in timestamps dict. This may send

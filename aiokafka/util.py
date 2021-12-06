@@ -4,6 +4,8 @@ from asyncio import AbstractEventLoop
 from distutils.version import StrictVersion
 from typing import Awaitable, Dict, Tuple, TypeVar, Union
 
+import async_timeout
+
 from .structs import OffsetAndMetadata, TopicPartition
 
 
@@ -28,6 +30,13 @@ def create_future(loop: AbstractEventLoop = None) -> "asyncio.Future[T]":
     if loop is None:
         loop = get_running_loop()
     return loop.create_future()
+
+
+async def wait_for(fut: Awaitable[T], timeout: Union[None, int, float] = None) -> T:
+    # A replacement for buggy (since 3.8.6) `asyncio.wait_for()`
+    # https://bugs.python.org/issue42130
+    async with async_timeout.timeout(timeout):
+        return await fut
 
 
 def parse_kafka_version(api_version: str) -> Tuple[int, int, int]:
