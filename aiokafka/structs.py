@@ -50,6 +50,9 @@ class RecordMetadata(NamedTuple):
     If the broker set it's own timestamp, ``1`` will be returned (``LogAppendTime``).
     """
 
+    log_start_offset: Optional[int]
+    ""
+
 
 KT = TypeVar("KT")
 VT = TypeVar("VT")

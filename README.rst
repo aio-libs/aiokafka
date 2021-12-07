@@ -81,7 +81,7 @@ generate ssh keys for some tests.
 
 Setting up tests requirements (assuming you're within virtualenv on ubuntu 14.04+)::
 
-    sudo apt-get install -y libsnappy-dev
+    sudo apt-get install -y libsnappy-dev libzstd-dev
     make setup
 
 Running tests with coverage::

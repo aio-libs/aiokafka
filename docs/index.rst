@@ -151,6 +151,14 @@ For **Windows** the easiest way is to fetch a precompiled wheel from
 http://www.lfd.uci.edu/~gohlke/pythonlibs/#python-snappy
 
 
+Optional zstd indtall
++++++++++++++++++++++
+
+To enable Zstandard compression/decompression, install zstandard:
+
+>>> pip3 install zstandard
+
+
 Optional GSSAPI install
 +++++++++++++++++++++++
 
