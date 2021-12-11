@@ -7,12 +7,12 @@ import weakref
 from unittest import mock
 
 from kafka.cluster import ClusterMetadata
+from kafka.protocol.produce import ProduceResponse
 
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, run_in_thread, kafka_versions
 )
 
-from aiokafka.protocol.produce import ProduceResponse
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer

@@ -4,6 +4,8 @@ from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, kafka_versions
 )
 
+from kafka.protocol.produce import ProduceRequest, ProduceResponse
+
 from aiokafka.producer.sender import (
     Sender, InitPIDHandler, AddPartitionsToTxnHandler,
     AddOffsetsToTxnHandler, TxnOffsetCommitHandler, EndTxnHandler,
@@ -18,9 +20,6 @@ from aiokafka.protocol.transaction import (
     AddOffsetsToTxnRequest, AddOffsetsToTxnResponse,
     TxnOffsetCommitRequest, TxnOffsetCommitResponse,
     EndTxnRequest, EndTxnResponse
-)
-from aiokafka.protocol.produce import (
-    ProduceRequest, ProduceResponse
 )
 from aiokafka.producer.message_accumulator import MessageAccumulator
 from aiokafka.client import AIOKafkaClient, CoordinationType, ConnectionGroup

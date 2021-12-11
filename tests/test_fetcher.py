@@ -3,6 +3,9 @@ import pytest
 import unittest
 from unittest import mock
 
+from kafka.protocol.fetch import (
+    FetchRequest_v0 as FetchRequest, FetchResponse_v0 as FetchResponse
+)
 from kafka.protocol.offset import OffsetResponse
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.record.default_records import (
@@ -10,8 +13,6 @@ from aiokafka.record.default_records import (
     _DefaultRecordBatchBuilderPy as DefaultRecordBatchBuilder)
 from aiokafka.record.memory_records import MemoryRecords
 
-from aiokafka.protocol.fetch import (
-    FetchRequest_v0 as FetchRequest, FetchResponse_v0 as FetchResponse)
 from aiokafka.errors import (
     TopicAuthorizationFailedError, UnknownError, UnknownTopicOrPartitionError,
     OffsetOutOfRangeError, KafkaTimeoutError, NotLeaderForPartitionError

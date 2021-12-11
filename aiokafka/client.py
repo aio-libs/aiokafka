@@ -7,13 +7,13 @@ from kafka.conn import collect_hosts
 from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.commit import OffsetFetchRequest
 from kafka.protocol.fetch import FetchRequest
+from kafka.protocol.produce import ProduceRequest
 
 import aiokafka.errors as Errors
 from aiokafka import __version__
 from aiokafka.conn import create_conn, CloseReason
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.protocol.coordination import FindCoordinatorRequest
-from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.errors import (
     KafkaError,
     KafkaConnectionError,

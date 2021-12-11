@@ -100,7 +100,7 @@ class ve_build_ext(build_ext):
 
 install_requires = [
     "async-timeout",
-    "kafka-python>=2.0.0",
+    "kafka-python>=2.0.2",
     "dataclasses>=0.5; python_version<'3.7'",
     "packaging",
 ]
