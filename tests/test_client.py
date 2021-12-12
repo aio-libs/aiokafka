@@ -297,11 +297,6 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         ver = await client.check_version()
 
         expected_version = kafka_version[:2]
-        # No significant protocol changed, no way to differencieate
-        if expected_version == (2, 2):
-            expected_version = (2, 1)
-        elif expected_version == (2, 4):
-            expected_version = (2, 3)
         self.assertEqual(expected_version, ver[:2])
         await self.wait_topic(client, 'some_test_topic')
         ver2 = await client.check_version()
