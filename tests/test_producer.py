@@ -148,6 +148,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             self.assertEqual(resp.offset, 0)
         finally:
             loop.run_until_complete(producer.stop())
+            loop.close()
 
     @run_until_complete
     async def test_producer_context_manager(self):

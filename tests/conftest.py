@@ -52,7 +52,9 @@ def docker(request):
     image = request.config.getoption('--docker-image')
     if not image:
         return None
-    return libdocker.from_env()
+    client = libdocker.from_env()
+    yield client
+    client.close()
 
 
 @pytest.fixture(scope='class')
@@ -231,7 +233,7 @@ if sys.platform != 'win32':
                 kafka_sasl_ssl_port, container
             )
         finally:
-            container.remove(force=True)
+            container.stop()
 
 else:
 

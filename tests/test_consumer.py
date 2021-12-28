@@ -130,6 +130,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 loop.run_until_complete(consumer.getone())
         finally:
             loop.run_until_complete(consumer.stop())
+            loop.close()
 
     @run_until_complete
     async def test_consumer_context_manager(self):
