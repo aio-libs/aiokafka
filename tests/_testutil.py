@@ -422,10 +422,14 @@ def random_string(length):
 
 
 def wait_kafka(kafka_host, kafka_port, timeout=60):
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(
-        _wait_kafka(kafka_host, kafka_port, timeout)
-    )
+    loop = asyncio.new_event_loop()
+    try:
+        res = loop.run_until_complete(
+            _wait_kafka(kafka_host, kafka_port, timeout)
+        )
+    finally:
+        loop.close()
+    return res
 
 
 async def _wait_kafka(kafka_host, kafka_port, timeout):

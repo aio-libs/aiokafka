@@ -1,10 +1,10 @@
 import asyncio
 import os
 from asyncio import AbstractEventLoop
-from distutils.version import StrictVersion
-from typing import Awaitable, Dict, Tuple, TypeVar, Union
+from typing import Awaitable, Dict, Tuple, TypeVar, Union, cast
 
 import async_timeout
+from packaging.version import Version
 
 from .structs import OffsetAndMetadata, TopicPartition
 
@@ -40,7 +40,11 @@ async def wait_for(fut: Awaitable[T], timeout: Union[None, int, float] = None) -
 
 
 def parse_kafka_version(api_version: str) -> Tuple[int, int, int]:
-    version = StrictVersion(api_version).version
+    parsed = Version(api_version).release
+    if not 2 <= len(parsed) <= 3:
+        raise ValueError(api_version)
+    version = cast(Tuple[int, int, int], (parsed + (0,))[:3])
+
     if not (0, 9) <= version < (3, 0):
         raise ValueError(api_version)
     return version

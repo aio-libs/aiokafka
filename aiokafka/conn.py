@@ -227,11 +227,15 @@ class AIOKafkaConnection:
             self._idle_handle = loop.call_soon(
                 self._idle_check, weakref.ref(self))
 
-        if self._version_hint and self._version_hint >= (0, 10):
-            await self._do_version_lookup()
+        try:
+            if self._version_hint and self._version_hint >= (0, 10):
+                await self._do_version_lookup()
 
-        if self._security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
-            await self._do_sasl_handshake()
+            if self._security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
+                await self._do_sasl_handshake()
+        except:  # noqa: E722
+            self.close()
+            raise
 
         return reader, writer
 
