@@ -1291,6 +1291,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await self.send_messages(1, list(range(10, 20)))
 
         main_self = self
+        faults = []
 
         class SimpleRebalanceListener(ConsumerRebalanceListener):
             def __init__(self, consumer):
@@ -1306,16 +1307,24 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 # Confirm that coordinator is actually waiting for callback to
                 # complete
                 await asyncio.sleep(0.2)
-                main_self.assertTrue(
-                    self.consumer._coordinator.needs_join_prepare)
+                try:
+                    main_self.assertTrue(
+                        self.consumer._coordinator._rejoin_needed_fut.done())
+                except Exception as exc:
+                    # Exceptions here are intercepted by GroupCoordinator
+                    faults.append(exc)
 
             async def on_partitions_assigned(self, assigned):
                 self.assign_mock(assigned)
                 # Confirm that coordinator is actually waiting for callback to
                 # complete
                 await asyncio.sleep(0.2)
-                main_self.assertFalse(
-                    self.consumer._coordinator.needs_join_prepare)
+                try:
+                    main_self.assertFalse(
+                        self.consumer._coordinator._rejoin_needed_fut.done())
+                except Exception as exc:
+                    # Exceptions here are intercepted by GroupCoordinator
+                    faults.append(exc)
 
         tp0 = TopicPartition(self.topic, 0)
         tp1 = TopicPartition(self.topic, 1)
@@ -1334,6 +1343,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.value, b"10")
         listener1.revoke_mock.assert_called_with(set())
         listener1.assign_mock.assert_called_with({tp0, tp1})
+        if faults:
+            raise faults[0]
 
         # By adding a 2nd consumer we trigger rebalance
         consumer2 = AIOKafkaConsumer(
@@ -1368,6 +1379,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(listener2.revoke_mock.call_count, 1)
         listener2.assign_mock.assert_called_with(c2_assignment)
         self.assertEqual(listener2.assign_mock.call_count, 1)
+        if faults:
+            raise faults[0]
 
     @run_until_complete
     async def test_rebalance_listener_no_deadlock_callbacks(self):
