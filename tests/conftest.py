@@ -50,11 +50,12 @@ def pytest_configure(config):
 @pytest.fixture(scope='session')
 def docker(request):
     image = request.config.getoption('--docker-image')
-    if not image:
-        return None
-    client = libdocker.from_env()
-    yield client
-    client.close()
+    if image:
+        client = libdocker.from_env()
+        yield client
+        client.close()
+    else:
+        yield None
 
 
 @pytest.fixture(scope='class')
