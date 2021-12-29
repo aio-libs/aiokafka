@@ -2,11 +2,11 @@ import os
 import platform
 import re
 import sys
-from distutils.command.bdist_rpm import bdist_rpm as _bdist_rpm
-from distutils.command.build_ext import build_ext
-from distutils.errors import CCompilerError, DistutilsExecError, DistutilsPlatformError
 
 from setuptools import Extension, setup
+from setuptools.command.bdist_rpm import bdist_rpm as _bdist_rpm
+from setuptools.command.build_ext import build_ext
+from setuptools.errors import CCompilerError, ExecError, PlatformError
 
 
 # Those are needed to build _hton for windows
@@ -88,13 +88,13 @@ class ve_build_ext(build_ext):
     def run(self):
         try:
             build_ext.run(self)
-        except (DistutilsPlatformError, FileNotFoundError):
+        except (PlatformError, FileNotFoundError):
             raise BuildFailed()
 
     def build_extension(self, ext):
         try:
             build_ext.build_extension(self, ext)
-        except (CCompilerError, DistutilsExecError, DistutilsPlatformError, ValueError):
+        except (CCompilerError, ExecError, PlatformError, ValueError):
             raise BuildFailed()
 
 
@@ -102,6 +102,7 @@ install_requires = [
     "async-timeout",
     "kafka-python>=2.0.0",
     "dataclasses>=0.5; python_version<'3.7'",
+    "packaging",
 ]
 
 PY_VER = sys.version_info
