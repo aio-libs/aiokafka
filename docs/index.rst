@@ -2,8 +2,12 @@ Welcome to aiokafka's documentation!
 ====================================
 
 .. _GitHub: https://github.com/aio-libs/aiokafka
-.. _kafka-python: https://github.com/dpkp/kafka-python
 .. _asyncio: http://docs.python.org/3.7/library/asyncio.html
+.. _gssapi: https://pypi.org/project/gssapi/
+.. _kafka-python: https://github.com/dpkp/kafka-python
+.. _lz4tools: https://pypi.org/project/lz4tools/
+.. _python-snappy: https://pypi.org/project/python-snappy/
+.. _xxhash: https://pypi.org/project/xxhash/
 
 .. image:: https://img.shields.io/badge/kafka-1.0%2C%200.11%2C%200.10%2C%200.9-brightgreen.svg
     :target: https://kafka.apache.org
@@ -93,16 +97,16 @@ Installation
 
    pip3 install aiokafka
 
-.. note:: *aiokafka* requires the *kafka-python* library.
+.. note:: **aiokafka** requires the kafka-python_ library.
 
 
 Optional LZ4 install
 ++++++++++++++++++++
 
-To enable LZ4 compression/decompression, install lz4tools and xxhash:
+To enable LZ4 compression/decompression, install `lz4tools`_ and `xxhash`_::
 
->>> pip3 install lz4tools
->>> pip3 install xxhash
+  pip3 install lz4tools
+  pip3 install xxhash
 
 Note, that on **Windows** you will need Visual Studio build tools, available for download
 from http://landinghub.visualstudio.com/visual-cpp-build-tools
@@ -137,7 +141,7 @@ From Source:
     sudo make install
 
 
-2. Install the `python-snappy` module
+2. Install the `python-snappy`_ module
 
 .. code:: bash
 
@@ -158,7 +162,7 @@ To enable Zstandard compression/decompression, install zstandard:
 Optional GSSAPI install
 +++++++++++++++++++++++
 
-To enable SASL authentication with GSSAPI you need to install ``gssapi``:
+To enable SASL authentication with GSSAPI you need to install `gssapi`_:
 
 >>> pip3 install gssapi
 
@@ -179,7 +183,7 @@ Continious Integration.
 Authors and License
 -------------------
 
-The ``aiokafka`` package is Apache 2 licensed and freely available.
+The **aiokafka** package is Apache 2 licensed and freely available.
 
 Feel free to improve this package and send a pull request to GitHub_.
 

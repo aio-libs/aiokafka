@@ -33,41 +33,45 @@ class AIOKafkaConsumer:
 
     The consumer will transparently handle the failure of servers in the Kafka
     cluster, and adapt as topic-partitions are created or migrate between
-    brokers. It also interacts with the assigned kafka Group Coordinator node
-    to allow multiple consumers to load balance consumption of topics (feature
-    of kafka >= 0.9.0.0).
+    brokers.
 
-    .. _create_connection:
-        https://docs.python.org/3/library/asyncio-eventloop.html\
-        #creating-connections
+    It also interacts with the assigned Kafka Group Coordinator node to allow
+    multiple consumers to load balance consumption of topics (feature of Kafka
+    >= 0.9.0.0).
+
+    .. _kip-62:
+        https://cwiki.apache.org/confluence/display/KAFKA/KIP-62%3A+Allow+consumer+to+send+heartbeats+from+a+background+thread
 
     Arguments:
-        *topics (str): optional list of topics to subscribe to. If not set,
-            call subscribe() or assign() before consuming records. Passing
-            topics directly is same as calling ``subscribe()`` API.
-        bootstrap_servers: 'host[:port]' string (or list of 'host[:port]'
-            strings) that the consumer should contact to bootstrap initial
-            cluster metadata. This does not have to be the full node list.
+        *topics (list(str)): optional list of topics to subscribe to. If not set,
+            call :meth:`.subscribe` or :meth:`.assign` before consuming records.
+            Passing topics directly is same as calling :meth:`.subscribe` API.
+        bootstrap_servers (str, list(str)): a ``host[:port]`` string (or list of
+            ``host[:port]`` strings) that the consumer should contact to bootstrap
+            initial cluster metadata.
+
+            This does not have to be the full node list.
             It just needs to have at least one broker that will respond to a
             Metadata API Request. Default port is 9092. If no servers are
-            specified, will default to localhost:9092.
+            specified, will default to ``localhost:9092``.
         client_id (str): a name for this client. This string is passed in
             each request to servers and can be used to identify specific
             server-side log entries that correspond to this client. Also
-            submitted to GroupCoordinator for logging with respect to
-            consumer group administration. Default: 'aiokafka-{version}'
+            submitted to :class:`~.consumer.group_coordinator.GroupCoordinator`
+            for logging with respect to consumer group administration. Default:
+            ``aiokafka-{version}``
         group_id (str or None): name of the consumer group to join for dynamic
             partition assignment (if enabled), and to use for fetching and
             committing offsets. If None, auto-partition assignment (via
             group coordinator) and offset commits are disabled.
             Default: None
-        key_deserializer (callable): Any callable that takes a
+        key_deserializer (Callable): Any callable that takes a
             raw message key and returns a deserialized key.
-        value_deserializer (callable, optional): Any callable that takes a
+        value_deserializer (Callable, Optional): Any callable that takes a
             raw message value and returns a deserialized value.
         fetch_min_bytes (int): Minimum amount of data the server should
             return for a fetch request, otherwise wait up to
-            fetch_max_wait_ms for more data to accumulate. Default: 1.
+            `fetch_max_wait_ms` for more data to accumulate. Default: 1.
         fetch_max_bytes (int): The maximum amount of data the server should
             return for a fetch request. This is not an absolute maximum, if
             the first message in the first non-empty partition of the fetch
@@ -83,23 +87,23 @@ class AIOKafkaConsumer:
             requirement given by fetch_min_bytes. Default: 500.
         max_partition_fetch_bytes (int): The maximum amount of data
             per-partition the server will return. The maximum total memory
-            used for a request = #partitions * max_partition_fetch_bytes.
+            used for a request ``= #partitions * max_partition_fetch_bytes``.
             This size must be at least as large as the maximum message size
             the server allows or else it is possible for the producer to
             send messages larger than the consumer can fetch. If that
             happens, the consumer can get stuck trying to fetch a large
             message on a certain partition. Default: 1048576.
         max_poll_records (int): The maximum number of records returned in a
-            single call to ``getmany()``. Defaults ``None``, no limit.
+            single call to :meth:`.getmany`. Defaults ``None``, no limit.
         request_timeout_ms (int): Client request timeout in milliseconds.
             Default: 40000.
         retry_backoff_ms (int): Milliseconds to backoff when retrying on
             errors. Default: 100.
         auto_offset_reset (str): A policy for resetting offsets on
-            OffsetOutOfRange errors: 'earliest' will move to the oldest
-            available message, 'latest' will move to the most recent, and
-            'none' will raise an exception so you can handle this case.
-            Default: 'latest'.
+            :exc:`.OffsetOutOfRangeError` errors: ``earliest`` will move to the oldest
+            available message, ``latest`` will move to the most recent, and
+            ``none`` will raise an exception so you can handle this case.
+            Default: ``latest``.
         enable_auto_commit (bool): If true the consumer's offset will be
             periodically committed in the background. Default: True.
         auto_commit_interval_ms (int): milliseconds between automatic
@@ -120,25 +124,25 @@ class AIOKafkaConsumer:
             enable support both for the old assignment strategy and the new
             one. The coordinator will choose the old assignment strategy until
             all members have been updated. Then it will choose the new
-            strategy. Default: [RoundRobinPartitionAssignor]
+            strategy. Default: [:class:`.RoundRobinPartitionAssignor`]
 
         max_poll_interval_ms (int): Maximum allowed time between calls to
-            consume messages (e.g., ``consumer.getmany()``). If this interval
+            consume messages (e.g., :meth:`.getmany`). If this interval
             is exceeded the consumer is considered failed and the group will
             rebalance in order to reassign the partitions to another consumer
             group member. If API methods block waiting for messages, that time
-            does not count against this timeout. See KIP-62 for more
+            does not count against this timeout. See `KIP-62`_ for more
             information. Default 300000
         rebalance_timeout_ms (int): The maximum time server will wait for this
             consumer to rejoin the group in a case of rebalance. In Java client
             this behaviour is bound to `max.poll.interval.ms` configuration,
             but as ``aiokafka`` will rejoin the group in the background, we
             decouple this setting to allow finer tuning by users that use
-            ConsumerRebalanceListener to delay rebalacing. Defaults
+            :class:`.ConsumerRebalanceListener` to delay rebalacing. Defaults
             to ``session_timeout_ms``
         session_timeout_ms (int): Client group session and failure detection
             timeout. The consumer sends periodic heartbeats
-            (heartbeat.interval.ms) to indicate its liveness to the broker.
+            (`heartbeat.interval.ms`) to indicate its liveness to the broker.
             If no hearts are received by the broker for a group member within
             the session timeout, the broker will remove the consumer from the
             group and trigger a rebalance. The allowed range is configured with
@@ -150,7 +154,7 @@ class AIOKafkaConsumer:
             Kafka's group management feature. Heartbeats are used to ensure
             that the consumer's session stays active and to facilitate
             rebalancing when new consumers join or leave the group. The
-            value must be set lower than session_timeout_ms, but typically
+            value must be set lower than `session_timeout_ms`, but typically
             should be set no higher than 1/3 of that value. It can be
             adjusted even lower to control the expected time for normal
             rebalances. Default: 3000
@@ -159,16 +163,15 @@ class AIOKafkaConsumer:
             routine. Mostly defines how fast the system will see rebalance and
             request new data for new partitions. Default: 200
         api_version (str): specify which kafka API version to use.
-            AIOKafkaConsumer supports Kafka API versions >=0.9 only.
-            If set to 'auto', will attempt to infer the broker version by
-            probing various APIs. Default: auto
+            :class:`AIOKafkaConsumer` supports Kafka API versions >=0.9 only.
+            If set to ``auto``, will attempt to infer the broker version by
+            probing various APIs. Default: ``auto``
         security_protocol (str): Protocol used to communicate with brokers.
-            Valid values are: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL.
-            Default: PLAINTEXT.
-        ssl_context (ssl.SSLContext): pre-configured SSLContext for wrapping
-            socket connections. Directly passed into asyncio's
-            `create_connection`_. For more information see :ref:`ssl_auth`.
-            Default: None.
+            Valid values are: ``PLAINTEXT``, ``SSL``. Default: ``PLAINTEXT``.
+        ssl_context (ssl.SSLContext): pre-configured :class:`~ssl.SSLContext`
+            for wrapping socket connections. Directly passed into asyncio's
+            :meth:`~asyncio.loop.create_connection`. For more information see
+            :ref:`ssl_auth`. Default: None.
         exclude_internal_topics (bool): Whether records from internal topics
             (such as offsets) should be exposed to the consumer. If set to True
             the only way to receive records from an internal topic is
@@ -177,37 +180,39 @@ class AIOKafkaConsumer:
             of milliseconds specified by this config. Specifying `None` will
             disable idle checks. Default: 540000 (9 minutes).
         isolation_level (str): Controls how to read messages written
-            transactionally. If set to *read_committed*,
-            ``consumer.getmany()``
-            will only return transactional messages which have been committed.
-            If set to *read_uncommitted* (the default), ``consumer.getmany()``
-            will return all messages, even transactional messages which have
-            been aborted.
+            transactionally.
+
+            If set to ``read_committed``, :meth:`.getmany` will only return
+            transactional messages which have been committed.
+            If set to ``read_uncommitted`` (the default), :meth:`.getmany` will
+            return all messages, even transactional messages which have been
+            aborted.
 
             Non-transactional messages will be returned unconditionally in
             either mode.
 
             Messages will always be returned in offset order. Hence, in
-            *read_committed* mode, ``consumer.getmany()`` will only return
+            `read_committed` mode, :meth:`.getmany` will only return
             messages up to the last stable offset (LSO), which is the one less
             than the offset of the first open transaction. In particular any
             messages appearing after messages belonging to ongoing transactions
             will be withheld until the relevant transaction has been completed.
-            As a result, *read_committed* consumers will not be able to read up
+            As a result, `read_committed` consumers will not be able to read up
             to the high watermark when there are in flight transactions.
-            Further, when in *read_committed* the seek_to_end method will
-            return the LSO. See method docs below. Default: "read_uncommitted"
+            Further, when in `read_committed` the seek_to_end method will
+            return the LSO. See method docs below. Default: ``read_uncommitted``
 
         sasl_mechanism (str): Authentication mechanism when security_protocol
-            is configured for SASL_PLAINTEXT or SASL_SSL. Valid values are:
-            PLAIN, GSSAPI, SCRAM-SHA-256, SCRAM-SHA-512, OAUTHBEARER.
-            Default: PLAIN
-        sasl_plain_username (str): username for sasl PLAIN authentication.
+            is configured for ``SASL_PLAINTEXT`` or ``SASL_SSL``. Valid values are:
+            ``PLAIN``, ``GSSAPI``, ``SCRAM-SHA-256``, ``SCRAM-SHA-512``,
+            ``OAUTHBEARER``.
+            Default: ``PLAIN``
+        sasl_plain_username (str): username for SASL ``PLAIN`` authentication.
             Default: None
-        sasl_plain_password (str): password for sasl PLAIN authentication.
+        sasl_plain_password (str): password for SASL ``PLAIN`` authentication.
             Default: None
-        sasl_oauth_token_provider (kafka.oauth.abstract.AbstractTokenProvider):
-            OAuthBearer token provider instance. (See kafka.oauth.abstract).
+        sasl_oauth_token_provider (~aiokafka.abc.AbstractTokenProvider):
+            OAuthBearer token provider instance. (See :mod:`kafka.oauth.abstract`).
             Default: None
 
     Note:
@@ -422,20 +427,20 @@ class AIOKafkaConsumer:
         return set(topics)
 
     def assign(self, partitions):
-        """ Manually assign a list of TopicPartitions to this consumer.
+        """Manually assign a list of :class:`.TopicPartition` to this consumer.
 
         This interface does not support incremental assignment and will
         replace the previous assignment (if there was one).
 
         Arguments:
-            partitions (list of TopicPartition): assignment for this instance.
+            partitions (list(TopicPartition)): assignment for this instance.
 
         Raises:
-            IllegalStateError: if consumer has already called subscribe()
+            IllegalStateError: if consumer has already called :meth:`subscribe`
 
         Warning:
             It is not possible to use both manual partition assignment with
-            assign() and group assignment with subscribe().
+            :meth:`assign` and group assignment with :meth:`subscribe`.
 
         Note:
             Manual topic assignment through this method does not use the
@@ -456,21 +461,22 @@ class AIOKafkaConsumer:
     def assignment(self):
         """ Get the set of partitions currently assigned to this consumer.
 
-        If partitions were directly assigned using ``assign()``, then this will
+        If partitions were directly assigned using :meth:`assign`, then this will
         simply return the same partitions that were previously assigned.
 
-        If topics were subscribed using ``subscribe()``, then this will give
+        If topics were subscribed using :meth:`subscribe`, then this will give
         the set of topic partitions currently assigned to the consumer (which
         may be empty if the assignment hasn't happened yet or if the partitions
         are in the process of being reassigned).
 
         Returns:
-            set: {TopicPartition, ...}
+            set(TopicPartition): the set of partitions currently assigned to
+            this consumer
         """
         return self._subscription.assigned_partitions()
 
     async def stop(self):
-        """ Close the consumer, while waiting for finilizers:
+        """ Close the consumer, while waiting for finalizers:
 
             * Commit last consumed message if autocommit enabled
             * Leave group if used Consumer Groups
@@ -494,9 +500,9 @@ class AIOKafkaConsumer:
         startup. As such, if you need to store offsets in anything other than
         Kafka, this API should not be used.
 
-        Currently only supports kafka-topic offset storage (not zookeeper)
+        Currently only supports kafka-topic offset storage (not Zookeeper)
 
-        When explicitly passing ``offsets`` use either offset of next record,
+        When explicitly passing `offsets` use either offset of next record,
         or tuple of offset and metadata::
 
             tp = TopicPartition(msg.topic, msg.partition)
@@ -506,33 +512,37 @@ class AIOKafkaConsumer:
             # Or position directly
             await consumer.commit({tp: (msg.offset + 1, metadata)})
 
-        .. note:: If you want `fire and forget` commit, like ``commit_async()``
-            in *kafka-python*, just run it in a task. Something like::
+        .. note:: If you want *fire and forget* commit, like
+            :meth:`~kafka.KafkaConsumer.commit_async` in `kafka-python`_, just
+            run it in a task. Something like::
 
                 fut = loop.create_task(consumer.commit())
                 fut.add_done_callback(on_commit_done)
 
         Arguments:
-            offsets (dict, optional): {TopicPartition: (offset, metadata)} dict
-                to commit with the configured ``group_id``. Defaults to current
-                consumed offsets for all subscribed partitions.
+            offsets (dict, Optional): A mapping from :class:`.TopicPartition` to
+              ``(offset, metadata)`` to commit with the configured ``group_id``.
+              Defaults to current consumed offsets for all subscribed partitions.
         Raises:
-            IllegalOperation: If used with ``group_id == None``.
-            IllegalStateError: If partitions not assigned.
+            ~aiokafka.errors.CommitFailedError: If membership already changed on broker.
+            ~aiokafka.errors.IllegalOperation: If used with ``group_id == None``.
+            ~aiokafka.errors.IllegalStateError: If partitions not assigned.
+            ~aiokafka.errors.KafkaError: If commit failed on broker side. This
+                could be due to invalid offset, too long metadata, authorization
+                failure, etc.
             ValueError: If offsets is of wrong format.
-            CommitFailedError: If membership already changed on broker.
-            KafkaError: If commit failed on broker side. This could be due to
-                invalid offset, too long metadata, authorization failure, etc.
 
         .. versionchanged:: 0.4.0
 
-            Changed ``AssertionError`` to ``IllegalStateError`` in case of
-            unassigned partition.
+            Changed :exc:`AssertionError` to
+            :exc:`~aiokafka.errors.IllegalStateError` in case of unassigned
+            partition.
 
         .. versionchanged:: 0.4.0
 
-            Will now raise ``CommitFailedError`` in case membership changed,
-            as (posibly) this partition is handled by another consumer.
+            Will now raise :exc:`~aiokafka.errors.CommitFailedError` in case
+            membership changed, as (possibly) this partition is handled by
+            another consumer.
         """
         if self._group_id is None:
             raise IllegalOperation("Requires group_id")
@@ -626,8 +636,9 @@ class AIOKafkaConsumer:
 
         .. versionchanged:: 0.4.0
 
-            Changed ``AssertionError`` to ``IllegalStateError`` in case of
-            unassigned partition
+            Changed :exc:`AssertionError` to
+            :exc:`~aiokafka.errors.IllegalStateError` in case of unassigned
+            partition
         """
         while True:
             if not self._subscription.is_assigned(partition):
@@ -684,7 +695,7 @@ class AIOKafkaConsumer:
         `read_uncommitted` will always return -1. Will return None for older
         Brokers.
 
-        As with ``highwater()`` will not be available until some messages are
+        As with :meth:`highwater` will not be available until some messages are
         consumed.
 
         Arguments:
@@ -700,10 +711,10 @@ class AIOKafkaConsumer:
 
     def last_poll_timestamp(self, partition):
         """ Returns the timestamp of the last poll of this partition (in ms).
-        It is the last time `highwater` and `last_stable_offset` were
+        It is the last time :meth:`highwater` and :meth:`last_stable_offset` were
         updated. However it does not mean that new messages were received.
 
-        As with ``highwater()`` will not be available until some messages are
+        As with :meth:`highwater` will not be available until some messages are
         consumed.
 
         Arguments:
@@ -718,10 +729,10 @@ class AIOKafkaConsumer:
         return assignment.state_value(partition).timestamp
 
     def seek(self, partition, offset):
-        """ Manually specify the fetch offset for a TopicPartition.
+        """ Manually specify the fetch offset for a :class:`.TopicPartition`.
 
         Overrides the fetch offsets that the consumer will use on the next
-        ``getmany()``/``getone()`` call. If this API is invoked for the same
+        :meth:`getmany`/:meth:`getone` call. If this API is invoked for the same
         partition more than once, the latest offset will be used on the next
         fetch.
 
@@ -740,8 +751,9 @@ class AIOKafkaConsumer:
 
         .. versionchanged:: 0.4.0
 
-            Changed ``AssertionError`` to ``IllegalStateError`` and
-            ``ValueError`` in respective cases.
+            Changed :exc:`AssertionError` to
+            :exc:`~aiokafka.errors.IllegalStateError` and :exc:`ValueError` in
+            respective cases.
         """
         if not isinstance(offset, int) or offset < 0:
             raise ValueError("Offset must be a positive integer")
@@ -752,12 +764,12 @@ class AIOKafkaConsumer:
         """ Seek to the oldest available offset for partitions.
 
         Arguments:
-            *partitions: Optionally provide specific TopicPartitions, otherwise
-                default to all assigned partitions.
+            *partitions: Optionally provide specific :class:`.TopicPartition`,
+                otherwise default to all assigned partitions.
 
         Raises:
             IllegalStateError: If any partition is not currently assigned
-            TypeError: If partitions are not instances of TopicPartition
+            TypeError: If partitions are not instances of :class:`.TopicPartition`
 
         .. versionadded:: 0.3.0
 
@@ -794,12 +806,12 @@ class AIOKafkaConsumer:
         """Seek to the most recent available offset for partitions.
 
         Arguments:
-            *partitions: Optionally provide specific TopicPartitions, otherwise
-                default to all assigned partitions.
+            *partitions: Optionally provide specific :class:`.TopicPartition`,
+                otherwise default to all assigned partitions.
 
         Raises:
             IllegalStateError: If any partition is not currently assigned
-            TypeError: If partitions are not instances of TopicPartition
+            TypeError: If partitions are not instances of :class:`.TopicPartition`
 
         .. versionadded:: 0.3.0
 
@@ -835,11 +847,11 @@ class AIOKafkaConsumer:
         """ Seek to the committed offset for partitions.
 
         Arguments:
-            *partitions: Optionally provide specific TopicPartitions, otherwise
-                default to all assigned partitions.
+            *partitions: Optionally provide specific :class:`.TopicPartition`,
+                otherwise default to all assigned partitions.
 
         Returns:
-            dict: ``{TopicPartition: offset}`` mapping
+            dict(TopicPartition, int): mapping
             of the currently committed offsets.
 
         Raises:
@@ -848,8 +860,9 @@ class AIOKafkaConsumer:
 
         .. versionchanged:: 0.3.0
 
-            Changed ``AssertionError`` to ``IllegalStateError`` in case of
-            unassigned partition
+            Changed :exc:`AssertionError` to
+            :exc:`~aiokafka.errors.IllegalStateError` in case of unassigned
+            partition
         """
         if not all([isinstance(p, TopicPartition) for p in partitions]):
             raise TypeError('partitions must be TopicPartition instances')
@@ -891,12 +904,12 @@ class AIOKafkaConsumer:
             This method may block indefinitely if the partition does not exist.
 
         Arguments:
-            timestamps (dict): ``{TopicPartition: int}`` mapping from partition
+            timestamps (dict(TopicPartition, int)): mapping from partition
                 to the timestamp to look up. Unit should be milliseconds since
                 beginning of the epoch (midnight Jan 1, 1970 (UTC))
 
         Returns:
-            dict: ``{TopicPartition: OffsetAndTimestamp}`` mapping from
+            dict(TopicPartition, OffsetAndTimestamp): mapping from
             partition to the timestamp and offset of the first message with
             timestamp greater than or equal to the target timestamp.
 
@@ -904,7 +917,7 @@ class AIOKafkaConsumer:
             ValueError: If the target timestamp is negative
             UnsupportedVersionError: If the broker does not support looking
                 up the offsets by timestamp.
-            KafkaTimeoutError: If fetch failed in request_timeout_ms
+            KafkaTimeoutError: If fetch failed in `request_timeout_ms`
 
         .. versionadded:: 0.3.0
 
@@ -935,17 +948,17 @@ class AIOKafkaConsumer:
             This method may block indefinitely if the partition does not exist.
 
         Arguments:
-            partitions (list): List of TopicPartition instances to fetch
-                offsets for.
+            partitions (list[TopicPartition]): List of :class:`.TopicPartition`
+                instances to fetch offsets for.
 
         Returns:
-            dict: ``{TopicPartition: int}`` mapping of partition to  earliest
+            dict [TopicPartition, int]: mapping of partition to  earliest
             available offset.
 
         Raises:
             UnsupportedVersionError: If the broker does not support looking
                 up the offsets by timestamp.
-            KafkaTimeoutError: If fetch failed in request_timeout_ms.
+            KafkaTimeoutError: If fetch failed in `request_timeout_ms`.
 
         .. versionadded:: 0.3.0
 
@@ -971,17 +984,17 @@ class AIOKafkaConsumer:
             This method may block indefinitely if the partition does not exist.
 
         Arguments:
-            partitions (list): List of TopicPartition instances to fetch
-                offsets for.
+            partitions (list[TopicPartition]): List of :class:`.TopicPartition`
+                instances to fetch offsets for.
 
         Returns:
-            dict: ``{TopicPartition: int}`` mapping of partition to last
+            dict [TopicPartition, int]: mapping of partition to last
             available offset + 1.
 
         Raises:
             UnsupportedVersionError: If the broker does not support looking
                 up the offsets by timestamp.
-            KafkaTimeoutError: If fetch failed in request_timeout_ms
+            KafkaTimeoutError: If fetch failed in ``request_timeout_ms``
 
         .. versionadded:: 0.3.0
 
@@ -1002,7 +1015,7 @@ class AIOKafkaConsumer:
         Topic subscriptions are not incremental: this list will replace the
         current assignment (if there is one).
 
-        This method is incompatible with ``assign()``.
+        This method is incompatible with :meth:`assign`.
 
         Arguments:
            topics (list): List of topics for subscription.
@@ -1030,10 +1043,10 @@ class AIOKafkaConsumer:
                revoked/assigned
                through this interface are from topics subscribed in this call.
         Raises:
-            IllegalStateError: if called after previously calling assign()
+            IllegalStateError: if called after previously calling :meth:`assign`
             ValueError: if neither topics or pattern is provided or both
                are provided
-            TypeError: if listener is not a ConsumerRebalanceListener
+            TypeError: if listener is not a :class:`.ConsumerRebalanceListener`
         """
         if not (topics or pattern):
             raise ValueError(
@@ -1075,10 +1088,10 @@ class AIOKafkaConsumer:
             log.info("Subscribed to topic(s): %s", topics)
 
     def subscription(self):
-        """ Get the current topic subscription.
+        """ Get the current topics subscription.
 
         Returns:
-            frozenset: {topic, ...}
+            frozenset(str): a set of topics
         """
         return self._subscription.topics
 
@@ -1097,12 +1110,12 @@ class AIOKafkaConsumer:
         If no new messages prefetched, this method will wait for it.
 
         Arguments:
-            partitions (List[TopicPartition]): Optional list of partitions to
+            partitions (list(TopicPartition)): Optional list of partitions to
                 return from. If no partitions specified then returned message
                 will be from any partition, which consumer is subscribed to.
 
         Returns:
-            ConsumerRecord
+            ~aiokafka.structs.ConsumerRecord: the message
 
         Will return instance of
 
@@ -1113,7 +1126,6 @@ class AIOKafkaConsumer:
                 ["topic", "partition", "offset", "key", "value"])
 
         Example usage:
-
 
         .. code:: python
 
@@ -1144,16 +1156,17 @@ class AIOKafkaConsumer:
         `timeout_ms` milliseconds.
 
         Arguments:
-            partitions (List[TopicPartition]): The partitions that need
+            partitions (list[TopicPartition]): The partitions that need
                 fetching message. If no one partition specified then all
                 subscribed partitions will be used
-            timeout_ms (int, optional): milliseconds spent waiting if
+            timeout_ms (int, Optional): milliseconds spent waiting if
                 data is not available in the buffer. If 0, returns immediately
                 with any records that are available currently in the buffer,
                 else returns empty. Must not be negative. Default: 0
         Returns:
-            dict: topic to list of records since the last fetch for the
-                subscribed list of topics and partitions
+            dict(TopicPartition, list[ConsumerRecord]): topic to list of
+            records since the last fetch for the subscribed list of topics and
+            partitions
 
         Example usage:
 
@@ -1190,16 +1203,15 @@ class AIOKafkaConsumer:
     def pause(self, *partitions):
         """Suspend fetching from the requested partitions.
 
-        Future calls to :meth:`~aiokafka.AIOKafkaConsumer.getmany` will not
-        return any records from these partitions until they have been resumed
-        using :meth:`~aiokafka.AIOKafkaConsumer.resume`.
+        Future calls to :meth:`.getmany` will not return any records from these
+        partitions until they have been resumed using :meth:`.resume`.
 
         Note: This method does not affect partition subscription.
         In particular, it does not cause a group rebalance when automatic
         assignment is used.
 
         Arguments:
-            *partitions (TopicPartition): Partitions to pause.
+            *partitions (list[TopicPartition]): Partitions to pause.
         """
         if not all([isinstance(p, TopicPartition) for p in partitions]):
             raise TypeError('partitions must be TopicPartition namedtuples')
@@ -1210,10 +1222,10 @@ class AIOKafkaConsumer:
 
     def paused(self):
         """Get the partitions that were previously paused using
-        :meth:`~aiokafka.AIOKafkaConsumer.pause`.
+        :meth:`.pause`.
 
         Returns:
-            set: {partition (TopicPartition), ...}
+            set[TopicPartition]: partitions
         """
         return self._subscription.paused_partitions()
 
@@ -1221,7 +1233,7 @@ class AIOKafkaConsumer:
         """Resume fetching from the specified (paused) partitions.
 
         Arguments:
-            *partitions (TopicPartition): Partitions to resume.
+            *partitions (list[TopicPartition]): Partitions to resume.
         """
         if not all([isinstance(p, TopicPartition) for p in partitions]):
             raise TypeError('partitions must be TopicPartition namedtuples')

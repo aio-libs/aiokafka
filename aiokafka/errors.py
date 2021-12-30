@@ -193,9 +193,9 @@ class ProducerClosed(KafkaError):
 
 
 class ProducerFenced(KafkaError):
-    """ Another producer with the same transactional ID went online.
-        NOTE: As it seems this will be raised by Broker if transaction timeout
-            occurred also.
+    """Another producer with the same transactional ID went online.
+       NOTE: As it seems this will be raised by Broker if transaction timeout
+       occurred also.
     """
 
     def __init__(

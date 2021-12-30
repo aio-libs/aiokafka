@@ -20,7 +20,7 @@ class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
 
     There are many uses for this functionality. One common use is saving
     offsets in a custom store. By saving offsets in the
-    on_partitions_revoked(), call we can ensure that any time partition
+    :meth:`on_partitions_revoked`, call we can ensure that any time partition
     assignment changes the offset gets saved.
 
     Another use is flushing out any kind of cache of intermediate results the
@@ -38,10 +38,10 @@ class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
     wait for callbacks to finish before proceeding with group join.
 
     It is guaranteed that all consumer processes will invoke
-    on_partitions_revoked() prior to any process invoking
-    on_partitions_assigned(). So if offsets or other state is saved in the
-    on_partitions_revoked() call, it should be saved by the time the process
-    taking over that partition has their on_partitions_assigned() callback
+    :meth:`on_partitions_revoked` prior to any process invoking
+    :meth:`on_partitions_assigned`. So if offsets or other state is saved in the
+    :meth:`on_partitions_revoked` call, it should be saved by the time the process
+    taking over that partition has their :meth:`on_partitions_assigned` callback
     called to load the state.
     """
 
@@ -58,10 +58,10 @@ class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
         here, to avoid duplicate message delivery after rebalance is finished.
 
         .. note:: This method is only called before rebalances. It is not
-            called prior to ``AIOKafkaConsumer.close()``
+            called prior to :meth:`.AIOKafkaConsumer.stop`
 
         Arguments:
-            revoked (list of TopicPartition): the partitions that were assigned
+            revoked (list(TopicPartition)): the partitions that were assigned
                 to the consumer on the last rebalance
         """
         pass
@@ -77,11 +77,11 @@ class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
         and *before* the consumer starts fetching data again.
 
         It is guaranteed that all the processes in a consumer group will
-        execute their on_partitions_revoked() callback before any instance
-        executes its on_partitions_assigned() callback.
+        execute their :meth:`on_partitions_revoked` callback before any instance
+        executes its :meth:`on_partitions_assigned` callback.
 
         Arguments:
-            assigned (list of TopicPartition): the partitions assigned to the
+            assigned (list(TopicPartition)): the partitions assigned to the
                 consumer (may include partitions that were previously assigned)
         """
         pass
@@ -89,14 +89,20 @@ class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
 
 class AbstractTokenProvider(abc.ABC):
     """
-    A Token Provider must be used for the SASL OAuthBearer protocol.
+    A Token Provider must be used for the `SASL OAuthBearer`_ protocol.
+
     The implementation should ensure token reuse so that multiple
-    calls at connect time do not create multiple tokens. The implementation
-    should also periodically refresh the token in order to guarantee
-    that each call returns an unexpired token. A timeout error should
-    be returned after a short period of inactivity so that the
-    broker can log debugging info and retry.
-    Token Providers MUST implement the token() method
+    calls at connect time do not create multiple tokens.
+    The implementation should also periodically refresh the token in order to
+    guarantee that each call returns an unexpired token.
+
+    A timeout error should be returned after a short period of inactivity so
+    that the broker can log debugging info and retry.
+
+    Token Providers MUST implement the :meth:`token` method
+
+    .. _SASL OAuthBearer:
+        https://docs.confluent.io/platform/current/kafka/authentication_sasl/authentication_sasl_oauth.html
     """
 
     def __init__(self, **config):
@@ -105,11 +111,12 @@ class AbstractTokenProvider(abc.ABC):
     @abc.abstractmethod
     async def token(self):
         """
-        An async callback returning a (str) ID/Access Token to be sent to
+        An async callback returning a :class:`str` ID/Access Token to be sent to
         the Kafka client. In case where a synchoronous callback is needed,
         implementations like following can be used:
-        .. highlight:: python
+
         .. code-block:: python
+
             from aiokafka.abc import AbstractTokenProvider
 
             class CustomTokenProvider(AbstractTokenProvider):
@@ -125,10 +132,12 @@ class AbstractTokenProvider(abc.ABC):
     def extensions(self):
         """
         This is an OPTIONAL method that may be implemented.
-        Returns a map of key-value pairs that can
-        be sent with the SASL/OAUTHBEARER initial client request. If
-        not implemented, the values are ignored. This feature is only available
-        in Kafka >= 2.1.0.
+
+        Returns a map of key-value pairs that can be sent with the
+        SASL/OAUTHBEARER initial client request. If not implemented, the values
+        are ignored
+
+        This feature is only available in Kafka >= 2.1.0.
         """
         return {}
 
