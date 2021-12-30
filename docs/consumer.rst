@@ -368,7 +368,7 @@ etc. See :meth:`~aiokafka.AIOKafkaConsumer.subscribe` docs for more details.
      class MyRebalancer(aiokafka.ConsumerRebalanceListener):
 
          async def on_partitions_revoked(self, revoked):
-             async with self.lock:
+             async with lock:
                  pass
 
          async def on_partitions_assigned(self, assigned):
@@ -377,7 +377,7 @@ etc. See :meth:`~aiokafka.AIOKafkaConsumer.subscribe` docs for more details.
      async def main():
          consumer.subscribe("topic", listener=MyRebalancer())
          while True:
-             async with self.lock:
+             async with lock:
                  msgs = await consumer.getmany(timeout_ms=1000)
                  # process messages
 

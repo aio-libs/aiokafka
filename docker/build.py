@@ -5,10 +5,10 @@ import yaml
 import argparse
 
 
-async def build(versions_file, args, *, loop):
+async def build(versions_file, args):
 
     with open(versions_file) as f:
-        config = yaml.load(f.read())
+        config = yaml.load(f.read(), yaml.Loader)
 
     for action in args.actions:
         procs = []

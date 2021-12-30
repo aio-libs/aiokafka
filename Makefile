@@ -1,8 +1,8 @@
 # Some simple testing tasks (sorry, UNIX only).
 
 FLAGS?=--maxfail=3
-SCALA_VERSION?=2.12
-KAFKA_VERSION?=2.2.2
+SCALA_VERSION?=2.13
+KAFKA_VERSION?=2.8.1
 DOCKER_IMAGE=aiolibs/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
 DIFF_BRANCH=origin/master
 FORMATTED_AREAS=aiokafka/util.py aiokafka/structs.py

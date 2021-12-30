@@ -7,12 +7,12 @@ import weakref
 from unittest import mock
 
 from kafka.cluster import ClusterMetadata
+from kafka.protocol.produce import ProduceResponse
 
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, run_in_thread, kafka_versions
 )
 
-from aiokafka.protocol.produce import ProduceResponse
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer
@@ -148,6 +148,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             self.assertEqual(resp.offset, 0)
         finally:
             loop.run_until_complete(producer.stop())
+            loop.close()
 
     @run_until_complete
     async def test_producer_context_manager(self):
