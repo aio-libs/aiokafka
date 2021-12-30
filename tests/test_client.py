@@ -17,7 +17,9 @@ from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient, ConnectionGroup, CoordinationType
 from aiokafka.conn import AIOKafkaConnection, CloseReason
 from aiokafka.util import create_task, get_running_loop
-from ._testutil import KafkaIntegrationTestCase, run_until_complete
+from ._testutil import (
+    KafkaIntegrationTestCase, run_until_complete, kafka_versions
+)
 
 
 NO_ERROR = 0
@@ -288,6 +290,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         self.assertTrue(isinstance(resp, MetadataResponse))
         await client.close()
 
+    @kafka_versions('<2.6')  # FIXME Not implemented yet
     @run_until_complete
     async def test_check_version(self):
         kafka_version = tuple(int(x) for x in self.kafka_version.split("."))
