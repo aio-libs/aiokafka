@@ -1,8 +1,9 @@
 import logging
 import asyncio
-from aiokafka import __version__
-from aiokafka.client import AIOKafkaClient
 from collections import defaultdict
+from ssl import SSLContext
+from typing import List, Optional, Dict, Tuple, Any
+
 from kafka.errors import IncompatibleBrokerVersion, for_code
 from kafka.protocol.api import Request, Response
 from kafka.protocol.metadata import MetadataRequest
@@ -19,15 +20,20 @@ from kafka.protocol.admin import (
 from kafka.structs import TopicPartition, OffsetAndMetadata
 from kafka.admin import NewTopic, KafkaAdminClient as Admin
 from kafka.admin.config_resource import ConfigResourceType, ConfigResource
-from ssl import SSLContext
-from typing import List, Optional, Dict, Tuple, Any
+
+from aiokafka import __version__
+from aiokafka.client import AIOKafkaClient
+
 log = logging.getLogger(__name__)
 
 
-class AIOKafkaAdminClient(object):
+class AIOKafkaAdminClient:
     """A class for administering the Kafka cluster.
 
-    !!! Very very very much new territory with exciting new bugs to be found !!!
+    .. note::
+
+        This class is considered **experimental**, so beware that it is subject
+        to changes even in patch releases.
 
     Keyword Arguments:
         bootstrap_servers: 'host[:port]' string (or list of 'host[:port]'
@@ -60,12 +66,13 @@ class AIOKafkaAdminClient(object):
         ssl_context (ssl.SSLContext): Pre-configured SSLContext for wrapping
             socket connections. If provided, all other ssl_* configurations
             will be ignored. Default: None.
-        api_version (tuple): Specify which Kafka API version to use. If set
-            to None, KafkaClient will attempt to infer the broker version by
-            probing various APIs. Example: (0, 10, 2). Default: None
+        api_version (str): Specify which kafka API version to use.
+            AIOKafka supports Kafka API versions >=0.9 only.
+            If set to 'auto', will attempt to infer the broker version by
+            probing various APIs. Default: auto
     """
 
-    def __init__(self, loop=None,
+    def __init__(self, *, loop=None,
                  bootstrap_servers: str = 'localhost',
                  client_id: str = 'aiokafka-' + __version__,
                  request_timeout_ms: int = 40000,
@@ -74,13 +81,11 @@ class AIOKafkaAdminClient(object):
                  metadata_max_age_ms: int = 300000,
                  security_protocol: str = "PLAINTEXT",
                  ssl_context: Optional[SSLContext] = None,
-                 api_version: Tuple[int, int, int] = None):
-        self.loop = loop or asyncio.get_running_loop()
+                 api_version: str = "auto"):
         self._closed = False
         self._started = False
         self._version_info = {}
-        self.request_timeout_ms = request_timeout_ms
-        self.api_version = api_version
+        self._request_timeout_ms = request_timeout_ms
         self._client = AIOKafkaClient(
             loop=loop, bootstrap_servers=bootstrap_servers,
             client_id=client_id, metadata_max_age_ms=metadata_max_age_ms,
@@ -166,13 +171,13 @@ class AIOKafkaAdminClient(object):
         version = self._matching_api_version(CreateTopicsRequest)
         topics = [Admin._convert_new_topic_request(nt) for nt in new_topics]
         log.debug("Attempting to send create topic request for %r", new_topics)
-        timeout_ms = timeout_ms or self.request_timeout_ms
+        timeout_ms = timeout_ms or self._request_timeout_ms
         if version == 0:
             if validate_only:
                 raise IncompatibleBrokerVersion(
                     "validate_only requires CreateTopicsRequest >= v1, "
                     "which is not supported by Kafka {}."
-                    .format(self.api_version))
+                    .format(self._client.api_version))
             request = CreateTopicsRequest[version](
                 create_topic_requests=topics,
                 timeout=timeout_ms
@@ -206,7 +211,7 @@ class AIOKafkaAdminClient(object):
         """
         version = self._matching_api_version(DeleteTopicsRequest)
         req_cls = DeleteTopicsRequest[version]
-        request = req_cls(topics, timeout_ms or self.request_timeout_ms)
+        request = req_cls(topics, timeout_ms or self._request_timeout_ms)
         response = await self._send_request(request)
         return response
 
@@ -261,7 +266,8 @@ class AIOKafkaAdminClient(object):
         if version == 0 and include_synonyms:
             raise IncompatibleBrokerVersion(
                 "include_synonyms requires DescribeConfigsRequest >= v1,"
-                " which is not supported by Kafka {}.".format(self.api_version))
+                " which is not supported by Kafka {}.".format(
+                    self._client.api_version))
         broker_res, topic_res = self._convert_config_resources(
             config_resources,
             "describe"
@@ -343,7 +349,7 @@ class AIOKafkaAdminClient(object):
         converted_partitions = self._convert_topic_partitions(topic_partitions)
         req = req_class(
             topic_partitions=converted_partitions,
-            timeout=timeout_ms or self.request_timeout_ms,
+            timeout=timeout_ms or self._request_timeout_ms,
             validate_only=validate_only
         )
         resp = await self._send_request(req)
@@ -404,7 +410,7 @@ class AIOKafkaAdminClient(object):
 
     async def list_consumer_groups(
             self,
-            broker_ids: Optional[List[int]] = None) -> List[Tuple[str, str]]:
+            broker_ids: Optional[List[int]] = None) -> List[Tuple[Any, ...]]:
         """List all consumer groups known to the cluster.
 
         This returns a list of Consumer Group tuples. The tuples are
