@@ -4,16 +4,18 @@ import random
 import time
 
 from kafka.conn import collect_hosts
-from kafka.protocol.metadata import MetadataRequest
+from kafka.protocol.admin import DescribeAclsRequest_v2
 from kafka.protocol.commit import OffsetFetchRequest
 from kafka.protocol.fetch import FetchRequest
+from kafka.protocol.metadata import MetadataRequest
+from kafka.protocol.offset import OffsetRequest
+from kafka.protocol.produce import ProduceRequest
 
 import aiokafka.errors as Errors
 from aiokafka import __version__
 from aiokafka.conn import create_conn, CloseReason
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.protocol.coordination import FindCoordinatorRequest
-from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.errors import (
     KafkaError,
     KafkaConnectionError,
@@ -581,13 +583,19 @@ class AIOKafkaClient:
         # in descending order. As soon as we find one that works, return it
         test_cases = [
             # format (<broker version>, <needed struct>)
-            ((2, 3, 0), FetchRequest[0].API_KEY, 11),
-            ((2, 1, 0), MetadataRequest[0].API_KEY, 7),
-            ((1, 1, 0), FetchRequest[0].API_KEY, 7),
-            ((1, 0, 0), MetadataRequest[0].API_KEY, 5),
-            ((0, 11, 0), MetadataRequest[0].API_KEY, 4),
-            ((0, 10, 2), OffsetFetchRequest[0].API_KEY, 2),
-            ((0, 10, 1), MetadataRequest[0].API_KEY, 2),
+            # TODO Requires unreleased version of python-kafka
+            # ((2, 6, 0), DescribeClientQuotasRequest[0]),
+            ((2, 5, 0), DescribeAclsRequest_v2),
+            ((2, 4, 0), ProduceRequest[8]),
+            ((2, 3, 0), FetchRequest[11]),
+            ((2, 2, 0), OffsetRequest[5]),
+            ((2, 1, 0), FetchRequest[10]),
+            ((2, 0, 0), FetchRequest[8]),
+            ((1, 1, 0), FetchRequest[7]),
+            ((1, 0, 0), MetadataRequest[5]),
+            ((0, 11, 0), MetadataRequest[4]),
+            ((0, 10, 2), OffsetFetchRequest[2]),
+            ((0, 10, 1), MetadataRequest[2]),
         ]
 
         error_type = Errors.for_code(response.error_code)
@@ -597,8 +605,8 @@ class AIOKafkaClient:
             for api_key, _, max_version in response.api_versions
         }
         # Get the best match of test cases
-        for broker_version, api_key, version in test_cases:
-            if max_versions.get(api_key, -1) >= version:
+        for broker_version, struct in test_cases:
+            if max_versions.get(struct.API_KEY, -1) >= struct.API_VERSION:
                 return broker_version
 
         # We know that ApiVersionResponse is only supported in 0.10+

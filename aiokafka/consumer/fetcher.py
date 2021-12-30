@@ -7,8 +7,8 @@ from itertools import chain
 
 import async_timeout
 from kafka.protocol.offset import OffsetRequest
+from kafka.protocol.fetch import FetchRequest
 
-from aiokafka.protocol.fetch import FetchRequest
 import aiokafka.errors as Errors
 from aiokafka.errors import (
     ConsumerStoppedError, RecordTooLargeError, KafkaTimeoutError)

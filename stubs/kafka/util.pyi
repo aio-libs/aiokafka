@@ -1,3 +1,0 @@
-
-def crc32(data: bytes) -> int:
-    ...

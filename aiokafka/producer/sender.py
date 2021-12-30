@@ -3,6 +3,8 @@ import collections
 import logging
 import time
 
+from kafka.protocol.produce import ProduceRequest
+
 import aiokafka.errors as Errors
 from aiokafka.client import ConnectionGroup, CoordinationType
 from aiokafka.errors import (
@@ -14,7 +16,6 @@ from aiokafka.errors import (
     OutOfOrderSequenceNumber, TopicAuthorizationFailedError,
     GroupAuthorizationFailedError, TransactionalIdAuthorizationFailed,
     OperationNotAttempted)
-from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.protocol.transaction import (
     InitProducerIdRequest, AddPartitionsToTxnRequest, EndTxnRequest,
     AddOffsetsToTxnRequest, TxnOffsetCommitRequest
