@@ -1,3 +1,5 @@
+import asyncio
+
 from kafka.admin import NewTopic, NewPartitions
 from kafka.admin.config_resource import ConfigResource, ConfigResourceType
 
@@ -84,7 +86,7 @@ class TestAdmin(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_describe_configs_broker(self):
         admin = await self.create_admin()
-        broker_id = admin._client.cluster._brokers[0].nodeId
+        [broker_id] = admin._client.cluster._brokers.keys()
         cr = ConfigResource(ConfigResourceType.BROKER, broker_id)
         resp = await admin.describe_configs([cr])
         assert len(resp) == 1
@@ -113,6 +115,15 @@ class TestAdmin(KafkaIntegrationTestCase):
         name, value, *_ = config_entries[0]
         assert name == "cleanup.policy"
         assert value == "delete"
+
+    @kafka_versions('>=0.10.0.0')
+    @run_until_complete
+    async def test_describe_cluster(self):
+        admin = await self.create_admin()
+        [broker_id] = admin._client.cluster._brokers.keys()
+        resp = await admin.describe_cluster()
+        assert len(resp['brokers']) == 1
+        assert resp['brokers'][0]['node_id'] == broker_id
 
     @kafka_versions('>=1.0.0')
     @run_until_complete
@@ -143,6 +154,7 @@ class TestAdmin(KafkaIntegrationTestCase):
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
+        await asyncio.sleep(0.1)  # Otherwise we can get GroupLoadInProgressError
 
         resp = await admin.list_consumer_groups()
         assert len(resp) == 1
