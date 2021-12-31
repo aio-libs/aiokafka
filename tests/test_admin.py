@@ -47,7 +47,7 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert set(actual) >= topic_names
 
     # @kafka_versions('>=0.10.1.0')
-    @kafka_versions('>=1.0.0')  # XXX Timeouts with 0.10.2.1 and 0.11.0.3
+    @kafka_versions('>=1.0.0')  # XXX Times out with 0.10.2.1 and 0.11.0.3
     @run_until_complete
     async def test_delete_topics(self):
         admin = await self.create_admin()
@@ -66,10 +66,10 @@ class TestAdmin(KafkaIntegrationTestCase):
 
     @kafka_versions('>=0.11.0.0')
     @run_until_complete
-    async def test_describe_configs(self):
+    async def test_describe_configs_topic(self):
         admin = await self.create_admin()
         await admin.create_topics([NewTopic(self.topic, 1, 1)])
-        cr = ConfigResource(ConfigResourceType.TOPIC, self.topic, None)
+        cr = ConfigResource(ConfigResourceType.TOPIC, self.topic)
         resp = await admin.describe_configs([cr])
         assert len(resp) == 1
         assert len(resp[0].resources) == 1
@@ -79,6 +79,22 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert not error_message  # None or "" depending on kafka version
         assert resource_type == ConfigResourceType.TOPIC
         assert resource_name == self.topic
+
+    @kafka_versions('>=0.11.0.0')
+    @run_until_complete
+    async def test_describe_configs_broker(self):
+        admin = await self.create_admin()
+        broker_id = admin._client.cluster._brokers[0].nodeId
+        cr = ConfigResource(ConfigResourceType.BROKER, broker_id)
+        resp = await admin.describe_configs([cr])
+        assert len(resp) == 1
+        assert len(resp[0].resources) == 1
+        config_resource = resp[0].resources[0]
+        error_code, error_message, resource_type, resource_name, *_ = config_resource
+        assert error_code == 0
+        assert not error_message  # None or "" depending on kafka version
+        assert resource_type == ConfigResourceType.BROKER
+        assert resource_name == str(broker_id)
 
     @kafka_versions('>=0.11.0.0')
     @run_until_complete

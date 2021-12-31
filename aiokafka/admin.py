@@ -281,11 +281,12 @@ class AIOKafkaAdminClient:
                     resources=broker_res[broker_id],
                     include_synonyms=include_synonyms)
             futures.append(self._send_request(req, broker_id))
-        if version == 0:
-            req = req_cls(topic_res)
-        else:
-            req = req_cls(topic_res, include_synonyms)
-        futures.append(self._send_request(req))
+        if topic_res:
+            if version == 0:
+                req = req_cls(topic_res)
+            else:
+                req = req_cls(topic_res, include_synonyms)
+            futures.append(self._send_request(req))
         return await asyncio.gather(*futures)
 
     async def alter_configs(self, config_resources: List[ConfigResource]) -> Response:
