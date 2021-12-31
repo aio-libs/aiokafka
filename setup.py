@@ -6,7 +6,20 @@ import sys
 from setuptools import Extension, setup
 from setuptools.command.bdist_rpm import bdist_rpm as _bdist_rpm
 from setuptools.command.build_ext import build_ext
-from setuptools.errors import CCompilerError, ExecError, PlatformError
+
+
+try:
+    from setuptools.errors import CCompilerError, ExecError, PlatformError
+except ImportError:
+    # RTD workaround until it ships setuptools>=v59.0.0
+    # See:
+    # - https://github.com/pypa/setuptools/pull/2858
+    # - https://docs.readthedocs.io/en/stable/builds.html#python
+    from distutils.errors import (
+        CCompilerError,
+        DistutilsExecError as ExecError,
+        DistutilsPlatformError as PlatformError,
+    )
 
 
 # Those are needed to build _hton for windows
