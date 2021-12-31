@@ -1,21 +1,20 @@
 environment:
   PYTHONASYNCIODEBUG: "1"
-  KAFKA_VERSION: "0.10.2.1"
-  SCALA_VERSION: "2.11"
+  KAFKA_VERSION: "2.8.1"
+  SCALA_VERSION: "2.13"
   matrix:
-    - PYTHON: "C:\\Python36"
-      SNAPPY_WHEEL: "tools\\python_snappy-0.5.4-cp36-cp36m-win32.whl"
-    - PYTHON: "C:\\Python36-x64"
-      SNAPPY_WHEEL: "tools\\python_snappy-0.5.4-cp36-cp36m-win_amd64.whl"
+    - PYTHON: "C:\\Python39"
+    - PYTHON: "C:\\Python39-x64"
+    - PYTHON: "C:\\Python38"
+    - PYTHON: "C:\\Python38-x64"
     - PYTHON: "C:\\Python37"
-      SNAPPY_WHEEL: "tools\\python_snappy-0.5.4-cp37-cp37m-win32.whl"
     - PYTHON: "C:\\Python37-x64"
-      SNAPPY_WHEEL: "tools\\python_snappy-0.5.4-cp37-cp37m-win_amd64.whl"
+    - PYTHON: "C:\\Python36"
+    - PYTHON: "C:\\Python36-x64"
 
-image: Visual Studio 2017
+image: Visual Studio 2022
 
 install:
-- "%PYTHON%\\python.exe -m pip install %SNAPPY_WHEEL%"
 - "%PYTHON%\\python.exe -m pip install -r requirements-win-test.txt"
 - "%PYTHON%\\python.exe setup.py develop"
 
@@ -23,9 +22,9 @@ build: off
 
 test_script:
 - "%PYTHON%\\python.exe -c \"import sys; print(sys.version)\""
-- "%PYTHON%\\python.exe -m pytest -sv --no-print-logs --cov=aiokafka --cov-report=xml --junit-xml=results.xml --docker-image=aiolibs/kafka:%SCALA_VERSION%_%KAFKA_VERSION% tests"
+- "%PYTHON%\\python.exe -m pytest -sv --cov=aiokafka --cov-report=xml --junit-xml=results.xml --docker-image=aiolibs/kafka:%SCALA_VERSION%_%KAFKA_VERSION% tests"
 - "set AIOKAFKA_NO_EXTENSIONS=x"
-- "%PYTHON%\\python.exe -m pytest -sv --no-print-logs --cov=aiokafka --cov-report=xml:coverage-no-extension.xml --junit-xml=results-no-extension.xml --docker-image=aiolibs/kafka:%SCALA_VERSION%_%KAFKA_VERSION% tests"
+- "%PYTHON%\\python.exe -m pytest -sv --cov=aiokafka --cov-report=xml:coverage-no-extension.xml --junit-xml=results-no-extension.xml --docker-image=aiolibs/kafka:%SCALA_VERSION%_%KAFKA_VERSION% tests"
 
 on_finish:
 - ps: >-
