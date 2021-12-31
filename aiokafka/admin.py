@@ -401,9 +401,12 @@ class AIOKafkaAdminClient:
             node_to_groups[node_id].add(group_id)
         for node_id, groups in node_to_groups.items():
             if include_authorized_operations:
-                req = req_class(list(groups), include_authorized_operations)
+                req = req_class(
+                    groups=list(groups),
+                    include_authorized_operations=include_authorized_operations
+                )
             else:
-                req = req_class(list(groups))
+                req = req_class(groups=list(groups))
             future = self._send_request(req, node_id)
             futures.append(future)
         results = await asyncio.gather(*futures)
@@ -446,7 +449,7 @@ class AIOKafkaAdminClient:
                 broker_id
             )
             if response.error_code:
-                raise for_code(response.error)("Error listing consumer groups")
+                raise for_code(response.error_code)("Error listing consumer groups")
             consumer_groups.update(response.groups)
         return list(consumer_groups)
 
@@ -460,14 +463,17 @@ class AIOKafkaAdminClient:
 
         :return int: the acting coordinator broker id
         """
-        version = self._matching_api_version(GroupCoordinatorRequest)
+        # FIXME GroupCoordinatorRequest_v1 in kafka-python 2.0.2 doesn't match
+        # spec causing "ValueError: Buffer underrun decoding string"
+        # version = self._matching_api_version(GroupCoordinatorRequest)
+        version = self._matching_api_version(GroupCoordinatorRequest[:1])
         if version == 0 and coordinator_type:
             raise IncompatibleBrokerVersion(
                 "Cannot query for transaction id on current broker version"
             )
         req_class = GroupCoordinatorRequest[version]
         if version == 0:
-            request = req_class(coordinator_key=group_id)
+            request = req_class(consumer_group=group_id)
         else:
             request = req_class(group_id, coordinator_type)
         response = await self._send_request(request)

@@ -145,9 +145,6 @@ class TestAdmin(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_list_consumer_groups(self):
         admin = await self.create_admin()
-        resp = await admin.list_consumer_groups()
-        assert len(resp) == 0
-
         group_id = f'group-{self.id()}'
         consumer = AIOKafkaConsumer(
             self.topic, group_id=group_id, bootstrap_servers=self.hosts
@@ -157,7 +154,24 @@ class TestAdmin(KafkaIntegrationTestCase):
         await asyncio.sleep(0.1)  # Otherwise we can get GroupLoadInProgressError
 
         resp = await admin.list_consumer_groups()
+        assert len(resp) >= 1  # There can be group left from other test
+        groups = [group for group, *_ in resp]
+        assert group_id in groups
+
+    @kafka_versions('>=0.10.0.0')
+    @run_until_complete
+    async def test_describe_consumer_groups(self):
+        admin = await self.create_admin()
+        group_id = f'group-{self.id()}'
+        consumer = AIOKafkaConsumer(
+            self.topic, group_id=group_id, bootstrap_servers=self.hosts
+        )
+        await consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        resp = await admin.describe_consumer_groups([group_id])
         assert len(resp) == 1
-        actual_group, protocol_type, *_ = resp[0]
-        assert actual_group == group_id
-        assert protocol_type == 'consumer'
+        assert len(resp[0].groups) == 1
+        error_code, group, *_ = resp[0].groups[0]
+        assert error_code == 0
+        assert group == group_id
