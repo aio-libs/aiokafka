@@ -94,7 +94,7 @@ To run tests with a specific version of Kafka (default one is 1.0.2) use KAFKA_V
 
 Test running cheatsheat:
 
- * ``make test FLAGS="-l -x --ff"`` - run until 1 failure, rerun failed tests fitst. Great for cleaning up a lot of errors, say after a big refactor.
+ * ``make test FLAGS="-l -x --ff"`` - run until 1 failure, rerun failed tests first. Great for cleaning up a lot of errors, say after a big refactor.
  * ``make test FLAGS="-k consumer"`` - run only the consumer tests.
  * ``make test FLAGS="-m 'not ssl'"`` - run tests excluding ssl.
  * ``make test FLAGS="--no-pull"`` - do not try to pull new docker image before test run.

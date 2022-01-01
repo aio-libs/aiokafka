@@ -339,13 +339,17 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         yield
         self.loop.set_exception_handler(orig_handler)
 
+    def random_topic_name(self):
+        return "topic-{}-{}".format(
+            self.id()[self.id().rindex(".") + 1:],
+            random_string(10).decode('utf-8')
+        )
+
     def setUp(self):
         super().setUp()
         self._messages = {}
         if not self.topic:
-            self.topic = "topic-{}-{}".format(
-                self.id()[self.id().rindex(".") + 1:],
-                random_string(10).decode('utf-8'))
+            self.topic = self.random_topic_name()
         self._cleanup = []
 
     def tearDown(self):
