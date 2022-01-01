@@ -5,6 +5,8 @@ from kafka.admin.config_resource import ConfigResource, ConfigResourceType
 
 from aiokafka.admin import AIOKafkaAdminClient
 from aiokafka.consumer import AIOKafkaConsumer
+from aiokafka.producer import AIOKafkaProducer
+from aiokafka.structs import TopicPartition
 from ._testutil import (
     KafkaIntegrationTestCase, kafka_versions, run_until_complete
 )
@@ -175,3 +177,28 @@ class TestAdmin(KafkaIntegrationTestCase):
         error_code, group, *_ = resp[0].groups[0]
         assert error_code == 0
         assert group == group_id
+
+    @kafka_versions('>=0.10.0.0')
+    @run_until_complete
+    async def test_list_consumer_group_offsets(self):
+        admin = await self.create_admin()
+        group_id = f'group-{self.id()}'
+
+        consumer = AIOKafkaConsumer(
+            self.topic, group_id=group_id, bootstrap_servers=self.hosts,
+            enable_auto_commit=False
+        )
+        await consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        async with AIOKafkaProducer(bootstrap_servers=self.hosts) as producer:
+            await producer.send_and_wait(self.topic, b'some-message')
+            await producer.send_and_wait(self.topic, b'other-message')
+
+        msg = await consumer.getone()
+        await consumer.commit()
+        resp = await admin.list_consumer_group_offsets(group_id)
+        tp = TopicPartition(msg.topic, msg.partition)
+        assert resp[tp].offset == msg.offset + 1
+        resp = await admin.list_consumer_group_offsets(group_id, partitions=[tp])
+        assert resp[tp].offset == msg.offset + 1

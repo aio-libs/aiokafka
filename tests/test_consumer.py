@@ -497,8 +497,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             await self.wait_topic(producer.client, self.topic)
             msg1 = b'some-message' * 10
             msg2 = b'other-message' * 30
-            await (await producer.send(self.topic, msg1, partition=1))
-            await (await producer.send(self.topic, msg2, partition=1))
+            await producer.send_and_wait(self.topic, msg1, partition=1)
+            await producer.send_and_wait(self.topic, msg2, partition=1)
 
         consumer = await self.consumer_factory()
         rmsg1 = await consumer.getone()
