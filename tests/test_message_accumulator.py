@@ -316,11 +316,74 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertFalse(ma._batches)
         self.assertFalse(fut1.done())
 
-        if hasattr(batch.future, "_callbacks"):  # Vanilla asyncio
-            self.assertEqual(len(batch.future._callbacks), 1)
+        if hasattr(batch.deliver_future, "_callbacks"):  # Vanilla asyncio
+            self.assertEqual(len(batch.deliver_future._callbacks), 1)
 
         batch.done_noack()
         await asyncio.sleep(0.01)
         self.assertEqual(batch.retry_count, 3)
         self.assertFalse(ma._pending_batches)
         self.assertFalse(ma._batches)
+
+    @run_until_complete
+    async def test_waitlist_message(self):
+        cluster = ClusterMetadata(metadata_max_age_ms=10000)
+        # Use small batch_size to force waitlist for messages
+        ma = MessageAccumulator(
+            cluster, batch_size=100, compression_type=0, batch_ttl=30)
+
+        tp0 = TopicPartition("test-topic", 0)
+        tp1 = TopicPartition("test-topic", 1)
+        # 1st message will be added as size limit allows it
+        await ma.add_message(tp0, b'key', b'm'*35, timeout=2)
+        await ma.add_message(tp1, b'key_tp1', b'y'*20, timeout=2)
+
+        # 2nd message will be waitlisted
+        task = create_task(ma.add_message(tp0, b'key1', b'm'*100, timeout=2))
+        done, _ = await asyncio.wait([task], timeout=0.2)
+        self.assertFalse(bool(done))
+        # 3rd message also waitlisted
+        task2 = create_task(ma.add_message(tp0, b'key2', b'm'*100, timeout=2))
+
+        data_waiter = asyncio.ensure_future(ma.data_waiter())
+        done, _ = await asyncio.wait([data_waiter], timeout=0.2)
+        self.assertTrue(bool(done))  # data available for drain
+
+        def mocked_leader_for_partition(tp):
+            if tp == tp0:
+                return 0
+            if tp == tp1:
+                return 1
+            return -1
+
+        cluster.leader_for_partition = mock.MagicMock()
+        cluster.leader_for_partition.side_effect = mocked_leader_for_partition
+        batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[])
+
+        self.assertEqual(batches[0][tp0].record_count, 1)
+        self.assertEqual(batches[1][tp1].record_count, 1)
+
+        data_waiter = asyncio.ensure_future(ma.data_waiter())
+        done, _ = await asyncio.wait([data_waiter], timeout=0.2)
+        # data still available as waitlist items were processed
+        self.assertTrue(bool(done))
+
+        # Waitlist was processed, so send() should also finish
+        self.assertTrue(task.done())
+        deliver_fut = task.result()
+        self.assertTrue(isinstance(deliver_fut, asyncio.Future))
+        self.assertFalse(deliver_fut.done())
+
+        # 3rd message should be retained in the waitlist
+        self.assertFalse(task2.done())
+
+        batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[])
+        self.assertEqual(len(batches), 1)
+        self.assertEqual(batches[0][tp0].record_count, 1)
+        await asyncio.wait([task2], timeout=0.2)
+        # 3rd message is now also submitted for execution
+        self.assertTrue(task2.done())
+
+        batches[0][tp0].done_noack()
+        done, _ = await asyncio.wait([deliver_fut], timeout=0.1)
+        self.assertTrue(bool(done))  # waitlisted message delivered
