@@ -15,5 +15,5 @@ Pygments==2.11.1
 gssapi==1.7.2
 dataclasses==0.8; python_version<"3.7"
 async_generator==1.10; python_version<"3.7"
-async-timeout==4.0.1
+async-timeout==4.0.2
 zstandard==0.16.0
