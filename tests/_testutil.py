@@ -425,7 +425,7 @@ def random_string(length):
     return s.encode('utf-8')
 
 
-def wait_kafka(kafka_host, kafka_port, timeout=60):
+def wait_kafka(kafka_host, kafka_port, timeout=120):
     loop = asyncio.new_event_loop()
     try:
         res = loop.run_until_complete(
