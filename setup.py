@@ -132,6 +132,7 @@ extras_require = {
     "snappy": ["python-snappy>=0.5"],
     "lz4": ["lz4"],  # Old format (magic=0) requires xxhash
     "zstd": ["zstandard"],
+    "gssapi": ["gssapi"],
 }
 extras_require["all"] = sum(extras_require.values(), [])
 
