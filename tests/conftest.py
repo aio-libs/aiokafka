@@ -220,11 +220,11 @@ if sys.platform != 'win32':
         try:
             if not wait_kafka(kafka_host, kafka_port):
                 exit_code, output = container.exec_run(
-                    ["supervisorctl", "tail", "kafka"])
+                    ["supervisorctl", "tail", "-10000", "kafka"])
                 print("Kafka failed to start. \n--- STDOUT:")
                 print(output.decode(), file=sys.stdout)
                 exit_code, output = container.exec_run(
-                    ["supervisorctl", "tail", "kafka", "stderr"])
+                    ["supervisorctl", "tail", "-10000", "kafka", "stderr"])
                 print("--- STDERR:")
                 print(output.decode(), file=sys.stderr)
                 pytest.exit("Could not start Kafka Server")
