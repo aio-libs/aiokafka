@@ -3,11 +3,7 @@ Welcome to aiokafka's documentation!
 
 .. _GitHub: https://github.com/aio-libs/aiokafka
 .. _asyncio: http://docs.python.org/3.7/library/asyncio.html
-.. _gssapi: https://pypi.org/project/gssapi/
 .. _kafka-python: https://github.com/dpkp/kafka-python
-.. _lz4tools: https://pypi.org/project/lz4tools/
-.. _python-snappy: https://pypi.org/project/python-snappy/
-.. _xxhash: https://pypi.org/project/xxhash/
 
 .. image:: https://img.shields.io/badge/kafka-1.0%2C%200.11%2C%200.10%2C%200.9-brightgreen.svg
     :target: https://kafka.apache.org
@@ -95,7 +91,7 @@ Installation
 
 .. code::
 
-   pip3 install aiokafka
+    pip install aiokafka
 
 .. note:: **aiokafka** requires the kafka-python_ library.
 
@@ -103,10 +99,9 @@ Installation
 Optional LZ4 install
 ++++++++++++++++++++
 
-To enable LZ4 compression/decompression, install `lz4tools`_ and `xxhash`_::
+To enable LZ4 compression/decompression, install **aiokafka** with :code:`lz4` extra option:
 
-  pip3 install lz4tools
-  pip3 install xxhash
+    pip install 'aiokafka[lz4]'
 
 Note, that on **Windows** you will need Visual Studio build tools, available for download
 from http://landinghub.visualstudio.com/visual-cpp-build-tools
@@ -141,30 +136,31 @@ From Source:
     sudo make install
 
 
-2. Install the `python-snappy`_ module
+1. Install **aiokafka** with :code:`snappy` extra option
 
 .. code:: bash
 
-    pip3 install python-snappy
-
-For **Windows** the easiest way is to fetch a precompiled wheel from
-http://www.lfd.uci.edu/~gohlke/pythonlibs/#python-snappy
+    pip install 'aiokafka[snappy]'
 
 
 Optional zstd indtall
 +++++++++++++++++++++
 
-To enable Zstandard compression/decompression, install zstandard:
+To enable Zstandard compression/decompression, install **aiokafka** with :code:`zstd` extra option:
 
->>> pip3 install zstandard
+.. code:: bash
+
+    pip install 'aiokafka[zstd]'
 
 
 Optional GSSAPI install
 +++++++++++++++++++++++
 
-To enable SASL authentication with GSSAPI you need to install `gssapi`_:
+To enable SASL authentication with GSSAPI, install **aiokafka** with :code:`gssapi` extra option:
 
->>> pip3 install gssapi
+.. code:: bash
+
+    pip install 'aiokafka[gssapi]'
 
 
 Source code
