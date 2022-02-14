@@ -11,7 +11,7 @@ lz4==4.0.0
 xxhash==2.0.2
 python-snappy==0.6.0
 docutils==0.18.1
-Pygments==2.10.0
+Pygments==2.11.2
 gssapi==1.7.2
 dataclasses==0.8; python_version<"3.7"
 async_generator==1.10; python_version<"3.7"
