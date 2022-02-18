@@ -307,7 +307,10 @@ class AIOKafkaClient:
             nodeids.append('bootstrap')
         random.shuffle(nodeids)
         for node_id in nodeids:
-            conn = await self._get_conn(node_id)
+            try:
+                conn = await self._get_conn(node_id)
+            except StaleMetadata:
+                conn = None
 
             if conn is None:
                 continue
@@ -404,10 +407,14 @@ class AIOKafkaClient:
                 reason == CloseReason.CONNECTION_TIMEOUT:
             self.force_metadata_update()
 
-    async def _get_conn(
-        self, node_id, *, group=ConnectionGroup.DEFAULT,
-        no_hint=False
-    ):
+    def _get_broker(self, node_id):
+        broker = self.cluster.broker_metadata(node_id)
+        if broker is None:
+            self.force_metadata_update()
+            return self.cluster.broker_metadata(node_id)
+        return broker
+
+    async def _get_conn(self, node_id, *, group=ConnectionGroup.DEFAULT, no_hint=False):
         "Get or create a connection to a broker using host and port"
         conn_id = (node_id, group)
         if conn_id in self._conns:
@@ -419,11 +426,7 @@ class AIOKafkaClient:
 
         try:
             if group == ConnectionGroup.DEFAULT:
-                broker = self.cluster.broker_metadata(node_id)
-                # XXX: earlier we only did an assert here, but it seems it's
-                # possible to get a leader that is for some reason not in
-                # metadata.
-                # I think requerying metadata should solve this problem
+                broker = self._get_broker(node_id)
                 if broker is None:
                     raise StaleMetadata(
                         'Broker id %s not in current metadata' % node_id)
