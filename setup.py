@@ -145,7 +145,7 @@ classifiers = [
 
 
 args = dict(
-    name="aiokafka",
+    name="ppds_aiokafka",
     version=read_version(),
     description=("Kafka integration with asyncio."),
     long_description="\n\n".join((read("README.rst"), read("CHANGES.rst"))),
