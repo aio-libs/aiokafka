@@ -220,7 +220,7 @@ class PartitionRecords:
 
                 if next_batch.is_control_batch:
                     if self._contains_abort_marker(next_batch):
-                        self._aborted_producers.remove(next_batch.producer_id)
+                        self._aborted_producers.discard(next_batch.producer_id)
 
                 if next_batch.is_transactional and \
                         next_batch.producer_id in self._aborted_producers:
