@@ -89,5 +89,5 @@ def get_running_loop() -> asyncio.AbstractEventLoop:
 
 NO_EXTENSIONS = bool(os.environ.get("AIOKAFKA_NO_EXTENSIONS"))
 
-INTEGER_MAX_VALUE = 2 ** 31 - 1
-INTEGER_MIN_VALUE = -(2 ** 31)
+INTEGER_MAX_VALUE = 2**31 - 1
+INTEGER_MIN_VALUE = -(2**31)
