@@ -35,8 +35,8 @@ Consumer:
         await consumer.start()
         # we want to consume 10 messages from "foobar" topic
         # and commit after that
-        for i in range(10):
-            msg = await (consumer.getone()
+        for _ in range(10):
+            msg = await consumer.getone()
         await consumer.commit()
 
         await consumer.stop()
