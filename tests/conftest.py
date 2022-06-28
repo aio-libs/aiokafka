@@ -3,13 +3,13 @@ from dataclasses import dataclass
 import gc
 import docker as libdocker
 import logging
+import os
 import pytest
 import socket
 import uuid
 import sys
 import pathlib
 import shutil
-import subprocess
 
 from aiokafka.record.legacy_records import (
     LegacyRecordBatchBuilder, _LegacyRecordBatchBuilderPy)
@@ -94,30 +94,66 @@ else:
         return
 
 
+if sys.platform != 'win32':
+
+    @pytest.fixture(scope='session')
+    def kafka_image(request, docker):
+        image = request.config.getoption('--docker-image')
+        if not image:
+            pytest.skip(
+                "Skipping functional test as `--docker-image` not provided")
+            return
+        if not request.config.getoption('--no-pull'):
+            docker.images.pull(image)
+        return image
+
+else:
+
+    @pytest.fixture(scope='session')
+    def kafka_image():
+        pytest.skip("Only unit tests on windows for now =(")
+
+
 @pytest.fixture(scope='session')
-def ssl_folder(docker_ip_address):
+def ssl_folder(docker_ip_address, docker, kafka_image):
     ssl_dir = pathlib.Path('tests/ssl_cert')
     if ssl_dir.exists():
         shutil.rmtree(str(ssl_dir))
 
     ssl_dir.mkdir()
-    p = subprocess.Popen(
-        f"bash ../../gen-ssl-certs.sh ca ca-cert {docker_ip_address}",
-        shell=True, stdout=subprocess.DEVNULL,
-        cwd=str(ssl_dir), stderr=subprocess.DEVNULL)
-    p.wait()
-    p = subprocess.Popen(
-        "bash ../../gen-ssl-certs.sh -k server ca-cert br_ {}".format(
-            docker_ip_address),
-        shell=True, stdout=subprocess.DEVNULL,
-        cwd=str(ssl_dir), stderr=subprocess.DEVNULL,)
-    p.wait()
-    p = subprocess.Popen(
-        "bash ../../gen-ssl-certs.sh client ca-cert cl_ {}".format(
-            docker_ip_address),
-        shell=True, stdout=subprocess.DEVNULL,
-        cwd=str(ssl_dir), stderr=subprocess.DEVNULL,)
-    p.wait()
+
+    container = docker.containers.run(
+        image=kafka_image,
+        command="sleep 120",
+        volumes={
+            pathlib.Path("gen-ssl-certs.sh").resolve(): {
+                "bind": "/gen-ssl-certs.sh",
+            },
+            str(ssl_dir.resolve()): {
+                "bind": "/ssl_cert",
+            },
+        },
+        working_dir="/ssl_cert",
+        tty=True,
+        detach=True,
+        remove=True)
+
+    try:
+        for args in [
+            ["ca", "ca-cert", docker_ip_address],
+            ["-k", "server", "ca-cert", "br_", docker_ip_address],
+            ["client", "ca-cert", "cl_", docker_ip_address],
+        ]:
+            exit_code, output = container.exec_run(
+                ["bash", "/gen-ssl-certs.sh"] + args,
+                user=f"{os.getuid()}:{os.getgid()}"
+            )
+            if exit_code != 0:
+                print(output.decode(), file=sys.stderr)
+                pytest.exit("Could not generate certificates")
+
+    finally:
+        container.stop()
 
     return ssl_dir
 
@@ -159,15 +195,8 @@ class KafkaServer:
 if sys.platform != 'win32':
 
     @pytest.fixture(scope='session')
-    def kafka_server(request, docker, docker_ip_address,
+    def kafka_server(kafka_image, docker, docker_ip_address,
                      unused_port, session_id, ssl_folder):
-        image = request.config.getoption('--docker-image')
-        if not image:
-            pytest.skip(
-                "Skipping functional test as `--docker-image` not provided")
-            return
-        if not request.config.getoption('--no-pull'):
-            docker.images.pull(image)
         kafka_host = docker_ip_address
         kafka_port = unused_port()
         kafka_ssl_port = unused_port()
@@ -181,7 +210,7 @@ if sys.platform != 'win32':
             'ADVERTISED_SASL_SSL_PORT': kafka_sasl_ssl_port,
             'NUM_PARTITIONS': 2
         }
-        kafka_version = image.split(":")[-1].split("_")[-1]
+        kafka_version = kafka_image.split(":")[-1].split("_")[-1]
         kafka_version = tuple(int(x) for x in kafka_version.split('.'))
         if kafka_version >= (0, 10, 2):
             environment['SASL_MECHANISMS'] = (
@@ -196,7 +225,7 @@ if sys.platform != 'win32':
             environment['SASL_JAAS_FILE'] = "kafka_server_gssapi_jaas.conf"
 
         container = docker.containers.run(
-            image=image,
+            image=kafka_image,
             name='aiokafka-tests',
             ports={
                 2181: 2181,
@@ -220,11 +249,11 @@ if sys.platform != 'win32':
         try:
             if not wait_kafka(kafka_host, kafka_port):
                 exit_code, output = container.exec_run(
-                    ["supervisorctl", "tail", "-10000", "kafka"])
+                    ["supervisorctl", "tail", "-20000", "kafka"])
                 print("Kafka failed to start. \n--- STDOUT:")
                 print(output.decode(), file=sys.stdout)
                 exit_code, output = container.exec_run(
-                    ["supervisorctl", "tail", "-10000", "kafka", "stderr"])
+                    ["supervisorctl", "tail", "-20000", "kafka", "stderr"])
                 print("--- STDERR:")
                 print(output.decode(), file=sys.stderr)
                 pytest.exit("Could not start Kafka Server")
