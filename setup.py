@@ -175,6 +175,9 @@ args = dict(
     author="Andrew Svetlov",
     author_email="andrew.svetlov@gmail.com",
     url="http://aiokafka.readthedocs.org",
+    project_urls={
+        "Source": "https://github.com/aio-libs/aiokafka",
+    },
     download_url="https://pypi.python.org/pypi/aiokafka",
     license="Apache 2",
     packages=["aiokafka"],
