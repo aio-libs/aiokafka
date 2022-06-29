@@ -124,7 +124,7 @@ def ssl_folder(docker_ip_address, docker, kafka_image):
 
     container = docker.containers.run(
         image=kafka_image,
-        command="sleep 120",
+        command="sleep 300",
         volumes={
             pathlib.Path("gen-ssl-certs.sh").resolve(): {
                 "bind": "/gen-ssl-certs.sh",

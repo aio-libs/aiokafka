@@ -27,20 +27,20 @@ lint:
 	mypy --install-types --non-interactive $(FORMATTED_AREAS)
 
 test: flake
-	py.test -s --show-capture=no --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	pytest -s --show-capture=no --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
 vtest: flake
-	py.test -s -v --log-level INFO --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	pytest -s -v --log-level INFO --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
 cov cover coverage: flake
-	py.test -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	pytest -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 	@echo "open file://`pwd`/htmlcov/index.html"
 
 ci-test-unit:
-	py.test -s --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml --color=yes $(FLAGS) tests
+	pytest -s --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml --color=yes $(FLAGS) tests
 
 ci-test-all:
-	py.test -s -v --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	pytest -s -v --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
 coverage.xml: .coverage
 	coverage xml
