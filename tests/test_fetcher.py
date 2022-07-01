@@ -56,10 +56,7 @@ def test_fetch_result_and_error(loop):
 
     # Python3.7 got rid of trailing comma in exceptions, which makes the line
     # different between 3.6 and 3.7.
-    assert repr(error) in [
-        "<FetchError error=OffsetOutOfRangeError({},)>",
-        "<FetchError error=OffsetOutOfRangeError({})>"
-    ]
+    assert repr(error) == "<FetchError error=OffsetOutOfRangeError({})>"
 
 
 @pytest.mark.usefixtures('setup_test_class_serverless')

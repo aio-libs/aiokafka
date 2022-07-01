@@ -73,7 +73,8 @@ jobs:
 
     strategy:
       matrix:
-        python: [3.6, 3.7, 3.8, 3.9]
+        # 3.10 is excluded because docker's dependency on pywin32==227
+        python: ["3.7", "3.8", "3.9"]
 
     steps:
     - uses: actions/checkout@v2
@@ -141,7 +142,7 @@ jobs:
 
     strategy:
       matrix:
-        python: [3.6, 3.7, 3.8, 3.9]
+        python: ["3.7", "3.8", "3.9", "3.10"]
 
     steps:
     - uses: actions/checkout@v2
@@ -214,53 +215,53 @@ jobs:
     strategy:
       matrix:
         include:
-          - python: 3.9
+          - python: "3.10"
             kafka: "2.8.1"
             scala: "2.13"
 
           # Older python versions against latest broker
-          - python: 3.6
+          - python: "3.7"
             kafka: "2.8.1"
             scala: "2.13"
-          - python: 3.7
+          - python: "3.8"
             kafka: "2.8.1"
             scala: "2.13"
-          - python: 3.8
+          - python: "3.9"
             kafka: "2.8.1"
             scala: "2.13"
 
-          # Older/newer brokers against latest python version
-          - python: 3.9
+          # Older brokers against latest python version
+          - python: "3.10"
             kafka: "0.9.0.1"
             scala: "2.11"
-          - python: 3.9
+          - python: "3.10"
             kafka: "0.10.2.1"
             scala: "2.11"
-          - python: 3.9
+          - python: "3.10"
             kafka: "0.11.0.3"
             scala: "2.12"
-          - python: 3.9
+          - python: "3.10"
             kafka: "1.1.1"
             scala: "2.12"
-          - python: 3.9
+          - python: "3.10"
             kafka: "2.1.1"
             scala: "2.12"
-          - python: 3.9
+          - python: "3.10"
             kafka: "2.2.2"
             scala: "2.12"
-          - python: 3.9
+          - python: "3.10"
             kafka: "2.3.1"
             scala: "2.12"
-          - python: 3.9
+          - python: "3.10"
             kafka: "2.4.1"
             scala: "2.12"
-          - python: 3.9
+          - python: "3.10"
             kafka: "2.5.1"
             scala: "2.12"
-          - python: 3.9
+          - python: "3.10"
             kafka: "2.6.3"
             scala: "2.12"
-          - python: 3.9
+          - python: "3.10"
             kafka: "2.7.2"
             scala: "2.13"
       fail-fast: false

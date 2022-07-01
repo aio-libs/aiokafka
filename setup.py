@@ -1,7 +1,6 @@
 import os
 import platform
 import re
-import sys
 
 from setuptools import Extension, setup
 from setuptools.command.bdist_rpm import bdist_rpm as _bdist_rpm
@@ -114,14 +113,8 @@ class ve_build_ext(build_ext):
 install_requires = [
     "async-timeout",
     "kafka-python>=2.0.2",
-    "dataclasses>=0.5; python_version<'3.7'",
     "packaging",
 ]
-
-PY_VER = sys.version_info
-
-if PY_VER < (3, 6):
-    raise RuntimeError("aiokafka doesn't support Python earlier than 3.6")
 
 
 def read(f):
@@ -153,10 +146,10 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.6",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
     "Operating System :: OS Independent",
     "Topic :: System :: Networking",
     "Topic :: System :: Distributed Computing",
@@ -181,6 +174,7 @@ args = dict(
     download_url="https://pypi.python.org/pypi/aiokafka",
     license="Apache 2",
     packages=["aiokafka"],
+    python_requires=">=3.7",
     install_requires=install_requires,
     extras_require=extras_require,
     include_package_data=True,

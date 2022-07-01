@@ -1,7 +1,7 @@
 import asyncio
 import os
 from asyncio import AbstractEventLoop
-from typing import Awaitable, Dict, Tuple, TypeVar, Union, cast
+from typing import Any, Awaitable, Coroutine, Dict, Tuple, TypeVar, Union, cast
 
 import async_timeout
 from packaging.version import Version
@@ -21,7 +21,7 @@ __all__ = [
 T = TypeVar("T")
 
 
-def create_task(coro: Awaitable[T]) -> "asyncio.Task[T]":
+def create_task(coro: Coroutine[Any, Any, T]) -> "asyncio.Task[T]":
     loop = get_running_loop()
     return loop.create_task(coro)
 

@@ -6,9 +6,6 @@ from aiokafka.errors import IllegalStateError
 from aiokafka.structs import TopicPartition
 from aiokafka.abc import ConsumerRebalanceListener
 
-# All test coroutines will be treated as marked.
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.fixture
 async def subscription_state():
