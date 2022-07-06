@@ -1,5 +1,9 @@
 import abc
+
 from kafka import ConsumerRebalanceListener as BaseConsumerRebalanceListener
+import aiokafka
+from aiokafka.structs import TopicPartition
+from typing import List, Optional
 
 
 class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
@@ -45,8 +49,13 @@ class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
     called to load the state.
     """
 
+    def __init__(
+        self, consumer: Optional["aiokafka.consumer.AIOKafkaConsumer"] = None
+    ) -> None:
+        self.consumer = consumer
+
     @abc.abstractmethod
-    def on_partitions_revoked(self, revoked):
+    def on_partitions_revoked(self, revoked: List[TopicPartition]) -> None:
         """
         A coroutine or function the user can implement to provide cleanup or
         custom state save on the start of a rebalance operation.
@@ -67,7 +76,7 @@ class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
         pass
 
     @abc.abstractmethod
-    def on_partitions_assigned(self, assigned):
+    def on_partitions_assigned(self, assigned: List[TopicPartition]) -> None:
         """
         A coroutine or function the user can implement to provide load of
         custom consumer state or cache warmup on completion of a successful
