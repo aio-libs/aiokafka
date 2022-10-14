@@ -1,0 +1,1 @@
+Handled other SASL mechanism in logging (issue #852, pr #861 by @mangin)

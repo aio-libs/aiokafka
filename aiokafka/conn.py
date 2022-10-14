@@ -337,8 +337,11 @@ class AIOKafkaConnection:
                 'Authenticated via OAUTHBEARER'
             )
         else:
-            self.log.info('Authenticated as %s via PLAIN',
-                          self._sasl_plain_username)
+            self.log.info(
+                'Authenticated as %s via %s',
+                self._sasl_plain_username,
+                self._sasl_mechanism
+            )
 
     def authenticator_plain(self):
         return SaslPlainAuthenticator(
