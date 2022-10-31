@@ -51,7 +51,7 @@ jobs:
       - name: Build wheels
         env:
           CIBW_ARCHS_LINUX: ${{matrix.arch}}
-          CIBW_BUILD: cp37-* cp38-* cp39-* cp310-*
+          CIBW_BUILD: cp37-* cp38-* cp39-* cp310-* cp311-*
           CIBW_SKIP: '*-musllinux*'
           CIBW_BEFORE_BUILD_LINUX: pip install -r requirements-cython.txt && yum install -y zlib-devel
           # On windows and mac we should have z library preinstalled
@@ -116,7 +116,7 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.7", "3.8", "3.9", "3.10"]
+        python: ["3.7", "3.8", "3.9", "3.10", "3.11"]
         include:
           - python: "3.7"
             aiokafka_whl: dist/aiokafka-*-cp37-cp37m-macosx_10_9_x86_64.whl
@@ -126,6 +126,8 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp39-cp39-macosx_10_9_x86_64.whl
           - python: "3.10"
             aiokafka_whl: dist/aiokafka-*-cp310-cp310-macosx_10_9_x86_64.whl
+          - python: "3.11"
+            aiokafka_whl: dist/aiokafka-*-cp311-cp311-macosx_10_9_x86_64.whl
 
     steps:
       - uses: actions/checkout@v2
@@ -160,7 +162,7 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.7", "3.8", "3.9", "3.10"]
+        python: ["3.7", "3.8", "3.9", "3.10", "3.11"]
         include:
           - python: "3.7"
             aiokafka_whl: dist/aiokafka-*-cp37-cp37m-manylinux*_x86_64.whl
@@ -170,6 +172,8 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp39-cp39-manylinux*_x86_64.whl
           - python: "3.10"
             aiokafka_whl: dist/aiokafka-*-cp310-cp310-manylinux*_x86_64.whl
+          - python: "3.11"
+            aiokafka_whl: dist/aiokafka-*-cp311-cp311-manylinux*_x86_64.whl
 
     steps:
       - uses: actions/checkout@v2
@@ -217,6 +221,8 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp39-cp39-manylinux*_aarch64.whl
           - pyver: cp310-cp310
             aiokafka_whl: dist/aiokafka-*-cp310-cp310-manylinux*_aarch64.whl
+          - pyver: cp311-cp311
+            aiokafka_whl: dist/aiokafka-*-cp311-cp311-manylinux*_aarch64.whl
 
     steps:
       - uses: actions/checkout@v2
