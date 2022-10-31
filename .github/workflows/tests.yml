@@ -215,7 +215,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - python: "3.10"
+          - python: "3.11"
             kafka: "2.8.1"
             scala: "2.13"
 
