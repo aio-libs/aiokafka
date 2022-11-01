@@ -13,6 +13,6 @@ xxhash==2.0.2
 python-snappy==0.6.1
 docutils==0.17.1
 Pygments==2.10.0
-gssapi==1.7.3
+gssapi==1.8.2
 async-timeout==4.0.1
 zstandard==0.16.0
