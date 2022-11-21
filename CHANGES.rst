@@ -3,6 +3,31 @@ Changelog
 =========
 
 
+0.8.0 (2022-11-21)
+==================
+
+New features:
+
+* Add codec for ZStandard compression (KIP-110) (pr #801)
+* Add basic admin client functionality (pr #811 started by @gabriel-tincu)
+* Drop support for Python 3.6, add support and pre-built packages for Python
+  3.10 (pr #841)
+
+
+Bugfixes:
+
+* Fix `KeyError` on solitary abort marker (issue #781, pr #782 by @pikulmar)
+* Fix handling unsupported compression codec (issue #795)
+* Handled other SASL mechanism in logging (issue #852, pr #861 by @mangin)
+
+
+Improved Documentation:
+
+* Fix documentation on how to install optional features (issue #645)
+* Improve the rendering of the documentation (pr #722 by @multani)
+* Fix `MyRebalancer` example in `docs/consumer.rst` (pr #731 by @aamalev)
+
+
 0.7.2 (2021-09-02)
 ==================
 
