@@ -73,8 +73,8 @@ jobs:
 
     strategy:
       matrix:
-        # 3.10 is excluded because docker's dependency on pywin32==227
-        python: ["3.7", "3.8", "3.9"]
+        # 3.11 excluded due to problems with python-snappy
+        python: ["3.7", "3.8", "3.9", "3.10"]
 
     steps:
     - uses: actions/checkout@v2
