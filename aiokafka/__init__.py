@@ -1,6 +1,7 @@
 __version__ = '0.8.0'  # noqa
 
 from .abc import ConsumerRebalanceListener
+from .admin import AIOKafkaAdminClient
 from .client import AIOKafkaClient
 from .consumer import AIOKafkaConsumer
 from .errors import ConsumerStoppedError, IllegalOperation
@@ -12,6 +13,7 @@ from .structs import (
 
 __all__ = [
     # Clients API
+    "AIOKafkaAdminClient",
     "AIOKafkaProducer",
     "AIOKafkaConsumer",
     # ABC's
