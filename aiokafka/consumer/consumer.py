@@ -4,6 +4,7 @@ import re
 import sys
 import traceback
 import warnings
+from typing import Dict, List
 
 from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 
@@ -14,7 +15,7 @@ from aiokafka.errors import (
     ConsumerStoppedError, IllegalOperation, UnsupportedVersionError,
     IllegalStateError, NoOffsetForPartitionError, RecordTooLargeError
 )
-from aiokafka.structs import TopicPartition
+from aiokafka.structs import TopicPartition, ConsumerRecord
 from aiokafka.util import (
     commit_structure_validate, get_running_loop
 )
@@ -1104,7 +1105,7 @@ class AIOKafkaConsumer:
         log.info(
             "Unsubscribed all topics or patterns and assigned partitions")
 
-    async def getone(self, *partitions):
+    async def getone(self, *partitions) -> ConsumerRecord:
         """
         Get one message from Kafka.
         If no new messages prefetched, this method will wait for it.
@@ -1148,7 +1149,9 @@ class AIOKafkaConsumer:
             msg = await self._fetcher.next_record(partitions)
         return msg
 
-    async def getmany(self, *partitions, timeout_ms=0, max_records=None):
+    async def getmany(
+        self, *partitions, timeout_ms=0, max_records=None
+    ) -> Dict[TopicPartition, List[ConsumerRecord]]:
         """Get messages from assigned topics / partitions.
 
         Prefetched messages are returned in batches by topic-partition.
@@ -1247,7 +1250,7 @@ class AIOKafkaConsumer:
             raise ConsumerStoppedError()
         return self
 
-    async def __anext__(self):
+    async def __anext__(self) -> ConsumerRecord:
         """Asyncio iterator interface for consumer
 
         Note:
