@@ -144,7 +144,7 @@ bulk. The algorithm can be enhanced by taking advantage of:
 
 * :meth:`await consumer.getmany() <aiokafka.AIOKafkaConsumer.getmany>` to
   avoid multiple calls to get a batch of messages.
-* :meth:`await consumer.highwater(partition)
+* :meth:`consumer.highwater(partition)
   <aiokafka.AIOKafkaConsumer.highwater>` to understand if we have more
   unconsumed messages or this one is the last one in the partition.
 
