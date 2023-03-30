@@ -3,15 +3,23 @@
 """
 
 import logging
+from ssl import Purpose, SSLContext, create_default_context
+from typing import Any
 
-from ssl import create_default_context, Purpose
 
 log = logging.getLogger(__name__)
 
 
-def create_ssl_context(*, cafile=None, capath=None, cadata=None,
-                       certfile=None, keyfile=None, password=None,
-                       crlfile=None):
+def create_ssl_context(
+    *,
+    cafile: str = None,
+    capath: str = None,
+    cadata: str = None,
+    certfile: str = None,
+    keyfile: str = None,
+    password: str = None,
+    crlfile: Any = None
+) -> SSLContext:
     """
     Simple helper, that creates an :class:`~ssl.SSLContext` based on params similar to
     those in `kafka-python`_, but with some restrictions like:
@@ -50,21 +58,22 @@ def create_ssl_context(*, cafile=None, capath=None, cadata=None,
 
     """
     if cafile or capath:
-        log.info('Loading SSL CA from %s', cafile or capath)
+        log.info("Loading SSL CA from %s", cafile or capath)
     elif cadata is not None:
-        log.info('Loading SSL CA from data provided in `cadata`')
-        log.debug('`cadata`: %r', cadata)
+        log.info("Loading SSL CA from data provided in `cadata`")
+        log.debug("`cadata`: %r", cadata)
     # Creating context with default params for client sockets.
     context = create_default_context(
-        Purpose.SERVER_AUTH, cafile=cafile, capath=capath, cadata=cadata)
+        Purpose.SERVER_AUTH, cafile=cafile, capath=capath, cadata=cadata
+    )
     # Load certificate if one is specified.
     if certfile is not None:
-        log.info('Loading SSL Cert from %s', certfile)
+        log.info("Loading SSL Cert from %s", certfile)
         if keyfile:
             if password is not None:
-                log.info('Loading SSL Key from %s with password', keyfile)
+                log.info("Loading SSL Key from %s with password", keyfile)
             else:  # pragma: no cover
-                log.info('Loading SSL Key from %s without password', keyfile)
+                log.info("Loading SSL Key from %s without password", keyfile)
         # NOTE: From docs:
         # If the password argument is not specified and a password is required,
         # OpenSSL’s built-in password prompting mechanism will be used to
