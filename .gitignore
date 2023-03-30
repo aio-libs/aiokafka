@@ -1,4 +1,4 @@
-># Byte-compiled / optimized / DLL files
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 
@@ -75,3 +75,7 @@ aiokafka/record/_crecords/*.html
 
 # pyenv
 .python-version
+
+# Direnv
+.envrc
+.direnv
