@@ -138,8 +138,8 @@ class AIOKafkaProducer:
             If set to ``auto``, will attempt to infer the broker version by
             probing various APIs. Default: ``auto``
         security_protocol (str): Protocol used to communicate with brokers.
-            Valid values are: ``PLAINTEXT``, ``SSL``. Default: ``PLAINTEXT``.
-            Default: ``PLAINTEXT``.
+            Valid values are: ``PLAINTEXT``, ``SSL``, ``SASL_PLAINTEXT``,
+            ``SASL_SSL``. Default: ``PLAINTEXT``.
         ssl_context (ssl.SSLContext): pre-configured :class:`~ssl.SSLContext`
             for wrapping socket connections. Directly passed into asyncio's
             :meth:`~asyncio.loop.create_connection`. For more
