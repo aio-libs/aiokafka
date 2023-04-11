@@ -55,11 +55,12 @@
 # * Timestamp Type (3)
 # * Compression Type (0-2)
 
-from aiokafka.errors import CorruptRecordException
+from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from kafka.codec import (
-    gzip_encode, snappy_encode, lz4_encode,
-    gzip_decode, snappy_decode, lz4_decode
+    gzip_encode, snappy_encode, lz4_encode, zstd_encode,
+    gzip_decode, snappy_decode, lz4_decode, zstd_decode
 )
+import kafka.codec as codecs
 
 from cpython cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_WRITABLE, \
                      PyBUF_SIMPLE, PyBUF_READ, Py_buffer, \
@@ -108,15 +109,34 @@ DEF NO_PARTITION_LEADER_EPOCH = -1
 cutil.crc32c_global_init()
 
 
+cdef _assert_has_codec(char compression_type):
+    if compression_type == _ATTR_CODEC_GZIP:
+        checker, name = codecs.has_gzip, "gzip"
+    elif compression_type == _ATTR_CODEC_SNAPPY:
+        checker, name = codecs.has_snappy, "snappy"
+    elif compression_type == _ATTR_CODEC_LZ4:
+        checker, name = codecs.has_lz4, "lz4"
+    elif compression_type == _ATTR_CODEC_ZSTD:
+        checker, name = codecs.has_zstd, "zstd"
+    else:
+        raise UnsupportedCodecError(
+            f"Unknown compression codec {compression_type:#04x}")
+    if not checker():
+        raise UnsupportedCodecError(
+            f"Libraries for {name} compression codec not found")
+
+
 @cython.no_gc_clear
 @cython.final
 @cython.freelist(_DEFAULT_RECORD_BATCH_FREELIST_SIZE)
 cdef class DefaultRecordBatch:
 
     CODEC_NONE = _ATTR_CODEC_NONE
+    CODEC_MASK = _ATTR_CODEC_MASK
     CODEC_GZIP = _ATTR_CODEC_GZIP
     CODEC_SNAPPY = _ATTR_CODEC_SNAPPY
     CODEC_LZ4 = _ATTR_CODEC_LZ4
+    CODEC_ZSTD = _ATTR_CODEC_ZSTD
 
     def __init__(self, object buffer):
         PyObject_GetBuffer(buffer, &self._buffer, PyBUF_SIMPLE)
@@ -211,6 +231,7 @@ cdef class DefaultRecordBatch:
         if not self._decompressed:
             compression_type = <char> self.attributes & _ATTR_CODEC_MASK
             if compression_type != _ATTR_CODEC_NONE:
+                _assert_has_codec(compression_type)
                 buf = <char *> self._buffer.buf
                 data = PyMemoryView_FromMemory(
                     &buf[self._pos],
@@ -218,11 +239,13 @@ cdef class DefaultRecordBatch:
                     PyBUF_READ)
                 if compression_type == _ATTR_CODEC_GZIP:
                     uncompressed = gzip_decode(data)
-                if compression_type == _ATTR_CODEC_SNAPPY:
+                elif compression_type == _ATTR_CODEC_SNAPPY:
                     uncompressed = snappy_decode(data.tobytes())
-                if compression_type == _ATTR_CODEC_LZ4:
+                elif compression_type == _ATTR_CODEC_LZ4:
                     uncompressed = lz4_decode(data.tobytes())
-        
+                elif compression_type == _ATTR_CODEC_ZSTD:
+                    uncompressed = zstd_decode(data.tobytes())
+
                 PyBuffer_Release(&self._buffer)
                 PyObject_GetBuffer(uncompressed, &self._buffer, PyBUF_SIMPLE)
                 self._pos = 0
@@ -360,7 +383,7 @@ cdef class DefaultRecordBatch:
                 raise CorruptRecordException(
                     "{} unconsumed bytes after all records consumed".format(
                         self._buffer.len - self._pos))
-            self._next_record_index = 0    
+            self._next_record_index = 0
             raise StopIteration
 
         msg = self._read_msg()
@@ -541,7 +564,7 @@ cdef class DefaultRecordBatchBuilder:
         buf = PyByteArray_AS_STRING(self._buffer)
         self._encode_msg(pos, buf, offset, ts, msg_size, key, value, headers)
         self._pos = pos + size
-  
+
         return DefaultRecordMetadata.new(offset, size, ts)
 
     cdef int _encode_msg(
@@ -571,7 +594,7 @@ cdef class DefaultRecordBatchBuilder:
 
         buf[pos] = 0  #   Attributes => Int8
         pos += 1
-        
+
         cutil.encode_varint64(buf, &pos, timestamp_delta)
         # Base offset is always 0 on Produce
         cutil.encode_varint64(buf, &pos, offset)
@@ -668,6 +691,7 @@ cdef class DefaultRecordBatchBuilder:
 
 
         if self._compression_type != _ATTR_CODEC_NONE:
+            _assert_has_codec(self._compression_type)
             data = bytes(self._buffer[FIRST_RECORD_OFFSET:self._pos])
             if self._compression_type == _ATTR_CODEC_GZIP:
                 compressed = gzip_encode(data)
@@ -675,6 +699,8 @@ cdef class DefaultRecordBatchBuilder:
                 compressed = snappy_encode(data)
             elif self._compression_type == _ATTR_CODEC_LZ4:
                 compressed = lz4_encode(data)
+            elif self._compression_type == _ATTR_CODEC_ZSTD:
+                compressed = zstd_encode(data)
             size = (<Py_ssize_t> len(compressed)) + FIRST_RECORD_OFFSET
             # We will just write the result into the same memory space.
             PyByteArray_Resize(self._buffer, size)
@@ -747,7 +773,7 @@ cdef inline Py_ssize_t _bytelike_len(object obj) except -2:
     else:
         PyObject_GetBuffer(obj, &buf, PyBUF_SIMPLE)
         obj_len = buf.len
-        PyBuffer_Release(&buf)  
+        PyBuffer_Release(&buf)
     return obj_len
 
 

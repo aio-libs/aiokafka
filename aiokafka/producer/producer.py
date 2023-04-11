@@ -5,11 +5,12 @@ import traceback
 import warnings
 
 from kafka.partitioner.default import DefaultPartitioner
-from kafka.codec import has_gzip, has_snappy, has_lz4
+from kafka.codec import has_gzip, has_snappy, has_lz4, has_zstd
 
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
     MessageSizeTooLargeError, UnsupportedVersionError, IllegalOperation)
+from aiokafka.record.default_records import DefaultRecordBatch
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import TopicPartition
 from aiokafka.util import (
@@ -25,7 +26,7 @@ log = logging.getLogger(__name__)
 _missing = object()
 
 
-class AIOKafkaProducer(object):
+class AIOKafkaProducer:
     """A Kafka client that publishes records to the Kafka cluster.
 
     The producer consists of a pool of buffer space that holds records that
@@ -33,65 +34,69 @@ class AIOKafkaProducer(object):
     that is responsible for turning these records into requests and
     transmitting them to the cluster.
 
-    The send() method is asynchronous. When called it adds the record to a
+    The :meth:`send` method is asynchronous. When called it adds the record to a
     buffer of pending record sends and immediately returns. This allows the
     producer to batch together individual records for efficiency.
 
-    The 'acks' config controls the criteria under which requests are considered
-    complete. The "all" setting will result in waiting for all replicas to
+    The `acks` config controls the criteria under which requests are considered
+    complete. The ``all`` setting will result in waiting for all replicas to
     respond, the slowest but most durable setting.
 
-    The key_serializer and value_serializer instruct how to turn the key and
-    value objects the user provides into bytes.
+    The `key_serializer` and `value_serializer` instruct how to turn the key and
+    value objects the user provides into :class:`bytes`.
 
     Arguments:
-        bootstrap_servers: 'host[:port]' string (or list of 'host[:port]'
-            strings) that the producer should contact to bootstrap initial
-            cluster metadata. This does not have to be the full node list.
-            It just needs to have at least one broker that will respond to a
-            Metadata API Request. Default port is 9092. If no servers are
-            specified, will default to localhost:9092.
+        bootstrap_servers (str, list(str)): a ``host[:port]`` string or list of
+            ``host[:port]`` strings that the producer should contact to
+            bootstrap initial cluster metadata. This does not have to be the
+            full node list.  It just needs to have at least one broker that will
+            respond to a Metadata API Request. Default port is 9092. If no
+            servers are specified, will default to ``localhost:9092``.
         client_id (str): a name for this client. This string is passed in
             each request to servers and can be used to identify specific
             server-side log entries that correspond to this client.
-            Default: 'aiokafka-producer-#' (appended with a unique number
+            Default: ``aiokafka-producer-#`` (appended with a unique number
             per instance)
-        key_serializer (callable): used to convert user-supplied keys to bytes
-            If not None, called as f(key), should return bytes. Default: None.
-        value_serializer (callable): used to convert user-supplied message
-            values to bytes. If not None, called as f(value), should return
-            bytes. Default: None.
-        acks (0, 1, 'all'): The number of acknowledgments the producer requires
-            the leader to have received before considering a request complete.
-            This controls the durability of records that are sent. The
-            following settings are common:
+        key_serializer (Callable): used to convert user-supplied keys to bytes
+            If not :data:`None`, called as ``f(key),`` should return
+            :class:`bytes`.
+            Default: :data:`None`.
+        value_serializer (Callable): used to convert user-supplied message
+            values to :class:`bytes`. If not :data:`None`, called as
+            ``f(value)``, should return :class:`bytes`.
+            Default: :data:`None`.
+        acks (Any): one of ``0``, ``1``, ``all``. The number of acknowledgments
+            the producer requires the leader to have received before considering a
+            request complete. This controls the durability of records that are
+            sent. The following settings are common:
 
-            0: Producer will not wait for any acknowledgment from the server
-                at all. The message will immediately be added to the socket
-                buffer and considered sent. No guarantee can be made that the
-                server has received the record in this case, and the retries
-                configuration will not take effect (as the client won't
-                generally know of any failures). The offset given back for each
-                record will always be set to -1.
-            1: The broker leader will write the record to its local log but
-                will respond without awaiting full acknowledgement from all
-                followers. In this case should the leader fail immediately
-                after acknowledging the record but before the followers have
-                replicated it then the record will be lost.
-            all: The broker leader will wait for the full set of in-sync
-                replicas to acknowledge the record. This guarantees that the
-                record will not be lost as long as at least one in-sync replica
-                remains alive. This is the strongest available guarantee.
+            * ``0``: Producer will not wait for any acknowledgment from the server
+              at all. The message will immediately be added to the socket
+              buffer and considered sent. No guarantee can be made that the
+              server has received the record in this case, and the retries
+              configuration will not take effect (as the client won't
+              generally know of any failures). The offset given back for each
+              record will always be set to -1.
+            * ``1``: The broker leader will write the record to its local log but
+              will respond without awaiting full acknowledgement from all
+              followers. In this case should the leader fail immediately
+              after acknowledging the record but before the followers have
+              replicated it then the record will be lost.
+            * ``all``: The broker leader will wait for the full set of in-sync
+              replicas to acknowledge the record. This guarantees that the
+              record will not be lost as long as at least one in-sync replica
+              remains alive. This is the strongest available guarantee.
 
-            If unset, defaults to *acks=1*. If ``enable_idempotence`` is
-            ``True`` defaults to *acks=all*
+            If unset, defaults to ``acks=1``. If `enable_idempotence` is
+            :data:`True` defaults to ``acks=all``
         compression_type (str): The compression type for all data generated by
-            the producer. Valid values are 'gzip', 'snappy', 'lz4', or None.
+            the producer. Valid values are ``gzip``, ``snappy``, ``lz4``, ``zstd``
+            or :data:`None`.
             Compression is of full batches of data, so the efficacy of batching
             will also impact the compression ratio (more batching means better
-            compression). Default: None.
+            compression). Default: :data:`None`.
         max_batch_size (int): Maximum size of buffered data per partition.
-            After this amount `send` coroutine will block until batch is
+            After this amount :meth:`send` coroutine will block until batch is
             drained.
             Default: 16384
         linger_ms (int): The producer groups together any records that arrive
@@ -101,15 +106,15 @@ class AIOKafkaProducer(object):
             may want to reduce the number of requests even under moderate load.
             This setting accomplishes this by adding a small amount of
             artificial delay; that is, if first request is processed faster,
-            than `linger_ms`, producer will wait `linger_ms - process_time`.
-            This setting defaults to 0 (i.e. no delay).
-        partitioner (callable): Callable used to determine which partition
+            than `linger_ms`, producer will wait ``linger_ms - process_time``.
+            Default: 0 (i.e. no delay).
+        partitioner (Callable): Callable used to determine which partition
             each message is assigned to. Called (after key serialization):
-            partitioner(key_bytes, all_partitions, available_partitions).
+            ``partitioner(key_bytes, all_partitions, available_partitions)``.
             The default partitioner implementation hashes each non-None key
             using the same murmur2 algorithm as the Java client so that
             messages with the same key are assigned to the same partition.
-            When a key is None, the message is delivered to a random partition
+            When a key is :data:`None`, the message is delivered to a random partition
             (filtered to partitions with available leaders only, if possible).
         max_request_size (int): The maximum size of a request. This is also
             effectively a cap on the maximum record size. Note that the server
@@ -122,42 +127,48 @@ class AIOKafkaProducer(object):
             partition leadership changes to proactively discover any new
             brokers or partitions. Default: 300000
         request_timeout_ms (int): Produce request timeout in milliseconds.
-            As it's sent as part of ProduceRequest (it's a blocking call),
-            maximum waiting time can be up to 2 * request_timeout_ms.
+            As it's sent as part of
+            :class:`~kafka.protocol.produce.ProduceRequest` (it's a blocking
+            call), maximum waiting time can be up to ``2 *
+            request_timeout_ms``.
             Default: 40000.
         retry_backoff_ms (int): Milliseconds to backoff when retrying on
             errors. Default: 100.
         api_version (str): specify which kafka API version to use.
-            If set to 'auto', will attempt to infer the broker version by
-            probing various APIs. Default: auto
+            If set to ``auto``, will attempt to infer the broker version by
+            probing various APIs. Default: ``auto``
         security_protocol (str): Protocol used to communicate with brokers.
-            Valid values are: PLAINTEXT, SSL. Default: PLAINTEXT.
-        ssl_context (ssl.SSLContext): pre-configured SSLContext for wrapping
-            socket connections. Directly passed into asyncio's
-            `create_connection`_. For more information see :ref:`ssl_auth`.
-            Default: None.
+            Valid values are: ``PLAINTEXT``, ``SSL``. Default: ``PLAINTEXT``.
+            Default: ``PLAINTEXT``.
+        ssl_context (ssl.SSLContext): pre-configured :class:`~ssl.SSLContext`
+            for wrapping socket connections. Directly passed into asyncio's
+            :meth:`~asyncio.loop.create_connection`. For more
+            information see :ref:`ssl_auth`.
+            Default: :data:`None`
         connections_max_idle_ms (int): Close idle connections after the number
-            of milliseconds specified by this config. Specifying `None` will
+            of milliseconds specified by this config. Specifying :data:`None` will
             disable idle checks. Default: 540000 (9 minutes).
-        enable_idempotence (bool): When set to ``True``, the producer will
+        enable_idempotence (bool): When set to :data:`True`, the producer will
             ensure that exactly one copy of each message is written in the
-            stream. If ``False``, producer retries due to broker failures,
+            stream. If :data:`False`, producer retries due to broker failures,
             etc., may write duplicates of the retried message in the stream.
-            Note that enabling idempotence acks to set to 'all'. If it is not
+            Note that enabling idempotence acks to set to ``all``. If it is not
             explicitly set by the user it will be chosen. If incompatible
-            values are set, a ``ValueError`` will be thrown.
+            values are set, a :exc:`ValueError` will be thrown.
             New in version 0.5.0.
         sasl_mechanism (str): Authentication mechanism when security_protocol
-            is configured for SASL_PLAINTEXT or SASL_SSL. Valid values are:
-            PLAIN, GSSAPI, SCRAM-SHA-256, SCRAM-SHA-512, OAUTHBEARER.
-            Default: PLAIN
-        sasl_plain_username (str): username for sasl PLAIN authentication.
-            Default: None
-        sasl_plain_password (str): password for sasl PLAIN authentication.
-            Default: None
-        sasl_oauth_token_provider (kafka.oauth.abstract.AbstractTokenProvider):
-            OAuthBearer token provider instance. (See kafka.oauth.abstract).
-            Default: None
+            is configured for ``SASL_PLAINTEXT`` or ``SASL_SSL``. Valid values
+            are: ``PLAIN``, ``GSSAPI``, ``SCRAM-SHA-256``, ``SCRAM-SHA-512``,
+            ``OAUTHBEARER``.
+            Default: ``PLAIN``
+        sasl_plain_username (str): username for SASL ``PLAIN`` authentication.
+            Default: :data:`None`
+        sasl_plain_password (str): password for SASL ``PLAIN`` authentication.
+            Default: :data:`None`
+        sasl_oauth_token_provider (:class:`~aiokafka.abc.AbstractTokenProvider`):
+            OAuthBearer token provider instance. (See
+            :mod:`kafka.oauth.abstract`).
+            Default: :data:`None`
 
     Note:
         Many configuration parameters are taken from the Java client:
@@ -166,9 +177,10 @@ class AIOKafkaProducer(object):
     _PRODUCER_CLIENT_ID_SEQUENCE = 0
 
     _COMPRESSORS = {
-        'gzip': (has_gzip, LegacyRecordBatchBuilder.CODEC_GZIP),
-        'snappy': (has_snappy, LegacyRecordBatchBuilder.CODEC_SNAPPY),
-        'lz4': (has_lz4, LegacyRecordBatchBuilder.CODEC_LZ4),
+        'gzip': (has_gzip, DefaultRecordBatch.CODEC_GZIP),
+        'snappy': (has_snappy, DefaultRecordBatch.CODEC_SNAPPY),
+        'lz4': (has_lz4, DefaultRecordBatch.CODEC_LZ4),
+        'zstd': (has_zstd, DefaultRecordBatch.CODEC_ZSTD),
     }
 
     _closed = None  # Serves as an uninitialized flag for __del__
@@ -202,7 +214,7 @@ class AIOKafkaProducer(object):
 
         if acks not in (0, 1, -1, 'all', _missing):
             raise ValueError("Invalid ACKS parameter")
-        if compression_type not in ('gzip', 'snappy', 'lz4', None):
+        if compression_type not in ('gzip', 'snappy', 'lz4', 'zstd', None):
             raise ValueError("Invalid compression type!")
         if compression_type:
             checker, compression_attrs = self._COMPRESSORS[compression_type]
@@ -277,7 +289,7 @@ class AIOKafkaProducer(object):
     # We don't attempt to close the Consumer, as __del__ is synchronous
     def __del__(self, _warnings=warnings):
         if self._closed is False:
-            _warnings.warn("Unclosed AIOKafkaProducer {!r}".format(self),
+            _warnings.warn(f"Unclosed AIOKafkaProducer {self!r}",
                            ResourceWarning,
                            source=self)
             context = {'producer': self,
@@ -297,6 +309,9 @@ class AIOKafkaProducer(object):
         if self._compression_type == 'lz4':
             assert self.client.api_version >= (0, 8, 2), \
                 'LZ4 Requires >= Kafka 0.8.2 Brokers'
+        elif self._compression_type == 'zstd':
+            assert self.client.api_version >= (2, 1, 0), \
+                'Zstd Requires >= Kafka 2.1.0 Brokers'
 
         if self._txn_manager is not None and self.client.api_version < (0, 11):
             raise UnsupportedVersionError(
@@ -379,41 +394,43 @@ class AIOKafkaProducer(object):
 
         Arguments:
             topic (str): topic where the message will be published
-            value (optional): message value. Must be type bytes, or be
-                serializable to bytes via configured value_serializer. If value
-                is None, key is required and message acts as a 'delete'.
-                See kafka compaction documentation for more details:
-                http://kafka.apache.org/documentation.html#compaction
-                (compaction requires kafka >= 0.8.1)
-            partition (int, optional): optionally specify a partition. If not
+            value (Optional): message value. Must be type :class:`bytes`, or be
+                serializable to :class:`bytes` via configured `value_serializer`. If
+                value is :data:`None`, key is required and message acts as a
+                ``delete``.
+
+                See `Kafka compaction documentation
+                <https://kafka.apache.org/documentation.html#compaction>`__ for
+                more details. (compaction requires kafka >= 0.8.1)
+            partition (int, Optional): optionally specify a partition. If not
                 set, the partition will be selected using the configured
-                'partitioner'.
-            key (optional): a key to associate with the message. Can be used to
+                `partitioner`.
+            key (Optional): a key to associate with the message. Can be used to
                 determine which partition to send the message to. If partition
-                is None (and producer's partitioner config is left as default),
+                is :data:`None` (and producer's partitioner config is left as default),
                 then messages with the same key will be delivered to the same
-                partition (but if key is None, partition is chosen randomly).
-                Must be type bytes, or be serializable to bytes via configured
-                key_serializer.
-            timestamp_ms (int, optional): epoch milliseconds (from Jan 1 1970
+                partition (but if key is :data:`None`, partition is chosen randomly).
+                Must be type :class:`bytes`, or be serializable to bytes via configured
+                `key_serializer`.
+            timestamp_ms (int, Optional): epoch milliseconds (from Jan 1 1970
                 UTC) to use as the message timestamp. Defaults to current time.
-            headers (optional): Kafka headers to be included in the message using
-                the format [("key", b"value")]. Iterable of tuples where key is a
-                normal string and value is a byte string.
+            headers (Optional): Kafka headers to be included in the message using
+                the format ``[("key", b"value")]``. Iterable of tuples where key
+                is a normal string and value is a byte string.
 
         Returns:
             asyncio.Future: object that will be set when message is
             processed
 
         Raises:
-            kafka.KafkaTimeoutError: if we can't schedule this record (
-                pending buffer is full) in up to `request_timeout_ms`
+            ~aiokafka.errors.KafkaTimeoutError: if we can't schedule this record
+                (pending buffer is full) in up to `request_timeout_ms`
                 milliseconds.
 
         Note:
             The returned future will wait based on `request_timeout_ms`
             setting. Cancelling the returned future **will not** stop event
-            from being sent, but cancelling the ``send`` coroutine itself
+            from being sent, but cancelling the :meth:`send` coroutine itself
             **will**.
         """
         assert value is not None or self.client.api_version >= (0, 8, 1), (
@@ -462,9 +479,9 @@ class AIOKafkaProducer(object):
         return (await future)
 
     def create_batch(self):
-        """Create and return an empty BatchBuilder.
+        """Create and return an empty :class:`.BatchBuilder`.
 
-        The batch is not queued for send until submission to ``send_batch``.
+        The batch is not queued for send until submission to :meth:`send_batch`.
 
         Returns:
             BatchBuilder: empty batch to be filled and submitted by the caller.
@@ -539,6 +556,8 @@ class AIOKafkaProducer(object):
         )
 
     def transaction(self):
+        """Start a transaction context"""
+
         return TransactionContext(self)
 
     async def send_offsets_to_transaction(self, offsets, group_id):

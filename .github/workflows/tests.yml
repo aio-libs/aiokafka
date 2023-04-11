@@ -5,7 +5,7 @@ name: Tests
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, '**' ]
     tags:
       - "v0.[0-9]+.[0-9]+"
       - "v0.[0-9]+.[0-9]+.dev*"
@@ -22,12 +22,12 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: 3.7
+        python-version: 3.9
 
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libsnappy-dev libkrb5-dev
+        sudo apt-get install -y libsnappy-dev libzstd-dev libkrb5-dev
 
     - name: Get pip cache dir
       id: pip-cache
@@ -39,10 +39,10 @@ jobs:
       uses: actions/cache@v1
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
-        key: ${{ runner.os }}-py-3.7-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
+        key: ${{ runner.os }}-py-3.9-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
         # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
         restore-keys: |
-         ${{ runner.os }}-py-3.7-
+         ${{ runner.os }}-py-3.9-
 
     - name: Install python dependencies
       run: |
@@ -62,20 +62,19 @@ jobs:
       run: |
         make check-readme
 
+    - name: Build doc
+      run: |
+        pip install -r requirements-docs.txt
+        make -C docs html
+
   test-windows:
     needs: test-sanity
     runs-on: windows-latest
 
     strategy:
       matrix:
-        python: [3.6, 3.7, 3.8.5]
-        include:
-          - python: 3.6
-            snappy_whl: tools/python_snappy-0.5.4-cp36-cp36m-win_amd64.whl
-          - python: 3.7
-            snappy_whl: tools/python_snappy-0.5.4-cp37-cp37m-win_amd64.whl
-          - python: 3.8.5
-            snappy_whl: tools/python_snappy-0.5.4-cp38-cp38-win_amd64.whl
+        # 3.11 excluded due to problems with python-snappy
+        python: ["3.7", "3.8", "3.9", "3.10"]
 
     steps:
     - uses: actions/checkout@v2
@@ -104,7 +103,6 @@ jobs:
     - name: Install python dependencies
       run: |
         pip install --upgrade pip setuptools wheel
-        pip install ${{ matrix.snappy_whl }}
         pip install -r requirements-win-test.txt
         pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
 
@@ -144,7 +142,7 @@ jobs:
 
     strategy:
       matrix:
-        python: [3.6, 3.7, 3.8.5]
+        python: ["3.7", "3.8", "3.9", "3.10"]
 
     steps:
     - uses: actions/checkout@v2
@@ -217,44 +215,58 @@ jobs:
     strategy:
       matrix:
         include:
-          # FIXME Stick to 3.8.5 as 3.8.6 has broken `wait_for`
-          - python: 3.8.5
-            kafka: "2.4.0"
-            scala: "2.12"
+          - python: "3.11"
+            kafka: "2.8.1"
+            scala: "2.13"
 
           # Older python versions against latest broker
-          - python: 3.6
-            kafka: "2.4.0"
-            scala: "2.12"
-
-          # Older python versions against latest broker
-          - python: 3.7
-            kafka: "2.4.0"
-            scala: "2.12"
-
+          - python: "3.7"
+            kafka: "2.8.1"
+            scala: "2.13"
+          - python: "3.8"
+            kafka: "2.8.1"
+            scala: "2.13"
+          - python: "3.9"
+            kafka: "2.8.1"
+            scala: "2.13"
+          - python: "3.10"
+            kafka: "2.8.1"
+            scala: "2.13"
 
           # Older brokers against latest python version
-          - python: 3.8.5
+          - python: "3.11"
             kafka: "0.9.0.1"
             scala: "2.11"
-          - python: 3.8.5
+          - python: "3.11"
             kafka: "0.10.2.1"
             scala: "2.11"
-          - python: 3.8.5
+          - python: "3.11"
             kafka: "0.11.0.3"
             scala: "2.12"
-          - python: 3.8.5
+          - python: "3.11"
             kafka: "1.1.1"
             scala: "2.12"
-          - python: 3.8.5
+          - python: "3.11"
             kafka: "2.1.1"
             scala: "2.12"
-          - python: 3.8.5
+          - python: "3.11"
             kafka: "2.2.2"
             scala: "2.12"
-          - python: 3.8.5
+          - python: "3.11"
             kafka: "2.3.1"
             scala: "2.12"
+          - python: "3.11"
+            kafka: "2.4.1"
+            scala: "2.12"
+          - python: "3.11"
+            kafka: "2.5.1"
+            scala: "2.12"
+          - python: "3.11"
+            kafka: "2.6.3"
+            scala: "2.12"
+          - python: "3.11"
+            kafka: "2.7.2"
+            scala: "2.13"
       fail-fast: false
 
     steps:
@@ -269,7 +281,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libsnappy-dev libkrb5-dev krb5-user
+        sudo apt-get install -y libsnappy-dev libzstd-dev libkrb5-dev krb5-user
 
     - name: Get pip cache dir
       id: pip-cache

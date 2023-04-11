@@ -1,3 +1,7 @@
+"""
+.. _kafka-python: https://github.com/dpkp/kafka-python
+"""
+
 import logging
 
 from ssl import create_default_context, Purpose
@@ -9,39 +13,40 @@ def create_ssl_context(*, cafile=None, capath=None, cadata=None,
                        certfile=None, keyfile=None, password=None,
                        crlfile=None):
     """
-    Simple helper, that creates an SSLContext based on params similar to
-    those in ``kafka-python``, but with some restrictions like:
+    Simple helper, that creates an :class:`~ssl.SSLContext` based on params similar to
+    those in `kafka-python`_, but with some restrictions like:
 
-            * ``check_hostname`` is not optional, and will be set to True
-            * ``crlfile`` option is missing. It is fairly hard to test it.
-
-    .. _load_verify_locations: https://docs.python.org/3/library/ssl.html\
-        #ssl.SSLContext.load_verify_locations
-    .. _load_cert_chain: https://docs.python.org/3/library/ssl.html\
-        #ssl.SSLContext.load_cert_chain
+    * `check_hostname` is not optional, and will be set to :data:`True`
+    * `crlfile` option is missing. It is fairly hard to test it.
 
     Arguments:
         cafile (str): Certificate Authority file path containing certificates
             used to sign broker certificates. If CA not specified (by either
             cafile, capath, cadata) default system CA will be used if found by
-            OpenSSL. For more information see `load_verify_locations`_.
-            Default: None
+            OpenSSL. For more information see
+            :meth:`~ssl.SSLContext.load_verify_locations`.
+            Default: :data:`None`
         capath (str): Same as `cafile`, but points to a directory containing
             several CA certificates. For more information see
-            `load_verify_locations`_. Default: None
-        cadata (str/bytes): Same as `cafile`, but instead contains already
+            :meth:`~ssl.SSLContext.load_verify_locations`.
+            Default: :data:`None`
+        cadata (str, bytes): Same as `cafile`, but instead contains already
             read data in either ASCII or bytes format. Can be used to specify
             DER-encoded certificates, rather than PEM ones. For more
-            information see `load_verify_locations`_. Default: None
+            information see :meth:`~ssl.SSLContext.load_verify_locations`.
+            Default: :data:`None`
         certfile (str): optional filename of file in PEM format containing
             the client certificate, as well as any CA certificates needed to
             establish the certificate's authenticity. For more information see
-            `load_cert_chain`_. Default: None.
+            :meth:`~ssl.SSLContext.load_cert_chain`.
+            Default: :data:`None`.
         keyfile (str): optional filename containing the client private key.
-            For more information see `load_cert_chain`_. Default: None.
+            For more information see :meth:`~ssl.SSLContext.load_cert_chain`.
+            Default: :data:`None`.
         password (str): optional password to be used when loading the
-            certificate chain. For more information see `load_cert_chain`_.
-            Default: None.
+            certificate chain. For more information see
+            :meth:`~ssl.SSLContext.load_cert_chain`.
+            Default: :data:`None`.
 
     """
     if cafile or capath:

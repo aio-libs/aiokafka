@@ -15,6 +15,7 @@ from kafka.protocol.admin import (
     SaslHandShakeRequest, SaslHandShakeResponse, SaslAuthenticateRequest,
     SaslAuthenticateResponse
 )
+from kafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
 
 from aiokafka.conn import AIOKafkaConnection, create_conn, VersionInfo
 from aiokafka.errors import (
@@ -23,7 +24,6 @@ from aiokafka.errors import (
 )
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
-from aiokafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
 from aiokafka.util import get_running_loop
 
 

@@ -5,9 +5,10 @@ import random
 import time
 from itertools import chain
 
+import async_timeout
 from kafka.protocol.offset import OffsetRequest
+from kafka.protocol.fetch import FetchRequest
 
-from aiokafka.protocol.fetch import FetchRequest
 import aiokafka.errors as Errors
 from aiokafka.errors import (
     ConsumerStoppedError, RecordTooLargeError, KafkaTimeoutError)
@@ -53,7 +54,7 @@ class OffsetResetStrategy:
         if value == cls.NONE:
             return "none"
         else:
-            return "timestamp({})".format(value)
+            return f"timestamp({value})"
 
 
 class FetchResult:
@@ -145,8 +146,7 @@ class FetchResult:
         return self._partition_records is not None
 
     def __repr__(self):
-        return "<FetchResult position={!r}>".format(
-            self._partition_records.next_fetch_offset)
+        return f"<FetchResult position={self._partition_records.next_fetch_offset!r}>"
 
 
 class FetchError:
@@ -166,7 +166,7 @@ class FetchError:
         raise self._error
 
     def __repr__(self):
-        return "<FetchError error={!r}>".format(self._error)
+        return f"<FetchError error={self._error!r}>"
 
 
 class PartitionRecords:
@@ -213,7 +213,7 @@ class PartitionRecords:
                 # This iterator will be closed after the exception, so we don't
                 # try to drain other batches here. They will be refetched.
                 raise Errors.CorruptRecordException(
-                    "Invalid CRC - {tp}".format(tp=tp))
+                    f"Invalid CRC - {tp}")
 
             if self._isolation_level == READ_COMMITTED and \
                     next_batch.producer_id is not None:
@@ -221,7 +221,10 @@ class PartitionRecords:
 
                 if next_batch.is_control_batch:
                     if self._contains_abort_marker(next_batch):
-                        self._aborted_producers.remove(next_batch.producer_id)
+                        # Using `discard` instead of `remove`, because Kafka
+                        # may return an abort marker for an otherwise empty
+                        # topic-partition.
+                        self._aborted_producers.discard(next_batch.producer_id)
 
                 if next_batch.is_transactional and \
                         next_batch.producer_id in self._aborted_producers:
@@ -389,7 +392,7 @@ class Fetcher:
             self._isolation_level = READ_COMMITTED
         else:
             raise ValueError(
-                "Incorrect isolation level {}".format(isolation_level))
+                f"Incorrect isolation level {isolation_level}")
 
         self._records = collections.OrderedDict()
         self._in_flight = set()
@@ -844,7 +847,7 @@ class Fetcher:
                 tp_state.reset_to(offset)
         return needs_wakeup
 
-    async def _retrieve_offsets(self, timestamps, timeout_ms=float("inf")):
+    async def _retrieve_offsets(self, timestamps, timeout_ms=None):
         """ Fetch offset for each partition passed in ``timestamps`` map.
 
         Blocks until offsets are obtained, a non-retriable exception is raised
@@ -865,31 +868,23 @@ class Fetcher:
         if not timestamps:
             return {}
 
-        timeout = timeout_ms / 1000
-        start_time = time.monotonic()
-        remaining = timeout
-        while True:
-            try:
-                offsets = await asyncio.wait_for(
-                    self._proc_offset_requests(timestamps),
-                    timeout=None if remaining == float("inf") else remaining
-                )
-            except asyncio.TimeoutError:
-                break
-            except Errors.KafkaError as error:
-                if not error.retriable:
-                    raise error
-                if error.invalid_metadata:
-                    self._client.force_metadata_update()
-                elapsed = time.monotonic() - start_time
-                remaining = max(0, remaining - elapsed)
-                if remaining < self._retry_backoff:
-                    break
-                await asyncio.sleep(self._retry_backoff)
-            else:
-                return offsets
-        raise KafkaTimeoutError(
-            "Failed to get offsets by times in %s ms" % timeout_ms)
+        timeout = None if timeout_ms is None else timeout_ms / 1000
+        try:
+            async with async_timeout.timeout(timeout):
+                while True:
+                    try:
+                        offsets = await self._proc_offset_requests(timestamps)
+                    except Errors.KafkaError as error:
+                        if not error.retriable:
+                            raise error
+                        if error.invalid_metadata:
+                            self._client.force_metadata_update()
+                        await asyncio.sleep(self._retry_backoff)
+                    else:
+                        return offsets
+        except asyncio.TimeoutError:
+            raise KafkaTimeoutError(
+                "Failed to get offsets by times in %s ms" % timeout_ms)
 
     async def _proc_offset_requests(self, timestamps):
         """ Fetch offsets for each partition in timestamps dict. This may send

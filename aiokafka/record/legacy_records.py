@@ -3,18 +3,21 @@ import time
 
 from binascii import crc32
 
-from aiokafka.errors import CorruptRecordException
+from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from aiokafka.util import NO_EXTENSIONS
 from kafka.codec import (
     gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
     gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka
 )
+import kafka.codec as codecs
 
 
 NoneType = type(None)
 
 
 class LegacyRecordBase:
+
+    __slots__ = ()
 
     HEADER_STRUCT_V0 = struct.Struct(
         ">q"  # BaseOffset => Int64
@@ -72,6 +75,20 @@ class LegacyRecordBase:
 
     LOG_APPEND_TIME = 1
     CREATE_TIME = 0
+
+    def _assert_has_codec(self, compression_type):
+        if compression_type == self.CODEC_GZIP:
+            checker, name = codecs.has_gzip, "gzip"
+        elif compression_type == self.CODEC_SNAPPY:
+            checker, name = codecs.has_snappy, "snappy"
+        elif compression_type == self.CODEC_LZ4:
+            checker, name = codecs.has_lz4, "lz4"
+        else:
+            raise UnsupportedCodecError(
+                f"Unknown compression codec {compression_type:#04x}")
+        if not checker():
+            raise UnsupportedCodecError(
+                f"Libraries for {name} compression codec not found")
 
 
 class _LegacyRecordBatchPy(LegacyRecordBase):
@@ -135,6 +152,7 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
             data = self._buffer[pos:pos + value_size]
 
         compression_type = self.compression_type
+        self._assert_has_codec(compression_type)
         if compression_type == self.CODEC_GZIP:
             uncompressed = gzip_decode(data)
         elif compression_type == self.CODEC_SNAPPY:
@@ -283,10 +301,9 @@ class _LegacyRecordPy:
 
     def __repr__(self):
         return (
-            "LegacyRecord(offset={!r}, timestamp={!r}, timestamp_type={!r},"
-            " key={!r}, value={!r}, crc={!r})".format(
-                self._offset, self._timestamp, self._timestamp_type,
-                self._key, self._value, self._crc)
+            f"LegacyRecord(offset={self._offset!r}, timestamp={self._timestamp!r},"
+            f" timestamp_type={self._timestamp_type!r},"
+            f" key={self._key!r}, value={self._value!r}, crc={self._crc!r})"
         )
 
 
@@ -390,6 +407,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
 
     def _maybe_compress(self):
         if self._compression_type:
+            self._assert_has_codec(self._compression_type)
             buf = self._buffer
             if self._compression_type == self.CODEC_GZIP:
                 compressed = gzip_encode(buf)
@@ -476,9 +494,9 @@ class _LegacyRecordMetadataPy:
 
     def __repr__(self):
         return (
-            "LegacyRecordMetadata(offset={!r}, crc={!r}, size={!r},"
-            " timestamp={!r})".format(
-                self._offset, self._crc, self._size, self._timestamp)
+            f"LegacyRecordMetadata(offset={self._offset!r},"
+            f" crc={self._crc!r}, size={self._size!r},"
+            f" timestamp={self._timestamp!r})"
         )
 
 

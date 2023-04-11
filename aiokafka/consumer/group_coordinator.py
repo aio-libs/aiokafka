@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 UNKNOWN_OFFSET = -1
 
 
-class BaseCoordinator(object):
+class BaseCoordinator:
 
     def __init__(self, client, subscription, *,
                  exclude_internal_topics=True):
@@ -378,7 +378,7 @@ class GroupCoordinator(BaseCoordinator):
                 log.error("OffsetCommit failed before join, ignoring: %s", err)
             revoked = previous_assignment.tps
         else:
-            revoked = set([])
+            revoked = set()
 
         # execute the user's callback before rebalance
         log.info("Revoking previously assigned partitions %s for group %s",
@@ -559,7 +559,7 @@ class GroupCoordinator(BaseCoordinator):
             log.error(
                 "Unexpected error in coordinator routine", exc_info=True)
             kafka_exc = Errors.KafkaError(
-                "Unexpected error during coordination {!r}".format(exc))
+                f"Unexpected error during coordination {exc!r}")
             self._subscription.abort_waiters(kafka_exc)
             raise kafka_exc
 
@@ -681,7 +681,7 @@ class GroupCoordinator(BaseCoordinator):
 
         # We will not attempt rejoin if there is no activity on consumer
         idle_time = self._subscription.fetcher_idle_time
-        if idle_time >= self._max_poll_interval:
+        if prev_assignment is not None and idle_time >= self._max_poll_interval:
             await asyncio.sleep(self._retry_backoff_ms / 1000)
             return None
 
@@ -812,8 +812,8 @@ class GroupCoordinator(BaseCoordinator):
             raise error_type(self.group_id)
         else:
             err = Errors.KafkaError(
-                "Unexpected exception in heartbeat task: {!r}".format(
-                    error_type()))
+                f"Unexpected exception in heartbeat task: {error_type()!r}"
+            )
             log.error("Heartbeat failed: %r", err)
             raise err
         return False
@@ -1356,6 +1356,9 @@ class CoordinatorGroupRebalance:
         # set it directly after JoinGroup to avoid a false rejoin in case
         # ``_perform_assignment()`` does a metadata update.
         self._coordinator._rejoin_needed_fut = create_future()
+        req_generation = self._coordinator.generation
+        req_member_id = self._coordinator.member_id
+
         try:
             response = await self._coordinator._send_req(request)
         except Errors.KafkaError:
@@ -1368,6 +1371,10 @@ class CoordinatorGroupRebalance:
         if error_type is Errors.NoError:
             log.info("Successfully synced group %s with generation %s",
                      self.group_id, self._coordinator.generation)
+            # make sure the right member_id/generation is set in case they changed
+            # while the rejoin was taking place
+            self._coordinator.generation = req_generation
+            self._coordinator.member_id = req_member_id
             return response.member_assignment
 
         # Error case

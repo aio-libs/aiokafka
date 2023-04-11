@@ -1,8 +1,10 @@
 import asyncio
 import os
 from asyncio import AbstractEventLoop
-from distutils.version import StrictVersion
-from typing import Awaitable, Dict, Tuple, TypeVar, Union
+from typing import Any, Awaitable, Coroutine, Dict, Tuple, TypeVar, Union, cast
+
+import async_timeout
+from packaging.version import Version
 
 from .structs import OffsetAndMetadata, TopicPartition
 
@@ -19,7 +21,7 @@ __all__ = [
 T = TypeVar("T")
 
 
-def create_task(coro: Awaitable[T]) -> "asyncio.Task[T]":
+def create_task(coro: Coroutine[Any, Any, T]) -> "asyncio.Task[T]":
     loop = get_running_loop()
     return loop.create_task(coro)
 
@@ -30,8 +32,19 @@ def create_future(loop: AbstractEventLoop = None) -> "asyncio.Future[T]":
     return loop.create_future()
 
 
+async def wait_for(fut: Awaitable[T], timeout: Union[None, int, float] = None) -> T:
+    # A replacement for buggy (since 3.8.6) `asyncio.wait_for()`
+    # https://bugs.python.org/issue42130
+    async with async_timeout.timeout(timeout):
+        return await fut
+
+
 def parse_kafka_version(api_version: str) -> Tuple[int, int, int]:
-    version = StrictVersion(api_version).version
+    parsed = Version(api_version).release
+    if not 2 <= len(parsed) <= 3:
+        raise ValueError(api_version)
+    version = cast(Tuple[int, int, int], (parsed + (0,))[:3])
+
     if not (0, 9) <= version < (3, 0):
         raise ValueError(api_version)
     return version
@@ -76,5 +89,5 @@ def get_running_loop() -> asyncio.AbstractEventLoop:
 
 NO_EXTENSIONS = bool(os.environ.get("AIOKAFKA_NO_EXTENSIONS"))
 
-INTEGER_MAX_VALUE = 2 ** 31 - 1
-INTEGER_MIN_VALUE = -(2 ** 31)
+INTEGER_MAX_VALUE = 2**31 - 1
+INTEGER_MIN_VALUE = -(2**31)

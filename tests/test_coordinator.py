@@ -54,7 +54,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # Check if the initial group join is performed correctly with minimal
         # setup
         subscription = SubscriptionState()
-        subscription.subscribe(topics=set(['topic1', 'topic2']))
+        subscription.subscribe(topics={'topic1', 'topic2'})
         coordinator = GroupCoordinator(
             client, subscription,
             session_timeout_ms=10000,
@@ -73,14 +73,21 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertFalse(coordinator.need_rejoin(subscription.subscription))
 
         tp_list = subscription.assigned_partitions()
-        self.assertEqual(tp_list, set([('topic1', 0), ('topic1', 1),
-                                       ('topic2', 0), ('topic2', 1)]))
+        self.assertEqual(
+            tp_list,
+            {
+                ('topic1', 0),
+                ('topic1', 1),
+                ('topic2', 0),
+                ('topic2', 1)
+            }
+        )
 
         # Check if adding an additional coordinator will rebalance correctly
         client2 = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client2.bootstrap()
         subscription2 = SubscriptionState()
-        subscription2.subscribe(topics=set(['topic1', 'topic2']))
+        subscription2.subscribe(topics={'topic1', 'topic2'})
         coordinator2 = GroupCoordinator(
             client2, subscription2,
             session_timeout_ms=10000,
@@ -96,18 +103,30 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         tp_list2 = subscription2.assigned_partitions()
         self.assertEqual(len(tp_list2), 2)
         tp_list |= tp_list2
-        self.assertEqual(tp_list, set([('topic1', 0), ('topic1', 1),
-                                       ('topic2', 0), ('topic2', 1)]))
-
+        self.assertEqual(
+            tp_list,
+            {
+                ('topic1', 0),
+                ('topic1', 1),
+                ('topic2', 0),
+                ('topic2', 1)
+            }
+        )
         # Check is closing the first coordinator will rebalance the second
         await coordinator.close()
         await client.close()
 
         await subscription2.wait_for_assignment()
         tp_list = subscription2.assigned_partitions()
-        self.assertEqual(tp_list, set([('topic1', 0), ('topic1', 1),
-                                       ('topic2', 0), ('topic2', 1)]))
-
+        self.assertEqual(
+            tp_list,
+            {
+                ('topic1', 0),
+                ('topic1', 1),
+                ('topic2', 0),
+                ('topic2', 1)
+            }
+        )
         await coordinator2.close()
         await client2.close()
 
@@ -119,7 +138,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(client.close)
 
         subscription = SubscriptionState()
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         coordinator = GroupCoordinator(
             client, subscription,
             retry_backoff_ms=10)
@@ -219,7 +238,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         # Subscription changes before rebalance finishes
         async def send_change_sub(*args, **kw):
-            subscription.subscribe(topics=set(['topic2']))
+            subscription.subscribe(topics={'topic2'})
             return (await send(*args, **kw))
         mocked.send.side_effect = send_change_sub
         resp = await do_rebalance()
@@ -237,7 +256,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_failed_sync_group(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         subscription = SubscriptionState()
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         coordinator = GroupCoordinator(
             client, subscription,
             heartbeat_interval_ms=20000)
@@ -312,6 +331,41 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertEqual(coordinator.need_rejoin(subsc), True)
 
     @run_until_complete
+    async def test_generation_change_during_rejoin_sync(self):
+        coordinator = mock.MagicMock()
+        subscription = mock.MagicMock()
+        assignors = mock.MagicMock()
+        member_assignment = mock.Mock()
+
+        rebalance = CoordinatorGroupRebalance(
+            coordinator, "group_id", "coordinator_id", subscription,
+            assignors, 1000, 1000)
+
+        async def send_req(request):
+            await asyncio.sleep(0.1)
+            resp = mock.MagicMock()
+            resp.member_assignment = member_assignment
+            resp.error_code = 0
+            return resp
+
+        coordinator._send_req.side_effect = send_req
+
+        request = mock.MagicMock()
+        coordinator.generation = 1
+        coordinator.member_id = "member_id"
+        sync_req = asyncio.ensure_future(rebalance._send_sync_group_request(request))
+        await asyncio.sleep(0.05)
+
+        coordinator.generation = -1
+        coordinator.member_id = "member_id-changed"
+
+        assert await sync_req == member_assignment
+
+        # make sure values are set correctly
+        assert coordinator.generation == 1
+        assert coordinator.member_id == "member_id"
+
+    @run_until_complete
     async def test_subscribe_pattern(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
@@ -334,11 +388,15 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertFalse(coordinator.need_rejoin(subscription.subscription))
 
         tp_list = subscription.assigned_partitions()
-        assigned = set([('st-topic1', 0), ('st-topic1', 1),
-                        ('st-topic2', 0), ('st-topic2', 1)])
+        assigned = {
+            ('st-topic1', 0),
+            ('st-topic1', 1),
+            ('st-topic2', 0),
+            ('st-topic2', 1),
+        }
         self.assertEqual(tp_list, assigned)
 
-        self.assertEqual(test_listener.revoked, [set([])])
+        self.assertEqual(test_listener.revoked, [set()])
         self.assertEqual(test_listener.assigned, [assigned])
         await coordinator.close()
         await client.close()
@@ -349,7 +407,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         await client.bootstrap()
         await self.wait_topic(client, 'topic1')
         subscription = SubscriptionState()
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         coordinator = GroupCoordinator(
             client, subscription,
             group_id='test-offsets-group')
@@ -469,7 +527,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         await client.bootstrap()
         await self.wait_topic(client, 'topic1')
         subscription = SubscriptionState()
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         coordinator = GroupCoordinator(
             client, subscription,
             group_id='fetch-offsets-group')
@@ -548,7 +606,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         await self.wait_topic(client, 'topic1')
         await self.wait_topic(client, 'topic2')
         subscription = SubscriptionState()
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         client.set_topics(('topic1', ))
         coordinator = GroupCoordinator(
             client, subscription,
@@ -562,15 +620,15 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 # Change the subscription to different topic before we finish
                 # rebalance
                 res = await _perform_assignment(*args, **kw)
-                if subscription.subscription.topics == set(["topic1"]):
-                    subscription.subscribe(topics=set(['topic2']))
+                if subscription.subscription.topics == {"topic1"}:
+                    subscription.subscribe(topics={'topic2'})
                     client.set_topics(('topic2', ))
                 return res
             mocked.side_effect = _new
 
             await subscription.wait_for_assignment()
-            topics = set([
-                tp.topic for tp in subscription.assigned_partitions()])
+            topics = {
+                tp.topic for tp in subscription.assigned_partitions()}
             self.assertEqual(topics, {'topic2'})
 
             # There should only be 2 rebalances to finish the task
@@ -587,7 +645,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         await self.wait_topic(client, 'topic1')
         await self.wait_topic(client, 'topic2')
         subscription = SubscriptionState()
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         coordinator = GroupCoordinator(
             client, subscription,
             group_id='race-rebalance-subscribe-append',
@@ -600,15 +658,15 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 # Change the subscription to different topic before we finish
                 # rebalance
                 res = await _perform_assignment(*args, **kw)
-                if subscription.subscription.topics == set(["topic1"]):
-                    subscription.subscribe(topics=set(['topic1', 'topic2']))
+                if subscription.subscription.topics == {"topic1"}:
+                    subscription.subscribe(topics={'topic1', 'topic2'})
                     client.set_topics(('topic1', 'topic2', ))
                 return res
             mocked.side_effect = _new
 
             await subscription.wait_for_assignment()
-            topics = set([
-                tp.topic for tp in subscription.assigned_partitions()])
+            topics = {
+                tp.topic for tp in subscription.assigned_partitions()}
             self.assertEqual(topics, {'topic1', 'topic2'})
 
             # There should only be 2 rebalances to finish the task
@@ -634,7 +692,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(client.close)
         subscription = SubscriptionState()
         client.set_topics(("topic1", ))
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         coordinator = GroupCoordinator(
             client, subscription,
             group_id='race-rebalance-metadata-update',
@@ -659,7 +717,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             # This case will assure, that the started metadata update will be
             # waited for before assigning partitions. ``set_topics`` will start
             # the metadata update
-            subscription.subscribe(topics=set(['topic2']))
+            subscription.subscribe(topics={'topic2'})
             client.set_topics(('topic2', ))
             await subscription.wait_for_assignment()
             self.assertEqual(
@@ -683,7 +741,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             client, subscription,
             group_id='race-rebalance-subscribe-append',
             heartbeat_interval_ms=2000000)
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         await client.set_topics(('topic1', ))
         await subscription.wait_for_assignment()
 
@@ -691,7 +749,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         with mock.patch.object(coordinator, '_perform_assignment') as mocked:
             mocked.side_effect = _perform_assignment
 
-            subscription.subscribe(topics=set(['topic2']))
+            subscription.subscribe(topics={'topic2'})
             await client.set_topics(('topic2', ))
 
             # Should only trigger 1 rebalance, but will trigger 2 with bug:
@@ -716,7 +774,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         await client.bootstrap()
         await self.wait_topic(client, 'topic1')
         subscription = SubscriptionState()
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         coordinator = GroupCoordinator(
             client, subscription,
             group_id='test-offsets-group', session_timeout_ms=6000,
@@ -755,7 +813,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         await client.bootstrap()
         self.add_cleanup(client.close)
         subscription = SubscriptionState()
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         coordinator = GroupCoordinator(
             client, subscription,
             group_id='test-my-group', session_timeout_ms=6000,
@@ -801,7 +859,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             group_id='test-my-group', session_timeout_ms=6000,
             heartbeat_interval_ms=1000)
         subscription.subscribe(
-            topics=set(['topic1']), listener=WaitingListener())
+            topics={'topic1'}, listener=WaitingListener())
 
         # Close task should be loyal to rebalance and wait for it to finish
         close_task = create_task(coordinator.close())
@@ -825,7 +883,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             client, subscription,
             group_id='test-my-group', session_timeout_ms=6000,
             heartbeat_interval_ms=1000)
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         await subscription.wait_for_assignment()
 
         waiter = create_future()
@@ -850,7 +908,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_coordinator_ensure_coordinator_known(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         subscription = SubscriptionState()
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         coordinator = GroupCoordinator(
             client, subscription,
             heartbeat_interval_ms=20000)
@@ -922,7 +980,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_coordinator__do_heartbeat(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         subscription = SubscriptionState()
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         coordinator = GroupCoordinator(
             client, subscription,
             heartbeat_interval_ms=20000)
@@ -1004,7 +1062,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_coordinator__heartbeat_routine(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         subscription = SubscriptionState()
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         coordinator = GroupCoordinator(
             client, subscription,
             heartbeat_interval_ms=100,
@@ -1305,7 +1363,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         # CASE: Changing subscription should propagete a rebalance
         subscription.unsubscribe()
-        subscription.subscribe(set(["topic1"]))
+        subscription.subscribe({"topic1"})
         await asyncio.sleep(0.01)
         self.assertFalse(task.done())
         self.assertEqual(coord_mock.call_count, 2)
@@ -1336,7 +1394,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # before joining.
         subscription.unsubscribe()
         subscription.subscribe_pattern(re.compile("^topic1&"))
-        subscription.subscribe_from_pattern(set(["topic1"]))
+        subscription.subscribe_from_pattern({"topic1"})
         self.assertEqual(metadata_mock.call_count, 0)
         await asyncio.sleep(0.01)
         self.assertFalse(task.done())
@@ -1383,12 +1441,12 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         subscription = SubscriptionState()
         coordinator = NoGroupCoordinator(
             client, subscription)
-        subscription.subscribe(topics=set(['topic1']))
+        subscription.subscribe(topics={'topic1'})
         client.set_topics(('topic1', ))
         await asyncio.sleep(0.0001)
 
         # Change subscription before metadata update is received
-        subscription.subscribe(topics=set(['topic2']))
+        subscription.subscribe(topics={'topic2'})
         metadata_fut = client.set_topics(('topic2', ))
 
         try:

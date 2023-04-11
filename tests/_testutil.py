@@ -140,7 +140,7 @@ class ACLManager:
 
     @property
     def cmd(self):
-        return "/opt/kafka_{tag}/bin/kafka-acls.sh".format(tag=self._tag)
+        return f"/opt/kafka_{self._tag}/bin/kafka-acls.sh"
 
     def _exec(self, *cmd_options):
         cmd = ' '.join(
@@ -170,7 +170,7 @@ class ACLManager:
     def list_acl(self, principal=None):
         opts = []
         if principal:
-            opts.append("--principal User:{}".format(principal))
+            opts.append(f"--principal User:{principal}")
         return self._exec('--list', *opts)
 
     def _format_params(
@@ -183,21 +183,21 @@ class ACLManager:
         if cluster:
             options.append("--cluster")
         if topic is not None:
-            options.append("--topic {}".format(topic))
+            options.append(f"--topic {topic}")
         if group is not None:
-            options.append("--group {}".format(group))
+            options.append(f"--group {group}")
         if transactional_id is not None:
-            options.append("--transactional-id {}".format(transactional_id))
+            options.append(f"--transactional-id {transactional_id}")
         if allow_principal is not None:
-            options.append("--allow-principal User:{}".format(allow_principal))
+            options.append(f"--allow-principal User:{allow_principal}")
         if deny_principal is not None:
-            options.append("--deny-principal User:{}".format(deny_principal))
+            options.append(f"--deny-principal User:{deny_principal}")
         if allow_host is not None:
-            options.append("--allow-host {}".format(allow_host))
+            options.append(f"--allow-host {allow_host}")
         if deny_host is not None:
-            options.append("--deny-host {}".format(deny_host))
+            options.append(f"--deny-host {deny_host}")
         if operation is not None:
-            options.append("--operation {}".format(operation))
+            options.append(f"--operation {operation}")
         if producer is not None:
             options.append("--producer")
         if consumer is not None:
@@ -218,7 +218,7 @@ class KafkaConfig:
 
     @property
     def cmd(self):
-        return "/opt/kafka_{tag}/bin/kafka-configs.sh".format(tag=self._tag)
+        return f"/opt/kafka_{self._tag}/bin/kafka-configs.sh"
 
     def _exec(self, *cmd_options):
         cmd = ' '.join(
@@ -339,13 +339,17 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         yield
         self.loop.set_exception_handler(orig_handler)
 
+    def random_topic_name(self):
+        return "topic-{}-{}".format(
+            self.id()[self.id().rindex(".") + 1:],
+            random_string(10).decode('utf-8')
+        )
+
     def setUp(self):
         super().setUp()
         self._messages = {}
         if not self.topic:
-            self.topic = "topic-{}-{}".format(
-                self.id()[self.id().rindex(".") + 1:],
-                random_string(10).decode('utf-8'))
+            self.topic = self.random_topic_name()
         self._cleanup = []
 
     def tearDown(self):
@@ -367,7 +371,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
                 await asyncio.sleep(1)
             else:
                 return
-        raise AssertionError('No topic "{}" exists'.format(topic))
+        raise AssertionError(f'No topic "{topic}" exists')
 
     async def send_messages(
         self, partition, messages, *, topic=None,
@@ -421,15 +425,19 @@ def random_string(length):
     return s.encode('utf-8')
 
 
-def wait_kafka(kafka_host, kafka_port, timeout=60):
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(
-        _wait_kafka(kafka_host, kafka_port, timeout)
-    )
+def wait_kafka(kafka_host, kafka_port, timeout=120):
+    loop = asyncio.new_event_loop()
+    try:
+        res = loop.run_until_complete(
+            _wait_kafka(kafka_host, kafka_port, timeout)
+        )
+    finally:
+        loop.close()
+    return res
 
 
 async def _wait_kafka(kafka_host, kafka_port, timeout):
-    hosts = ['{}:{}'.format(kafka_host, kafka_port)]
+    hosts = [f'{kafka_host}:{kafka_port}']
     loop = asyncio.get_event_loop()
 
     # Reconnecting until Kafka in docker becomes available

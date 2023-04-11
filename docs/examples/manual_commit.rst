@@ -1,4 +1,3 @@
-
 Manual commit
 =============
 
@@ -14,7 +13,7 @@ More on message delivery: https://kafka.apache.org/documentation.html#semantics
 .. note::
     After Kafka Broker version 0.11 and after `aiokafka==0.5.0` it is possible
     to use Transactional Producer to achieve *exactly once* delivery semantics.
-    See :ref:`Tranactional Producer <transactional-producer>` section.
+    See :ref:`transactional-producer` section.
 
 
 Consumer:
@@ -36,8 +35,8 @@ Consumer:
         await consumer.start()
         # we want to consume 10 messages from "foobar" topic
         # and commit after that
-        for i in range(10):
-            msg = await (consumer.getone()
+        for _ in range(10):
+            msg = await consumer.getone()
         await consumer.commit()
 
         await consumer.stop()

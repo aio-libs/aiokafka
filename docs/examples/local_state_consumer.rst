@@ -4,12 +4,13 @@ Local state and storing offsets outside of Kafka
 ================================================
 
 While the default for Kafka applications is storing commit points in Kafka's
-internal storage, you can disable that and use `seek()` to move to stored
-points. This makes sense if you want to store offsets in the same system as
-results of computations (filesystem in example below). But that said, you will
-still probably want to use the coordinated consumer groups feature.
+internal storage, you can disable that and use :meth:`~.AIOKafkaConsumer.seek`
+to move to stored points. This makes sense if you want to store offsets in the
+same system as results of computations (filesystem in example below). But that
+said, you will still probably want to use the coordinated consumer groups
+feature.
 
-This example shows extensive usage of ``ConsumerRebalanceListener`` to control
+This example shows extensive usage of :class:`.ConsumerRebalanceListener` to control
 what's done before and after rebalance's.
 
 Local State consumer:
@@ -155,41 +156,40 @@ There are several points of interest in this example:
     rebalances. After rebalances we load them from the same files. It's a kind
     of cache to avoid re-reading all messages.
   * We control offset reset policy manually by setting
-    ``auto_offset_reset="none"``. We need it to catch OffsetOutOfRangeError
+    ``auto_offset_reset="none"``. We need it to catch :exc:`~.errors.OffsetOutOfRangeError`
     so we can clear cache if files were old and such offsets don't exist
     anymore in Kafka.
   * As we count ``keys`` here, those will always be partitioned to the same
     partition on produce. We will not have duplicate counts in different files.
 
 
-Output for 1st consumer:
+Output for 1st consumer::
 
->>> python examples/local_state_consumer.py
-Revoked set()
-Assigned {TopicPartition(topic='test', partition=0), TopicPartition(topic='test', partition=1), TopicPartition(topic='test', partition=2)}
-Heartbeat failed for group my_group because it is rebalancing
-Revoked {TopicPartition(topic='test', partition=0), TopicPartition(topic='test', partition=1), TopicPartition(topic='test', partition=2)}
-Assigned {TopicPartition(topic='test', partition=0), TopicPartition(topic='test', partition=2)}
-Process TopicPartition(topic='test', partition=2) 123
-Process TopicPartition(topic='test', partition=2) 9999
-Process TopicPartition(topic='test', partition=2) 1111
-Process TopicPartition(topic='test', partition=0) 4444
-Process TopicPartition(topic='test', partition=0) 123123
-Process TopicPartition(topic='test', partition=0) 5555
-Process TopicPartition(topic='test', partition=2) 88891823
-Process TopicPartition(topic='test', partition=2) 2
+  >>> python examples/local_state_consumer.py
+  Revoked set()
+  Assigned {TopicPartition(topic='test', partition=0), TopicPartition(topic='test', partition=1), TopicPartition(topic='test', partition=2)}
+  Heartbeat failed for group my_group because it is rebalancing
+  Revoked {TopicPartition(topic='test', partition=0), TopicPartition(topic='test', partition=1), TopicPartition(topic='test', partition=2)}
+  Assigned {TopicPartition(topic='test', partition=0), TopicPartition(topic='test', partition=2)}
+  Process TopicPartition(topic='test', partition=2) 123
+  Process TopicPartition(topic='test', partition=2) 9999
+  Process TopicPartition(topic='test', partition=2) 1111
+  Process TopicPartition(topic='test', partition=0) 4444
+  Process TopicPartition(topic='test', partition=0) 123123
+  Process TopicPartition(topic='test', partition=0) 5555
+  Process TopicPartition(topic='test', partition=2) 88891823
+  Process TopicPartition(topic='test', partition=2) 2
 
-Output for 2nd consumer:
+Output for 2nd consumer::
 
->>> python examples/local_state_consumer.py
-Revoked set()
-Assigned {TopicPartition(topic='test', partition=1)}
-Process TopicPartition(topic='test', partition=1) 321
-Process TopicPartition(topic='test', partition=1) 777
+  >>> python examples/local_state_consumer.py
+  Revoked set()
+  Assigned {TopicPartition(topic='test', partition=1)}
+  Process TopicPartition(topic='test', partition=1) 321
+  Process TopicPartition(topic='test', partition=1) 777
 
 
 Those create such files as a result:
 
->>> cat /tmp/my-partition-state-test-0.json && echo
-{"last_offset": 4, "counts": {"123123": 1, "4444": 1, "321": 2, "5555": 1}}
-
+  >>> cat /tmp/my-partition-state-test-0.json && echo
+  {"last_offset": 4, "counts": {"123123": 1, "4444": 1, "321": 2, "5555": 1}}

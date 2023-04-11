@@ -3,22 +3,78 @@ Changelog
 =========
 
 
-659.bugfix
-Allow group coordinator to close when all brokers are unavailable
+0.8.0 (2022-11-21)
+==================
 
-681.bugfix
-Exclude `.so` from source distribution
+New features:
 
-689.bugfix
-Add `dataclasses` backport package to dependencies for Python 3.6
-Fix initialization without running loop
+* Add codec for ZStandard compression (KIP-110) (pr #801)
+* Add basic admin client functionality (pr #811 started by @gabriel-tincu)
+* Drop support for Python 3.6, add support and pre-built packages for Python
+  3.10 (pr #841)
 
-693.doc
-Update docs and examples to not use deprecated practices like passing loop explicitly
 
-699.removal
-Add deprecation warning when loop argument to AIOKafkaConsumer and AIOKafkaProducer is passed.
-It's scheduled for removal in 0.8.0 as a preparation step towards upcoming Python 3.10
+Bugfixes:
+
+* Fix `KeyError` on solitary abort marker (issue #781, pr #782 by @pikulmar)
+* Fix handling unsupported compression codec (issue #795)
+* Handled other SASL mechanism in logging (issue #852, pr #861 by @mangin)
+
+
+Improved Documentation:
+
+* Fix documentation on how to install optional features (issue #645)
+* Improve the rendering of the documentation (pr #722 by @multani)
+* Fix `MyRebalancer` example in `docs/consumer.rst` (pr #731 by @aamalev)
+
+
+0.7.2 (2021-09-02)
+==================
+
+Bugfixes:
+
+* Fix `CancelledError` handling in sender (issue #710)
+* Fix exception for weakref use after object deletion (issue #755)
+* Fix consumer's `start()` method hanging after being idle for more than
+  `max_poll_interval_ms` (issue #764)
+
+
+Improved Documentation:
+
+* Add `SASL_PLAINTEXT` and `SASL_SSL` to valid values of security protocol
+  attribute (pr #768 by @pawelrubin)
+
+
+0.7.1 (2021-06-04)
+==================
+
+Bugfixes:
+
+* Allow group coordinator to close when all brokers are unavailable (issue #659
+  and pr #660 by @dkilgore90)
+* Exclude `.so` from source distribution to fix usage of sdist tarball
+  (issue #681 and pr #684 by ods)
+* Add `dataclasses` backport package to dependencies for Python 3.6
+  (pr #690 by @ods)
+* Fix initialization without running loop (issue #689 and pr #690 by @ods)
+* Fix consumer fetcher for python3.9 (pr #672 by @dutradda)
+* Make sure generation and member id are correct after (re)joining group.
+  (issue #727 and pr #747 by @vangheem)
+
+
+Deprecation:
+
+* Add deprecation warning when loop argument to AIOKafkaConsumer and
+  AIOKafkaProducer is passed.  It's scheduled for removal in 0.8.0 as a
+  preparation step towards upcoming Python 3.10 (pr #699 by @ods)
+
+
+Improved Documentation:
+
+* Update docs and examples to not use deprecated practices like passing loop
+  explicitly (pr #693 by @ods)
+* Add docstring for Kafka header support in `Producer.send()` (issue #566 and
+  pr #650 by @andreportela)
 
 
 0.7.0 (2020-10-28)

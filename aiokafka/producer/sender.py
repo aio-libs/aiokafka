@@ -3,6 +3,8 @@ import collections
 import logging
 import time
 
+from kafka.protocol.produce import ProduceRequest
+
 import aiokafka.errors as Errors
 from aiokafka.client import ConnectionGroup, CoordinationType
 from aiokafka.errors import (
@@ -14,7 +16,6 @@ from aiokafka.errors import (
     OutOfOrderSequenceNumber, TopicAuthorizationFailedError,
     GroupAuthorizationFailedError, TransactionalIdAuthorizationFailed,
     OperationNotAttempted)
-from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.protocol.transaction import (
     InitProducerIdRequest, AddPartitionsToTxnRequest, EndTxnRequest,
     AddOffsetsToTxnRequest, TxnOffsetCommitRequest
@@ -59,10 +60,14 @@ class Sender:
         """ Called when sender fails. Will fail all pending batches, as they
         will never be delivered as well as fail transaction
         """
-        if task.exception() is not None:
-            self._message_accumulator.fail_all(task.exception())
+        if task.cancelled():
+            return
+        task_exception = task.exception()
+
+        if task_exception is not None:
+            self._message_accumulator.fail_all(task_exception)
             if self._txn_manager is not None:
-                self._txn_manager.fatal_error(task.exception())
+                self._txn_manager.fatal_error(task_exception)
 
     @property
     def sender_task(self):
@@ -673,7 +678,15 @@ class SendProduceReqHandler(BaseHandler):
                 (tp.partition, batch.get_data_buffer())
             )
 
-        if self._client.api_version >= (0, 11):
+        if self._client.api_version >= (2, 1):
+            version = 7
+        elif self._client.api_version >= (2, 0):
+            version = 6
+        elif self._client.api_version >= (1, 1):
+            version = 5
+        elif self._client.api_version >= (1, 0):
+            version = 4
+        elif self._client.api_version >= (0, 11):
             version = 3
         elif self._client.api_version >= (0, 10):
             version = 2
@@ -733,12 +746,26 @@ class SendProduceReqHandler(BaseHandler):
     def handle_response(self, response):
         for topic, partitions in response.topics:
             for partition_info in partitions:
+                global_error = None
+                log_start_offset = None
                 if response.API_VERSION < 2:
                     partition, error_code, offset = partition_info
                     # Mimic CREATE_TIME to take user provided timestamp
                     timestamp = -1
-                else:
+                elif 2 <= response.API_VERSION <= 4:
                     partition, error_code, offset, timestamp = partition_info
+                elif 5 <= response.API_VERSION <= 7:
+                    (
+                        partition, error_code, offset, timestamp,
+                        log_start_offset
+                    ) = partition_info
+                else:
+                    # the ignored parameter is record_error of type
+                    # list[(batch_index: int, error_message: str)]
+                    (
+                        partition, error_code, offset, timestamp,
+                        log_start_offset, _, global_error
+                    ) = partition_info
                 tp = TopicPartition(topic, partition)
                 error = Errors.for_code(error_code)
                 batch = self._batches.get(tp)
@@ -746,7 +773,7 @@ class SendProduceReqHandler(BaseHandler):
                     continue
 
                 if error is Errors.NoError:
-                    batch.done(offset, timestamp)
+                    batch.done(offset, timestamp, log_start_offset)
                 elif error is DuplicateSequenceNumber:
                     # If we have received a duplicate sequence error,
                     # it means that the sequence number has advanced
@@ -757,7 +784,7 @@ class SendProduceReqHandler(BaseHandler):
                     # The only thing we can do is to return success to
                     # the user and not return a valid offset and
                     # timestamp.
-                    batch.done(offset, timestamp)
+                    batch.done(offset, timestamp, log_start_offset)
                 elif not self._can_retry(error(), batch):
                     if error is InvalidProducerEpoch:
                         exc = ProducerFenced()
@@ -769,7 +796,7 @@ class SendProduceReqHandler(BaseHandler):
                 else:
                     log.warning(
                         "Got error produce response on topic-partition"
-                        " %s, retrying. Error: %s", tp, error)
+                        " %s, retrying. Error: %s", tp, global_error or error)
                     # Ok, we can retry this batch
                     if getattr(error, "invalid_metadata", False):
                         self._client.force_metadata_update()

@@ -130,6 +130,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 loop.run_until_complete(consumer.getone())
         finally:
             loop.run_until_complete(consumer.stop())
+            loop.close()
 
     @run_until_complete
     async def test_consumer_context_manager(self):
@@ -471,7 +472,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             msg = await consumer.getone()
             result.append(msg.value)
         self.assertEqual(set(msgs2), set(result))
-        self.assertEqual(consumer.subscription(), set([self.topic]))
+        self.assertEqual(consumer.subscription(), {self.topic})
 
     @run_until_complete
     async def test_subscribe_errors(self):
@@ -487,43 +488,40 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(TypeError):
             consumer.subscribe(topics=["some_topic"], listener=object())
 
-    @run_until_complete
-    async def test_compress_decompress(self):
-        producer = AIOKafkaProducer(
+    # TODO Use `@pytest.mark.parametrize()` after moving to pytest-asyncio
+    async def _test_compress_decompress(self, compression_type):
+        async with AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            compression_type="gzip")
-        await producer.start()
-        await self.wait_topic(producer.client, self.topic)
-        msg1 = b'some-message' * 10
-        msg2 = b'other-message' * 30
-        await producer.send(self.topic, msg1, partition=1)
-        await producer.send(self.topic, msg2, partition=1)
-        await producer.stop()
+            compression_type=compression_type
+        ) as producer:
+            await self.wait_topic(producer.client, self.topic)
+            msg1 = b'some-message' * 10
+            msg2 = b'other-message' * 30
+            await producer.send_and_wait(self.topic, msg1, partition=1)
+            await producer.send_and_wait(self.topic, msg2, partition=1)
 
         consumer = await self.consumer_factory()
         rmsg1 = await consumer.getone()
         self.assertEqual(rmsg1.value, msg1)
         rmsg2 = await consumer.getone()
         self.assertEqual(rmsg2.value, msg2)
+
+    @run_until_complete
+    async def test_compress_decompress_gzip(self):
+        await self._test_compress_decompress("gzip")
+
+    @run_until_complete
+    async def test_compress_decompress_snappy(self):
+        await self._test_compress_decompress("snappy")
 
     @run_until_complete
     async def test_compress_decompress_lz4(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts,
-            compression_type="lz4")
-        await producer.start()
-        await self.wait_topic(producer.client, self.topic)
-        msg1 = b'some-message' * 10
-        msg2 = b'other-message' * 30
-        await producer.send(self.topic, msg1, partition=1)
-        await producer.send(self.topic, msg2, partition=1)
-        await producer.stop()
+        await self._test_compress_decompress("lz4")
 
-        consumer = await self.consumer_factory()
-        rmsg1 = await consumer.getone()
-        self.assertEqual(rmsg1.value, msg1)
-        rmsg2 = await consumer.getone()
-        self.assertEqual(rmsg2.value, msg2)
+    @kafka_versions('>=2.1.0')
+    @run_until_complete
+    async def test_compress_decompress_zstd(self):
+        await self._test_compress_decompress("zstd")
 
     @run_until_complete
     async def test_consumer_seek_backward(self):
@@ -765,11 +763,11 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await self.send_messages(0, [1, 2, 3])
 
         context = self.create_ssl_context()
-        group = "group-{}".format(self.id())
+        group = f"group-{self.id()}"
         consumer = AIOKafkaConsumer(
             self.topic, group_id=group,
             bootstrap_servers=[
-                "{}:{}".format(self.kafka_host, self.kafka_ssl_port)],
+                f"{self.kafka_host}:{self.kafka_ssl_port}"],
             enable_auto_commit=True,
             auto_offset_reset="earliest",
             security_protocol="SSL", ssl_context=context)
@@ -846,12 +844,12 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             await consumer.commit({tp: 1000})
 
         consumer = AIOKafkaConsumer(
-            group_id='group-{}'.format(self.id()),
+            group_id=f'group-{self.id()}',
             bootstrap_servers=self.hosts)
         await consumer.start()
         self.add_cleanup(consumer.stop)
 
-        consumer.subscribe(topics=set([self.topic]))
+        consumer.subscribe(topics={self.topic})
         with self.assertRaisesRegex(
                 IllegalStateError, "No partitions assigned"):
             await consumer.commit({tp: 1000})
@@ -937,7 +935,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_consumer_group_without_subscription(self):
         consumer = AIOKafkaConsumer(
-            group_id='group-{}'.format(self.id()),
+            group_id=f'group-{self.id()}',
             bootstrap_servers=self.hosts,
             enable_auto_commit=False,
             auto_offset_reset='earliest',
@@ -1097,8 +1095,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         assign1 = await listener1.wait_assign()
         assign2 = await listener2.wait_assign()
         # We expect 2 partitons for autocreated topics
-        my_partitions = set([
-            TopicPartition(my_topic, 0), TopicPartition(my_topic, 1)])
+        my_partitions = {
+            TopicPartition(my_topic, 0), TopicPartition(my_topic, 1)}
         self.assertEqual(assign1 | assign2, my_partitions)
         self.assertEqual(
             consumer1.assignment() | consumer2.assignment(),
@@ -1114,9 +1112,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         assign1 = await listener1.wait_assign()
         assign2 = await listener2.wait_assign()
         # We expect 2 partitons for autocreated topics
-        my_partitions = set([
+        my_partitions = {
             TopicPartition(my_topic, 0), TopicPartition(my_topic, 1),
-            TopicPartition(my_topic2, 0), TopicPartition(my_topic2, 1)])
+            TopicPartition(my_topic2, 0), TopicPartition(my_topic2, 1)}
         self.assertEqual(assign1 | assign2, my_partitions)
         self.assertEqual(
             consumer1.assignment() | consumer2.assignment(),
@@ -1293,6 +1291,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await self.send_messages(1, list(range(10, 20)))
 
         main_self = self
+        faults = []
 
         class SimpleRebalanceListener(ConsumerRebalanceListener):
             def __init__(self, consumer):
@@ -1308,16 +1307,24 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 # Confirm that coordinator is actually waiting for callback to
                 # complete
                 await asyncio.sleep(0.2)
-                main_self.assertTrue(
-                    self.consumer._coordinator.needs_join_prepare)
+                try:
+                    main_self.assertTrue(
+                        self.consumer._coordinator._rejoin_needed_fut.done())
+                except Exception as exc:
+                    # Exceptions here are intercepted by GroupCoordinator
+                    faults.append(exc)
 
             async def on_partitions_assigned(self, assigned):
                 self.assign_mock(assigned)
                 # Confirm that coordinator is actually waiting for callback to
                 # complete
                 await asyncio.sleep(0.2)
-                main_self.assertFalse(
-                    self.consumer._coordinator.needs_join_prepare)
+                try:
+                    main_self.assertFalse(
+                        self.consumer._coordinator._rejoin_needed_fut.done())
+                except Exception as exc:
+                    # Exceptions here are intercepted by GroupCoordinator
+                    faults.append(exc)
 
         tp0 = TopicPartition(self.topic, 0)
         tp1 = TopicPartition(self.topic, 1)
@@ -1334,8 +1341,10 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.value, b"0")
         msg = await consumer1.getone(tp1)
         self.assertEqual(msg.value, b"10")
-        listener1.revoke_mock.assert_called_with(set([]))
-        listener1.assign_mock.assert_called_with(set([tp0, tp1]))
+        listener1.revoke_mock.assert_called_with(set())
+        listener1.assign_mock.assert_called_with({tp0, tp1})
+        if faults:
+            raise faults[0]
 
         # By adding a 2nd consumer we trigger rebalance
         consumer2 = AIOKafkaConsumer(
@@ -1350,26 +1359,28 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         msg1 = await consumer1.getone()
         msg2 = await consumer2.getone()
         # We can't predict the assignment in test
-        if consumer1.assignment() == set([tp1]):
+        if consumer1.assignment() == {tp1}:
             msg1, msg2 = msg2, msg1
-            c1_assignment = set([tp1])
-            c2_assignment = set([tp0])
+            c1_assignment = {tp1}
+            c2_assignment = {tp0}
         else:
-            c1_assignment = set([tp0])
-            c2_assignment = set([tp1])
+            c1_assignment = {tp0}
+            c2_assignment = {tp1}
 
         self.assertEqual(msg1.value, b"1")
         self.assertEqual(msg2.value, b"11")
 
-        listener1.revoke_mock.assert_called_with(set([tp0, tp1]))
+        listener1.revoke_mock.assert_called_with({tp0, tp1})
         self.assertEqual(listener1.revoke_mock.call_count, 2)
         listener1.assign_mock.assert_called_with(c1_assignment)
         self.assertEqual(listener1.assign_mock.call_count, 2)
 
-        listener2.revoke_mock.assert_called_with(set([]))
+        listener2.revoke_mock.assert_called_with(set())
         self.assertEqual(listener2.revoke_mock.call_count, 1)
         listener2.assign_mock.assert_called_with(c2_assignment)
         self.assertEqual(listener2.assign_mock.call_count, 1)
+        if faults:
+            raise faults[0]
 
     @run_until_complete
     async def test_rebalance_listener_no_deadlock_callbacks(self):

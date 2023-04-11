@@ -7,12 +7,12 @@ import weakref
 from unittest import mock
 
 from kafka.cluster import ClusterMetadata
+from kafka.protocol.produce import ProduceResponse
 
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, run_in_thread, kafka_versions
 )
 
-from aiokafka.protocol.produce import ProduceResponse
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer
@@ -42,7 +42,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertNotEqual(producer.client.api_version, 'auto')
         partitions = await producer.partitions_for('some_topic_name')
         self.assertEqual(len(partitions), 2)
-        self.assertEqual(partitions, set([0, 1]))
+        self.assertEqual(partitions, {0, 1})
         await producer.stop()
         self.assertEqual(producer._closed, True)
 
@@ -148,6 +148,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             self.assertEqual(resp.offset, 0)
         finally:
             loop.run_until_complete(producer.stop())
+            loop.close()
 
     @run_until_complete
     async def test_producer_context_manager(self):
@@ -389,7 +390,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         context = self.create_ssl_context()
         producer = AIOKafkaProducer(
             bootstrap_servers=[
-                "{}:{}".format(self.kafka_host, self.kafka_ssl_port)],
+                f"{self.kafka_host}:{self.kafka_ssl_port}"],
             security_protocol="SSL", ssl_context=context)
         await producer.start()
         await producer.send_and_wait(topic=topic, value=b"Super msg")

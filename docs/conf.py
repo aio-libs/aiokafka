@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 #
 # aiokafka documentation build configuration file, created by
 # sphinx-quickstart on Sun Mar 27 22:02:31 2016.
@@ -57,7 +56,6 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.intersphinx',
     'sphinx.ext.viewcode',
-    'sphinxcontrib.asyncio',
     'sphinx.ext.napoleon',
     'alabaster',
 ]
@@ -69,7 +67,10 @@ except ImportError:
     pass
 
 
-intersphinx_mapping = {'python': ('http://docs.python.org/3', None)}
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'kafka-python': ('https://kafka-python.readthedocs.io/en/master', None),
+}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -112,8 +113,16 @@ exclude_patterns = ['_build']
 # documents.
 #default_role = None
 
+nitpicky = True
+nitpick_ignore = [
+    ("py:class", "Optional[~ KT]"),
+    ("py:class", "KT"),
+    ("py:class", "Optional[~ VT]"),
+    ("py:class", "VT"),
+]
+
 # If true, '()' will be appended to :func: etc. cross-reference text.
-#add_function_parentheses = True
+add_function_parentheses = True
 
 # If true, the current module name will be prepended to all description
 # unit titles (such as .. function::).

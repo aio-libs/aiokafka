@@ -1,3 +1,7 @@
+from unittest import mock
+
+import kafka.codec
+from kafka.errors import UnsupportedCodecError
 import pytest
 from aiokafka.record.default_records import (
     DefaultRecordBatch, DefaultRecordBatchBuilder
@@ -6,9 +10,11 @@ from aiokafka.record.default_records import (
 
 @pytest.mark.parametrize("compression_type,crc", [
     (DefaultRecordBatch.CODEC_NONE, 3950153926),
-    (DefaultRecordBatch.CODEC_GZIP, None),  # No idea why, but crc changes here
+    # Gzip header includes timestamp, so checksum varies
+    (DefaultRecordBatch.CODEC_GZIP, None),
     (DefaultRecordBatch.CODEC_SNAPPY, 2171068483),
-    (DefaultRecordBatch.CODEC_LZ4, 462121143)
+    (DefaultRecordBatch.CODEC_LZ4, 462121143),
+    (DefaultRecordBatch.CODEC_ZSTD, 1679657554),
 ])
 def test_read_write_serde_v2(compression_type, crc):
     builder = DefaultRecordBatchBuilder(
@@ -173,6 +179,48 @@ def test_default_batch_size_limit():
         2, timestamp=None, key=None, value=b"M" * 700, headers=[])
     assert meta is None
     assert len(builder.build()) < 1000
+
+
+@pytest.mark.parametrize("compression_type,name,checker_name", [
+    (DefaultRecordBatch.CODEC_GZIP, "gzip", "has_gzip"),
+    (DefaultRecordBatch.CODEC_SNAPPY, "snappy", "has_snappy"),
+    (DefaultRecordBatch.CODEC_LZ4, "lz4", "has_lz4"),
+    (DefaultRecordBatch.CODEC_ZSTD, "zstd", "has_zstd"),
+])
+def test_unavailable_codec(compression_type, name, checker_name):
+    builder = DefaultRecordBatchBuilder(
+        magic=2, compression_type=compression_type, is_transactional=0,
+        producer_id=-1, producer_epoch=-1, base_sequence=-1,
+        batch_size=1024)
+    builder.append(0, timestamp=None, key=None, value=b"M" * 2000, headers=[])
+    correct_buffer = builder.build()
+
+    with mock.patch.object(kafka.codec, checker_name, return_value=False):
+        # Check that builder raises error
+        builder = DefaultRecordBatchBuilder(
+            magic=2, compression_type=compression_type, is_transactional=0,
+            producer_id=-1, producer_epoch=-1, base_sequence=-1,
+            batch_size=1024)
+        error_msg = "Libraries for {} compression codec not found".format(name)
+        with pytest.raises(UnsupportedCodecError, match=error_msg):
+            builder.append(0, timestamp=None, key=None, value=b"M", headers=[])
+            builder.build()
+
+        # Check that reader raises same error
+        batch = DefaultRecordBatch(bytes(correct_buffer))
+        with pytest.raises(UnsupportedCodecError, match=error_msg):
+            list(batch)
+
+
+def test_unsupported_yet_codec():
+    compression_type = DefaultRecordBatch.CODEC_MASK  # It doesn't exist
+    builder = DefaultRecordBatchBuilder(
+        magic=2, compression_type=compression_type, is_transactional=0,
+        producer_id=-1, producer_epoch=-1, base_sequence=-1,
+        batch_size=1024)
+    with pytest.raises(UnsupportedCodecError):
+        builder.append(0, timestamp=None, key=None, value=b"M", headers=[])
+        builder.build()
 
 
 def test_build_without_append():
