@@ -249,11 +249,13 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_semi_broken_connection(self):
-        """This testcase tries to replicate what happens on connection to semi-broken AWS MSK broker.
+        """This testcase tries to replicate what happens on connection to semi-broken
+        AWS MSK broker.
 
-        Connection could be established, but then some timeout occurs, and connection is not being destroyed
-        properly, producing 'Unclosed AIOKafkaConnection' and calling loop exception handler, which could lead to
-        failing the whole app for example if we're running via aiorun with `stop_on_unhandled_errors=True`.
+        Connection could be established, but then some timeout occurs, and connection is
+        not being destroyed properly, producing 'Unclosed AIOKafkaConnection' and
+        calling loop exception handler, which could lead to failing the whole app for
+        example if we're running via aiorun with `stop_on_unhandled_errors=True`.
         """
         host, port = self.kafka_host, self.kafka_port
 
