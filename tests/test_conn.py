@@ -272,7 +272,8 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
         with mock.patch.object(AIOKafkaConnection, 'connect', mock_connect):
             with mock.patch.object(AIOKafkaConnection, 'close', mock_close):
-                await create_conn(host, port)
+                with pytest.raises(asyncio.TimeoutError):
+                    await create_conn(host, port)
                 self.assertTrue(close_called)
 
     def test_connection_version_info(self):
