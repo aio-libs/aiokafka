@@ -35,7 +35,7 @@ class BatchBuilder:
 
     def _serialize(self, key, value):
         serialized_key = self._key_serializer(key) if self._key_serializer else key
-        serialized_value = self._value_serializer(value) if self._value_serializer else key
+        serialized_value = self._value_serializer(value) if self._value_serializer else value
 
         return serialized_key, serialized_value
 

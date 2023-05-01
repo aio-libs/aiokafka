@@ -484,7 +484,9 @@ class AIOKafkaProducer:
         Returns:
             BatchBuilder: empty batch to be filled and submitted by the caller.
         """
-        return self._message_accumulator.create_builder()
+        return self._message_accumulator.create_builder(
+            key_serializer=self._key_serializer, value_serializer=self._value_serializer
+        )
 
     async def send_batch(self, batch, topic, *, partition):
         """Submit a BatchBuilder for publication.
