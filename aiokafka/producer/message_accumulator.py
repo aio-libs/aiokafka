@@ -14,8 +14,10 @@ from aiokafka.util import create_future, get_running_loop
 
 
 class BatchBuilder:
-    def __init__(self, magic, batch_size, compression_type,
-                 *, is_transactional):
+    def __init__(
+            self, magic, batch_size, compression_type,
+                 *, is_transactional, key_serializer=None, value_serializer=None
+    ):
         if magic < 2:
             assert not is_transactional
             self._builder = LegacyRecordBatchBuilder(
@@ -28,6 +30,14 @@ class BatchBuilder:
         self._relative_offset = 0
         self._buffer = None
         self._closed = False
+        self._key_serializer = key_serializer
+        self._value_serializer = value_serializer
+
+    def _serialize(self, key, value):
+        serialized_key = self._key_serializer(key) if self._key_serializer else key
+        serialized_value = self._value_serializer(value) if self._value_serializer else key
+
+        return serialized_key, serialized_value
 
     def append(self, *, timestamp, key, value, headers=[]):
         """Add a message to the batch.
@@ -49,8 +59,9 @@ class BatchBuilder:
         if self._closed:
             return None
 
+        key_bytes, value_bytes = self._serialize(key, value)
         metadata = self._builder.append(
-            self._relative_offset, timestamp, key, value,
+            self._relative_offset, timestamp, key=key_bytes, value=value_bytes,
             headers=headers)
 
         # Check if we could add the message
@@ -422,7 +433,7 @@ class MessageAccumulator:
 
         return nodes, unknown_leaders_exist
 
-    def create_builder(self):
+    def create_builder(self, key_serializer=None, value_serializer=None):
         if self._api_version >= (0, 11):
             magic = 2
         elif self._api_version >= (0, 10):
@@ -435,8 +446,13 @@ class MessageAccumulator:
                 self._txn_manager.transactional_id is not None:
             is_transactional = True
         return BatchBuilder(
-            magic, self._batch_size, self._compression_type,
-            is_transactional=is_transactional)
+            magic,
+            self._batch_size,
+            self._compression_type,
+            is_transactional=is_transactional,
+            key_serializer=key_serializer,
+            value_serializer=value_serializer
+        )
 
     def _append_batch(self, builder, tp):
         # We must do this before actual add takes place to check for errors.
