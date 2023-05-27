@@ -54,8 +54,6 @@ def test_fetch_result_and_error(loop):
     error = FetchError(
         error=OffsetOutOfRangeError({}), backoff=0)
 
-    # Python3.7 got rid of trailing comma in exceptions, which makes the line
-    # different between 3.6 and 3.7.
     assert repr(error) == "<FetchError error=OffsetOutOfRangeError({})>"
 
 

@@ -2,7 +2,7 @@ Welcome to aiokafka's documentation!
 ====================================
 
 .. _GitHub: https://github.com/aio-libs/aiokafka
-.. _asyncio: http://docs.python.org/3.7/library/asyncio.html
+.. _asyncio: https://docs.python.org/3/library/asyncio.html
 .. _kafka-python: https://github.com/dpkp/kafka-python
 
 .. image:: https://img.shields.io/badge/kafka-1.0%2C%200.11%2C%200.10%2C%200.9-brightgreen.svg
