@@ -88,6 +88,27 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         admin_client.start()
         return admin_client
 
+    async def gssapi_consumer_factory(self, **kw):
+        if self.kafka_version == "0.9.0.1":
+            kw['api_version'] = "0.9"
+
+        kwargs = dict(
+            enable_auto_commit=True,
+            auto_offset_reset="earliest",
+            group_id=self.group_id
+        )
+        kwargs.update(kw)
+        consumer = AIOKafkaConsumer(
+            self.topic,
+            bootstrap_servers=[self.sasl_hosts],
+            security_protocol="SASL_PLAINTEXT",
+            sasl_mechanism="GSSAPI",
+            sasl_kerberos_domain_name="localhost",
+            **kwargs)
+        self.add_cleanup(consumer.stop)
+        await consumer.start()
+        return consumer
+
     async def gssapi_producer_factory(self, **kw):
         if self.kafka_version == "0.9.0.1":
             kw['api_version'] = "0.9"
