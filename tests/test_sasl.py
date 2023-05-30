@@ -223,11 +223,28 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         msg = await consumer.getone()
         self.assertEqual(msg.value, b"Super scram msg")
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions('>=0.10.0')
     @run_until_complete
     async def test_admin_client_sasl_plaintext_basic(self):
         admin_client = await self.admin_client_factory()
-        await admin_client.list_topics()
+        cluster_info = await admin_client.describe_cluster()
+        self.assertGreaterEqual(len(cluster_info["brokers"]), 1)
+
+    @kafka_versions('>=0.10.0')
+    @run_until_complete
+    async def test_admin_client_sasl_plaintext_gssapi(self):
+        self.kerberos_utils.kinit("client/localhost")
+        admin_client = await self.gssapi_admin_client_factory()
+        cluster_info = await admin_client.describe_cluster()
+        self.assertGreaterEqual(len(cluster_info["brokers"]), 1)
+
+    @kafka_versions('>=0.10.0')
+    @run_until_complete
+    async def test_admin_client_sasl_plaintext_scrum(self):
+        self.kafka_config.add_scram_user("test", "test")
+        admin_client = await self.scram_admin_client_factory()
+        cluster_info = await admin_client.describe_cluster()
+        self.assertGreaterEqual(len(cluster_info["brokers"]), 1)
 
     ##########################################################################
     # Topic Resource
