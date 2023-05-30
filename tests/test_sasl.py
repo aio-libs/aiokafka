@@ -6,6 +6,7 @@ from ._testutil import (
 
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.consumer import AIOKafkaConsumer
+from aiokafka.admin import AIOKafkaAdminClient
 
 from aiokafka.errors import (
     TopicAuthorizationFailedError, GroupAuthorizationFailedError,
@@ -74,6 +75,19 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         await consumer.start()
         return consumer
 
+    async def admin_client_factory(self, user="test", **kw):
+        admin_client = AIOKafkaAdminClient(
+            bootstrap_servers=[self.sasl_hosts],
+            security_protocol="SASL_PLAINTEXT",
+            sasl_mechanism="PLAIN",
+            sasl_plain_username=user,
+            sasl_plain_password=user,
+            **kw
+        )
+        self.add_cleanup(admin_client.close)
+        await admin_client.start()
+        return admin_client
+
     async def gssapi_producer_factory(self, **kw):
         if self.kafka_version == "0.9.0.1":
             kw['api_version'] = "0.9"
@@ -110,6 +124,21 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         await consumer.start()
         return consumer
 
+    async def gssapi_admin_client_factory(self, **kw):
+        if self.kafka_version == "0.9.0.1":
+            kw['api_version'] = "0.9"
+
+        admin_client = AIOKafkaAdminClient(
+            bootstrap_servers=[self.sasl_hosts],
+            security_protocol="SASL_PLAINTEXT",
+            sasl_mechanism="GSSAPI",
+            sasl_kerberos_domain_name="localhost",
+            **kw
+        )
+        self.add_cleanup(admin_client.close)
+        await admin_client.start()
+        return admin_client
+
     async def scram_producer_factory(self, user="test", **kw):
         producer = AIOKafkaProducer(
 
@@ -141,6 +170,19 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         self.add_cleanup(consumer.stop)
         await consumer.start()
         return consumer
+
+    async def scram_admin_client_factory(self, user="test", **kw):
+        admin_client = AIOKafkaAdminClient(
+            bootstrap_servers=[self.sasl_hosts],
+            security_protocol="SASL_PLAINTEXT",
+            sasl_mechanism="SCRAM-SHA-256",
+            sasl_plain_username=user,
+            sasl_plain_password=user,
+            **kw
+        )
+        self.add_cleanup(admin_client.close)
+        await admin_client.start()
+        return admin_client
 
     @kafka_versions('>=0.10.0')
     @run_until_complete
@@ -180,6 +222,29 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         consumer = await self.scram_consumer_factory()
         msg = await consumer.getone()
         self.assertEqual(msg.value, b"Super scram msg")
+
+    @kafka_versions('>=0.10.0')
+    @run_until_complete
+    async def test_admin_client_sasl_plaintext_basic(self):
+        admin_client = await self.admin_client_factory()
+        cluster_info = await admin_client.describe_cluster()
+        self.assertGreaterEqual(len(cluster_info["brokers"]), 1)
+
+    @kafka_versions('>=0.10.0')
+    @run_until_complete
+    async def test_admin_client_sasl_plaintext_gssapi(self):
+        self.kerberos_utils.kinit("client/localhost")
+        admin_client = await self.gssapi_admin_client_factory()
+        cluster_info = await admin_client.describe_cluster()
+        self.assertGreaterEqual(len(cluster_info["brokers"]), 1)
+
+    @kafka_versions('>=0.10.0')
+    @run_until_complete
+    async def test_admin_client_sasl_plaintext_scrum(self):
+        self.kafka_config.add_scram_user("test", "test")
+        admin_client = await self.scram_admin_client_factory()
+        cluster_info = await admin_client.describe_cluster()
+        self.assertGreaterEqual(len(cluster_info["brokers"]), 1)
 
     ##########################################################################
     # Topic Resource

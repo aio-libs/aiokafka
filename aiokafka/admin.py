@@ -81,7 +81,13 @@ class AIOKafkaAdminClient:
                  metadata_max_age_ms: int = 300000,
                  security_protocol: str = "PLAINTEXT",
                  ssl_context: Optional[SSLContext] = None,
-                 api_version: str = "auto"):
+                 api_version: str = "auto",
+                 sasl_mechanism: str = 'PLAIN',
+                 sasl_plain_username: Optional[str] = None,
+                 sasl_plain_password: Optional[str] = None,
+                 sasl_kerberos_service_name: str = 'kafka',
+                 sasl_kerberos_domain_name: Optional[str] = None,
+                 sasl_oauth_token_provider: Optional[str] = None):
         self._closed = False
         self._started = False
         self._version_info = {}
@@ -94,7 +100,13 @@ class AIOKafkaAdminClient:
             api_version=api_version,
             ssl_context=ssl_context,
             security_protocol=security_protocol,
-            connections_max_idle_ms=connections_max_idle_ms)
+            connections_max_idle_ms=connections_max_idle_ms,
+            sasl_mechanism=sasl_mechanism,
+            sasl_plain_username=sasl_plain_username,
+            sasl_plain_password=sasl_plain_password,
+            sasl_kerberos_service_name=sasl_kerberos_service_name,
+            sasl_kerberos_domain_name=sasl_kerberos_domain_name,
+            sasl_oauth_token_provider=sasl_oauth_token_provider)
 
     async def close(self):
         """Close the KafkaAdminClient connection to the Kafka broker."""
