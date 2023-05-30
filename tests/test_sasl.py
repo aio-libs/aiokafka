@@ -85,7 +85,7 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             **kw
         )
         self.add_cleanup(admin_client.close)
-        admin_client.start()
+        await admin_client.start()
         return admin_client
 
     async def gssapi_consumer_factory(self, **kw):
@@ -136,7 +136,7 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             **kw
         )
         self.add_cleanup(admin_client.close)
-        admin_client.start()
+        await admin_client.start()
         return admin_client
 
     async def scram_producer_factory(self, user="test", **kw):
@@ -181,7 +181,7 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             **kw
         )
         self.add_cleanup(admin_client.close)
-        admin_client.start()
+        await admin_client.start()
         return admin_client
 
     @kafka_versions('>=0.10.0')
