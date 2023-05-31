@@ -21,7 +21,7 @@ jobs:
           python -m pip install --upgrade pip setuptools
           python -m pip install -r requirements-cython.txt
           # Make sure we install to have all c files to be shiped with bundle
-          python -m pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
+          python -m pip install -vv -U .  # We set -vv to see compiler exceptions/warnings
       - name: Build source package
         run: python setup.py sdist
       - name: Upload source package
