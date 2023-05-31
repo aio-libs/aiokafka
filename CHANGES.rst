@@ -3,6 +3,28 @@ Changelog
 =========
 
 
+0.8.1 (2023-05-31)
+==================
+
+New features:
+
+* Drop support for Python 3.7 due to end of life (pr #893)
+
+
+Bugfixes:
+
+* Add SASL authentication support to `AIOKafkaAdminClient` (issue #889,
+  pr #890 by @selevit)
+
+
+Improved Documentation:
+
+* Update `security_protocol` argument docstring (issue #883, pr #884 by
+  @gabrielmbmb)
+* Remove incorrect `await` for `AIOKafkaConsumer.highwater()` (pr #858 by
+  @yi-jiayu)
+
+
 0.8.0 (2022-11-21)
 ==================
 

@@ -1,1 +1,0 @@
-Added SASL authentication support to `AIOKafkaAdminClient`.

@@ -265,7 +265,7 @@ class AIOKafkaConsumer:
             loop = get_running_loop()
         else:
             warnings.warn("The loop argument is deprecated since 0.7.1, "
-                          "and scheduled for removal in 0.8.0",
+                          "and scheduled for removal in 0.9.0",
                           DeprecationWarning, stacklevel=2)
 
         if max_poll_records is not None and (
