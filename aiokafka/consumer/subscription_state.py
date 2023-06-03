@@ -5,7 +5,7 @@ import time
 from asyncio import shield, Event, Future
 from enum import Enum
 
-from typing import Dict, FrozenSet, Iterable, List, Pattern, Set
+from typing import Dict, FrozenSet, Iterable, List, Optional, Pattern, Set
 
 from aiokafka.errors import IllegalStateError
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
@@ -136,24 +136,50 @@ class SubscriptionState:
                 waiter.set_result(None)
         self._assignment_waiters.clear()
 
+    def _validate_rebalance_listener(
+        self,
+        listener: Optional[ConsumerRebalanceListener] = None
+    ) -> None:
+        """ Validates a ConsumerRebalanceListener.
+
+        Arguments:
+           listener (ConsumerRebalanceListener): Optionally include listener
+               callback, which will be called before and after each rebalance
+               operation.
+        Raises:
+            TypeError: if listener is not a :class:`.ConsumerRebalanceListener`
+        """
+        if listener is not None and \
+                not isinstance(listener, ConsumerRebalanceListener):
+            raise TypeError(
+                "listener should be an instance of ConsumerRebalanceListener")
+
     # Consumer callable API:
 
-    def subscribe(self, topics: Set[str], listener=None):
+    def subscribe(
+        self,
+        topics: Set[str],
+        listener: Optional[ConsumerRebalanceListener] = None
+    ) -> None:
         """ Subscribe to a list (or tuple) of topics
 
         Caller: Consumer.
         Affects: SubscriptionState.subscription
         """
         assert isinstance(topics, set)
-        assert (listener is None or
-                isinstance(listener, ConsumerRebalanceListener))
+
+        self._validate_rebalance_listener(listener=listener)
         self._set_subscription_type(SubscriptionType.AUTO_TOPICS)
 
         self._change_subscription(Subscription(topics, loop=self._loop))
         self._listener = listener
         self._notify_subscription_waiters()
 
-    def subscribe_pattern(self, pattern: Pattern, listener=None):
+    def subscribe_pattern(
+        self,
+        pattern: Pattern,
+        listener: Optional[ConsumerRebalanceListener] = None
+    ) -> None:
         """ Subscribe to all topics matching a regex pattern.
         Subsequent calls `subscribe_from_pattern()` by Coordinator will provide
         the actual subscription topics.
@@ -162,8 +188,7 @@ class SubscriptionState:
         Affects: SubscriptionState.subscribed_pattern
         """
         assert hasattr(pattern, "match"), "Expected Pattern type"
-        assert (listener is None or
-                isinstance(listener, ConsumerRebalanceListener))
+        self._validate_rebalance_listener(listener=listener)
         self._set_subscription_type(SubscriptionType.AUTO_PATTERN)
 
         self._subscribed_pattern = pattern

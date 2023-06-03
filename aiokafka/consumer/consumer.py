@@ -2,6 +2,7 @@ import asyncio
 import logging
 import re
 import sys
+from typing import Iterable, Optional, Pattern
 import traceback
 import warnings
 from typing import Dict, List
@@ -134,6 +135,27 @@ class AIOKafkaConsumer:
             group member. If API methods block waiting for messages, that time
             does not count against this timeout. See `KIP-62`_ for more
             information. Default 300000
+        listener (ConsumerRebalanceListener): Optionally include listener
+            callback, which will be called before and after each rebalance
+            operation.
+            As part of group management, the consumer will keep track of
+            the list of consumers that belong to a particular group and
+            will trigger a rebalance operation if one of the following
+            events trigger:
+
+            * Number of partitions change for any of the subscribed topics
+            * Topic is created or deleted
+            * An existing member of the consumer group dies
+            * A new member is added to the consumer group
+
+            When any of these events are triggered, the provided listener
+            will be invoked first to indicate that the consumer's
+            assignment has been revoked, and then again when the new
+            assignment has been received. Note that this listener will
+            immediately override any listener set in a previous call
+            to subscribe. It is guaranteed, however, that the partitions
+            revoked/assigned
+            through this interface are from topics subscribed in this call.
         rebalance_timeout_ms (int): The maximum time server will wait for this
             consumer to rejoin the group in a case of rebalance. In Java client
             this behaviour is bound to `max.poll.interval.ms` configuration,
@@ -244,6 +266,7 @@ class AIOKafkaConsumer:
                  metadata_max_age_ms=5 * 60 * 1000,
                  partition_assignment_strategy=(RoundRobinPartitionAssignor,),
                  max_poll_interval_ms=300000,
+                 listener: Optional[ConsumerRebalanceListener] = None,
                  rebalance_timeout_ms=None,
                  session_timeout_ms=10000,
                  heartbeat_interval_ms=3000,
@@ -323,10 +346,14 @@ class AIOKafkaConsumer:
             self._source_traceback = traceback.extract_stack(sys._getframe(1))
         self._closed = False
 
+        if listener is not None:
+            listener.consumer = self
+        self.listener = listener
+
         if topics:
             topics = self._validate_topics(topics)
             self._client.set_topics(topics)
-            self._subscription.subscribe(topics=topics)
+            self.subscribe(topics)
 
     def __del__(self, _warnings=warnings):
         if self._closed is False:
@@ -1010,7 +1037,12 @@ class AIOKafkaConsumer:
             partitions, self._request_timeout_ms)
         return offsets
 
-    def subscribe(self, topics=(), pattern=None, listener=None):
+    def subscribe(
+        self,
+        topics: Iterable[str] = (),
+        pattern: Optional[Pattern] = None,
+        listener: Optional[ConsumerRebalanceListener] = None
+    ) -> None:
         """ Subscribe to a list of topics, or a topic regex pattern.
 
         Partitions will be dynamically assigned via a group coordinator.
@@ -1048,7 +1080,6 @@ class AIOKafkaConsumer:
             IllegalStateError: if called after previously calling :meth:`assign`
             ValueError: if neither topics or pattern is provided or both
                are provided
-            TypeError: if listener is not a :class:`.ConsumerRebalanceListener`
         """
         if not (topics or pattern):
             raise ValueError(
@@ -1056,10 +1087,12 @@ class AIOKafkaConsumer:
         if topics and pattern:
             raise ValueError(
                 "You can't provide both `topics` and `pattern`")
-        if listener is not None and \
-                not isinstance(listener, ConsumerRebalanceListener):
-            raise TypeError(
-                "listener should be an instance of ConsumerRebalanceListener")
+
+        # Override the self.listener as the user wants this
+        if listener is not None:
+            listener.consumer = self
+            self.listener = listener
+
         if pattern is not None:
             try:
                 pattern = re.compile(pattern)
@@ -1067,7 +1100,7 @@ class AIOKafkaConsumer:
                 raise ValueError(
                     f"{pattern!r} is not a valid pattern: {err}")
             self._subscription.subscribe_pattern(
-                pattern=pattern, listener=listener)
+                pattern=pattern, listener=self.listener)
             # NOTE: set_topics will trigger a rebalance, so the coordinator
             # will get the initial subscription shortly by ``metadata_changed``
             # handler.
@@ -1076,7 +1109,7 @@ class AIOKafkaConsumer:
         elif topics:
             topics = self._validate_topics(topics)
             self._subscription.subscribe(
-                topics=topics, listener=listener)
+                topics=topics, listener=self.listener)
             self._client.set_topics(self._subscription.subscription.topics)
             if self._group_id is None:
                 # We have reset the assignment, but client.set_topics will

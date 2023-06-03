@@ -1,0 +1,1 @@
+rebalance listener added to Consumer constructor

@@ -61,6 +61,13 @@ target/
 # PyCharm
 .idea
 
+# VSCode
+.vscode
+
+# virtualenvs
+venv/
+.venv/
+
 kafka_2*
 
 tests/ssl_cert

@@ -4,6 +4,7 @@ import time
 import json
 from unittest import mock
 from contextlib import contextmanager
+from typing import List
 
 import pytest
 
@@ -131,6 +132,58 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         finally:
             loop.run_until_complete(consumer.stop())
             loop.close()
+
+    @run_until_complete
+    async def test_create_consumer_with_listener(self):
+        consumer = await self.consumer_factory(listener=StubRebalanceListener())
+        await consumer.stop()
+
+        class Listener:
+            def __init__(self) -> None:
+                self.consumer = None
+
+        with self.assertRaises(TypeError):
+            await self.consumer_factory(listener=Listener())
+
+        with self.assertRaises(AttributeError):
+            await self.consumer_factory(listener=object())
+
+    @run_until_complete
+    async def test_create_consumer_with_listener_called(self):
+        """
+        Test that when a Consumer is created with a ConsumerRebalanceListener
+        the listener callbaks are called on rebalances events
+        """
+        on_partitions_assigned_mock = mock.Mock()
+        on_partitions_revoked_mock = mock.Mock()
+
+        class RebalanceListener(ConsumerRebalanceListener):
+            async def on_partitions_revoked(
+                self, revoked: List[TopicPartition]
+            ) -> None:
+                on_partitions_revoked_mock()
+
+            async def on_partitions_assigned(
+                self, assigned: List[TopicPartition]
+            ) -> None:
+                on_partitions_assigned_mock()
+
+        await self.send_messages(0, [1, 2, 3])
+
+        consumer = AIOKafkaConsumer(
+            self.topic,
+            group_id="test_rebalance_with_listener",
+            bootstrap_servers=self.hosts,
+            auto_offset_reset="earliest",
+            listener=RebalanceListener()
+        )
+
+        await consumer.start()
+        self.add_cleanup(consumer.stop)
+        assert await consumer.getone()
+
+        on_partitions_assigned_mock.assert_called_once()
+        on_partitions_revoked_mock.assert_called_once()
 
     @run_until_complete
     async def test_consumer_context_manager(self):
@@ -485,7 +538,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             consumer.subscribe(pattern="^(spome(")
         with self.assertRaises(ValueError):
             consumer.subscribe("some_topic")  # should be a list
-        with self.assertRaises(TypeError):
+        with self.assertRaises(AttributeError):
             consumer.subscribe(topics=["some_topic"], listener=object())
 
     # TODO Use `@pytest.mark.parametrize()` after moving to pytest-asyncio
@@ -1066,34 +1119,33 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             client_id="test_autocreate")
         await client.bootstrap()
-        listener1 = StubRebalanceListener()
-        listener2 = StubRebalanceListener()
+
         consumer1 = AIOKafkaConsumer(
             bootstrap_servers=self.hosts,
             metadata_max_age_ms=200, group_id="test-autocreate-rebalance",
             heartbeat_interval_ms=100)
-        consumer1.subscribe(pattern=pattern, listener=listener1)
+        consumer1.subscribe(pattern=pattern, listener=StubRebalanceListener())
         await consumer1.start()
         consumer2 = AIOKafkaConsumer(
             bootstrap_servers=self.hosts,
             metadata_max_age_ms=200, group_id="test-autocreate-rebalance",
             heartbeat_interval_ms=100)
-        consumer2.subscribe(pattern=pattern, listener=listener2)
+        consumer2.subscribe(pattern=pattern, listener=StubRebalanceListener())
         await consumer2.start()
         await asyncio.sleep(0.5)
         # bootstrap will take care of the initial group assignment
         self.assertEqual(consumer1.assignment(), set())
         self.assertEqual(consumer2.assignment(), set())
-        listener1.reset()
-        listener2.reset()
+        consumer1.listener.reset()
+        consumer2.listener.reset()
 
         # Lets force autocreation of a topic
         my_topic = "another-autocreate-pattern-1"
         await client._wait_on_metadata(my_topic)
 
         # Wait for group to stabilize
-        assign1 = await listener1.wait_assign()
-        assign2 = await listener2.wait_assign()
+        assign1 = await consumer1.listener.wait_assign()
+        assign2 = await consumer2.listener.wait_assign()
         # We expect 2 partitons for autocreated topics
         my_partitions = {
             TopicPartition(my_topic, 0), TopicPartition(my_topic, 1)}
@@ -1103,14 +1155,14 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             my_partitions)
 
         # Lets add another topic
-        listener1.reset()
-        listener2.reset()
+        consumer1.listener.reset()
+        consumer2.listener.reset()
         my_topic2 = "another-autocreate-pattern-2"
         await client._wait_on_metadata(my_topic2)
 
         # Wait for group to stabilize
-        assign1 = await listener1.wait_assign()
-        assign2 = await listener2.wait_assign()
+        assign1 = await consumer1.listener.wait_assign()
+        assign2 = await consumer2.listener.wait_assign()
         # We expect 2 partitons for autocreated topics
         my_partitions = {
             TopicPartition(my_topic, 0), TopicPartition(my_topic, 1),
@@ -1294,8 +1346,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         faults = []
 
         class SimpleRebalanceListener(ConsumerRebalanceListener):
-            def __init__(self, consumer):
-                self.consumer = consumer
+            def __init__(self):
                 self.revoke_mock = mock.Mock()
                 self.assign_mock = mock.Mock()
 
@@ -1332,8 +1383,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             group_id="test_rebalance_listener_with_coroutines",
             bootstrap_servers=self.hosts, enable_auto_commit=False,
             auto_offset_reset="earliest")
-        listener1 = SimpleRebalanceListener(consumer1)
-        consumer1.subscribe([self.topic], listener=listener1)
+        consumer1.subscribe([self.topic], listener=SimpleRebalanceListener())
         await consumer1.start()
         self.add_cleanup(consumer1.stop)
 
@@ -1341,8 +1391,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.value, b"0")
         msg = await consumer1.getone(tp1)
         self.assertEqual(msg.value, b"10")
-        listener1.revoke_mock.assert_called_with(set())
-        listener1.assign_mock.assert_called_with({tp0, tp1})
+        consumer1.listener.revoke_mock.assert_called_with(set())
+        consumer1.listener.assign_mock.assert_called_with({tp0, tp1})
         if faults:
             raise faults[0]
 
@@ -1351,8 +1401,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             group_id="test_rebalance_listener_with_coroutines",
             bootstrap_servers=self.hosts, enable_auto_commit=False,
             auto_offset_reset="earliest")
-        listener2 = SimpleRebalanceListener(consumer2)
-        consumer2.subscribe([self.topic], listener=listener2)
+        consumer2.subscribe([self.topic], listener=SimpleRebalanceListener())
         await consumer2.start()
         self.add_cleanup(consumer2.stop)
 
@@ -1370,15 +1419,15 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg1.value, b"1")
         self.assertEqual(msg2.value, b"11")
 
-        listener1.revoke_mock.assert_called_with({tp0, tp1})
-        self.assertEqual(listener1.revoke_mock.call_count, 2)
-        listener1.assign_mock.assert_called_with(c1_assignment)
-        self.assertEqual(listener1.assign_mock.call_count, 2)
+        consumer1.listener.revoke_mock.assert_called_with({tp0, tp1})
+        self.assertEqual(consumer1.listener.revoke_mock.call_count, 2)
+        consumer1.listener.assign_mock.assert_called_with(c1_assignment)
+        self.assertEqual(consumer1.listener.assign_mock.call_count, 2)
 
-        listener2.revoke_mock.assert_called_with(set())
-        self.assertEqual(listener2.revoke_mock.call_count, 1)
-        listener2.assign_mock.assert_called_with(c2_assignment)
-        self.assertEqual(listener2.assign_mock.call_count, 1)
+        consumer2.listener.revoke_mock.assert_called_with(set())
+        self.assertEqual(consumer2.listener.revoke_mock.call_count, 1)
+        consumer2.listener.assign_mock.assert_called_with(c2_assignment)
+        self.assertEqual(consumer2.listener.assign_mock.call_count, 1)
         if faults:
             raise faults[0]
 
@@ -1389,8 +1438,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         tp0 = TopicPartition(self.topic, 0)
 
         class SimpleRebalanceListener(ConsumerRebalanceListener):
-            def __init__(self, consumer):
-                self.consumer = consumer
+            def __init__(self):
                 self.seek_task = None
 
             async def on_partitions_revoked(self, revoked):
@@ -1412,11 +1460,10 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             group_id="test_rebalance_listener_with_coroutines",
             bootstrap_servers=self.hosts, enable_auto_commit=False,
             auto_offset_reset="earliest")
-        listener = SimpleRebalanceListener(consumer)
-        consumer.subscribe([self.topic], listener=listener)
+        consumer.subscribe([self.topic], listener=SimpleRebalanceListener())
         await consumer.start()
         self.add_cleanup(consumer.stop)
-        committed, position, position2 = await listener.seek_task
+        committed, position, position2 = await consumer.listener.seek_task
         self.assertIsNone(committed)
         self.assertIsNotNone(position)
         self.assertIsNotNone(position2)
@@ -2013,14 +2060,12 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.assigned.append(assigned)
                 self.assignment_ready.set()
 
-        listener1 = MyListener()
-        listener2 = MyListener()
-        consumer1.subscribe([self.topic], listener=listener1)
-        consumer2.subscribe([self.topic], listener=listener2)
+        consumer1.subscribe([self.topic], listener=MyListener())
+        consumer2.subscribe([self.topic], listener=MyListener())
 
         # Make sure we rebalanced and ready for processing each of it's part
-        await listener1.assignment_ready.wait()
-        await listener2.assignment_ready.wait()
+        await consumer1.listener.assignment_ready.wait()
+        await consumer2.listener.assignment_ready.wait()
         self.assertTrue(consumer1.assignment())
         self.assertTrue(consumer2.assignment())
 

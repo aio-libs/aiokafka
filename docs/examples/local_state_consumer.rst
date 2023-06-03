@@ -31,8 +31,8 @@ Local State consumer:
 
     class RebalanceListener(ConsumerRebalanceListener):
 
-        def __init__(self, consumer, local_state):
-            self.consumer = consumer
+        def __init__(self, local_state):
+            super().__init__()
             self.local_state = local_state
 
         async def on_partitions_revoked(self, revoked):
@@ -116,7 +116,7 @@ Local State consumer:
         await consumer.start()
 
         local_state = LocalState()
-        listener = RebalanceListener(consumer, local_state)
+        listener = RebalanceListener(local_state)
         consumer.subscribe(topics=["test"], listener=listener)
 
         save_task = asyncio.create_task(save_state_every_second(local_state))
