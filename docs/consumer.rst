@@ -399,8 +399,8 @@ new topic matching a *subscribed regex* is created. For example::
         bootstrap_servers='localhost:9092',
         metadata_max_age_ms=30000,  # This controls the polling interval
     )
-    await consumer.start()
     consumer.subscribe(pattern="^MyGreatTopic-.*$")
+    await consumer.start()
 
     async for msg in consumer:  # Will detect metadata changes
         print("Consumed msg %s %s %s" % (msg.topic, msg.partition, msg.value))
