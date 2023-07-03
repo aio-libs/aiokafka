@@ -2018,9 +2018,15 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer1.subscribe([self.topic], listener=listener1)
         consumer2.subscribe([self.topic], listener=listener2)
 
-        # Make sure we rebalanced and ready for processing each of it's part
-        await listener1.assignment_ready.wait()
-        await listener2.assignment_ready.wait()
+        for _ in range(5):
+            # Make sure we rebalanced and ready for processing each of it's part
+            await listener1.assignment_ready.wait()
+            await listener2.assignment_ready.wait()
+
+            # Check the first is still ready to avoid flakiness
+            if listener1.assignment_ready.is_set():
+                break
+
         self.assertTrue(consumer1.assignment())
         self.assertTrue(consumer2.assignment())
 
