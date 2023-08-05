@@ -81,7 +81,7 @@ class ConsumerRecord(Generic[KT, VT]):
     value: Optional[VT]
     "The value"
 
-    checksum: int
+    checksum: Optional[int]
     "Deprecated"
 
     serialized_key_size: int
