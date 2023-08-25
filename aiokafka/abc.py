@@ -121,7 +121,7 @@ class AbstractTokenProvider(abc.ABC):
 
             class CustomTokenProvider(AbstractTokenProvider):
                 async def token(self):
-                    return asyncio.get_running_loop().run_in_executor(
+                    return await asyncio.get_running_loop().run_in_executor(
                         None, self._token)
 
                 def _token(self):
