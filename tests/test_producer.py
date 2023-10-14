@@ -536,7 +536,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertLess(msg1.offset, msg2.offset)
 
     @run_until_complete
-    async def test_producer_indempotence_configuration(self):
+    async def test_producer_idempotence_configuration(self):
         with self.assertRaises(ValueError):
             AIOKafkaProducer(
                 acks=1, enable_idempotence=True)
