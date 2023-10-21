@@ -112,7 +112,6 @@ class ve_build_ext(build_ext):
 
 install_requires = [
     "async-timeout",
-    "kafka-python>=2.0.2",
     "packaging",
 ]
 
@@ -173,7 +172,7 @@ args = dict(
     },
     download_url="https://pypi.python.org/pypi/aiokafka",
     license="Apache 2",
-    packages=["aiokafka"],
+    packages=["aiokafka", "kafka"],
     python_requires=">=3.8",
     install_requires=install_requires,
     extras_require=extras_require,

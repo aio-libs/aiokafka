@@ -15,8 +15,7 @@ A clear and concise description of what you expected to happen.
 
 **Environment (please complete the following information):**
  - aiokafka version (`python -c "import aiokafka; print(aiokafka.__version__)"`):
- - kafka-python version (`python -c "import kafka; print(kafka.__version__)"`): 
- - Kafka Broker version (`kafka-topics.sh --version`): 
+ - Kafka Broker version (`kafka-topics.sh --version`):
  - Other information (Confluent Cloud version, etc.):
 
 **Reproducible example**
