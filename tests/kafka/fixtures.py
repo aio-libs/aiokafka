@@ -17,8 +17,8 @@ from kafka import errors, KafkaAdminClient, KafkaClient, KafkaConsumer, KafkaPro
 from kafka.errors import InvalidReplicationFactorError
 from kafka.protocol.admin import CreateTopicsRequest
 from kafka.protocol.metadata import MetadataRequest
-from test.testutil import env_kafka_version, random_string
-from test.service import ExternalService, SpawnedService
+from tests.kafka.testutil import env_kafka_version, random_string
+from tests.kafka.service import ExternalService, SpawnedService
 
 log = logging.getLogger(__name__)
 

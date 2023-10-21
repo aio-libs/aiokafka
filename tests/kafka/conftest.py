@@ -4,8 +4,8 @@ import uuid
 
 import pytest
 
-from test.testutil import env_kafka_version, random_string
-from test.fixtures import KafkaFixture, ZookeeperFixture
+from tests.kafka.testutil import env_kafka_version, random_string
+from tests.kafka.fixtures import KafkaFixture, ZookeeperFixture
 
 @pytest.fixture(scope="module")
 def zookeeper():

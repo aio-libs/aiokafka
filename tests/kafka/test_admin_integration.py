@@ -1,7 +1,7 @@
 import pytest
 
 from logging import info
-from test.testutil import env_kafka_version, random_string
+from tests.kafka.testutil import env_kafka_version, random_string
 from threading import Event, Thread
 from time import time, sleep
 

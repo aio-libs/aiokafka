@@ -15,7 +15,7 @@ from kafka.codec import (
     zstd_encode, zstd_decode,
 )
 
-from test.testutil import random_string
+from tests.kafka.testutil import random_string
 
 
 def test_gzip():

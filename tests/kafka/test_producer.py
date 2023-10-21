@@ -7,7 +7,7 @@ import pytest
 
 from kafka import KafkaConsumer, KafkaProducer, TopicPartition
 from kafka.producer.buffer import SimpleBufferPool
-from test.testutil import env_kafka_version, random_string
+from tests.kafka.testutil import env_kafka_version, random_string
 
 
 def test_buffer_pool():

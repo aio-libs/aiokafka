@@ -1,7 +1,7 @@
 import logging
 import time
 
-from mock import patch
+from unittest.mock import patch
 import pytest
 from kafka.vendor.six.moves import range
 
@@ -9,7 +9,7 @@ import kafka.codec
 from kafka.errors import UnsupportedCodecError, UnsupportedVersionError
 from kafka.structs import TopicPartition, OffsetAndTimestamp
 
-from test.testutil import Timer, assert_message_count, env_kafka_version, random_string
+from tests.kafka.testutil import Timer, assert_message_count, env_kafka_version, random_string
 
 
 @pytest.mark.skipif(not env_kafka_version(), reason="No KAFKA_VERSION set")
