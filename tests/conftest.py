@@ -9,7 +9,6 @@ import socket
 import uuid
 import sys
 import pathlib
-import shutil
 
 from aiokafka.record.legacy_records import (
     LegacyRecordBatchBuilder, _LegacyRecordBatchBuilderPy)
@@ -117,8 +116,10 @@ else:
 @pytest.fixture(scope='session')
 def ssl_folder(docker_ip_address, docker, kafka_image):
     ssl_dir = pathlib.Path('tests/ssl_cert')
-    if ssl_dir.exists():
-        shutil.rmtree(str(ssl_dir))
+    if ssl_dir.is_dir():
+        # Skip generating certificates when they already exist. Remove
+        # directory to re-generate them.
+        return ssl_dir
 
     ssl_dir.mkdir()
 
