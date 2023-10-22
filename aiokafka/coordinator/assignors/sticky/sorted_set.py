@@ -35,9 +35,13 @@ class SortedSet:
         return value
 
     def add(self, value):
-        if self._cached_last is not None and self._key(value) > self._key(self._cached_last):
+        if self._cached_last is not None and self._key(value) > self._key(
+            self._cached_last
+        ):
             self._cached_last = value
-        if self._cached_first is not None and self._key(value) < self._key(self._cached_first):
+        if self._cached_first is not None and self._key(value) < self._key(
+            self._cached_first
+        ):
             self._cached_first = value
 
         return self._set.add(value)

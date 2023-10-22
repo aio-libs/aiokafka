@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 import abc
 import logging
 
@@ -7,9 +5,8 @@ log = logging.getLogger(__name__)
 
 
 class AbstractPartitionAssignor(object):
-    """
-    Abstract assignor implementation which does some common grunt work (in particular collecting
-    partition counts which are always needed in assignors).
+    """Abstract assignor implementation which does some common grunt work (in particular
+    collecting partition counts which are always needed in assignors).
     """
 
     @abc.abstractproperty

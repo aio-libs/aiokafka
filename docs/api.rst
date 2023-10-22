@@ -132,7 +132,7 @@ Other references
 
 .. autoclass:: aiokafka.producer.message_accumulator.BatchBuilder
 .. autoclass:: aiokafka.consumer.group_coordinator.GroupCoordinator
-.. autoclass:: kafka.coordinator.assignors.roundrobin.RoundRobinPartitionAssignor
+.. autoclass:: aiokafka.coordinator.assignors.roundrobin.RoundRobinPartitionAssignor
 
 
 Errors

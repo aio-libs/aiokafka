@@ -4,8 +4,6 @@ import logging
 import copy
 import time
 
-from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
-from kafka.coordinator.protocol import ConsumerProtocol
 from kafka.protocol.commit import (
     OffsetCommitRequest_v2 as OffsetCommitRequest,
     OffsetFetchRequest_v1 as OffsetFetchRequest)
@@ -15,6 +13,8 @@ from kafka.protocol.group import (
 import aiokafka.errors as Errors
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.client import ConnectionGroup, CoordinationType
+from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
+from aiokafka.coordinator.protocol import ConsumerProtocol
 from aiokafka.util import create_future, create_task
 
 log = logging.getLogger(__name__)

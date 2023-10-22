@@ -1,14 +1,14 @@
-from __future__ import absolute_import
-
 import collections
 import itertools
 import logging
 
-from kafka.vendor import six
-
-from kafka.coordinator.assignors.abstract import AbstractPartitionAssignor
-from kafka.coordinator.protocol import ConsumerProtocolMemberMetadata, ConsumerProtocolMemberAssignment
 from kafka.structs import TopicPartition
+
+from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor
+from aiokafka.coordinator.protocol import (
+    ConsumerProtocolMemberMetadata,
+    ConsumerProtocolMemberAssignment,
+)
 
 log = logging.getLogger(__name__)
 
@@ -45,20 +45,21 @@ class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
         C1: [t1p0]
         C2: [t1p1, t2p0, t2p1, t2p2]
     """
-    name = 'roundrobin'
+
+    name = "roundrobin"
     version = 0
 
     @classmethod
     def assign(cls, cluster, member_metadata):
         all_topics = set()
-        for metadata in six.itervalues(member_metadata):
+        for metadata in member_metadata.values():
             all_topics.update(metadata.subscription)
 
         all_topic_partitions = []
         for topic in all_topics:
             partitions = cluster.partitions_for_topic(topic)
             if partitions is None:
-                log.warning('No partition metadata for topic %s', topic)
+                log.warning("No partition metadata for topic %s", topic)
                 continue
             for partition in partitions:
                 all_topic_partitions.append(TopicPartition(topic, partition))
@@ -82,14 +83,13 @@ class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
         protocol_assignment = {}
         for member_id in member_metadata:
             protocol_assignment[member_id] = ConsumerProtocolMemberAssignment(
-                cls.version,
-                sorted(assignment[member_id].items()),
-                b'')
+                cls.version, sorted(assignment[member_id].items()), b""
+            )
         return protocol_assignment
 
     @classmethod
     def metadata(cls, topics):
-        return ConsumerProtocolMemberMetadata(cls.version, list(topics), b'')
+        return ConsumerProtocolMemberMetadata(cls.version, list(topics), b"")
 
     @classmethod
     def on_assignment(cls, assignment):

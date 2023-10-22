@@ -6,10 +6,9 @@ import traceback
 import warnings
 from typing import Dict, List
 
-from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
-
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
+from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from aiokafka.errors import (
     TopicAuthorizationFailedError, OffsetOutOfRangeError,
     ConsumerStoppedError, IllegalOperation, UnsupportedVersionError,
