@@ -43,14 +43,6 @@ def kafka_broker_factory(zookeeper):
 
 
 @pytest.fixture
-def kafka_client(kafka_broker, request):
-    """Return a KafkaClient fixture"""
-    (client,) = kafka_broker.get_clients(cnt=1, client_id='%s_client' % (request.node.name,))
-    yield client
-    client.close()
-
-
-@pytest.fixture
 def kafka_consumer(kafka_consumer_factory):
     """Return a KafkaConsumer fixture"""
     return kafka_consumer_factory()

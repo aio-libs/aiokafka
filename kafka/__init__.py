@@ -20,7 +20,6 @@ logging.getLogger(__name__).addHandler(NullHandler())
 
 from kafka.admin import KafkaAdminClient
 from kafka.client_async import KafkaClient
-from kafka.consumer.subscription_state import ConsumerRebalanceListener
 from kafka.conn import BrokerConnection
 from kafka.serializer import Serializer, Deserializer
 from kafka.structs import TopicPartition, OffsetAndMetadata
