@@ -18,14 +18,11 @@ except ImportError:
 logging.getLogger(__name__).addHandler(NullHandler())
 
 
-from kafka.admin import KafkaAdminClient
-from kafka.client_async import KafkaClient
 from kafka.conn import BrokerConnection
 from kafka.serializer import Serializer, Deserializer
 from kafka.structs import TopicPartition, OffsetAndMetadata
 
 
 __all__ = [
-    'BrokerConnection', 'ConsumerRebalanceListener', 'KafkaAdminClient',
-    'KafkaClient', 'KafkaConsumer', 'KafkaProducer',
+    'BrokerConnection', 'ConsumerRebalanceListener',
 ]

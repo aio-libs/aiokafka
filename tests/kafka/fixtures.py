@@ -13,7 +13,7 @@ import py
 from kafka.vendor.six.moves import urllib, range
 from kafka.vendor.six.moves.urllib.parse import urlparse  # pylint: disable=E0611,F0401
 
-from kafka import errors, KafkaAdminClient, KafkaClient
+from kafka import errors
 from kafka.errors import InvalidReplicationFactorError
 from kafka.protocol.admin import CreateTopicsRequest
 from kafka.protocol.metadata import MetadataRequest
@@ -649,13 +649,3 @@ class KafkaFixture(Fixture):
         for _ in range(cnt):
             params['client_id'] = '%s_%s' % (client_id, random_string(4))
             yield cls(*args, **params)
-
-    def get_clients(self, cnt=1, **params):
-        params = self._enrich_client_params(params, client_id='client')
-        for client in self._create_many_clients(cnt, KafkaClient, **params):
-            yield client
-
-    def get_admin_clients(self, cnt, **params):
-        params = self._enrich_client_params(params, client_id='admin_client')
-        for client in self._create_many_clients(cnt, KafkaAdminClient, **params):
-            yield client

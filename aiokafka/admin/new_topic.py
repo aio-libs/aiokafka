@@ -1,9 +1,7 @@
-from __future__ import absolute_import
-
 from kafka.errors import IllegalArgumentError
 
 
-class NewTopic(object):
+class NewTopic:
     """ A class for new topic creation
     Arguments:
         name (string): name of the topic
@@ -25,8 +23,14 @@ class NewTopic(object):
             replica_assignments=None,
             topic_configs=None,
     ):
-        if not (num_partitions == -1 or replication_factor == -1) ^ (replica_assignments is None):
-            raise IllegalArgumentError('either num_partitions/replication_factor or replica_assignment must be specified')
+        if not (
+            (num_partitions == -1 or replication_factor == -1)
+            ^ (replica_assignments is None)
+        ):
+            raise IllegalArgumentError(
+                "either num_partitions/replication_factor or replica_assignment "
+                "must be specified"
+            )
         self.name = name
         self.num_partitions = num_partitions
         self.replication_factor = replication_factor

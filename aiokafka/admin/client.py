@@ -18,11 +18,12 @@ from kafka.protocol.admin import (
     ListGroupsRequest,
     ApiVersionRequest_v0)
 from kafka.structs import TopicPartition, OffsetAndMetadata
-from kafka.admin import NewTopic, KafkaAdminClient as Admin
-from kafka.admin.config_resource import ConfigResourceType, ConfigResource
 
 from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient
+
+from .config_resource import ConfigResourceType, ConfigResource
+from .new_topic import NewTopic
 
 log = logging.getLogger(__name__)
 
@@ -109,9 +110,9 @@ class AIOKafkaAdminClient:
             sasl_oauth_token_provider=sasl_oauth_token_provider)
 
     async def close(self):
-        """Close the KafkaAdminClient connection to the Kafka broker."""
+        """Close the AIOKafkaAdminClient connection to the Kafka broker."""
         if not hasattr(self, '_closed') or self._closed:
-            log.info("KafkaAdminClient already closed.")
+            log.info("AIOKafkaAdminClient already closed.")
             return
 
         await self._client.close()
@@ -165,6 +166,22 @@ class AIOKafkaAdminClient:
                 .format(operation[0].__name__))
         return version
 
+    @staticmethod
+    def _convert_new_topic_request(new_topic):
+        return (
+            new_topic.name,
+            new_topic.num_partitions,
+            new_topic.replication_factor,
+            [
+                (partition_id, replicas)
+                for partition_id, replicas in new_topic.replica_assignments.items()
+            ],
+            [
+                (config_key, config_value)
+                for config_key, config_value in new_topic.topic_configs.items()
+            ]
+        )
+
     async def create_topics(
             self,
             new_topics: List[NewTopic],
@@ -181,7 +198,7 @@ class AIOKafkaAdminClient:
         :return: Appropriate version of CreateTopicResponse class.
         """
         version = self._matching_api_version(CreateTopicsRequest)
-        topics = [Admin._convert_new_topic_request(nt) for nt in new_topics]
+        topics = [self._convert_new_topic_request(nt) for nt in new_topics]
         log.debug("Attempting to send create topic request for %r", new_topics)
         timeout_ms = timeout_ms or self._request_timeout_ms
         if version == 0:
@@ -320,15 +337,32 @@ class AIOKafkaAdminClient:
         return await asyncio.gather(*futures)
 
     @staticmethod
+    def _convert_describe_config_resource_request(config_resource):
+        return (
+            config_resource.resource_type,
+            config_resource.name,
+            list(config_resource.configs.keys()) if config_resource.configs else None
+        )
+
+    @staticmethod
+    def _convert_alter_config_resource_request(config_resource):
+        return (
+            config_resource.resource_type,
+            config_resource.name,
+            list(config_resource.configs.items())
+        )
+
+    @classmethod
     def _convert_config_resources(
+            cls,
             config_resources: List[ConfigResource],
             op_type: str = "describe") -> Tuple[Dict[int, Any], List[Any]]:
         broker_resources = defaultdict(list)
         topic_resources = []
         if op_type == "describe":
-            convert_func = Admin._convert_describe_config_resource_request
+            convert_func = cls._convert_describe_config_resource_request
         else:
-            convert_func = Admin._convert_alter_config_resource_request
+            convert_func = cls._convert_alter_config_resource_request
         for config_resource in config_resources:
             resource = convert_func(config_resource)
             if config_resource.resource_type == ConfigResourceType.BROKER:
