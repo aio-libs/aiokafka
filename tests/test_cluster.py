@@ -1,10 +1,6 @@
-# pylint: skip-file
-from __future__ import absolute_import
-
-import pytest
-
-from kafka.cluster import ClusterMetadata
 from kafka.protocol.metadata import MetadataResponse
+
+from aiokafka.cluster import ClusterMetadata
 
 
 def test_empty_broker_list():

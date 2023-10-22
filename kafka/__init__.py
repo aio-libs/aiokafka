@@ -18,7 +18,6 @@ except ImportError:
 logging.getLogger(__name__).addHandler(NullHandler())
 
 
-from kafka.conn import BrokerConnection
 from kafka.serializer import Serializer, Deserializer
 from kafka.structs import TopicPartition, OffsetAndMetadata
 
