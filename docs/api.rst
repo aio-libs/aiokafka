@@ -82,7 +82,7 @@ for setup instructions on Broker side. Client configuration is pretty much the
 same as Java's, consult the ``sasl_*`` options in Consumer and Producer API
 Reference for more details.
 
-.. automodule:: kafka.oauth.abstract
+.. automodule:: aiokafka.oauth
 
 
 Error handling

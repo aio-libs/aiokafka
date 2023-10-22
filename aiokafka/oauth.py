@@ -1,11 +1,7 @@
-from __future__ import absolute_import
-
 import abc
 
-# This statement is compatible with both Python 2.7 & 3+
-ABC = abc.ABCMeta('ABC', (object,), {'__slots__': ()})
 
-class AbstractTokenProvider(ABC):
+class AbstractTokenProvider(abc.ABC):
     """
     A Token Provider must be used for the SASL OAuthBearer protocol.
 

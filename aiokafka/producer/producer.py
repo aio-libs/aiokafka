@@ -167,7 +167,7 @@ class AIOKafkaProducer:
             Default: :data:`None`
         sasl_oauth_token_provider (:class:`~aiokafka.abc.AbstractTokenProvider`):
             OAuthBearer token provider instance. (See
-            :mod:`kafka.oauth.abstract`).
+            :mod:`aiokafka.oauth`).
             Default: :data:`None`
 
     Note:
