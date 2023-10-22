@@ -3,7 +3,7 @@ from __future__ import absolute_import
 import collections
 import logging
 
-import kafka.errors as Errors
+import aiokafka.errors as Errors
 from kafka.protocol.commit import GroupCoordinatorResponse
 from kafka.protocol.frame import KafkaBytes
 from kafka.protocol.types import Int32, TaggedFields

@@ -3,7 +3,6 @@ import logging
 import random
 import time
 
-from kafka.conn import collect_hosts
 from kafka.protocol.admin import DescribeAclsRequest_v2
 from kafka.protocol.commit import OffsetFetchRequest
 from kafka.protocol.fetch import FetchRequest
@@ -13,7 +12,7 @@ from kafka.protocol.produce import ProduceRequest
 
 import aiokafka.errors as Errors
 from aiokafka import __version__
-from aiokafka.conn import create_conn, CloseReason
+from aiokafka.conn import collect_hosts, create_conn, CloseReason
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.protocol.coordination import FindCoordinatorRequest
 from aiokafka.errors import (
@@ -482,10 +481,10 @@ class AIOKafkaClient:
             request (Struct): request object (not-encoded)
 
         Raises:
-            kafka.errors.RequestTimedOutError
-            kafka.errors.NodeNotReadyError
-            kafka.errors.KafkaConnectionError
-            kafka.errors.CorrelationIdError
+            aiokafka.errors.RequestTimedOutError
+            aiokafka.errors.NodeNotReadyError
+            aiokafka.errors.KafkaConnectionError
+            aiokafka.errors.CorrelationIdError
 
         Returns:
             Future: resolves to Response struct

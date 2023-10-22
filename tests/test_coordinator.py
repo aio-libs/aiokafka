@@ -12,12 +12,12 @@ from kafka.protocol.commit import (
     OffsetCommitRequest, OffsetCommitResponse_v2,
     OffsetFetchRequest_v1 as OffsetFetchRequest
 )
-import kafka.errors as Errors
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 from aiokafka import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
+import aiokafka.errors as Errors
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.consumer.group_coordinator import (
     GroupCoordinator, CoordinatorGroupRebalance, NoGroupCoordinator)

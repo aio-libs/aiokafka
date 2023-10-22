@@ -3,7 +3,7 @@ from __future__ import absolute_import
 import threading
 import time
 
-from kafka.errors import QuotaViolationError
+from aiokafka.errors import QuotaViolationError
 from kafka.metrics import KafkaMetric
 
 

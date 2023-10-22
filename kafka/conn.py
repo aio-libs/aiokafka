@@ -20,7 +20,7 @@ import time
 
 from kafka.vendor import six
 
-import kafka.errors as Errors
+import aiokafka.errors as Errors
 from kafka.future import Future
 from kafka.metrics.stats import Avg, Count, Max, Rate
 from kafka.oauth.abstract import AbstractTokenProvider
@@ -909,7 +909,7 @@ class BrokerConnection(object):
         Arguments:
             error (Exception, optional): pending in-flight-requests
                 will be failed with this exception.
-                Default: kafka.errors.KafkaConnectionError.
+                Default: aiokafka.errors.KafkaConnectionError.
         """
         if self.state is ConnectionStates.DISCONNECTED:
             return

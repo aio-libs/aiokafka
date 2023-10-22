@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from kafka.errors import QuotaViolationError
+from aiokafka.errors import QuotaViolationError
 from kafka.metrics import DictReporter, MetricConfig, MetricName, Metrics, Quota
 from kafka.metrics.measurable import AbstractMeasurable
 from kafka.metrics.stats import (Avg, Count, Max, Min, Percentile, Percentiles,

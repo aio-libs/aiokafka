@@ -13,8 +13,8 @@ import py
 from kafka.vendor.six.moves import urllib, range
 from kafka.vendor.six.moves.urllib.parse import urlparse  # pylint: disable=E0611,F0401
 
-from kafka import errors
-from kafka.errors import InvalidReplicationFactorError
+from aiokafka import errors
+from aiokafka.errors import InvalidReplicationFactorError
 from kafka.protocol.admin import CreateTopicsRequest
 from kafka.protocol.metadata import MetadataRequest
 from tests.kafka.testutil import env_kafka_version, random_string

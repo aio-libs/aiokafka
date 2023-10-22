@@ -12,7 +12,7 @@ from kafka.protocol.api import RequestHeader
 from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.produce import ProduceRequest
 
-import kafka.errors as Errors
+import aiokafka.errors as Errors
 
 
 @pytest.fixture

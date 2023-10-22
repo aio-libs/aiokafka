@@ -144,21 +144,6 @@ Errors
     :members:
 
 
-.. autoclass:: aiokafka.errors.KafkaTimeoutError
-.. autoclass:: aiokafka.errors.RequestTimedOutError
-.. autoclass:: aiokafka.errors.NotEnoughReplicasError
-.. autoclass:: aiokafka.errors.NotEnoughReplicasAfterAppendError
-.. autoclass:: aiokafka.errors.KafkaError
-.. autoclass:: aiokafka.errors.UnsupportedVersionError
-.. autoclass:: aiokafka.errors.TopicAuthorizationFailedError
-.. autoclass:: aiokafka.errors.OffsetOutOfRangeError
-.. autoclass:: aiokafka.errors.CorruptRecordException
-.. autoclass:: kafka.errors.CorruptRecordException
-.. autoclass:: aiokafka.errors.InvalidMessageError
-.. autoclass:: aiokafka.errors.IllegalStateError
-.. autoclass:: aiokafka.errors.CommitFailedError
-
-
 Structs
 ^^^^^^^
 

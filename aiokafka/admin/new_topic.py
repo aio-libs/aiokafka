@@ -1,4 +1,4 @@
-from kafka.errors import IllegalArgumentError
+from aiokafka.errors import IllegalArgumentError
 
 
 class NewTopic:

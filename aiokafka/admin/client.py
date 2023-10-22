@@ -4,7 +4,6 @@ from collections import defaultdict
 from ssl import SSLContext
 from typing import List, Optional, Dict, Tuple, Any
 
-from kafka.errors import IncompatibleBrokerVersion, for_code
 from kafka.protocol.api import Request, Response
 from kafka.protocol.metadata import MetadataRequest
 from kafka.protocol.commit import OffsetFetchRequest, GroupCoordinatorRequest
@@ -20,6 +19,7 @@ from kafka.protocol.admin import (
 from kafka.structs import TopicPartition, OffsetAndMetadata
 
 from aiokafka import __version__
+from aiokafka.errors import IncompatibleBrokerVersion, for_code
 from aiokafka.client import AIOKafkaClient
 
 from .config_resource import ConfigResourceType, ConfigResource

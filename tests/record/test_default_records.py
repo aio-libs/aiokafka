@@ -1,8 +1,9 @@
 from unittest import mock
 
 import kafka.codec
-from kafka.errors import UnsupportedCodecError
 import pytest
+
+from aiokafka.errors import UnsupportedCodecError
 from aiokafka.record.default_records import (
     DefaultRecordBatch, DefaultRecordBatchBuilder
 )
