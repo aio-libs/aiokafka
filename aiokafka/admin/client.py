@@ -16,11 +16,11 @@ from kafka.protocol.admin import (
     AlterConfigsRequest,
     ListGroupsRequest,
     ApiVersionRequest_v0)
-from kafka.structs import TopicPartition, OffsetAndMetadata
 
 from aiokafka import __version__
-from aiokafka.errors import IncompatibleBrokerVersion, for_code
 from aiokafka.client import AIOKafkaClient
+from aiokafka.errors import IncompatibleBrokerVersion, for_code
+from aiokafka.structs import TopicPartition, OffsetAndMetadata
 
 from .config_resource import ConfigResourceType, ConfigResource
 from .new_topic import NewTopic

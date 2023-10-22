@@ -6,13 +6,13 @@ from random import randint, sample
 
 import pytest
 
-from kafka.structs import TopicPartition
 from aiokafka.coordinator.assignors.range import RangePartitionAssignor
 from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from aiokafka.coordinator.assignors.sticky.sticky_assignor import (
     StickyPartitionAssignor,
 )
 from aiokafka.coordinator.protocol import ConsumerProtocolMemberAssignment
+from aiokafka.structs import TopicPartition
 
 
 @pytest.fixture(autouse=True)

@@ -19,7 +19,6 @@ logging.getLogger(__name__).addHandler(NullHandler())
 
 
 from kafka.serializer import Serializer, Deserializer
-from kafka.structs import TopicPartition, OffsetAndMetadata
 
 
 __all__ = [

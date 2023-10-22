@@ -149,7 +149,7 @@ Structs
 
 .. automodule:: aiokafka.structs
 
-.. autoclass:: kafka.structs.TopicPartition
+.. autoclass:: aiokafka.structs.TopicPartition
     :members:
 
 .. autoclass:: aiokafka.structs.RecordMetadata

@@ -2,13 +2,12 @@ import collections
 import itertools
 import logging
 
-from kafka.structs import TopicPartition
-
 from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor
 from aiokafka.coordinator.protocol import (
     ConsumerProtocolMemberMetadata,
     ConsumerProtocolMemberAssignment,
 )
+from aiokafka.structs import TopicPartition
 
 log = logging.getLogger(__name__)
 

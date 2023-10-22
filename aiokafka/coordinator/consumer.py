@@ -8,10 +8,10 @@ from kafka.future import Future
 from kafka.metrics import AnonMeasurable
 from kafka.metrics.stats import Avg, Count, Max, Rate
 from kafka.protocol.commit import OffsetCommitRequest, OffsetFetchRequest
-from kafka.structs import OffsetAndMetadata, TopicPartition
 from kafka.util import WeakMethod
 
 import aiokafka.errors as Errors
+from aiokafka.structs import OffsetAndMetadata, TopicPartition
 
 from .base import BaseCoordinator, Generation
 from .assignors.range import RangePartitionAssignor

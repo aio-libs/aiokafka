@@ -1,6 +1,7 @@
 from kafka.protocol.struct import Struct
 from kafka.protocol.types import Array, Bytes, Int16, Int32, Schema, String
-from kafka.structs import TopicPartition
+
+from aiokafka.structs import TopicPartition
 
 
 class ConsumerProtocolMemberMetadata(Struct):

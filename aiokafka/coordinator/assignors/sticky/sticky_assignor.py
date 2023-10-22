@@ -4,7 +4,6 @@ from copy import deepcopy
 
 from kafka.protocol.struct import Struct
 from kafka.protocol.types import String, Array, Int32
-from kafka.structs import TopicPartition
 
 from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor
 from aiokafka.coordinator.assignors.sticky.partition_movements import PartitionMovements
@@ -14,6 +13,7 @@ from aiokafka.coordinator.protocol import (
     ConsumerProtocolMemberAssignment,
 )
 from aiokafka.coordinator.protocol import Schema
+from aiokafka.structs import TopicPartition
 
 log = logging.getLogger(__name__)
 
