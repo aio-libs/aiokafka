@@ -3,8 +3,7 @@ import copy
 import functools
 import logging
 import time
-
-from kafka.future import Future
+from concurrent.futures import Future
 
 import aiokafka.errors as Errors
 from aiokafka.metrics import AnonMeasurable
@@ -503,7 +502,7 @@ class ConsumerCoordinator(BaseCoordinator):
                 a commit request completes.
 
         Returns:
-            kafka.future.Future
+            Future
         """
         self._invoke_completed_offset_commit_callbacks()
         if not self.coordinator_unknown():

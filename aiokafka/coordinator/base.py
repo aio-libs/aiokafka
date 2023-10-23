@@ -4,8 +4,7 @@ import logging
 import threading
 import time
 import weakref
-
-from kafka.future import Future
+from concurrent.futures import Future
 
 from aiokafka import errors as Errors
 from aiokafka.metrics import AnonMeasurable

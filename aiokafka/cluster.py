@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 
-from kafka.future import Future
+from concurrent.futures import Future
 
 from aiokafka import errors as Errors
 from aiokafka.conn import collect_hosts
@@ -189,7 +189,7 @@ class ClusterMetadata:
         change the reported ttl()
 
         Returns:
-            kafka.future.Future (value will be the cluster object after update)
+            Future (value will be the cluster object after update)
         """
         with self._lock:
             self._need_update = True

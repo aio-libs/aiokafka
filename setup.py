@@ -172,7 +172,7 @@ args = dict(
     },
     download_url="https://pypi.python.org/pypi/aiokafka",
     license="Apache 2",
-    packages=["aiokafka", "kafka"],
+    packages=["aiokafka"],
     python_requires=">=3.8",
     install_requires=install_requires,
     extras_require=extras_require,
