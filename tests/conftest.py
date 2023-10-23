@@ -15,6 +15,7 @@ from aiokafka.record.legacy_records import (
 from aiokafka.record.default_records import (
     DefaultRecordBatchBuilder, _DefaultRecordBatchBuilderPy)
 from aiokafka.util import NO_EXTENSIONS
+
 from ._testutil import wait_kafka
 
 

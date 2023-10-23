@@ -4,9 +4,8 @@ import sys
 import traceback
 import warnings
 
-from kafka.codec import has_gzip, has_snappy, has_lz4, has_zstd
-
 from aiokafka.client import AIOKafkaClient
+from aiokafka.codec import has_gzip, has_snappy, has_lz4, has_zstd
 from aiokafka.errors import (
     MessageSizeTooLargeError, UnsupportedVersionError, IllegalOperation)
 from aiokafka.partitioner import DefaultPartitioner

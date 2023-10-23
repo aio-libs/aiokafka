@@ -1,7 +1,7 @@
 import io
 import time
 
-from kafka.codec import (
+from aiokafka.codec import (
     has_gzip,
     has_snappy,
     has_lz4,

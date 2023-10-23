@@ -1,6 +1,6 @@
 from unittest import mock
 
-import kafka.codec
+import aiokafka.codec
 import pytest
 
 from aiokafka.errors import UnsupportedCodecError
@@ -196,7 +196,7 @@ def test_unavailable_codec(compression_type, name, checker_name):
     builder.append(0, timestamp=None, key=None, value=b"M" * 2000, headers=[])
     correct_buffer = builder.build()
 
-    with mock.patch.object(kafka.codec, checker_name, return_value=False):
+    with mock.patch.object(aiokafka.codec, checker_name, return_value=False):
         # Check that builder raises error
         builder = DefaultRecordBatchBuilder(
             magic=2, compression_type=compression_type, is_transactional=0,
