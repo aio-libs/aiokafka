@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 import time
 
 
@@ -7,9 +5,9 @@ class KafkaMetric(object):
     # NOTE java constructor takes a lock instance
     def __init__(self, metric_name, measurable, config):
         if not metric_name:
-            raise ValueError('metric_name must be non-empty')
+            raise ValueError("metric_name must be non-empty")
         if not measurable:
-            raise ValueError('measurable must be non-empty')
+            raise ValueError("measurable must be non-empty")
         self._metric_name = metric_name
         self._measurable = measurable
         self._config = config

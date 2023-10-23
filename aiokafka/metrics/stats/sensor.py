@@ -1,10 +1,8 @@
-from __future__ import absolute_import
-
 import threading
 import time
 
 from aiokafka.errors import QuotaViolationError
-from kafka.metrics import KafkaMetric
+from aiokafka.metrics.kafka_metric import KafkaMetric
 
 
 class Sensor(object):
@@ -15,10 +13,12 @@ class Sensor(object):
     the `record(double)` api and would maintain a set
     of metrics about request sizes such as the average or max.
     """
-    def __init__(self, registry, name, parents, config,
-                 inactive_sensor_expiration_time_seconds):
+
+    def __init__(
+        self, registry, name, parents, config, inactive_sensor_expiration_time_seconds
+    ):
         if not name:
-            raise ValueError('name must be non-empty')
+            raise ValueError("name must be non-empty")
         self._lock = threading.RLock()
         self._registry = registry
         self._name = name
@@ -27,15 +27,17 @@ class Sensor(object):
         self._stats = []
         self._config = config
         self._inactive_sensor_expiration_time_ms = (
-            inactive_sensor_expiration_time_seconds * 1000)
+            inactive_sensor_expiration_time_seconds * 1000
+        )
         self._last_record_time = time.time() * 1000
         self._check_forest(set())
 
     def _check_forest(self, sensors):
         """Validate that this sensor doesn't end up referencing itself."""
         if self in sensors:
-            raise ValueError('Circular dependency in sensors: %s is its own'
-                             'parent.' % (self.name,))
+            raise ValueError(
+                "Circular dependency in sensors: %s is its own" "parent." % (self.name,)
+            )
         sensors.add(self)
         for parent in self._parents:
             parent._check_forest(sensors)
@@ -84,11 +86,11 @@ class Sensor(object):
             if metric.config and metric.config.quota:
                 value = metric.value(time_ms)
                 if not metric.config.quota.is_acceptable(value):
-                    raise QuotaViolationError("'%s' violated quota. Actual: "
-                                              "%d, Threshold: %d" %
-                                              (metric.metric_name,
-                                               value,
-                                               metric.config.quota.bound))
+                    raise QuotaViolationError(
+                        "'%s' violated quota. Actual: "
+                        "%d, Threshold: %d"
+                        % (metric.metric_name, value, metric.config.quota.bound)
+                    )
 
     def add_compound(self, compound_stat, config=None):
         """
@@ -102,11 +104,12 @@ class Sensor(object):
                 for this sensor.
         """
         if not compound_stat:
-            raise ValueError('compound stat must be non-empty')
+            raise ValueError("compound stat must be non-empty")
         self._stats.append(compound_stat)
         for named_measurable in compound_stat.stats():
-            metric = KafkaMetric(named_measurable.name, named_measurable.stat,
-                                 config or self._config)
+            metric = KafkaMetric(
+                named_measurable.name, named_measurable.stat, config or self._config
+            )
             self._registry.register_metric(metric)
             self._metrics.append(metric)
 
@@ -130,5 +133,6 @@ class Sensor(object):
         """
         Return True if the Sensor is eligible for removal due to inactivity.
         """
-        return ((time.time() * 1000 - self._last_record_time) >
-                self._inactive_sensor_expiration_time_ms)
+        return (
+            time.time() * 1000 - self._last_record_time
+        ) > self._inactive_sensor_expiration_time_ms

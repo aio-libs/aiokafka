@@ -1,12 +1,17 @@
-from __future__ import absolute_import
-
 import sys
 
 
 class MetricConfig(object):
     """Configuration values for metrics"""
-    def __init__(self, quota=None, samples=2, event_window=sys.maxsize,
-                 time_window_ms=30 * 1000, tags=None):
+
+    def __init__(
+        self,
+        quota=None,
+        samples=2,
+        event_window=sys.maxsize,
+        time_window_ms=30 * 1000,
+        tags=None,
+    ):
         """
         Arguments:
             quota (Quota, optional): Upper or lower bound of a value.
@@ -29,5 +34,5 @@ class MetricConfig(object):
     @samples.setter
     def samples(self, value):
         if value < 1:
-            raise ValueError('The number of samples must be at least 1.')
+            raise ValueError("The number of samples must be at least 1.")
         self._samples = value

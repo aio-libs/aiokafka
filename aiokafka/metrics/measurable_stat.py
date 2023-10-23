@@ -1,9 +1,7 @@
-from __future__ import absolute_import
-
 import abc
 
-from kafka.metrics.measurable import AbstractMeasurable
-from kafka.metrics.stat import AbstractStat
+from .measurable import AbstractMeasurable
+from .stat import AbstractStat
 
 
 class AbstractMeasurableStat(AbstractStat, AbstractMeasurable):
@@ -13,4 +11,5 @@ class AbstractMeasurableStat(AbstractStat, AbstractMeasurable):
     This is the interface used for most of the simple statistics such
     as Avg, Max, Count, etc.
     """
+
     __metaclass__ = abc.ABCMeta

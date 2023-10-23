@@ -1,8 +1,6 @@
-from __future__ import absolute_import
-
 import abc
 
-from kafka.metrics.measurable_stat import AbstractMeasurableStat
+from aiokafka.metrics.measurable_stat import AbstractMeasurableStat
 
 
 class AbstractSampledStat(AbstractMeasurableStat):
@@ -20,6 +18,7 @@ class AbstractSampledStat(AbstractMeasurableStat):
     Subclasses of this class define different statistics measured
     using this basic pattern.
     """
+
     __metaclass__ = abc.ABCMeta
 
     def __init__(self, initial_value):
@@ -84,7 +83,6 @@ class AbstractSampledStat(AbstractMeasurableStat):
             return sample
 
     class Sample(object):
-
         def __init__(self, initial_value, now):
             self.initial_value = initial_value
             self.event_count = 0
@@ -97,5 +95,7 @@ class AbstractSampledStat(AbstractMeasurableStat):
             self.value = self.initial_value
 
         def is_complete(self, time_ms, config):
-            return (time_ms - self.last_window_ms >= config.time_window_ms or
-                    self.event_count >= config.event_window)
+            return (
+                time_ms - self.last_window_ms >= config.time_window_ms
+                or self.event_count >= config.event_window
+            )

@@ -1,12 +1,13 @@
-from __future__ import absolute_import
-
 import logging
 import sys
 import time
 import threading
 
-from kafka.metrics import AnonMeasurable, KafkaMetric, MetricConfig, MetricName
-from kafka.metrics.stats import Sensor
+from .kafka_metric import KafkaMetric
+from .measurable import AnonMeasurable
+from .metric_config import MetricConfig
+from .metric_name import MetricName
+from .stats import Sensor
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +35,8 @@ class Metrics(object):
         # as messages are sent we record the sizes
         sensor.record(message_size);
     """
-    def __init__(self, default_config=None, reporters=None,
-                 enable_expiration=False):
+
+    def __init__(self, default_config=None, reporters=None, enable_expiration=False):
         """
         Create a metrics repository with a default config, given metric
         reporters and the ability to expire eligible sensors
@@ -57,19 +58,24 @@ class Metrics(object):
             reporter.init([])
 
         if enable_expiration:
+
             def expire_loop():
                 while True:
                     # delay 30 seconds
                     time.sleep(30)
                     self.ExpireSensorTask.run(self)
+
             metrics_scheduler = threading.Thread(target=expire_loop)
             # Creating a daemon thread to not block shutdown
             metrics_scheduler.daemon = True
             metrics_scheduler.start()
 
-        self.add_metric(self.metric_name('count', 'kafka-metrics-count',
-                                         'total number of registered metrics'),
-                        AnonMeasurable(lambda config, now: len(self._metrics)))
+        self.add_metric(
+            self.metric_name(
+                "count", "kafka-metrics-count", "total number of registered metrics"
+            ),
+            AnonMeasurable(lambda config, now: len(self._metrics)),
+        )
 
     @property
     def config(self):
@@ -82,7 +88,7 @@ class Metrics(object):
         """
         return self._metrics
 
-    def metric_name(self, name, group, description='', tags=None):
+    def metric_name(self, name, group, description="", tags=None):
         """
         Create a MetricName with the given name, group, description and tags,
         plus default tags specified in the metric configuration.
@@ -113,12 +119,16 @@ class Metrics(object):
             Sensor: The sensor or None if no such sensor exists
         """
         if not name:
-            raise ValueError('name must be non-empty')
+            raise ValueError("name must be non-empty")
         return self._sensors.get(name, None)
 
-    def sensor(self, name, config=None,
-               inactive_sensor_expiration_time_seconds=sys.maxsize,
-               parents=None):
+    def sensor(
+        self,
+        name,
+        config=None,
+        inactive_sensor_expiration_time_seconds=sys.maxsize,
+        parents=None,
+    ):
         """
         Get or create a sensor with the given unique name and zero or
         more parent sensors. All parent sensors will receive every value
@@ -143,8 +153,13 @@ class Metrics(object):
         with self._lock:
             sensor = self.get_sensor(name)
             if not sensor:
-                sensor = Sensor(self, name, parents, config or self.config,
-                                inactive_sensor_expiration_time_seconds)
+                sensor = Sensor(
+                    self,
+                    name,
+                    parents,
+                    config or self.config,
+                    inactive_sensor_expiration_time_seconds,
+                )
                 self._sensors[name] = sensor
                 if parents:
                     for parent in parents:
@@ -153,7 +168,7 @@ class Metrics(object):
                             children = []
                             self._children_sensors[parent] = children
                         children.append(sensor)
-                logger.debug('Added sensor with name %s', name)
+                logger.debug("Added sensor with name %s", name)
             return sensor
 
     def remove_sensor(self, name):
@@ -172,7 +187,7 @@ class Metrics(object):
                     if val and val == sensor:
                         for metric in sensor.metrics:
                             self.remove_metric(metric.metric_name)
-                        logger.debug('Removed sensor with name %s', name)
+                        logger.debug("Removed sensor with name %s", name)
                         child_sensors = self._children_sensors.pop(sensor, None)
             if child_sensors:
                 for child_sensor in child_sensors:
@@ -224,8 +239,10 @@ class Metrics(object):
     def register_metric(self, metric):
         with self._lock:
             if metric.metric_name in self.metrics:
-                raise ValueError('A metric named "%s" already exists, cannot'
-                                 ' register another one.' % (metric.metric_name,))
+                raise ValueError(
+                    'A metric named "%s" already exists, cannot'
+                    " register another one." % (metric.metric_name,)
+                )
             self.metrics[metric.metric_name] = metric
             for reporter in self._reporters:
                 reporter.metric_change(metric)
@@ -235,6 +252,7 @@ class Metrics(object):
         This iterates over every Sensor and triggers a remove_sensor
         if it has expired. Package private for testing
         """
+
         @staticmethod
         def run(metrics):
             items = list(metrics._sensors.items())
@@ -250,7 +268,7 @@ class Metrics(object):
                 # concern and thus not necessary to optimize
                 with sensor._lock:
                     if sensor.has_expired():
-                        logger.debug('Removing expired sensor %s', name)
+                        logger.debug("Removing expired sensor %s", name)
                         metrics.remove_sensor(name)
 
     def close(self):

@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 import copy
 
 
@@ -50,9 +48,9 @@ class MetricName(object):
             tags (dict, optional): Additional key/val attributes of the metric.
         """
         if not (name and group):
-            raise ValueError('name and group must be non-empty.')
+            raise ValueError("name and group must be non-empty.")
         if tags is not None and not isinstance(tags, dict):
-            raise ValueError('tags must be a dict if present.')
+            raise ValueError("tags must be a dict if present.")
 
         self._name = name
         self._group = group
@@ -93,14 +91,20 @@ class MetricName(object):
             return True
         if other is None:
             return False
-        return (type(self) == type(other) and
-                self.group == other.group and
-                self.name == other.name and
-                self.tags == other.tags)
+        return (
+            type(self) == type(other)
+            and self.group == other.group
+            and self.name == other.name
+            and self.tags == other.tags
+        )
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
     def __str__(self):
-        return 'MetricName(name=%s, group=%s, description=%s, tags=%s)' % (
-            self.name, self.group, self.description, self.tags)
+        return "MetricName(name=%s, group=%s, description=%s, tags=%s)" % (
+            self.name,
+            self.group,
+            self.description,
+            self.tags,
+        )

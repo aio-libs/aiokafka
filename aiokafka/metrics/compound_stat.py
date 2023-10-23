@@ -1,8 +1,6 @@
-from __future__ import absolute_import
-
 import abc
 
-from kafka.metrics.stat import AbstractStat
+from .stat import AbstractStat
 
 
 class AbstractCompoundStat(AbstractStat):
@@ -11,6 +9,7 @@ class AbstractCompoundStat(AbstractStat):
     data structure feeds many metrics. This is the example for a
     histogram which has many associated percentiles.
     """
+
     __metaclass__ = abc.ABCMeta
 
     def stats(self):

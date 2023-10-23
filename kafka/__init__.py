@@ -16,11 +16,3 @@ except ImportError:
             pass
 
 logging.getLogger(__name__).addHandler(NullHandler())
-
-
-from kafka.serializer import Serializer, Deserializer
-
-
-__all__ = [
-    'BrokerConnection', 'ConsumerRebalanceListener',
-]

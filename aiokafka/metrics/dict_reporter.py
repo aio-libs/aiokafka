@@ -1,9 +1,7 @@
-from __future__ import absolute_import
-
 import logging
 import threading
 
-from kafka.metrics.metrics_reporter import AbstractMetricsReporter
+from .metrics_reporter import AbstractMetricsReporter
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +11,10 @@ class DictReporter(AbstractMetricsReporter):
 
     Store all metrics in a two level dictionary of category > name > metric.
     """
-    def __init__(self, prefix=''):
+
+    def __init__(self, prefix=""):
         self._lock = threading.Lock()
-        self._prefix = prefix if prefix else ''  # never allow None
+        self._prefix = prefix if prefix else ""  # never allow None
         self._store = {}
 
     def snapshot(self):
@@ -29,10 +28,13 @@ class DictReporter(AbstractMetricsReporter):
             }
         }
         """
-        return dict((category, dict((name, metric.value())
-                                    for name, metric in list(metrics.items())))
-                    for category, metrics in
-                    list(self._store.items()))
+        return dict(
+            (
+                category,
+                dict((name, metric.value()) for name, metric in list(metrics.items())),
+            )
+            for category, metrics in list(self._store.items())
+        )
 
     def init(self, metrics):
         for metric in metrics:
@@ -71,10 +73,10 @@ class DictReporter(AbstractMetricsReporter):
             prefix = None, group = 'bar', tags = None
             returns: 'bar'
         """
-        tags = ','.join('%s=%s' % (k, v) for k, v in
-                        sorted(metric.metric_name.tags.items()))
-        return '.'.join(x for x in
-                        [self._prefix, metric.metric_name.group, tags] if x)
+        tags = ",".join(
+            "%s=%s" % (k, v) for k, v in sorted(metric.metric_name.tags.items())
+        )
+        return ".".join(x for x in [self._prefix, metric.metric_name.group, tags] if x)
 
     def configure(self, configs):
         pass

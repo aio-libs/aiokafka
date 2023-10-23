@@ -6,8 +6,6 @@ import time
 import weakref
 
 from kafka.future import Future
-from kafka.metrics import AnonMeasurable
-from kafka.metrics.stats import Avg, Count, Max, Rate
 from kafka.protocol.commit import GroupCoordinatorRequest, OffsetCommitRequest
 from kafka.protocol.group import (
     HeartbeatRequest,
@@ -17,6 +15,8 @@ from kafka.protocol.group import (
 )
 
 from aiokafka import errors as Errors
+from aiokafka.metrics import AnonMeasurable
+from aiokafka.metrics.stats import Avg, Count, Max, Rate
 
 from .heartbeat import Heartbeat
 

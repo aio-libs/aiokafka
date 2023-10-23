@@ -1,27 +1,25 @@
-from __future__ import absolute_import
-
-from kafka.metrics.measurable_stat import AbstractMeasurableStat
-from kafka.metrics.stats.sampled_stat import AbstractSampledStat
+from aiokafka.metrics.measurable_stat import AbstractMeasurableStat
+from aiokafka.metrics.stats.sampled_stat import AbstractSampledStat
 
 
 class TimeUnit(object):
     _names = {
-        'nanosecond': 0,
-        'microsecond': 1,
-        'millisecond': 2,
-        'second': 3,
-        'minute': 4,
-        'hour':  5,
-        'day': 6,
+        "nanosecond": 0,
+        "microsecond": 1,
+        "millisecond": 2,
+        "second": 3,
+        "minute": 4,
+        "hour": 5,
+        "day": 6,
     }
 
-    NANOSECONDS = _names['nanosecond']
-    MICROSECONDS = _names['microsecond']
-    MILLISECONDS = _names['millisecond']
-    SECONDS = _names['second']
-    MINUTES = _names['minute']
-    HOURS = _names['hour']
-    DAYS = _names['day']
+    NANOSECONDS = _names["nanosecond"]
+    MICROSECONDS = _names["microsecond"]
+    MILLISECONDS = _names["millisecond"]
+    SECONDS = _names["second"]
+    MINUTES = _names["minute"]
+    HOURS = _names["hour"]
+    DAYS = _names["day"]
 
     @staticmethod
     def get_name(time_unit):
@@ -37,6 +35,7 @@ class Rate(AbstractMeasurableStat):
     occurrences (e.g. the count of values measured over the time interval)
     or other such values.
     """
+
     def __init__(self, time_unit=TimeUnit.SECONDS, sampled_stat=None):
         self._stat = sampled_stat or SampledTotal()
         self._unit = time_unit
@@ -80,8 +79,9 @@ class Rate(AbstractMeasurableStat):
         # If the available windows are less than the minimum required,
         # add the difference to the totalElapsedTime
         if num_full_windows < min_full_windows:
-            total_elapsed_time_ms += ((min_full_windows - num_full_windows) *
-                                      config.time_window_ms)
+            total_elapsed_time_ms += (
+                min_full_windows - num_full_windows
+            ) * config.time_window_ms
 
         return total_elapsed_time_ms
 
@@ -101,13 +101,13 @@ class Rate(AbstractMeasurableStat):
         elif self._unit == TimeUnit.DAYS:
             return time_ms / (24.0 * 60.0 * 60.0 * 1000.0)
         else:
-            raise ValueError('Unknown unit: %s' % (self._unit,))
+            raise ValueError("Unknown unit: %s" % (self._unit,))
 
 
 class SampledTotal(AbstractSampledStat):
     def __init__(self, initial_value=None):
         if initial_value is not None:
-            raise ValueError('initial_value cannot be set on SampledTotal')
+            raise ValueError("initial_value cannot be set on SampledTotal")
         super(SampledTotal, self).__init__(0.0)
 
     def update(self, sample, config, value, time_ms):
