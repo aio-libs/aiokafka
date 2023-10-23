@@ -64,6 +64,19 @@ class Int32(AbstractType):
         return _unpack(cls._unpack, data.read(4))
 
 
+class UInt32(AbstractType):
+    _pack = struct.Struct(">I").pack
+    _unpack = struct.Struct(">I").unpack
+
+    @classmethod
+    def encode(cls, value):
+        return _pack(cls._pack, value)
+
+    @classmethod
+    def decode(cls, data):
+        return _unpack(cls._unpack, data.read(4))
+
+
 class Int64(AbstractType):
     _pack = struct.Struct(">q").pack
     _unpack = struct.Struct(">q").unpack

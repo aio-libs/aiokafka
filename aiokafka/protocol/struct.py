@@ -1,9 +1,9 @@
 from io import BytesIO
 
+from aiokafka.util import WeakMethod
+
 from .abstract import AbstractType
 from .types import Schema
-
-from kafka.util import WeakMethod
 
 
 class Struct(AbstractType):

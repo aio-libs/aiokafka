@@ -1,5 +1,6 @@
 import io
 import time
+from binascii import crc32
 
 from aiokafka.codec import (
     has_gzip,
@@ -12,23 +13,24 @@ from aiokafka.codec import (
     lz4_decode,
     lz4_decode_old_kafka,
 )
+from aiokafka.util import WeakMethod
+
 from .frame import KafkaBytes
 from .struct import Struct
-from .types import Int8, Int32, Int64, Bytes, Schema, AbstractType
-from kafka.util import crc32, WeakMethod
+from .types import Int8, Int32, UInt32, Int64, Bytes, Schema, AbstractType
 
 
 class Message(Struct):
     SCHEMAS = [
         Schema(
-            ("crc", Int32),
+            ("crc", UInt32),
             ("magic", Int8),
             ("attributes", Int8),
             ("key", Bytes),
             ("value", Bytes),
         ),
         Schema(
-            ("crc", Int32),
+            ("crc", UInt32),
             ("magic", Int8),
             ("attributes", Int8),
             ("timestamp", Int64),
