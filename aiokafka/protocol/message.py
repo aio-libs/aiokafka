@@ -1,34 +1,40 @@
-from __future__ import absolute_import
-
 import io
 import time
 
-from kafka.codec import (has_gzip, has_snappy, has_lz4, has_zstd,
-                     gzip_decode, snappy_decode, zstd_decode,
-                     lz4_decode, lz4_decode_old_kafka)
-from kafka.protocol.frame import KafkaBytes
-from kafka.protocol.struct import Struct
-from kafka.protocol.types import (
-    Int8, Int32, Int64, Bytes, Schema, AbstractType
+from kafka.codec import (
+    has_gzip,
+    has_snappy,
+    has_lz4,
+    has_zstd,
+    gzip_decode,
+    snappy_decode,
+    zstd_decode,
+    lz4_decode,
+    lz4_decode_old_kafka,
 )
+from .frame import KafkaBytes
+from .struct import Struct
+from .types import Int8, Int32, Int64, Bytes, Schema, AbstractType
 from kafka.util import crc32, WeakMethod
 
 
 class Message(Struct):
     SCHEMAS = [
         Schema(
-            ('crc', Int32),
-            ('magic', Int8),
-            ('attributes', Int8),
-            ('key', Bytes),
-            ('value', Bytes)),
+            ("crc", Int32),
+            ("magic", Int8),
+            ("attributes", Int8),
+            ("key", Bytes),
+            ("value", Bytes),
+        ),
         Schema(
-            ('crc', Int32),
-            ('magic', Int8),
-            ('attributes', Int8),
-            ('timestamp', Int64),
-            ('key', Bytes),
-            ('value', Bytes)),
+            ("crc", Int32),
+            ("magic", Int8),
+            ("attributes", Int8),
+            ("timestamp", Int64),
+            ("key", Bytes),
+            ("value", Bytes),
+        ),
     ]
     SCHEMA = SCHEMAS[1]
     CODEC_MASK = 0x07
@@ -37,13 +43,14 @@ class Message(Struct):
     CODEC_LZ4 = 0x03
     CODEC_ZSTD = 0x04
     TIMESTAMP_TYPE_MASK = 0x08
-    HEADER_SIZE = 22  # crc(4), magic(1), attributes(1), timestamp(8), key+value size(4*2)
+    HEADER_SIZE = (
+        22  # crc(4), magic(1), attributes(1), timestamp(8), key+value size(4*2)
+    )
 
-    def __init__(self, value, key=None, magic=0, attributes=0, crc=0,
-                 timestamp=None):
-        assert value is None or isinstance(value, bytes), 'value must be bytes'
-        assert key is None or isinstance(key, bytes), 'key must be bytes'
-        assert magic > 0 or timestamp is None, 'timestamp not supported in v0'
+    def __init__(self, value, key=None, magic=0, attributes=0, crc=0, timestamp=None):
+        assert value is None or isinstance(value, bytes), "value must be bytes"
+        assert key is None or isinstance(key, bytes), "key must be bytes"
+        assert magic > 0 or timestamp is None, "timestamp not supported in v0"
 
         # Default timestamp to now for v1 messages
         if magic > 0 and timestamp is None:
@@ -74,11 +81,18 @@ class Message(Struct):
     def _encode_self(self, recalc_crc=True):
         version = self.magic
         if version == 1:
-            fields = (self.crc, self.magic, self.attributes, self.timestamp, self.key, self.value)
+            fields = (
+                self.crc,
+                self.magic,
+                self.attributes,
+                self.timestamp,
+                self.key,
+                self.value,
+            )
         elif version == 0:
             fields = (self.crc, self.magic, self.attributes, self.key, self.value)
         else:
-            raise ValueError('Unrecognized message version: %s' % (version,))
+            raise ValueError("Unrecognized message version: %s" % (version,))
         message = Message.SCHEMAS[version].encode(fields)
         if not recalc_crc:
             return message
@@ -101,9 +115,14 @@ class Message(Struct):
             timestamp = fields[0]
         else:
             timestamp = None
-        msg = cls(fields[-1], key=fields[-2],
-                  magic=magic, attributes=attributes, crc=crc,
-                  timestamp=timestamp)
+        msg = cls(
+            fields[-1],
+            key=fields[-2],
+            magic=magic,
+            attributes=attributes,
+            crc=crc,
+            timestamp=timestamp,
+        )
         msg._validated_crc = _validated_crc
         return msg
 
@@ -120,15 +139,20 @@ class Message(Struct):
 
     def decompress(self):
         codec = self.attributes & self.CODEC_MASK
-        assert codec in (self.CODEC_GZIP, self.CODEC_SNAPPY, self.CODEC_LZ4, self.CODEC_ZSTD)
+        assert codec in (
+            self.CODEC_GZIP,
+            self.CODEC_SNAPPY,
+            self.CODEC_LZ4,
+            self.CODEC_ZSTD,
+        )
         if codec == self.CODEC_GZIP:
-            assert has_gzip(), 'Gzip decompression unsupported'
+            assert has_gzip(), "Gzip decompression unsupported"
             raw_bytes = gzip_decode(self.value)
         elif codec == self.CODEC_SNAPPY:
-            assert has_snappy(), 'Snappy decompression unsupported'
+            assert has_snappy(), "Snappy decompression unsupported"
             raw_bytes = snappy_decode(self.value)
         elif codec == self.CODEC_LZ4:
-            assert has_lz4(), 'LZ4 decompression unsupported'
+            assert has_lz4(), "LZ4 decompression unsupported"
             if self.magic == 0:
                 raw_bytes = lz4_decode_old_kafka(self.value)
             else:
@@ -137,7 +161,7 @@ class Message(Struct):
             assert has_zstd(), "ZSTD decompression unsupported"
             raw_bytes = zstd_decode(self.value)
         else:
-            raise Exception('This should be impossible')
+            raise Exception("This should be impossible")
 
         return MessageSet.decode(raw_bytes, bytes_to_read=len(raw_bytes))
 
@@ -147,14 +171,11 @@ class Message(Struct):
 
 class PartialMessage(bytes):
     def __repr__(self):
-        return 'PartialMessage(%s)' % (self,)
+        return "PartialMessage(%s)" % (self,)
 
 
 class MessageSet(AbstractType):
-    ITEM = Schema(
-        ('offset', Int64),
-        ('message', Bytes)
-    )
+    ITEM = Schema(("offset", Int64), ("message", Bytes))
     HEADER_SIZE = 12  # offset + message_size
 
     @classmethod
@@ -172,7 +193,7 @@ class MessageSet(AbstractType):
         for (offset, message) in items:
             encoded_values.append(Int64.encode(offset))
             encoded_values.append(Bytes.encode(message))
-        encoded = b''.join(encoded_values)
+        encoded = b"".join(encoded_values)
         if prepend_size:
             return Bytes.encode(encoded)
         else:

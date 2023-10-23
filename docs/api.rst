@@ -176,6 +176,6 @@ Structs
 Protocols
 ^^^^^^^^^
 
-.. autoclass:: kafka.protocol.produce.ProduceRequest
+.. autoclass:: aiokafka.protocol.produce.ProduceRequest
     :member-order: alphabetical
     :members:

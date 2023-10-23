@@ -5,23 +5,22 @@ import struct
 from typing import Any
 from unittest import mock
 
-from kafka.protocol.metadata import (
-    MetadataRequest_v0 as MetadataRequest,
-    MetadataResponse_v0 as MetadataResponse)
-from kafka.protocol.commit import (
-    GroupCoordinatorRequest_v0 as GroupCoordinatorRequest,
-    GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
-from kafka.protocol.admin import (
-    SaslHandShakeRequest, SaslHandShakeResponse, SaslAuthenticateRequest,
-    SaslAuthenticateResponse
-)
-from kafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
-
 from aiokafka.conn import AIOKafkaConnection, create_conn, VersionInfo
 from aiokafka.errors import (
     KafkaConnectionError, CorrelationIdError, KafkaError, NoError,
     UnknownError, UnsupportedSaslMechanismError, IllegalSaslStateError
 )
+from aiokafka.protocol.metadata import (
+    MetadataRequest_v0 as MetadataRequest,
+    MetadataResponse_v0 as MetadataResponse)
+from aiokafka.protocol.commit import (
+    GroupCoordinatorRequest_v0 as GroupCoordinatorRequest,
+    GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
+from aiokafka.protocol.admin import (
+    SaslHandShakeRequest, SaslHandShakeResponse, SaslAuthenticateRequest,
+    SaslAuthenticateResponse
+)
+from aiokafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 from aiokafka.util import get_running_loop

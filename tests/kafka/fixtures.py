@@ -15,8 +15,8 @@ from kafka.vendor.six.moves.urllib.parse import urlparse  # pylint: disable=E061
 
 from aiokafka import errors
 from aiokafka.errors import InvalidReplicationFactorError
-from kafka.protocol.admin import CreateTopicsRequest
-from kafka.protocol.metadata import MetadataRequest
+from aiokafka.protocol.admin import CreateTopicsRequest
+from aiokafka.protocol.metadata import MetadataRequest
 from tests.kafka.testutil import env_kafka_version, random_string
 from tests.kafka.service import ExternalService, SpawnedService
 

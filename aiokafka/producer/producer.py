@@ -128,7 +128,7 @@ class AIOKafkaProducer:
             brokers or partitions. Default: 300000
         request_timeout_ms (int): Produce request timeout in milliseconds.
             As it's sent as part of
-            :class:`~kafka.protocol.produce.ProduceRequest` (it's a blocking
+            :class:`~aiokafka.protocol.produce.ProduceRequest` (it's a blocking
             call), maximum waiting time can be up to ``2 *
             request_timeout_ms``.
             Default: 40000.

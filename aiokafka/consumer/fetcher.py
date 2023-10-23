@@ -6,12 +6,12 @@ import time
 from itertools import chain
 
 import async_timeout
-from kafka.protocol.offset import OffsetRequest
-from kafka.protocol.fetch import FetchRequest
 
 import aiokafka.errors as Errors
 from aiokafka.errors import (
     ConsumerStoppedError, RecordTooLargeError, KafkaTimeoutError)
+from aiokafka.protocol.offset import OffsetRequest
+from aiokafka.protocol.fetch import FetchRequest
 from aiokafka.record.memory_records import MemoryRecords
 from aiokafka.record.control_record import ControlRecord, ABORT_MARKER
 from aiokafka.structs import OffsetAndTimestamp, TopicPartition, ConsumerRecord

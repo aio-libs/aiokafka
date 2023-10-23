@@ -5,12 +5,12 @@ import logging
 import time
 
 from kafka.future import Future
-from kafka.protocol.commit import OffsetCommitRequest, OffsetFetchRequest
 from kafka.util import WeakMethod
 
 import aiokafka.errors as Errors
 from aiokafka.metrics import AnonMeasurable
 from aiokafka.metrics.stats import Avg, Count, Max, Rate
+from aiokafka.protocol.commit import OffsetCommitRequest, OffsetFetchRequest
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 
 from .base import BaseCoordinator, Generation

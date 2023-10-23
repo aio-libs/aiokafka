@@ -24,7 +24,7 @@ class KafkaBytes(bytearray):
         return self._idx
 
     def __str__(self):
-        return 'KafkaBytes(%d)' % len(self)
+        return "KafkaBytes(%d)" % len(self)
 
     def __repr__(self):
         return str(self)

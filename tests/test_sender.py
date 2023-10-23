@@ -1,31 +1,6 @@
 from unittest import mock
 
-from ._testutil import (
-    KafkaIntegrationTestCase, run_until_complete, kafka_versions
-)
-
-from kafka.protocol.produce import ProduceRequest, ProduceResponse
-
-from aiokafka.producer.sender import (
-    Sender, InitPIDHandler, AddPartitionsToTxnHandler,
-    AddOffsetsToTxnHandler, TxnOffsetCommitHandler, EndTxnHandler,
-    BaseHandler, SendProduceReqHandler
-)
-from aiokafka.producer.transaction_manager import (
-    TransactionManager, TransactionState
-)
-from aiokafka.protocol.transaction import (
-    InitProducerIdRequest, InitProducerIdResponse,
-    AddPartitionsToTxnRequest, AddPartitionsToTxnResponse,
-    AddOffsetsToTxnRequest, AddOffsetsToTxnResponse,
-    TxnOffsetCommitRequest, TxnOffsetCommitResponse,
-    EndTxnRequest, EndTxnResponse
-)
-from aiokafka.producer.message_accumulator import MessageAccumulator
 from aiokafka.client import AIOKafkaClient, CoordinationType, ConnectionGroup
-from aiokafka.structs import TopicPartition, OffsetAndMetadata
-from aiokafka.util import get_running_loop
-
 from aiokafka.errors import (
     NoError, UnknownError,
     CoordinatorNotAvailableError, NotCoordinatorError,
@@ -36,9 +11,30 @@ from aiokafka.errors import (
     TopicAuthorizationFailedError, OperationNotAttempted,
     TransactionalIdAuthorizationFailed, GroupAuthorizationFailedError
 )
+from aiokafka.producer.message_accumulator import MessageAccumulator
+from aiokafka.producer.sender import (
+    Sender, InitPIDHandler, AddPartitionsToTxnHandler,
+    AddOffsetsToTxnHandler, TxnOffsetCommitHandler, EndTxnHandler,
+    BaseHandler, SendProduceReqHandler
+)
+from aiokafka.producer.transaction_manager import (
+    TransactionManager, TransactionState
+)
+from aiokafka.protocol.metadata import MetadataRequest
+from aiokafka.protocol.produce import ProduceRequest, ProduceResponse
+from aiokafka.protocol.transaction import (
+    InitProducerIdRequest, InitProducerIdResponse,
+    AddPartitionsToTxnRequest, AddPartitionsToTxnResponse,
+    AddOffsetsToTxnRequest, AddOffsetsToTxnResponse,
+    TxnOffsetCommitRequest, TxnOffsetCommitResponse,
+    EndTxnRequest, EndTxnResponse
+)
+from aiokafka.structs import TopicPartition, OffsetAndMetadata
+from aiokafka.util import get_running_loop
 
-from kafka.protocol.metadata import MetadataRequest
-
+from ._testutil import (
+    KafkaIntegrationTestCase, run_until_complete, kafka_versions
+)
 
 LOG_APPEND_TIME = 1
 

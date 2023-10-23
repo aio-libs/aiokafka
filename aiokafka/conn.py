@@ -16,17 +16,16 @@ import warnings
 import weakref
 
 import async_timeout
-from kafka.protocol.api import RequestHeader
-from kafka.protocol.admin import (
-    SaslHandShakeRequest, SaslAuthenticateRequest, ApiVersionRequest
-)
-from kafka.protocol.commit import (
-    GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
 import aiokafka.errors as Errors
-from aiokafka.util import create_future, create_task, get_running_loop, wait_for
-
 from aiokafka.abc import AbstractTokenProvider
+from aiokafka.protocol.api import RequestHeader
+from aiokafka.protocol.admin import (
+    SaslHandShakeRequest, SaslAuthenticateRequest, ApiVersionRequest
+)
+from aiokafka.protocol.commit import (
+    GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
+from aiokafka.util import create_future, create_task, get_running_loop, wait_for
 
 try:
     import gssapi

@@ -1,6 +1,5 @@
-from kafka.protocol.metadata import MetadataResponse
-
 from aiokafka.cluster import ClusterMetadata
+from aiokafka.protocol.metadata import MetadataResponse
 
 
 def test_empty_broker_list():

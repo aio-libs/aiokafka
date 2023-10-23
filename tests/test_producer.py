@@ -6,9 +6,6 @@ import time
 import weakref
 from unittest import mock
 
-from kafka.protocol.produce import ProduceResponse
-
-from aiokafka.producer import AIOKafkaProducer
 from aiokafka.client import AIOKafkaClient
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.consumer import AIOKafkaConsumer
@@ -17,6 +14,8 @@ from aiokafka.errors import (
     MessageSizeTooLargeError, NotLeaderForPartitionError,
     LeaderNotAvailableError, RequestTimedOutError,
     UnsupportedVersionError, ProducerClosed, KafkaError)
+from aiokafka.producer import AIOKafkaProducer
+from aiokafka.protocol.produce import ProduceResponse
 from aiokafka.util import create_future
 
 from ._testutil import (

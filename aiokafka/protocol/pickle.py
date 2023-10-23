@@ -1,10 +1,4 @@
-from __future__ import absolute_import
-
-try:
-    import copyreg  # pylint: disable=import-error
-except ImportError:
-    import copy_reg as copyreg  # pylint: disable=import-error
-
+import copyreg
 import types
 
 
@@ -30,6 +24,7 @@ def _unpickle_method(func_name, obj, cls):
         else:
             break
         return func.__get__(obj, cls)
+
 
 # https://bytes.com/topic/python/answers/552476-why-cant-you-pickle-instancemethods
 copyreg.pickle(types.MethodType, _pickle_method, _unpickle_method)

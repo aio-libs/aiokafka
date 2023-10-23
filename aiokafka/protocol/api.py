@@ -1,20 +1,18 @@
-from __future__ import absolute_import
-
 import abc
 
-from kafka.protocol.struct import Struct
-from kafka.protocol.types import Int16, Int32, String, Schema, Array, TaggedFields
+from .struct import Struct
+from .types import Int16, Int32, String, Schema, Array, TaggedFields
 
 
 class RequestHeader(Struct):
     SCHEMA = Schema(
-        ('api_key', Int16),
-        ('api_version', Int16),
-        ('correlation_id', Int32),
-        ('client_id', String('utf-8'))
+        ("api_key", Int16),
+        ("api_version", Int16),
+        ("correlation_id", Int32),
+        ("client_id", String("utf-8")),
     )
 
-    def __init__(self, request, correlation_id=0, client_id='kafka-python'):
+    def __init__(self, request, correlation_id=0, client_id="kafka-python"):
         super(RequestHeader, self).__init__(
             request.API_KEY, request.API_VERSION, correlation_id, client_id
         )
@@ -23,14 +21,14 @@ class RequestHeader(Struct):
 class RequestHeaderV2(Struct):
     # Flexible response / request headers end in field buffer
     SCHEMA = Schema(
-        ('api_key', Int16),
-        ('api_version', Int16),
-        ('correlation_id', Int32),
-        ('client_id', String('utf-8')),
-        ('tags', TaggedFields),
+        ("api_key", Int16),
+        ("api_version", Int16),
+        ("correlation_id", Int32),
+        ("client_id", String("utf-8")),
+        ("tags", TaggedFields),
     )
 
-    def __init__(self, request, correlation_id=0, client_id='kafka-python', tags=None):
+    def __init__(self, request, correlation_id=0, client_id="kafka-python", tags=None):
         super(RequestHeaderV2, self).__init__(
             request.API_KEY, request.API_VERSION, correlation_id, client_id, tags or {}
         )
@@ -38,14 +36,14 @@ class RequestHeaderV2(Struct):
 
 class ResponseHeader(Struct):
     SCHEMA = Schema(
-        ('correlation_id', Int32),
+        ("correlation_id", Int32),
     )
 
 
 class ResponseHeaderV2(Struct):
     SCHEMA = Schema(
-        ('correlation_id', Int32),
-        ('tags', TaggedFields),
+        ("correlation_id", Int32),
+        ("tags", TaggedFields),
     )
 
 
@@ -83,7 +81,9 @@ class Request(Struct):
 
     def build_request_header(self, correlation_id, client_id):
         if self.FLEXIBLE_VERSION:
-            return RequestHeaderV2(self, correlation_id=correlation_id, client_id=client_id)
+            return RequestHeaderV2(
+                self, correlation_id=correlation_id, client_id=client_id
+            )
         return RequestHeader(self, correlation_id=correlation_id, client_id=client_id)
 
     def parse_response_header(self, read_buffer):
@@ -126,10 +126,7 @@ def _to_object(schema, data):
             obj[name] = _to_object(_type, val)
         elif isinstance(_type, Array):
             if isinstance(_type.array_of, (Array, Schema)):
-                obj[name] = [
-                    _to_object(_type.array_of, x)
-                    for x in val
-                ]
+                obj[name] = [_to_object(_type.array_of, x) for x in val]
             else:
                 obj[name] = val
         else:
