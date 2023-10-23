@@ -164,24 +164,6 @@ class ClusterMetadata:
         """
         return self._groups.get(group)
 
-    def ttl(self):
-        """Milliseconds until metadata should be refreshed"""
-        now = time.time() * 1000
-        if self._need_update:
-            ttl = 0
-        else:
-            metadata_age = now - self._last_successful_refresh_ms
-            ttl = self.config['metadata_max_age_ms'] - metadata_age
-
-        retry_age = now - self._last_refresh_ms
-        next_retry = self.config['retry_backoff_ms'] - retry_age
-
-        return max(ttl, next_retry, 0)
-
-    def refresh_backoff(self):
-        """Return milliseconds to wait before attempting to retry after failure"""
-        return self.config['retry_backoff_ms']
-
     def request_update(self):
         """Flags metadata for update, return Future()
 
