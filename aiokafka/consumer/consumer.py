@@ -6,10 +6,9 @@ import traceback
 import warnings
 from typing import Dict, List
 
-from kafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
-
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
+from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from aiokafka.errors import (
     TopicAuthorizationFailedError, OffsetOutOfRangeError,
     ConsumerStoppedError, IllegalOperation, UnsupportedVersionError,
@@ -214,7 +213,7 @@ class AIOKafkaConsumer:
         sasl_plain_password (str): password for SASL ``PLAIN`` authentication.
             Default: None
         sasl_oauth_token_provider (~aiokafka.abc.AbstractTokenProvider):
-            OAuthBearer token provider instance. (See :mod:`kafka.oauth.abstract`).
+            OAuthBearer token provider instance. (See :mod:`aiokafka.oauth`).
             Default: None
 
     Note:

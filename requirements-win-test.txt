@@ -6,6 +6,7 @@ isort[colors]==5.10.0
 pytest==7.1.2
 pytest-cov==3.0.0
 pytest-asyncio==0.18.3
+pytest-mock==3.12.0
 docker==6.0.1
 chardet==4.0.0  # Until fixed requests is released
 lz4==3.1.3

@@ -56,15 +56,16 @@
 
 import struct
 import time
-from .util import decode_varint, encode_varint, calc_crc32c, size_of_varint
 
+import aiokafka.codec as codecs
 from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from aiokafka.util import NO_EXTENSIONS
-from kafka.codec import (
+from aiokafka.codec import (
     gzip_encode, snappy_encode, lz4_encode, zstd_encode,
     gzip_decode, snappy_decode, lz4_decode, zstd_decode
 )
-import kafka.codec as codecs
+
+from .util import decode_varint, encode_varint, calc_crc32c, size_of_varint
 
 
 class DefaultRecordBase:

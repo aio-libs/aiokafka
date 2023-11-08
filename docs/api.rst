@@ -82,7 +82,7 @@ for setup instructions on Broker side. Client configuration is pretty much the
 same as Java's, consult the ``sasl_*`` options in Consumer and Producer API
 Reference for more details.
 
-.. automodule:: kafka.oauth.abstract
+.. automodule:: aiokafka.oauth
 
 
 Error handling
@@ -132,7 +132,7 @@ Other references
 
 .. autoclass:: aiokafka.producer.message_accumulator.BatchBuilder
 .. autoclass:: aiokafka.consumer.group_coordinator.GroupCoordinator
-.. autoclass:: kafka.coordinator.assignors.roundrobin.RoundRobinPartitionAssignor
+.. autoclass:: aiokafka.coordinator.assignors.roundrobin.RoundRobinPartitionAssignor
 
 
 Errors
@@ -144,27 +144,12 @@ Errors
     :members:
 
 
-.. autoclass:: aiokafka.errors.KafkaTimeoutError
-.. autoclass:: aiokafka.errors.RequestTimedOutError
-.. autoclass:: aiokafka.errors.NotEnoughReplicasError
-.. autoclass:: aiokafka.errors.NotEnoughReplicasAfterAppendError
-.. autoclass:: aiokafka.errors.KafkaError
-.. autoclass:: aiokafka.errors.UnsupportedVersionError
-.. autoclass:: aiokafka.errors.TopicAuthorizationFailedError
-.. autoclass:: aiokafka.errors.OffsetOutOfRangeError
-.. autoclass:: aiokafka.errors.CorruptRecordException
-.. autoclass:: kafka.errors.CorruptRecordException
-.. autoclass:: aiokafka.errors.InvalidMessageError
-.. autoclass:: aiokafka.errors.IllegalStateError
-.. autoclass:: aiokafka.errors.CommitFailedError
-
-
 Structs
 ^^^^^^^
 
 .. automodule:: aiokafka.structs
 
-.. autoclass:: kafka.structs.TopicPartition
+.. autoclass:: aiokafka.structs.TopicPartition
     :members:
 
 .. autoclass:: aiokafka.structs.RecordMetadata
@@ -191,6 +176,6 @@ Structs
 Protocols
 ^^^^^^^^^
 
-.. autoclass:: kafka.protocol.produce.ProduceRequest
+.. autoclass:: aiokafka.protocol.produce.ProduceRequest
     :member-order: alphabetical
     :members:

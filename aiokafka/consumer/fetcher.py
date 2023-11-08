@@ -6,12 +6,12 @@ import time
 from itertools import chain
 
 import async_timeout
-from kafka.protocol.offset import OffsetRequest
-from kafka.protocol.fetch import FetchRequest
 
 import aiokafka.errors as Errors
 from aiokafka.errors import (
     ConsumerStoppedError, RecordTooLargeError, KafkaTimeoutError)
+from aiokafka.protocol.offset import OffsetRequest
+from aiokafka.protocol.fetch import FetchRequest
 from aiokafka.record.memory_records import MemoryRecords
 from aiokafka.record.control_record import ControlRecord, ABORT_MARKER
 from aiokafka.structs import OffsetAndTimestamp, TopicPartition, ConsumerRecord
@@ -309,7 +309,7 @@ class Fetcher:
     Parameters:
         client (AIOKafkaClient): kafka client
         subscription (SubscriptionState): instance of SubscriptionState
-            located in kafka.consumer.subscription_state
+            located in aiokafka.consumer.subscription_state
         key_deserializer (callable): Any callable that takes a
             raw message key and returns a deserialized key.
         value_deserializer (callable, optional): Any callable that takes a

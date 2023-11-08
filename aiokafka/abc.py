@@ -1,8 +1,7 @@
 import abc
-from kafka import ConsumerRebalanceListener as BaseConsumerRebalanceListener
 
 
-class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
+class ConsumerRebalanceListener(abc.ABC):
     """
     A callback interface that the user can implement to trigger custom actions
     when the set of partitions assigned to the consumer changes.

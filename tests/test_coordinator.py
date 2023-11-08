@@ -2,27 +2,26 @@ import asyncio
 import re
 from unittest import mock
 
-from kafka.protocol.group import (
+from aiokafka import ConsumerRebalanceListener
+from aiokafka.client import AIOKafkaClient
+import aiokafka.errors as Errors
+from aiokafka.structs import OffsetAndMetadata, TopicPartition
+from aiokafka.consumer.group_coordinator import (
+    GroupCoordinator, CoordinatorGroupRebalance, NoGroupCoordinator)
+from aiokafka.consumer.subscription_state import SubscriptionState
+from aiokafka.protocol.group import (
     JoinGroupRequest_v0 as JoinGroupRequest,
     SyncGroupResponse_v0 as SyncGroupResponse,
     LeaveGroupRequest_v0 as LeaveGroupRequest,
     HeartbeatRequest_v0 as HeartbeatRequest,
 )
-from kafka.protocol.commit import (
+from aiokafka.protocol.commit import (
     OffsetCommitRequest, OffsetCommitResponse_v2,
     OffsetFetchRequest_v1 as OffsetFetchRequest
 )
-import kafka.errors as Errors
+from aiokafka.util import create_future, create_task, get_running_loop
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
-
-from aiokafka import ConsumerRebalanceListener
-from aiokafka.client import AIOKafkaClient
-from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from aiokafka.consumer.group_coordinator import (
-    GroupCoordinator, CoordinatorGroupRebalance, NoGroupCoordinator)
-from aiokafka.consumer.subscription_state import SubscriptionState
-from aiokafka.util import create_future, create_task, get_running_loop
 
 UNKNOWN_MEMBER_ID = JoinGroupRequest.UNKNOWN_MEMBER_ID
 

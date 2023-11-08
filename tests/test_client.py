@@ -4,18 +4,17 @@ import types
 from typing import Any
 from unittest import mock
 
-from kafka.errors import (
-    KafkaError, KafkaConnectionError, RequestTimedOutError,
-    NodeNotReadyError, UnrecognizedBrokerVersion
-)
-from kafka.protocol.metadata import (
-    MetadataRequest_v0 as MetadataRequest,
-    MetadataResponse_v0 as MetadataResponse)
-from kafka.protocol.fetch import FetchRequest_v0
-
 from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient, ConnectionGroup, CoordinationType
 from aiokafka.conn import AIOKafkaConnection, CloseReason
+from aiokafka.errors import (
+    KafkaError, KafkaConnectionError, RequestTimedOutError,
+    NodeNotReadyError, UnrecognizedBrokerVersion
+)
+from aiokafka.protocol.metadata import (
+    MetadataRequest_v0 as MetadataRequest,
+    MetadataResponse_v0 as MetadataResponse)
+from aiokafka.protocol.fetch import FetchRequest_v0
 from aiokafka.util import create_task, get_running_loop
 from ._testutil import (
     KafkaIntegrationTestCase, run_until_complete, kafka_versions
