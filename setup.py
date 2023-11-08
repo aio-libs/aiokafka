@@ -122,7 +122,7 @@ def read(f):
 
 extras_require = {
     "snappy": ["python-snappy>=0.5"],
-    "lz4": ["lz4"],  # Old format (magic=0) requires xxhash
+    "lz4": ["lz4"],
     "zstd": ["zstandard"],
     "gssapi": ["gssapi"],
 }

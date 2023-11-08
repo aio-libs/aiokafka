@@ -10,6 +10,5 @@ pytest-mock==3.12.0
 docker==6.0.1
 chardet==4.0.0  # Until fixed requests is released
 lz4==3.1.3
-xxhash==2.0.2
 python-snappy==0.6.1
 zstandard==0.16.0

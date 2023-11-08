@@ -44,11 +44,6 @@ try:
 except ImportError:
     lz4framed = None
 
-try:
-    import xxhash
-except ImportError:
-    xxhash = None
-
 PYPY = bool(platform.python_implementation() == "PyPy")
 
 
@@ -251,54 +246,6 @@ elif lz4framed:
     lz4_decode = lz4framed.decompress  # pylint: disable-msg=no-member
 else:
     lz4_decode = None
-
-
-def lz4_encode_old_kafka(payload):
-    """Encode payload for 0.8/0.9 brokers -- requires an incorrect header checksum."""
-    assert xxhash is not None
-    data = lz4_encode(payload)
-    header_size = 7
-    flg = data[4]
-    if not isinstance(flg, int):
-        flg = ord(flg)
-
-    content_size_bit = (flg >> 3) & 1
-    if content_size_bit:
-        # Old kafka does not accept the content-size field
-        # so we need to discard it and reset the header flag
-        flg -= 8
-        data = bytearray(data)
-        data[4] = flg
-        data = bytes(data)
-        payload = data[header_size + 8:]
-    else:
-        payload = data[header_size:]
-
-    # This is the incorrect hc
-    hc = xxhash.xxh32(data[0:header_size - 1]).digest()[
-        -2:-1
-    ]  # pylint: disable-msg=no-member
-
-    return b"".join([data[0:header_size - 1], hc, payload])
-
-
-def lz4_decode_old_kafka(payload):
-    assert xxhash is not None
-    # Kafka's LZ4 code has a bug in its header checksum implementation
-    header_size = 7
-    if isinstance(payload[4], int):
-        flg = payload[4]
-    else:
-        flg = ord(payload[4])
-    content_size_bit = (flg >> 3) & 1
-    if content_size_bit:
-        header_size += 8
-
-    # This should be the correct hc
-    hc = xxhash.xxh32(payload[4:header_size - 1]).digest()[-2:-1]
-
-    munged_payload = b"".join([payload[0:header_size - 1], hc, payload[header_size:]])
-    return lz4_decode(munged_payload)
 
 
 def zstd_encode(payload):

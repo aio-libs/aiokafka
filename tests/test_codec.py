@@ -14,8 +14,6 @@ from aiokafka.codec import (
     snappy_decode,
     lz4_encode,
     lz4_decode,
-    lz4_encode_old_kafka,
-    lz4_decode_old_kafka,
     zstd_encode,
     zstd_decode,
 )
@@ -98,18 +96,6 @@ def test_lz4():
     for i in range(1000):
         b1 = random_string(100)
         b2 = lz4_decode(lz4_encode(b1))
-        assert len(b1) == len(b2)
-        assert b1 == b2
-
-
-@pytest.mark.skipif(
-    not has_lz4() or platform.python_implementation() == "PyPy",
-    reason="python-lz4 crashes on old versions of pypy",
-)
-def test_lz4_old():
-    for i in range(1000):
-        b1 = random_string(100)
-        b2 = lz4_decode_old_kafka(lz4_encode_old_kafka(b1))
         assert len(b1) == len(b2)
         assert b1 == b2
 
