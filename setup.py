@@ -112,6 +112,7 @@ class ve_build_ext(build_ext):
 
 install_requires = [
     "async-timeout",
+    "cramjam",
     "packaging",
 ]
 
@@ -121,7 +122,7 @@ def read(f):
 
 
 extras_require = {
-    "snappy": ["python-snappy>=0.5"],
+    "snappy": ["cramjam"],
     "lz4": ["lz4"],
     "zstd": ["zstandard"],
     "gssapi": ["gssapi"],

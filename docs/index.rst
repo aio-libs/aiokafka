@@ -110,33 +110,7 @@ from http://landinghub.visualstudio.com/visual-cpp-build-tools
 Optional Snappy install
 +++++++++++++++++++++++
 
-1. Download and build Snappy from http://google.github.io/snappy/
-
-Ubuntu:
-
-.. code:: bash
-
-    apt-get install libsnappy-dev
-
-OSX:
-
-.. code:: bash
-
-    brew install snappy
-
-From Source:
-
-.. code:: bash
-
-    wget https://github.com/google/snappy/tarball/master
-    tar xzvf google-snappy-X.X.X-X-XXXXXXXX.tar.gz
-    cd google-snappy-X.X.X-X-XXXXXXXX
-    ./configure
-    make
-    sudo make install
-
-
-1. Install **aiokafka** with :code:`snappy` extra option
+To enable Snappy compression/decompression, install **aiokafka** with :code:`snappy` extra option
 
 .. code:: bash
 
