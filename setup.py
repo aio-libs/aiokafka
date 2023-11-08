@@ -123,7 +123,7 @@ def read(f):
 
 extras_require = {
     "snappy": ["cramjam"],
-    "lz4": ["lz4"],
+    "lz4": ["lz4>=3.1.3"],
     "zstd": ["zstandard"],
     "gssapi": ["gssapi"],
 }

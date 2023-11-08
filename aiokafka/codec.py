@@ -22,14 +22,8 @@ try:
     def _lz4_compress(payload, **kwargs):
         # Kafka does not support LZ4 dependent blocks
         # https://cwiki.apache.org/confluence/display/KAFKA/KIP-57+-+Interoperable+LZ4+Framing
-        try:
-            # For lz4>=0.12.0
-            kwargs.pop("block_linked", None)
-            return lz4.compress(payload, block_linked=False, **kwargs)
-        except TypeError:
-            # For earlier versions of lz4
-            kwargs.pop("block_mode", None)
-            return lz4.compress(payload, block_mode=1, **kwargs)
+        kwargs.pop("block_linked", None)
+        return lz4.compress(payload, block_linked=False, **kwargs)
 
 except ImportError:
     lz4 = None
