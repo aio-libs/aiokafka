@@ -15,6 +15,7 @@ import os
 from concurrent import futures
 from contextlib import contextmanager
 from functools import wraps
+from unittest.mock import Mock
 
 from aiokafka import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
@@ -129,6 +130,18 @@ class StubRebalanceListener(ConsumerRebalanceListener):
 
     def on_partitions_assigned(self, assigned):
         self.assigns.put_nowait(assigned)
+
+
+class DetectRebalanceListener(ConsumerRebalanceListener):
+    def __init__(self):
+        self.revoke_mock = Mock()
+        self.assign_mock = Mock()
+
+    async def on_partitions_revoked(self, revoked):
+        self.revoke_mock(revoked)
+
+    async def on_partitions_assigned(self, assigned):
+        self.assign_mock(assigned)
 
 
 class ACLManager:

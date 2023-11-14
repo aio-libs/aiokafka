@@ -26,7 +26,7 @@ from aiokafka.errors import (
 )
 
 from ._testutil import (
-    KafkaIntegrationTestCase, StubRebalanceListener,
+    KafkaIntegrationTestCase, StubRebalanceListener, DetectRebalanceListener,
     run_until_complete, run_in_thread, random_string, kafka_versions)
 
 
@@ -2052,3 +2052,197 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         for i in range(10):
             msg = await consumer1.getone()
             self.assertGreaterEqual(int(msg.value), 20)
+
+    @run_until_complete
+    async def test_kip_345_enabled(self):
+        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(1, list(range(10, 20)))
+
+        # group_instance_id key enables KIP-345 mode
+        # default session_timeout_ms is 10s
+        consumer1 = AIOKafkaConsumer(
+            group_id='test-kip-345-group',
+            bootstrap_servers=self.hosts,
+            enable_auto_commit=True,
+            auto_offset_reset='earliest',
+            group_instance_id="consumer_1_static_group_member")
+        consumer2 = AIOKafkaConsumer(
+            group_id='test-kip-345-group',
+            bootstrap_servers=self.hosts,
+            enable_auto_commit=True,
+            auto_offset_reset='earliest',
+            group_instance_id="consumer_2_static_group_member")
+        tp0 = TopicPartition(self.topic, 0)
+        tp1 = TopicPartition(self.topic, 1)
+
+        listener1 = DetectRebalanceListener()
+        listener2 = DetectRebalanceListener()
+        consumer1.subscribe([self.topic], listener=listener1)
+        consumer2.subscribe([self.topic], listener=listener2)
+        # initial rebalance that assigns two partitions to consumer1
+        await consumer1.start()
+        self.add_cleanup(consumer1.stop)
+        await consumer1.seek_to_committed()
+        listener1.revoke_mock.assert_called_with(set())
+        self.assertEqual(listener1.revoke_mock.call_count, 1)
+        listener1.assign_mock.assert_called_with({tp0, tp1})
+        self.assertEqual(listener1.assign_mock.call_count, 1)
+        # second rebalance for consumer1, first rebalance for
+        # consumer2 that assigns 1 partition to both consumer1
+        # and consumer2
+        await consumer2.start()
+        self.add_cleanup(consumer2.stop)
+        await consumer2.seek_to_committed()
+
+        assert consumer1._group_instance_id == "consumer_1_static_group_member"
+        assert consumer2._group_instance_id == "consumer_2_static_group_member"
+
+        c1_partitions = consumer1.assignment()
+        c2_partitions = consumer2.assignment()
+        # take note of assigned partitions
+        if c1_partitions == {tp0}:
+            c1_assignment = {tp0}
+            c2_assignment = {tp1}
+        else:
+            c1_assignment = {tp1}
+            c2_assignment = {tp0}
+
+        listener1.revoke_mock.assert_called_with({tp0, tp1})
+        self.assertEqual(listener1.revoke_mock.call_count, 2)
+        listener1.assign_mock.assert_called_with(c1_assignment)
+        self.assertEqual(listener1.assign_mock.call_count, 2)
+        listener2.revoke_mock.assert_called_with(set())
+        self.assertEqual(listener2.revoke_mock.call_count, 1)
+        listener2.assign_mock.assert_called_with(c2_assignment)
+        self.assertEqual(listener2.assign_mock.call_count, 1)
+
+        # confirm diff partitions
+        assert c2_partitions != c1_partitions
+        # unsubscribe from topic, check if
+        # a third rebalance occurs for consumer1.
+        # It should not since KIP-345 is active.
+        consumer2.unsubscribe()
+        self.assertEqual(listener1.revoke_mock.call_count, 2)
+        self.assertEqual(listener1.assign_mock.call_count, 2)
+        # ensure that consumer2's assigned partitions
+        # are not re-assigned to consumer1
+        for p in c2_partitions:
+            assert p not in c1_partitions
+        # reassign, ensure that it goes back to same partition
+        consumer2.subscribe(topics=[self.topic], listener=listener2)
+        await consumer2._subscription.wait_for_assignment()
+        # since consumer2 rejoins the group, it receives it's old
+        # assigned partitions. We assert that a rebalance for all
+        # partitions was not triggered by checking that the listener2
+        # call count is 2, which is the initial rebalance that assigned the
+        # inital partitions, and this assignment that reassigns the partitions
+        self.assertEqual(listener2.revoke_mock.call_count, 2)
+        self.assertEqual(listener2.assign_mock.call_count, 2)
+        # we check the other consumer's listener to make sure
+        # it did not undergo a rebalance. The call count should still
+        # be 2.
+        self.assertEqual(listener1.revoke_mock.call_count, 2)
+        self.assertEqual(listener1.assign_mock.call_count, 2)
+        assert c2_partitions == consumer2.assignment()
+
+        # wait for timeout, consumer1 should get all
+        # partitions after rebalance
+        all_partitions = frozenset(list(c1_partitions) + list(c2_partitions))
+        await consumer2.stop()
+        await asyncio.sleep(25)
+        # since the timeout has passed, a rebalance should occur
+        listener1.revoke_mock.assert_called_with(c1_assignment)
+        listener1.assign_mock.assert_called_with(c1_assignment.union(c2_assignment))
+        # this is the last rebalance for consumer1, so the count should now be
+        # 3.
+        self.assertEqual(listener1.revoke_mock.call_count, 3)
+        self.assertEqual(listener1.assign_mock.call_count, 3)
+        assert all_partitions == consumer1.assignment()
+
+    @run_until_complete
+    async def test_kip_345_disabled(self):
+        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(1, list(range(10, 20)))
+
+        # default session_timeout_ms is 10s
+        consumer1 = AIOKafkaConsumer(
+            group_id='test-kip-345-group',
+            bootstrap_servers=self.hosts,
+            enable_auto_commit=True,
+            auto_offset_reset='earliest')
+        consumer2 = AIOKafkaConsumer(
+            group_id='test-kip-345-group',
+            bootstrap_servers=self.hosts,
+            enable_auto_commit=True,
+            auto_offset_reset='earliest')
+        tp0 = TopicPartition(self.topic, 0)
+        tp1 = TopicPartition(self.topic, 1)
+
+        listener1 = DetectRebalanceListener()
+        listener2 = DetectRebalanceListener()
+        consumer1.subscribe([self.topic], listener=listener1)
+        consumer2.subscribe([self.topic], listener=listener2)
+        # initial rebalance that assigns two partitions to consumer1
+        await consumer1.start()
+        self.add_cleanup(consumer1.stop)
+        await consumer1.seek_to_committed()
+        listener1.revoke_mock.assert_called_with(set())
+        self.assertEqual(listener1.revoke_mock.call_count, 1)
+        listener1.assign_mock.assert_called_with({tp0, tp1})
+        self.assertEqual(listener1.assign_mock.call_count, 1)
+        # second rebalance for consumer1, first rebalance for
+        # consumer2 that assigns 1 partition to both consumer1
+        # and consumer2
+        await consumer2.start()
+        self.add_cleanup(consumer2.stop)
+        await consumer2.seek_to_committed()
+
+        c1_partitions = consumer1.assignment()
+        c2_partitions = consumer2.assignment()
+        # take note of assigned partitions
+        if c1_partitions == {tp0}:
+            c1_assignment = {tp0}
+            c2_assignment = {tp1}
+        else:
+            c1_assignment = {tp1}
+            c2_assignment = {tp0}
+
+        listener1.revoke_mock.assert_called_with({tp0, tp1})
+        self.assertEqual(listener1.revoke_mock.call_count, 2)
+        listener1.assign_mock.assert_called_with(c1_assignment)
+        self.assertEqual(listener1.assign_mock.call_count, 2)
+        listener2.revoke_mock.assert_called_with(set())
+        self.assertEqual(listener2.revoke_mock.call_count, 1)
+        listener2.assign_mock.assert_called_with(c2_assignment)
+        self.assertEqual(listener2.assign_mock.call_count, 1)
+
+        # confirm diff partitions
+        assert c2_partitions != c1_partitions
+        # unsubscribe from topic, check if
+        # a third rebalance occurs for consumer1.
+        # It should since KIP-345 is inactive.
+        consumer2.unsubscribe()
+        # need to wait for rebalance
+        await asyncio.sleep(5)
+        self.assertEqual(listener1.revoke_mock.call_count, 3)
+        self.assertEqual(listener1.assign_mock.call_count, 3)
+        # ensure that consumer2's assigned partitions
+        # are re-assigned to consumer1
+        for p in c2_partitions:
+            assert p in consumer1.assignment()
+
+        consumer2.subscribe(topics=[self.topic], listener=listener2)
+        await consumer2._subscription.wait_for_assignment()
+        # since consumer2 rejoins the group, a rebalance should occur
+        # for both consumers
+        await asyncio.sleep(5)
+        self.assertEqual(listener2.revoke_mock.call_count, 2)
+        self.assertEqual(listener2.assign_mock.call_count, 2)
+        self.assertEqual(listener1.revoke_mock.call_count, 4)
+        self.assertEqual(listener1.assign_mock.call_count, 4)
+
+        # stop consumer2, which will trigger yet another rebalance
+        await consumer2.stop()
+        await asyncio.sleep(15)
+        self.assertEqual(listener1.revoke_mock.call_count, 5)
+        self.assertEqual(listener1.assign_mock.call_count, 5)
