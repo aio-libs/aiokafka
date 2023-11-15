@@ -2053,6 +2053,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             msg = await consumer1.getone()
             self.assertGreaterEqual(int(msg.value), 20)
 
+    @kafka_versions('>=2.3.0')
     @run_until_complete
     async def test_kip_345_enabled(self):
         await self.send_messages(0, list(range(0, 10)))
@@ -2159,6 +2160,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(listener1.assign_mock.call_count, 3)
         assert all_partitions == consumer1.assignment()
 
+    @kafka_versions('>=2.3.0')
     @run_until_complete
     async def test_kip_345_disabled(self):
         await self.send_messages(0, list(range(0, 10)))
