@@ -1,4 +1,4 @@
-from kafka.coordinator.assignors.abstract import AbstractPartitionAssignor
+from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor
 import abc
 
 
