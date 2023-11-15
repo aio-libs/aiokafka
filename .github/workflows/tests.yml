@@ -73,7 +73,7 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.8", "3.9", "3.10", "3.11"]
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
 
     steps:
     - uses: actions/checkout@v2
@@ -141,7 +141,7 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.8", "3.9", "3.10", "3.11"]
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
 
     steps:
     - uses: actions/checkout@v2
@@ -210,7 +210,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - python: "3.11"
+          - python: "3.12"
             kafka: "2.8.1"
             scala: "2.13"
 
@@ -224,39 +224,42 @@ jobs:
           - python: "3.10"
             kafka: "2.8.1"
             scala: "2.13"
+          - python: "3.11"
+            kafka: "2.8.1"
+            scala: "2.13"
 
           # Older brokers against latest python version
-          - python: "3.11"
+          - python: "3.12"
             kafka: "0.9.0.1"
             scala: "2.11"
-          - python: "3.11"
+          - python: "3.12"
             kafka: "0.10.2.1"
             scala: "2.11"
-          - python: "3.11"
+          - python: "3.12"
             kafka: "0.11.0.3"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.12"
             kafka: "1.1.1"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.12"
             kafka: "2.1.1"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.12"
             kafka: "2.2.2"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.12"
             kafka: "2.3.1"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.12"
             kafka: "2.4.1"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.12"
             kafka: "2.5.1"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.12"
             kafka: "2.6.3"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.12"
             kafka: "2.7.2"
             scala: "2.13"
       fail-fast: false
