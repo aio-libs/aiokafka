@@ -124,7 +124,7 @@ def read(f):
 extras_require = {
     "snappy": ["cramjam"],
     "lz4": ["lz4>=3.1.3"],
-    "zstd": ["zstandard"],
+    "zstd": ["cramjam"],
     "gssapi": ["gssapi"],
 }
 extras_require["all"] = sum(extras_require.values(), [])

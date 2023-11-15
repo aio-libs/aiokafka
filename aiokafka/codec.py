@@ -12,11 +12,6 @@ except ImportError:
     cramjam = None
 
 try:
-    import zstandard as zstd
-except ImportError:
-    zstd = None
-
-try:
     import lz4.frame as lz4
 
     def _lz4_compress(payload, **kwargs):
@@ -48,7 +43,7 @@ def has_snappy():
 
 
 def has_zstd():
-    return zstd is not None
+    return cramjam is not None
 
 
 def has_lz4():
@@ -193,7 +188,7 @@ def snappy_decode(payload):
         out.seek(0)
         return out.read()
     else:
-        return cramjam.snappy.decompress_raw(payload)
+        return bytes(cramjam.snappy.decompress_raw(payload))
 
 
 if lz4:
@@ -230,18 +225,20 @@ else:
     lz4_decode = None
 
 
-def zstd_encode(payload):
-    if not zstd:
+def zstd_encode(payload, level=None):
+    if not has_zstd():
         raise NotImplementedError("Zstd codec is not available")
-    return zstd.ZstdCompressor().compress(payload)
+
+    if level is None:
+        # Default for kafka broker
+        # https://cwiki.apache.org/confluence/display/KAFKA/KIP-390%3A+Support+Compression+Level
+        level = 3
+
+    return bytes(cramjam.zstd.compress(payload, level=level))
 
 
 def zstd_decode(payload):
-    if not zstd:
+    if not has_zstd():
         raise NotImplementedError("Zstd codec is not available")
-    try:
-        return zstd.ZstdDecompressor().decompress(payload)
-    except zstd.ZstdError:
-        return zstd.ZstdDecompressor().decompress(
-            payload, max_output_size=ZSTD_MAX_OUTPUT_SIZE
-        )
+
+    return bytes(cramjam.zstd.decompress(payload))

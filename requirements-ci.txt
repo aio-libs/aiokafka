@@ -14,5 +14,4 @@ docutils==0.17.1
 Pygments==2.15.0
 gssapi==1.8.2
 async-timeout==4.0.1
-zstandard==0.16.0
 cramjam==2.7.0

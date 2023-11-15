@@ -15,7 +15,7 @@ from aiokafka.record.default_records import (
     (DefaultRecordBatch.CODEC_GZIP, None),
     (DefaultRecordBatch.CODEC_SNAPPY, 2171068483),
     (DefaultRecordBatch.CODEC_LZ4, 462121143),
-    (DefaultRecordBatch.CODEC_ZSTD, 1679657554),
+    (DefaultRecordBatch.CODEC_ZSTD, 1714138923),
 ])
 def test_read_write_serde_v2(compression_type, crc):
     builder = DefaultRecordBatchBuilder(
