@@ -193,7 +193,7 @@ class ClusterMetadata:
             set: {topic (str), ...}
         """
         if exclude_internal_topics:
-            return self._topics - self.internal_topics
+            return self.external_topics 
         else:
             return self._topics
 
@@ -286,6 +286,7 @@ class ClusterMetadata:
             self._broker_partitions = _new_broker_partitions
             self.unauthorized_topics = _new_unauthorized_topics
             self.internal_topics = _new_internal_topics
+            self.external_topics = self._topics - self.internal_topics
             f = None
             if self._future:
                 f = self._future
