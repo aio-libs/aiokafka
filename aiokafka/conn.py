@@ -5,6 +5,8 @@ import functools
 import hashlib
 import hmac
 import logging
+import random
+import socket
 import struct
 import sys
 import time
@@ -14,17 +16,16 @@ import warnings
 import weakref
 
 import async_timeout
-from kafka.protocol.api import RequestHeader
-from kafka.protocol.admin import (
-    SaslHandShakeRequest, SaslAuthenticateRequest, ApiVersionRequest
-)
-from kafka.protocol.commit import (
-    GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
 
 import aiokafka.errors as Errors
-from aiokafka.util import create_future, create_task, get_running_loop, wait_for
-
 from aiokafka.abc import AbstractTokenProvider
+from aiokafka.protocol.api import RequestHeader
+from aiokafka.protocol.admin import (
+    SaslHandShakeRequest, SaslAuthenticateRequest, ApiVersionRequest
+)
+from aiokafka.protocol.commit import (
+    GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
+from aiokafka.util import create_future, create_task, get_running_loop, wait_for
 
 try:
     import gssapi
@@ -33,6 +34,9 @@ except ImportError:
 
 __all__ = ['AIOKafkaConnection', 'create_conn']
 
+log = logging.getLogger(__name__)
+
+DEFAULT_KAFKA_PORT = 9092
 
 READER_LIMIT = 2 ** 16
 SASL_QOP_AUTH = 1
@@ -112,8 +116,6 @@ class AIOKafkaProtocol(asyncio.StreamReaderProtocol):
 
 class AIOKafkaConnection:
     """Class for manage connection to Kafka node"""
-
-    log = logging.getLogger(__name__)
 
     _reader = None  # For __del__ to work properly, just in case
     _source_traceback = None
@@ -284,7 +286,7 @@ class AIOKafkaConnection:
         )
         if self._security_protocol == 'SASL_PLAINTEXT' and \
            self._sasl_mechanism == 'PLAIN':
-            self.log.warning(
+            log.warning(
                 'Sending username and password in the clear')
 
         if self._sasl_mechanism == 'GSSAPI':
@@ -329,15 +331,15 @@ class AIOKafkaConnection:
                 auth_bytes = resp.sasl_auth_bytes
 
         if self._sasl_mechanism == 'GSSAPI':
-            self.log.info(
+            log.info(
                 'Authenticated as %s via GSSAPI',
                 self.sasl_principal)
         elif self._sasl_mechanism == 'OAUTHBEARER':
-            self.log.info(
+            log.info(
                 'Authenticated via OAUTHBEARER'
             )
         else:
-            self.log.info(
+            log.info(
                 'Authenticated as %s via %s',
                 self._sasl_plain_username,
                 self._sasl_mechanism
@@ -382,7 +384,7 @@ class AIOKafkaConnection:
             read_task.result()
         except Exception as exc:
             if not isinstance(exc, (OSError, EOFError, ConnectionError)):
-                cls.log.exception("Unexpected exception in AIOKafkaConnection")
+                log.exception("Unexpected exception in AIOKafkaConnection")
 
             self = self_ref()
             if self is not None:
@@ -441,7 +443,7 @@ class AIOKafkaConnection:
                 f"Connection at {self._host}:{self._port} broken: {err}"
             )
 
-        self.log.debug(
+        log.debug(
             '%s Request %d: %s', self, correlation_id, request)
 
         if not expect_response:
@@ -475,7 +477,7 @@ class AIOKafkaConnection:
         return bool(self._reader is not None and not self._reader.at_eof())
 
     def close(self, reason=None, exc=None):
-        self.log.debug("Closing connection at %s:%s", self._host, self._port)
+        log.debug("Closing connection at %s:%s", self._host, self._port)
         if self._reader is not None:
             self._writer.close()
             self._writer = self._reader = None
@@ -546,7 +548,7 @@ class AIOKafkaConnection:
             if (self._api_version == (0, 8, 2) and
                     resp_type is GroupCoordinatorResponse and
                     correlation_id != 0 and recv_correlation_id == 0):
-                self.log.warning(
+                log.warning(
                     'Kafka 0.8.2 quirk -- GroupCoordinatorResponse'
                     ' coorelation id does not match request. This'
                     ' should go away once at least one topic has been'
@@ -564,7 +566,7 @@ class AIOKafkaConnection:
 
             if not fut.done():
                 response = resp_type.decode(resp[4:])
-                self.log.debug(
+                log.debug(
                     '%s Response %d: %s', self, correlation_id, response)
                 fut.set_result(response)
 
@@ -771,3 +773,98 @@ class OAuthAuthenticator(BaseSaslAuthenticator):
                 return "\x01" + msg
 
         return ""
+
+
+def _address_family(address):
+    """
+        Attempt to determine the family of an address (or hostname)
+
+        :return: either socket.AF_INET or socket.AF_INET6 or socket.AF_UNSPEC
+        if the address family could not be determined
+    """
+    if address.startswith('[') and address.endswith(']'):
+        return socket.AF_INET6
+    for af in (socket.AF_INET, socket.AF_INET6):
+        try:
+            socket.inet_pton(af, address)
+            return af
+        except (ValueError, AttributeError, socket.error):
+            continue
+    return socket.AF_UNSPEC
+
+
+def get_ip_port_afi(host_and_port_str):
+    """
+        Parse the IP and port from a string in the format of:
+
+            * host_or_ip          <- Can be either IPv4 address literal or hostname/fqdn
+            * host_or_ipv4:port   <- Can be either IPv4 address literal or hostname/fqdn
+            * [host_or_ip]        <- IPv6 address literal
+            * [host_or_ip]:port.  <- IPv6 address literal
+
+        .. note:: IPv6 address literals with ports *must* be enclosed in brackets
+
+        .. note:: If the port is not specified, default will be returned.
+
+        :return: tuple (host, port, afi), afi will be socket.AF_INET or
+        socket.AF_INET6 or socket.AF_UNSPEC
+    """
+    host_and_port_str = host_and_port_str.strip()
+    if host_and_port_str.startswith('['):
+        af = socket.AF_INET6
+        host, rest = host_and_port_str[1:].split(']')
+        if rest:
+            port = int(rest[1:])
+        else:
+            port = DEFAULT_KAFKA_PORT
+        return host, port, af
+    else:
+        if ':' not in host_and_port_str:
+            af = _address_family(host_and_port_str)
+            return host_and_port_str, DEFAULT_KAFKA_PORT, af
+        else:
+            # now we have something with a colon in it and no square brackets. It could
+            # be either an IPv6 address literal (e.g., "::1") or an IP:port pair or a
+            # host:port pair
+            try:
+                # if it decodes as an IPv6 address, use that
+                socket.inet_pton(socket.AF_INET6, host_and_port_str)
+                return host_and_port_str, DEFAULT_KAFKA_PORT, socket.AF_INET6
+            except AttributeError:
+                log.warning('socket.inet_pton not available on this platform.'
+                            ' consider `pip install win_inet_pton`')
+                pass
+            except (ValueError, socket.error):
+                # it's a host:port pair
+                pass
+            host, port = host_and_port_str.rsplit(':', 1)
+            port = int(port)
+
+            af = _address_family(host)
+            return host, port, af
+
+
+def collect_hosts(hosts, randomize=True):
+    """
+    Collects a comma-separated set of hosts (host:port) and optionally
+    randomize the returned list.
+    """
+
+    if isinstance(hosts, str):
+        hosts = hosts.strip().split(',')
+
+    result = []
+    afi = socket.AF_INET
+    for host_port in hosts:
+
+        host, port, afi = get_ip_port_afi(host_port)
+
+        if port < 0:
+            port = DEFAULT_KAFKA_PORT
+
+        result.append((host, port, afi))
+
+    if randomize:
+        random.shuffle(result)
+
+    return result

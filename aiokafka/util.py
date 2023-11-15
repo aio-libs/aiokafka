@@ -1,6 +1,8 @@
 import asyncio
 import os
+import weakref
 from asyncio import AbstractEventLoop
+from types import MethodType
 from typing import Any, Awaitable, Coroutine, Dict, Tuple, TypeVar, Union, cast
 
 import async_timeout
@@ -91,3 +93,38 @@ NO_EXTENSIONS = bool(os.environ.get("AIOKAFKA_NO_EXTENSIONS"))
 
 INTEGER_MAX_VALUE = 2**31 - 1
 INTEGER_MIN_VALUE = -(2**31)
+
+
+class WeakMethod(object):
+    """
+    Callable that weakly references a method and the object it is bound to. It
+    is based on https://stackoverflow.com/a/24287465.
+
+    Arguments:
+
+        object_dot_method: A bound instance method (i.e. 'object.method').
+    """
+
+    def __init__(self, object_dot_method: MethodType) -> None:
+        self.target = weakref.ref(object_dot_method.__self__)
+        self._target_id = id(self.target())
+        self.method = weakref.ref(object_dot_method.__func__)
+        self._method_id = id(self.method())
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """
+        Calls the method on target with args and kwargs.
+        """
+        method = self.method()
+        assert method is not None
+        return method(self.target(), *args, **kwargs)
+
+    def __hash__(self) -> int:
+        return hash(self.target) ^ hash(self.method)
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, WeakMethod):
+            return False
+        return (
+            self._target_id == other._target_id and self._method_id == other._method_id
+        )

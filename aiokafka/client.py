@@ -3,19 +3,17 @@ import logging
 import random
 import time
 
-from kafka.conn import collect_hosts
-from kafka.protocol.admin import DescribeAclsRequest_v2
-from kafka.protocol.commit import OffsetFetchRequest
-from kafka.protocol.fetch import FetchRequest
-from kafka.protocol.metadata import MetadataRequest
-from kafka.protocol.offset import OffsetRequest
-from kafka.protocol.produce import ProduceRequest
-
 import aiokafka.errors as Errors
 from aiokafka import __version__
-from aiokafka.conn import create_conn, CloseReason
+from aiokafka.conn import collect_hosts, create_conn, CloseReason
 from aiokafka.cluster import ClusterMetadata
+from aiokafka.protocol.admin import DescribeAclsRequest_v2
+from aiokafka.protocol.commit import OffsetFetchRequest
 from aiokafka.protocol.coordination import FindCoordinatorRequest
+from aiokafka.protocol.fetch import FetchRequest
+from aiokafka.protocol.metadata import MetadataRequest
+from aiokafka.protocol.offset import OffsetRequest
+from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.errors import (
     KafkaError,
     KafkaConnectionError,
@@ -482,10 +480,10 @@ class AIOKafkaClient:
             request (Struct): request object (not-encoded)
 
         Raises:
-            kafka.errors.RequestTimedOutError
-            kafka.errors.NodeNotReadyError
-            kafka.errors.KafkaConnectionError
-            kafka.errors.CorrelationIdError
+            aiokafka.errors.RequestTimedOutError
+            aiokafka.errors.NodeNotReadyError
+            aiokafka.errors.KafkaConnectionError
+            aiokafka.errors.CorrelationIdError
 
         Returns:
             Future: resolves to Response struct
@@ -526,11 +524,11 @@ class AIOKafkaClient:
                 assert self.cluster.brokers(), 'no brokers in metadata'
                 node_id = list(self.cluster.brokers())[0].nodeId
 
-        from kafka.protocol.admin import (
+        from aiokafka.protocol.admin import (
             ListGroupsRequest_v0, ApiVersionRequest_v0)
-        from kafka.protocol.commit import (
+        from aiokafka.protocol.commit import (
             OffsetFetchRequest_v0, GroupCoordinatorRequest_v0)
-        from kafka.protocol.metadata import MetadataRequest_v0
+        from aiokafka.protocol.metadata import MetadataRequest_v0
         test_cases = [
             ((0, 10), ApiVersionRequest_v0()),
             ((0, 9), ListGroupsRequest_v0()),

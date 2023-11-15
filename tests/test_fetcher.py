@@ -3,30 +3,30 @@ import pytest
 import unittest
 from unittest import mock
 
-from kafka.protocol.fetch import (
-    FetchRequest_v0 as FetchRequest, FetchResponse_v0 as FetchResponse
-)
-from kafka.protocol.offset import OffsetResponse
-from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
-from aiokafka.record.default_records import (
-    # NB: test_solitary_abort_marker relies on implementation details
-    _DefaultRecordBatchBuilderPy as DefaultRecordBatchBuilder)
-from aiokafka.record.memory_records import MemoryRecords
-
-from aiokafka.errors import (
-    TopicAuthorizationFailedError, UnknownError, UnknownTopicOrPartitionError,
-    OffsetOutOfRangeError, KafkaTimeoutError, NotLeaderForPartitionError
-)
-from aiokafka.structs import (
-    TopicPartition, OffsetAndTimestamp, OffsetAndMetadata
-)
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer.fetcher import (
     Fetcher, FetchResult, FetchError, ConsumerRecord, OffsetResetStrategy,
     PartitionRecords, READ_COMMITTED, READ_UNCOMMITTED
 )
 from aiokafka.consumer.subscription_state import SubscriptionState
+from aiokafka.errors import (
+    TopicAuthorizationFailedError, UnknownError, UnknownTopicOrPartitionError,
+    OffsetOutOfRangeError, KafkaTimeoutError, NotLeaderForPartitionError
+)
+from aiokafka.protocol.fetch import (
+    FetchRequest_v0 as FetchRequest, FetchResponse_v0 as FetchResponse
+)
+from aiokafka.protocol.offset import OffsetResponse
+from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
+from aiokafka.record.default_records import (
+    # NB: test_solitary_abort_marker relies on implementation details
+    _DefaultRecordBatchBuilderPy as DefaultRecordBatchBuilder)
+from aiokafka.record.memory_records import MemoryRecords
+from aiokafka.structs import (
+    TopicPartition, OffsetAndTimestamp, OffsetAndMetadata
+)
 from aiokafka.util import create_future, create_task, get_running_loop
+
 from ._testutil import run_until_complete
 
 

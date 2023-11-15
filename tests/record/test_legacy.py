@@ -1,13 +1,13 @@
 import struct
 from unittest import mock
 
-import kafka.codec
-from kafka.errors import UnsupportedCodecError
+import aiokafka.codec
 import pytest
+
+from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from aiokafka.record.legacy_records import (
     LegacyRecordBatch, LegacyRecordBatchBuilder
 )
-from aiokafka.errors import CorruptRecordException
 
 
 @pytest.mark.parametrize("magic", [0, 1])
@@ -202,7 +202,7 @@ def test_unavailable_codec(compression_type, name, checker_name):
     builder.append(0, timestamp=None, key=None, value=b"M")
     correct_buffer = builder.build()
 
-    with mock.patch.object(kafka.codec, checker_name) as mocked:
+    with mock.patch.object(aiokafka.codec, checker_name) as mocked:
         mocked.return_value = False
         # Check that builder raises error
         builder = LegacyRecordBatchBuilder(

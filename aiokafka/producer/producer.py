@@ -4,12 +4,11 @@ import sys
 import traceback
 import warnings
 
-from kafka.partitioner.default import DefaultPartitioner
-from kafka.codec import has_gzip, has_snappy, has_lz4, has_zstd
-
 from aiokafka.client import AIOKafkaClient
+from aiokafka.codec import has_gzip, has_snappy, has_lz4, has_zstd
 from aiokafka.errors import (
     MessageSizeTooLargeError, UnsupportedVersionError, IllegalOperation)
+from aiokafka.partitioner import DefaultPartitioner
 from aiokafka.record.default_records import DefaultRecordBatch
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import TopicPartition
@@ -128,7 +127,7 @@ class AIOKafkaProducer:
             brokers or partitions. Default: 300000
         request_timeout_ms (int): Produce request timeout in milliseconds.
             As it's sent as part of
-            :class:`~kafka.protocol.produce.ProduceRequest` (it's a blocking
+            :class:`~aiokafka.protocol.produce.ProduceRequest` (it's a blocking
             call), maximum waiting time can be up to ``2 *
             request_timeout_ms``.
             Default: 40000.
@@ -167,7 +166,7 @@ class AIOKafkaProducer:
             Default: :data:`None`
         sasl_oauth_token_provider (:class:`~aiokafka.abc.AbstractTokenProvider`):
             OAuthBearer token provider instance. (See
-            :mod:`kafka.oauth.abstract`).
+            :mod:`aiokafka.oauth`).
             Default: :data:`None`
 
     Note:

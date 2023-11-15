@@ -1,10 +1,10 @@
 #cython: language_level=3
 
-from kafka.codec import (
+import aiokafka.codec as codecs
+from aiokafka.codec import (
     gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
     gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka
 )
-import kafka.codec as codecs
 from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from zlib import crc32 as py_crc32  # needed for windows macro
 
