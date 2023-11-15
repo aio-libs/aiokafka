@@ -56,6 +56,7 @@ class ClusterMetadata:
         self.need_all_topic_metadata = False
         self.unauthorized_topics = set()
         self.internal_topics = set()
+        self.external_topics = set()
         self.controller = None
 
         self.config = copy.copy(self.DEFAULT_CONFIG)
@@ -193,7 +194,7 @@ class ClusterMetadata:
             set: {topic (str), ...}
         """
         if exclude_internal_topics:
-            return self.external_topics 
+            return self.external_topics
         else:
             return self._topics
 
