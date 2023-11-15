@@ -43,6 +43,7 @@ class ClusterMetadata:
     def __init__(self, **configs):
         self._brokers = {}  # node_id -> BrokerMetadata
         self._partitions = {}  # topic -> partition -> PartitionMetadata
+        self._topics = set()
         # node_id -> {TopicPartition...}
         self._broker_partitions = collections.defaultdict(set)
         self._groups = {}  # group_name -> node_id
@@ -191,11 +192,10 @@ class ClusterMetadata:
         Returns:
             set: {topic (str), ...}
         """
-        topics = set(self._partitions.keys())
         if exclude_internal_topics:
-            return topics - self.internal_topics
+            return self._topics - self.internal_topics
         else:
-            return topics
+            return self._topics
 
     def failed_update(self, exception):
         """Update cluster state given a failed MetadataRequest."""
@@ -282,6 +282,7 @@ class ClusterMetadata:
             self._brokers = _new_brokers
             self.controller = _new_controller
             self._partitions = _new_partitions
+            self._topics = set(self._partitions.keys())
             self._broker_partitions = _new_broker_partitions
             self.unauthorized_topics = _new_unauthorized_topics
             self.internal_topics = _new_internal_topics
