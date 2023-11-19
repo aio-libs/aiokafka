@@ -74,8 +74,7 @@ jobs:
 
     strategy:
       matrix:
-        # 3.11 excluded due to problems with python-snappy
-        python: ["3.8", "3.9", "3.10"]
+        python: ["3.8", "3.9", "3.10", "3.11"]
         include:
           - python: "3.8"
             aiokafka_whl: dist/aiokafka-*-cp38-cp38-win_amd64.whl
@@ -139,9 +138,6 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Install system dependencies
-        run: |
-          brew install snappy
       - name: Install python dependencies
         run: |
           pip install --upgrade pip setuptools wheel
@@ -236,7 +232,7 @@ jobs:
               source .env/bin/activate && \
               yum install -y epel-release && \
               yum-config-manager --enable epel && \
-              yum install -y snappy-devel libzstd-devel krb5-devel && \
+              yum install -y krb5-devel && \
               pip install --upgrade pip setuptools wheel && \
               pip install -r requirements-ci.txt && \
               pip install ${{ matrix.aiokafka_whl }} && \

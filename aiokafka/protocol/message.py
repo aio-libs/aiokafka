@@ -11,8 +11,8 @@ from aiokafka.codec import (
     snappy_decode,
     zstd_decode,
     lz4_decode,
-    lz4_decode_old_kafka,
 )
+from aiokafka.errors import UnsupportedCodecError
 from aiokafka.util import WeakMethod
 
 from .frame import KafkaBytes
@@ -156,7 +156,10 @@ class Message(Struct):
         elif codec == self.CODEC_LZ4:
             assert has_lz4(), "LZ4 decompression unsupported"
             if self.magic == 0:
-                raw_bytes = lz4_decode_old_kafka(self.value)
+                # https://issues.apache.org/jira/browse/KAFKA-3160
+                raise UnsupportedCodecError(
+                    "LZ4 is not supported for broker version 0.8/0.9"
+                )
             else:
                 raw_bytes = lz4_decode(self.value)
         elif codec == self.CODEC_ZSTD:

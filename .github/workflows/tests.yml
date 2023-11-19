@@ -73,8 +73,7 @@ jobs:
 
     strategy:
       matrix:
-        # 3.11 excluded due to problems with python-snappy
-        python: ["3.8", "3.9", "3.10"]
+        python: ["3.8", "3.9", "3.10", "3.11"]
 
     steps:
     - uses: actions/checkout@v2
@@ -167,10 +166,6 @@ jobs:
         # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
         restore-keys: |
          ${{ runner.os }}-py-${{ matrix.python }}-
-
-    - name: Install system dependencies
-      run: |
-        brew install snappy
 
     - name: Install python dependencies
       run: |

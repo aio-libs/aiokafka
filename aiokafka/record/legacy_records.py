@@ -5,8 +5,8 @@ from binascii import crc32
 
 import aiokafka.codec as codecs
 from aiokafka.codec import (
-    gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
-    gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka
+    gzip_encode, snappy_encode, lz4_encode,
+    gzip_decode, snappy_decode, lz4_decode,
 )
 from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from aiokafka.util import NO_EXTENSIONS
@@ -159,7 +159,10 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
             uncompressed = snappy_decode(data.tobytes())
         elif compression_type == self.CODEC_LZ4:
             if self._magic == 0:
-                uncompressed = lz4_decode_old_kafka(data.tobytes())
+                # https://issues.apache.org/jira/browse/KAFKA-3160
+                raise UnsupportedCodecError(
+                    "LZ4 is not supported for broker version 0.8/0.9"
+                )
             else:
                 uncompressed = lz4_decode(data.tobytes())
         return uncompressed
@@ -415,7 +418,10 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
                 compressed = snappy_encode(buf)
             elif self._compression_type == self.CODEC_LZ4:
                 if self._magic == 0:
-                    compressed = lz4_encode_old_kafka(bytes(buf))
+                    # https://issues.apache.org/jira/browse/KAFKA-3160
+                    raise UnsupportedCodecError(
+                        "LZ4 is not supported for broker version 0.8/0.9"
+                    )
                 else:
                     compressed = lz4_encode(bytes(buf))
             compressed_size = len(compressed)

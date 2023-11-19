@@ -514,6 +514,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     async def test_compress_decompress_snappy(self):
         await self._test_compress_decompress("snappy")
 
+    @kafka_versions('>=0.10.0.0')
     @run_until_complete
     async def test_compress_decompress_lz4(self):
         await self._test_compress_decompress("lz4")
