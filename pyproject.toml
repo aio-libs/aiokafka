@@ -56,3 +56,24 @@ include = [
 Documentation = "http://aiokafka.readthedocs.org"
 Source = "https://github.com/aio-libs/aiokafka"
 Changes = "https://github.com/aio-libs/aiokafka/blob/master/CHANGES.rst"
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = ["--strict-config", "--strict-markers"]
+markers = [
+    "ssl: Tests that require SSL certificates to run",
+]
+filterwarnings = [
+    "error",
+    # FIXME Until we fix socket leaks in tests
+    "default:unclosed event loop:ResourceWarning",
+    # https://github.com/docker/docker-py/issues/1293
+    "ignore:.*docker.sock.*:ResourceWarning",
+    "ignore:distutils .* deprecated:DeprecationWarning:docker",
+    # From gssapi, but with improper stack
+    "ignore:_SixMetaPathImporter.*not found:ImportWarning",
+    # Actually comes from docker importing distutils on Windows
+    "ignore:the imp module is deprecated in favour of importlib:DeprecationWarning:pywintypes",
+]
