@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 UNKNOWN_OFFSET = -1
 
 
-class BaseCoordinator(object):
+class BaseCoordinator:
 
     def __init__(self, client, subscription, *,
                  exclude_internal_topics=True):
