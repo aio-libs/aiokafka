@@ -15,7 +15,6 @@ from aiokafka.protocol.group import (
     HeartbeatRequest, JoinGroupRequest, LeaveGroupRequest, SyncGroupRequest)
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.util import create_future, create_task
-from aiokafka.consumer.assignors import AbstractStaticPartitionAssignor
 
 
 log = logging.getLogger(__name__)
@@ -407,7 +406,6 @@ class GroupCoordinator(BaseCoordinator):
             'Invalid assignment protocol: %s' % assignment_strategy
         member_metadata = {}
         all_subscribed_topics = set()
-        group_instance_id_mapping = {}
         # for member_id, group_instance_id, metadata_bytes in members:
         for member in members:
             if len(member) == 2:
@@ -418,7 +416,6 @@ class GroupCoordinator(BaseCoordinator):
             else:
                 raise Exception("unknown protocol returned from assignment")
             metadata = ConsumerProtocol.METADATA.decode(metadata_bytes)
-            group_instance_id_mapping = group_instance_id
             member_metadata[member_id] = metadata
             all_subscribed_topics.update(metadata.subscription)
 
@@ -436,12 +433,7 @@ class GroupCoordinator(BaseCoordinator):
                   " with subscriptions %s", self.group_id, assignor.name,
                   member_metadata)
 
-        if isinstance(assignor, AbstractStaticPartitionAssignor):
-            assignments = assignor.assign(
-                self._cluster, member_metadata, group_instance_id_mapping
-            )
-        else:
-            assignments = assignor.assign(self._cluster, member_metadata)
+        assignments = assignor.assign(self._cluster, member_metadata)
         log.debug("Finished assignment for group %s: %s",
                   self.group_id, assignments)
 
