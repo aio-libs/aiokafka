@@ -626,8 +626,9 @@ class AIOKafkaClient:
             UnknownTopicOrPartitionError: if no topic or partitions found
                 in cluster metadata
         """
-        if topic in self.cluster.topics():
-            return self.cluster.partitions_for_topic(topic)
+        partitions = self.cluster.partitions_for_topic(topic)
+        if partitions is not None:
+            return partitions
 
         # add topic to metadata topic list if it is not there already.
         self.add_topic(topic)
@@ -635,15 +636,14 @@ class AIOKafkaClient:
         t0 = time.monotonic()
         while True:
             await self.force_metadata_update()
-            if topic in self.cluster.topics():
-                break
+            partitions = self.cluster.partitions_for_topic(topic)
+            if partitions is not None:
+                return partitions
             if (time.monotonic() - t0) > (self._request_timeout_ms / 1000):
                 raise UnknownTopicOrPartitionError()
             if topic in self.cluster.unauthorized_topics:
                 raise Errors.TopicAuthorizationFailedError(topic)
             await asyncio.sleep(self._retry_backoff)
-
-        return self.cluster.partitions_for_topic(topic)
 
     async def _maybe_wait_metadata(self):
         if self._md_update_fut is not None:
