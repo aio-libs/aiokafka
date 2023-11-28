@@ -8,6 +8,7 @@ from concurrent.futures import Future
 import aiokafka.errors as Errors
 from aiokafka.metrics import AnonMeasurable
 from aiokafka.metrics.stats import Avg, Count, Max, Rate
+from aiokafka.protocol.api import Response
 from aiokafka.protocol.commit import OffsetCommitRequest, OffsetFetchRequest
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.util import WeakMethod
@@ -336,7 +337,9 @@ class ConsumerCoordinator(BaseCoordinator):
             self.next_auto_commit_deadline - time.time(), self.time_to_next_heartbeat()
         )
 
-    def _perform_assignment(self, leader_id, assignment_strategy, members):
+    def _perform_assignment(self, response: Response):
+        assignment_strategy = response.group_protocol
+        members = response.members
         assignor = self._lookup_assignor(assignment_strategy)
         assert assignor, "Invalid assignment protocol: %s" % (assignment_strategy,)
         member_metadata = {}

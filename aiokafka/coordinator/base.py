@@ -9,6 +9,7 @@ from concurrent.futures import Future
 from aiokafka import errors as Errors
 from aiokafka.metrics import AnonMeasurable
 from aiokafka.metrics.stats import Avg, Count, Max, Rate
+from aiokafka.protocol.api import Response
 from aiokafka.protocol.commit import GroupCoordinatorRequest, OffsetCommitRequest
 from aiokafka.protocol.group import (
     HeartbeatRequest,
@@ -186,19 +187,21 @@ class BaseCoordinator(object):
         pass
 
     @abc.abstractmethod
-    def _perform_assignment(self, leader_id, protocol, members):
+    def _perform_assignment(self, response: Response):
         """Perform assignment for the group.
 
         This is used by the leader to push state to all the members of the group
         (e.g. to push partition assignments in the case of the new consumer)
 
         Arguments:
-            leader_id (str): The id of the leader (which is this member)
-            protocol (str): the chosen group protocol (assignment strategy)
-            members (list): [(member_id, metadata_bytes)] from
-                JoinGroupResponse. metadata_bytes are associated with the chosen
-                group protocol, and the Coordinator subclass is responsible for
-                decoding metadata_bytes based on that protocol.
+            response (Response): A JoinGroupResponse class that implements the
+                Response abstract class. The following attributes of this class
+                are used within the function:
+                    protocol (str): the chosen group protocol (assignment strategy)
+                    members (list): [(member_id, metadata_bytes)] from
+                        JoinGroupResponse. metadata_bytes are associated with
+                        the chosen group protocol, and the Coordinator subclass is
+                        responsible for decoding metadata_bytes based on that protocol.
 
         Returns:
             dict: {member_id: assignment}; assignment must either be bytes
@@ -649,9 +652,7 @@ class BaseCoordinator(object):
             Future: resolves to member assignment encoded-bytes
         """
         try:
-            group_assignment = self._perform_assignment(
-                response.leader_id, response.group_protocol, response.members
-            )
+            group_assignment = self._perform_assignment(response)
         except Exception as e:
             return Future().failure(e)
 

@@ -129,7 +129,7 @@ JoinGroupResponse = [
     JoinGroupResponse_v0,
     JoinGroupResponse_v1,
     JoinGroupResponse_v2,
-    JoinGroupRequest_v5,
+    JoinGroupResponse_v5,
 ]
 
 

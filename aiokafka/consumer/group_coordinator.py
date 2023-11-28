@@ -8,11 +8,13 @@ import aiokafka.errors as Errors
 from aiokafka.client import ConnectionGroup, CoordinationType
 from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from aiokafka.coordinator.protocol import ConsumerProtocol
+from aiokafka.protocol.api import Response
 from aiokafka.protocol.commit import (
     OffsetCommitRequest_v2 as OffsetCommitRequest,
     OffsetFetchRequest_v1 as OffsetFetchRequest)
 from aiokafka.protocol.group import (
-    HeartbeatRequest, JoinGroupRequest, LeaveGroupRequest, SyncGroupRequest)
+    HeartbeatRequest, JoinGroupRequest, LeaveGroupRequest,
+    SyncGroupRequest, JoinGroupResponse)
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.util import create_future, create_task
 
@@ -398,21 +400,21 @@ class GroupCoordinator(BaseCoordinator):
                               " for group %s failed on_partitions_revoked",
                               self._subscription.listener, self.group_id)
 
-    async def _perform_assignment(
-        self, leader_id, assignment_strategy, members
-    ):
+    async def _perform_assignment(self, response: Response):
+        assignment_strategy = response.group_protocol
+        members = response.members
         assignor = self._lookup_assignor(assignment_strategy)
         assert assignor, \
             'Invalid assignment protocol: %s' % assignment_strategy
         member_metadata = {}
         all_subscribed_topics = set()
-        # for member_id, group_instance_id, metadata_bytes in members:
         for member in members:
-            if len(member) == 2:
-                member_id, metadata_bytes = member
-                group_instance_id = None
-            elif len(member) == 3:
+            if isinstance(response, JoinGroupResponse[3]):
                 member_id, group_instance_id, metadata_bytes = member
+            elif (isinstance(response, JoinGroupResponse[0]) or
+                  isinstance(response, JoinGroupResponse[1]) or
+                  isinstance(response, JoinGroupResponse[2])):
+                member_id, metadata_bytes = member
             else:
                 raise Exception("unknown protocol returned from assignment")
             metadata = ConsumerProtocol.METADATA.decode(metadata_bytes)
@@ -1367,11 +1369,7 @@ class CoordinatorGroupRebalance:
             Future: resolves to member assignment encoded-bytes
         """
         try:
-            group_assignment = \
-                await self._coordinator._perform_assignment(
-                    response.leader_id,
-                    response.group_protocol,
-                    response.members)
+            group_assignment = await self._coordinator._perform_assignment(response)
         except Exception as e:
             raise Errors.KafkaError(repr(e))
 
