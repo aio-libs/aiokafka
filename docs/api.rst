@@ -80,9 +80,7 @@ and ``GSSAPI`` SASL methods. Be sure to install `gssapi`_ python module to use
 Please consult the `official documentation <http://kafka.apache.org/documentation.html#security_sasl>`__
 for setup instructions on Broker side. Client configuration is pretty much the
 same as Java's, consult the ``sasl_*`` options in Consumer and Producer API
-Reference for more details.
-
-.. automodule:: aiokafka.oauth
+Reference for more details. See :class:`~aiokafka.abc.AbstractTokenProvider`.
 
 
 Error handling

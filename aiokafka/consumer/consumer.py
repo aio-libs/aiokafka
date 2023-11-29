@@ -213,7 +213,7 @@ class AIOKafkaConsumer:
         sasl_plain_password (str): password for SASL ``PLAIN`` authentication.
             Default: None
         sasl_oauth_token_provider (~aiokafka.abc.AbstractTokenProvider):
-            OAuthBearer token provider instance. (See :mod:`aiokafka.oauth`).
+            OAuthBearer token provider instance.
             Default: None
 
     Note:

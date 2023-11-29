@@ -15,7 +15,6 @@ from aiokafka.codec import (
 from aiokafka.errors import UnsupportedCodecError
 from aiokafka.util import WeakMethod
 
-from .frame import KafkaBytes
 from .struct import Struct
 from .types import Int8, Int32, UInt32, Int64, Bytes, Schema, AbstractType
 
@@ -186,7 +185,7 @@ class MessageSet(AbstractType):
     @classmethod
     def encode(cls, items, prepend_size=True):
         # RecordAccumulator encodes messagesets internally
-        if isinstance(items, (io.BytesIO, KafkaBytes)):
+        if isinstance(items, io.BytesIO):
             size = Int32.decode(items)
             if prepend_size:
                 # rewind and return all the bytes
@@ -234,7 +233,7 @@ class MessageSet(AbstractType):
 
     @classmethod
     def repr(cls, messages):
-        if isinstance(messages, (KafkaBytes, io.BytesIO)):
+        if isinstance(messages, io.BytesIO):
             offset = messages.tell()
             decoded = cls.decode(messages)
             messages.seek(offset)
