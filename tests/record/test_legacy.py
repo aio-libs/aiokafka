@@ -44,12 +44,14 @@ def test_read_write_serde_v0_v1_no_compression(magic, key, value, checksum):
     assert msg.checksum == checksum[magic] & 0xffffffff
 
 
-@pytest.mark.parametrize("compression_type", [
-    LegacyRecordBatch.CODEC_GZIP,
-    LegacyRecordBatch.CODEC_SNAPPY,
-    LegacyRecordBatch.CODEC_LZ4
+@pytest.mark.parametrize("compression_type, magic", [
+    (LegacyRecordBatch.CODEC_GZIP, 0),
+    (LegacyRecordBatch.CODEC_SNAPPY, 0),
+    # We don't support LZ4 for kafka 0.8/0.9
+    (LegacyRecordBatch.CODEC_GZIP, 1),
+    (LegacyRecordBatch.CODEC_SNAPPY, 1),
+    (LegacyRecordBatch.CODEC_LZ4, 1),
 ])
-@pytest.mark.parametrize("magic", [0, 1])
 def test_read_write_serde_v0_v1_with_compression(compression_type, magic):
     builder = LegacyRecordBatchBuilder(
         magic=magic, compression_type=compression_type, batch_size=1024 * 1024)
@@ -194,7 +196,6 @@ def test_legacy_batch_size_limit(magic):
 @pytest.mark.parametrize("compression_type,name,checker_name", [
     (LegacyRecordBatch.CODEC_GZIP, "gzip", "has_gzip"),
     (LegacyRecordBatch.CODEC_SNAPPY, "snappy", "has_snappy"),
-    (LegacyRecordBatch.CODEC_LZ4, "lz4", "has_lz4")
 ])
 def test_unavailable_codec(compression_type, name, checker_name):
     builder = LegacyRecordBatchBuilder(

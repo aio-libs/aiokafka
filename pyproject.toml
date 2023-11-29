@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools >=61", "wheel", "Cython >=3.0.5"]
+
+[project]
+name = "aiokafka"
+description = "Kafka integration with asyncio"
+readme = "README.rst"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Andrew Svetlov", email = "andrew.svetlov@gmail.com" },
+]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: System :: Networking",
+    "Topic :: System :: Distributed Computing",
+    "Framework :: AsyncIO",
+    "Development Status :: 4 - Beta",
+]
+
+dynamic = ["version"]
+
+dependencies = [
+    "async-timeout",
+    "packaging",
+]
+
+[optional-dependencies]
+snappy = ["cramjam"]
+lz4 = ["lz4 >=3.1.3"]
+zstd = ["cramjam"]
+gssapi = ["gssapi"]
+all = ["cramjam", "lz4 >=3.1.3", "gssapi"]
+
+[tool.setuptools.dynamic]
+version = { attr = "aiokafka.__version__" }
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+include = [
+    "aiokafka",
+    "aiokafka.*",
+]
+
+[project.urls]
+Documentation = "http://aiokafka.readthedocs.org"
+Source = "https://github.com/aio-libs/aiokafka"
+Changes = "https://github.com/aio-libs/aiokafka/blob/master/CHANGES.rst"
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = ["--strict-config", "--strict-markers"]
+markers = [
+    "ssl: Tests that require SSL certificates to run",
+]
+filterwarnings = [
+    "error",
+    # FIXME Until we fix socket leaks in tests
+    "default:unclosed event loop:ResourceWarning",
+]
+
+[tool.coverage.run]
+branch = true
+source_pkgs = ["aiokafka", "tests"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+skip_empty = true

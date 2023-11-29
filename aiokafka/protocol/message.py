@@ -11,11 +11,10 @@ from aiokafka.codec import (
     snappy_decode,
     zstd_decode,
     lz4_decode,
-    lz4_decode_old_kafka,
 )
+from aiokafka.errors import UnsupportedCodecError
 from aiokafka.util import WeakMethod
 
-from .frame import KafkaBytes
 from .struct import Struct
 from .types import Int8, Int32, UInt32, Int64, Bytes, Schema, AbstractType
 
@@ -156,7 +155,10 @@ class Message(Struct):
         elif codec == self.CODEC_LZ4:
             assert has_lz4(), "LZ4 decompression unsupported"
             if self.magic == 0:
-                raw_bytes = lz4_decode_old_kafka(self.value)
+                # https://issues.apache.org/jira/browse/KAFKA-3160
+                raise UnsupportedCodecError(
+                    "LZ4 is not supported for broker version 0.8/0.9"
+                )
             else:
                 raw_bytes = lz4_decode(self.value)
         elif codec == self.CODEC_ZSTD:
@@ -183,7 +185,7 @@ class MessageSet(AbstractType):
     @classmethod
     def encode(cls, items, prepend_size=True):
         # RecordAccumulator encodes messagesets internally
-        if isinstance(items, (io.BytesIO, KafkaBytes)):
+        if isinstance(items, io.BytesIO):
             size = Int32.decode(items)
             if prepend_size:
                 # rewind and return all the bytes
@@ -231,7 +233,7 @@ class MessageSet(AbstractType):
 
     @classmethod
     def repr(cls, messages):
-        if isinstance(messages, (KafkaBytes, io.BytesIO)):
+        if isinstance(messages, io.BytesIO):
             offset = messages.tell()
             decoded = cls.decode(messages)
             messages.seek(offset)

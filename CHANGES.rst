@@ -2,6 +2,27 @@
 Changelog
 =========
 
+0.9.0 (????-??-??)
+==================
+
+New features:
+
+* Include `kafka-python` into `aiokafka`'s code base
+* Replace `python-snappy` and `zstandard` with `cramjam`
+* PEP518 compliant `pyproject.toml`
+* Python 3.12 support
+
+
+Bugfixes:
+
+* Fix type annotation for `ConsumerRecord` (pr #912 by @zschumacher)
+* Improve send performance (issue #943)
+
+
+Improved Documentation:
+
+* Fix `AbstractTokenProvider.token` example (pr #919 by @mtomilov)
+
 
 0.8.1 (2023-05-31)
 ==================

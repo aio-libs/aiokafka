@@ -1,6 +1,5 @@
 import gzip
 import io
-import platform
 import struct
 
 _XERIAL_V1_HEADER = (-126, b"S", b"N", b"A", b"P", b"P", b"Y", 0, 1, 1)
@@ -8,28 +7,18 @@ _XERIAL_V1_FORMAT = "bccccccBii"
 ZSTD_MAX_OUTPUT_SIZE = 1024 * 1024
 
 try:
-    import snappy
+    import cramjam
 except ImportError:
-    snappy = None
-
-try:
-    import zstandard as zstd
-except ImportError:
-    zstd = None
+    cramjam = None
 
 try:
     import lz4.frame as lz4
 
     def _lz4_compress(payload, **kwargs):
         # Kafka does not support LZ4 dependent blocks
-        try:
-            # For lz4>=0.12.0
-            kwargs.pop("block_linked", None)
-            return lz4.compress(payload, block_linked=False, **kwargs)
-        except TypeError:
-            # For earlier versions of lz4
-            kwargs.pop("block_mode", None)
-            return lz4.compress(payload, block_mode=1, **kwargs)
+        # https://cwiki.apache.org/confluence/display/KAFKA/KIP-57+-+Interoperable+LZ4+Framing
+        kwargs.pop("block_linked", None)
+        return lz4.compress(payload, block_linked=False, **kwargs)
 
 except ImportError:
     lz4 = None
@@ -44,24 +33,17 @@ try:
 except ImportError:
     lz4framed = None
 
-try:
-    import xxhash
-except ImportError:
-    xxhash = None
-
-PYPY = bool(platform.python_implementation() == "PyPy")
-
 
 def has_gzip():
     return True
 
 
 def has_snappy():
-    return snappy is not None
+    return cramjam is not None
 
 
 def has_zstd():
-    return zstd is not None
+    return cramjam is not None
 
 
 def has_lz4():
@@ -133,32 +115,22 @@ def snappy_encode(payload, xerial_compatible=True, xerial_blocksize=32 * 1024):
         raise NotImplementedError("Snappy codec is not available")
 
     if not xerial_compatible:
-        return snappy.compress(payload)
+        return cramjam.snappy.compress_raw(payload)
 
     out = io.BytesIO()
     for fmt, dat in zip(_XERIAL_V1_FORMAT, _XERIAL_V1_HEADER):
         out.write(struct.pack("!" + fmt, dat))
 
     # Chunk through buffers to avoid creating intermediate slice copies
-    if PYPY:
-        # on pypy, snappy.compress() on a sliced buffer consumes the entire
-        # buffer... likely a python-snappy bug, so just use a slice copy
-        def chunker(payload, i, size):
-            return payload[i:size + i]
-
-    else:
-        # snappy.compress does not like raw memoryviews, so we have to convert
-        # tobytes, which is a copy... oh well. it's the thought that counts.
-        # pylint: disable-msg=undefined-variable
-        def chunker(payload, i, size):
-            return memoryview(payload)[i:size + i].tobytes()
+    def chunker(payload, i, size):
+        return memoryview(payload)[i:size + i]
 
     for chunk in (
         chunker(payload, i, xerial_blocksize)
         for i in range(0, len(payload), xerial_blocksize)
     ):
 
-        block = snappy.compress(chunk)
+        block = cramjam.snappy.compress_raw(chunk)
         block_size = len(block)
         out.write(struct.pack("!i", block_size))
         out.write(block)
@@ -210,13 +182,13 @@ def snappy_decode(payload):
             # Skip the block size
             cursor += 4
             end = cursor + block_size
-            out.write(snappy.decompress(byt[cursor:end]))
+            out.write(cramjam.snappy.decompress_raw(byt[cursor:end]))
             cursor = end
 
         out.seek(0)
         return out.read()
     else:
-        return snappy.decompress(payload)
+        return bytes(cramjam.snappy.decompress_raw(payload))
 
 
 if lz4:
@@ -253,66 +225,20 @@ else:
     lz4_decode = None
 
 
-def lz4_encode_old_kafka(payload):
-    """Encode payload for 0.8/0.9 brokers -- requires an incorrect header checksum."""
-    assert xxhash is not None
-    data = lz4_encode(payload)
-    header_size = 7
-    flg = data[4]
-    if not isinstance(flg, int):
-        flg = ord(flg)
-
-    content_size_bit = (flg >> 3) & 1
-    if content_size_bit:
-        # Old kafka does not accept the content-size field
-        # so we need to discard it and reset the header flag
-        flg -= 8
-        data = bytearray(data)
-        data[4] = flg
-        data = bytes(data)
-        payload = data[header_size + 8:]
-    else:
-        payload = data[header_size:]
-
-    # This is the incorrect hc
-    hc = xxhash.xxh32(data[0:header_size - 1]).digest()[
-        -2:-1
-    ]  # pylint: disable-msg=no-member
-
-    return b"".join([data[0:header_size - 1], hc, payload])
-
-
-def lz4_decode_old_kafka(payload):
-    assert xxhash is not None
-    # Kafka's LZ4 code has a bug in its header checksum implementation
-    header_size = 7
-    if isinstance(payload[4], int):
-        flg = payload[4]
-    else:
-        flg = ord(payload[4])
-    content_size_bit = (flg >> 3) & 1
-    if content_size_bit:
-        header_size += 8
-
-    # This should be the correct hc
-    hc = xxhash.xxh32(payload[4:header_size - 1]).digest()[-2:-1]
-
-    munged_payload = b"".join([payload[0:header_size - 1], hc, payload[header_size:]])
-    return lz4_decode(munged_payload)
-
-
-def zstd_encode(payload):
-    if not zstd:
+def zstd_encode(payload, level=None):
+    if not has_zstd():
         raise NotImplementedError("Zstd codec is not available")
-    return zstd.ZstdCompressor().compress(payload)
+
+    if level is None:
+        # Default for kafka broker
+        # https://cwiki.apache.org/confluence/display/KAFKA/KIP-390%3A+Support+Compression+Level
+        level = 3
+
+    return bytes(cramjam.zstd.compress(payload, level=level))
 
 
 def zstd_decode(payload):
-    if not zstd:
+    if not has_zstd():
         raise NotImplementedError("Zstd codec is not available")
-    try:
-        return zstd.ZstdDecompressor().decompress(payload)
-    except zstd.ZstdError:
-        return zstd.ZstdDecompressor().decompress(
-            payload, max_output_size=ZSTD_MAX_OUTPUT_SIZE
-        )
+
+    return bytes(cramjam.zstd.decompress(payload))
