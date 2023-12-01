@@ -470,3 +470,11 @@ async def _wait_kafka(kafka_host, kafka_port, timeout):
         time.sleep(0.5)
         if loop.time() - start > timeout:
             return False
+
+
+async def _wait_mock_count(listener, cnt):
+    while True:
+        if (listener.revoke_mock.call_count > cnt
+                and listener.assign_mock.call_count > cnt):
+            return
+        await asyncio.sleep(1)
