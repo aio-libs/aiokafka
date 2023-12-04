@@ -14,7 +14,7 @@ from aiokafka.protocol.commit import (
     OffsetFetchRequest_v1 as OffsetFetchRequest)
 from aiokafka.protocol.group import (
     HeartbeatRequest, JoinGroupRequest, LeaveGroupRequest,
-    SyncGroupRequest, JoinGroupResponse)
+    SyncGroupRequest, JoinGroupResponse, JoinGroupResponse_v5)
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.util import create_future, create_task
 
@@ -409,11 +409,10 @@ class GroupCoordinator(BaseCoordinator):
         member_metadata = {}
         all_subscribed_topics = set()
         for member in members:
-            if isinstance(response, JoinGroupResponse[3]):
+            if isinstance(response, JoinGroupResponse_v5):
                 member_id, group_instance_id, metadata_bytes = member
-            elif (isinstance(response, JoinGroupResponse[0]) or
-                  isinstance(response, JoinGroupResponse[1]) or
-                  isinstance(response, JoinGroupResponse[2])):
+            elif isinstance(response, (JoinGroupResponse[0], JoinGroupResponse[1],
+                                       JoinGroupResponse[2])):
                 member_id, metadata_bytes = member
             else:
                 raise Exception("unknown protocol returned from assignment")
