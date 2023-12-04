@@ -2,13 +2,13 @@
 Changelog
 =========
 
-0.9.0 (????-??-??)
+0.9.0 (2023-12-04)
 ==================
 
 New features:
 
-* Include `kafka-python` into `aiokafka`'s code base
-* Replace `python-snappy` and `zstandard` with `cramjam`
+* Include `kafka-python` into `aiokafka`'s code base (issue #928 and others)
+* Replace `python-snappy` and `zstandard` with `cramjam` (issue #930)
 * PEP518 compliant `pyproject.toml`
 * Python 3.12 support
 
