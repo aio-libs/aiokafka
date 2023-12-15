@@ -2,8 +2,8 @@
 Changelog
 =========
 
-0.10.0.a0 (2023-12-13)
-======================
+0.10.0 (2023-12-15)
+===================
 
 New features:
 
@@ -11,6 +11,11 @@ New features:
   @patkivikram and @joshuaherrera)
 
 .. _KIP-345: https://cwiki.apache.org/confluence/display/KAFKA/KIP-345%3A+Introduce+static+membership+protocol+to+reduce+consumer+rebalances
+
+
+Bugfixes:
+
+* Fix extra dependencies (issue #952)
 
 
 0.9.0 (2023-12-04)
