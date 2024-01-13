@@ -89,7 +89,7 @@ Read more in :ref:`Producer client <producer-usage>` section.
 Installation
 ------------
 
-.. code::
+.. code:: bash
 
     pip install aiokafka
 
@@ -100,6 +100,8 @@ Optional LZ4 install
 ++++++++++++++++++++
 
 To enable LZ4 compression/decompression, install **aiokafka** with :code:`lz4` extra option:
+
+.. code:: bash
 
     pip install 'aiokafka[lz4]'
 
