@@ -348,14 +348,14 @@ class AIOKafkaProducer:
         return (await self.client._wait_on_metadata(topic))
 
     def _serialize(self, topic, key, value):
-        if self._key_serializer:
-            serialized_key = self._key_serializer(key)
-        else:
+        if self._key_serializer is None:
             serialized_key = key
-        if self._value_serializer:
-            serialized_value = self._value_serializer(value)
         else:
+            serialized_key = self._key_serializer(key)
+        if self._value_serializer is None:
             serialized_value = value
+        else:
+            serialized_value = self._value_serializer(value)
 
         message_size = LegacyRecordBatchBuilder.record_overhead(
             self._producer_magic)
@@ -484,7 +484,9 @@ class AIOKafkaProducer:
         Returns:
             BatchBuilder: empty batch to be filled and submitted by the caller.
         """
-        return self._message_accumulator.create_builder()
+        return self._message_accumulator.create_builder(
+            key_serializer=self._key_serializer, value_serializer=self._value_serializer
+        )
 
     async def send_batch(self, batch, topic, *, partition):
         """Submit a BatchBuilder for publication.

@@ -380,6 +380,53 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             await producer.send_batch(
                 batch, self.topic, partition=partition)
 
+    @run_until_complete
+    async def test_producer_send_batch_with_serializer(self):
+        def key_serializer(val):
+            return val.upper().encode()
+
+        def value_serializer(val):
+            return json.dumps(val, separators=(',', ':')).encode()
+
+        producer = AIOKafkaProducer(
+            bootstrap_servers=self.hosts,
+            key_serializer=key_serializer,
+            value_serializer=value_serializer,
+        )
+        await producer.start()
+
+        partitions = await producer.partitions_for(self.topic)
+        partition = partitions.pop()
+
+        batch = producer.create_batch()
+        batch.append(key="key1", value={"value": 111}, timestamp=None)
+        batch.append(key="key2", value={"value": 222}, timestamp=None)
+        self.assertEqual(batch.record_count(), 2)
+
+        # batch gets properly sent
+        future = await producer.send_batch(
+            batch, self.topic, partition=partition)
+        resp = await future
+        await producer.stop()
+        self.assertEqual(resp.partition, partition)
+
+        consumer = AIOKafkaConsumer(
+            self.topic,
+            bootstrap_servers=self.hosts,
+            enable_auto_commit=True,
+            auto_offset_reset="earliest")
+        await consumer.start()
+
+        msg = await consumer.getone()
+        self.assertEqual(msg.key, b"KEY1")
+        self.assertEqual(msg.value, b"{\"value\":111}")
+
+        msg = await consumer.getone()
+        self.assertEqual(msg.key, b"KEY2")
+        self.assertEqual(msg.value, b"{\"value\":222}")
+
+        await consumer.stop()
+
     @pytest.mark.ssl
     @run_until_complete
     async def test_producer_ssl(self):
