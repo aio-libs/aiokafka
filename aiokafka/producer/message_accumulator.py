@@ -15,8 +15,8 @@ from aiokafka.util import create_future, get_running_loop
 
 class BatchBuilder:
     def __init__(
-            self, magic, batch_size, compression_type,
-                 *, is_transactional, key_serializer=None, value_serializer=None
+        self, magic, batch_size, compression_type,
+        *, is_transactional, key_serializer=None, value_serializer=None
     ):
         if magic < 2:
             assert not is_transactional
@@ -34,8 +34,14 @@ class BatchBuilder:
         self._value_serializer = value_serializer
 
     def _serialize(self, key, value):
-        serialized_key = self._key_serializer(key) if self._key_serializer else key
-        serialized_value = self._value_serializer(value) if self._value_serializer else value
+        if self._key_serializer is None:
+            serialized_key = key
+        else:
+            serialized_key = self._key_serializer(key)
+        if self._value_serializer is None:
+            serialized_value = value
+        else:
+            serialized_value = self._value_serializer(value)
 
         return serialized_key, serialized_value
 
