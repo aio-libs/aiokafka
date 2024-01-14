@@ -2,6 +2,14 @@
 Changelog
 =========
 
+Unreleased
+==========
+
+Bugfixes:
+
+* Fix serialization for batch (issue #886, pr #887 by @ydjin0602)
+
+
 0.10.0 (2023-12-15)
 ===================
 
