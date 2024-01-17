@@ -280,6 +280,7 @@ class GroupCoordinatorResponse_v1(Response):
     API_KEY = 10
     API_VERSION = 1
     SCHEMA = Schema(
+        ("throttle_time_ms", Int32),
         ("error_code", Int16),
         ("error_message", String("utf-8")),
         ("coordinator_id", Int32),
@@ -292,14 +293,19 @@ class GroupCoordinatorRequest_v0(Request):
     API_KEY = 10
     API_VERSION = 0
     RESPONSE_TYPE = GroupCoordinatorResponse_v0
-    SCHEMA = Schema(("consumer_group", String("utf-8")))
+    SCHEMA = Schema(
+        ("consumer_group", String("utf-8")),
+    )
 
 
 class GroupCoordinatorRequest_v1(Request):
     API_KEY = 10
     API_VERSION = 1
     RESPONSE_TYPE = GroupCoordinatorResponse_v1
-    SCHEMA = Schema(("coordinator_key", String("utf-8")), ("coordinator_type", Int8))
+    SCHEMA = Schema(
+        ("coordinator_key", String("utf-8")),
+        ("coordinator_type", Int8),
+    )
 
 
 GroupCoordinatorRequest = [GroupCoordinatorRequest_v0, GroupCoordinatorRequest_v1]

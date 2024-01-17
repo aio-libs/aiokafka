@@ -46,7 +46,7 @@ class AIOKafkaAdminClient:
             each request to servers and can be used to identify specific
             server-side log entries that correspond to this client. Also
             submitted to GroupCoordinator for logging with respect to
-            consumer group administration. Default: 'kafka-python-{version}'
+            consumer group administration. Default: 'aiokafka-{version}'
         request_timeout_ms (int): Client request timeout in milliseconds.
             Default: 40000.
         connections_max_idle_ms: Close idle connections after the number of
@@ -508,10 +508,7 @@ class AIOKafkaAdminClient:
 
         :return int: the acting coordinator broker id
         """
-        # FIXME GroupCoordinatorRequest_v1 in kafka-python 2.0.2 doesn't match
-        # spec causing "ValueError: Buffer underrun decoding string"
-        # version = self._matching_api_version(GroupCoordinatorRequest)
-        version = self._matching_api_version(GroupCoordinatorRequest[:1])
+        version = self._matching_api_version(GroupCoordinatorRequest)
         if version == 0 and coordinator_type:
             raise IncompatibleBrokerVersion(
                 "Cannot query for transaction id on current broker version"
