@@ -35,10 +35,11 @@ dependencies = [
 
 [project.optional-dependencies]
 snappy = ["cramjam"]
-lz4 = ["lz4 >=3.1.3"]
+# v2.8.0 adds support for independent-block mode
+lz4 = ["cramjam >=2.8.0"]
 zstd = ["cramjam"]
 gssapi = ["gssapi"]
-all = ["cramjam", "lz4 >=3.1.3", "gssapi"]
+all = ["cramjam >=2.8.0", "gssapi"]
 
 [tool.setuptools.dynamic]
 version = { attr = "aiokafka.__version__" }
