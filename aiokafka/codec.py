@@ -11,28 +11,6 @@ try:
 except ImportError:
     cramjam = None
 
-try:
-    import lz4.frame as lz4
-
-    def _lz4_compress(payload, **kwargs):
-        # Kafka does not support LZ4 dependent blocks
-        # https://cwiki.apache.org/confluence/display/KAFKA/KIP-57+-+Interoperable+LZ4+Framing
-        kwargs.pop("block_linked", None)
-        return lz4.compress(payload, block_linked=False, **kwargs)
-
-except ImportError:
-    lz4 = None
-
-try:
-    import lz4f
-except ImportError:
-    lz4f = None
-
-try:
-    import lz4framed
-except ImportError:
-    lz4framed = None
-
 
 def has_gzip():
     return True
@@ -47,13 +25,7 @@ def has_zstd():
 
 
 def has_lz4():
-    if lz4 is not None:
-        return True
-    if lz4f is not None:
-        return True
-    if lz4framed is not None:
-        return True
-    return False
+    return cramjam is not None
 
 
 def gzip_encode(payload, compresslevel=None):
@@ -161,7 +133,7 @@ def _detect_xerial_stream(payload):
     """
 
     if len(payload) > 16:
-        header = struct.unpack("!" + _XERIAL_V1_FORMAT, bytes(payload)[:16])
+        header = struct.unpack("!" + _XERIAL_V1_FORMAT, memoryview(payload)[:16])
         return header == _XERIAL_V1_HEADER
     return False
 
@@ -191,38 +163,26 @@ def snappy_decode(payload):
         return bytes(cramjam.snappy.decompress_raw(payload))
 
 
-if lz4:
-    lz4_encode = _lz4_compress  # pylint: disable-msg=no-member
-elif lz4f:
-    lz4_encode = lz4f.compressFrame  # pylint: disable-msg=no-member
-elif lz4framed:
-    lz4_encode = lz4framed.compress  # pylint: disable-msg=no-member
-else:
-    lz4_encode = None
+def lz4_encode(payload, level=9):
+    # level=9 is used by default by broker itself
+    # https://cwiki.apache.org/confluence/display/KAFKA/KIP-390%3A+Support+Compression+Level
+    if not has_lz4():
+        raise NotImplementedError("LZ4 codec is not available")
+
+    # Kafka broker doesn't support linked-block compression
+    # https://cwiki.apache.org/confluence/display/KAFKA/KIP-57+-+Interoperable+LZ4+Framing
+    compressor = cramjam.lz4.Compressor(
+        level=level, content_checksum=False, block_linked=False
+    )
+    compressor.compress(payload)
+    return bytes(compressor.finish())
 
 
-def lz4f_decode(payload):
-    """Decode payload using interoperable LZ4 framing. Requires Kafka >= 0.10"""
-    # pylint: disable-msg=no-member
-    ctx = lz4f.createDecompContext()
-    data = lz4f.decompressFrame(payload, ctx)
-    lz4f.freeDecompContext(ctx)
+def lz4_decode(payload):
+    if not has_lz4():
+        raise NotImplementedError("LZ4 codec is not available")
 
-    # lz4f python module does not expose how much of the payload was
-    # actually read if the decompression was only partial.
-    if data["next"] != 0:
-        raise RuntimeError("lz4f unable to decompress full payload")
-    return data["decomp"]
-
-
-if lz4:
-    lz4_decode = lz4.decompress  # pylint: disable-msg=no-member
-elif lz4f:
-    lz4_decode = lz4f_decode
-elif lz4framed:
-    lz4_decode = lz4framed.decompress  # pylint: disable-msg=no-member
-else:
-    lz4_decode = None
+    return bytes(cramjam.lz4.decompress(payload))
 
 
 def zstd_encode(payload, level=None):

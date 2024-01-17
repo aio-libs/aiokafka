@@ -10,12 +10,15 @@ from aiokafka.record.default_records import (
 
 
 @pytest.mark.parametrize("compression_type,crc", [
-    (DefaultRecordBatch.CODEC_NONE, 3950153926),
+    pytest.param(DefaultRecordBatch.CODEC_NONE, 3950153926, id="none"),
     # Gzip header includes timestamp, so checksum varies
-    (DefaultRecordBatch.CODEC_GZIP, None),
-    (DefaultRecordBatch.CODEC_SNAPPY, 2171068483),
-    (DefaultRecordBatch.CODEC_LZ4, 462121143),
-    (DefaultRecordBatch.CODEC_ZSTD, 1714138923),
+    pytest.param(DefaultRecordBatch.CODEC_GZIP, None, id="gzip"),
+    pytest.param(DefaultRecordBatch.CODEC_SNAPPY, 2171068483, id="snappy"),
+    # Checksum is
+    #   462121143 with content size (header = 01101000)
+    #   1260758266 without content size (header = 01100000)
+    pytest.param(DefaultRecordBatch.CODEC_LZ4, 1260758266, id="lz4"),
+    pytest.param(DefaultRecordBatch.CODEC_ZSTD, 1714138923, id="zstd"),
 ])
 def test_read_write_serde_v2(compression_type, crc):
     builder = DefaultRecordBatchBuilder(
