@@ -2,10 +2,10 @@ import logging
 import contextlib
 import copy
 import time
-from asyncio import shield, Event, Future
+from asyncio import shield, Event
 from enum import Enum
 
-from typing import Dict, FrozenSet, Iterable, List, Pattern, Set
+from typing import Dict, Iterable, Pattern, Set
 
 from aiokafka.errors import IllegalStateError
 from aiokafka.structs import OffsetAndMetadata, TopicPartition

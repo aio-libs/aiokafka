@@ -25,7 +25,7 @@ lint:
             isort --diff --color $(FORMATTED_AREAS) setup.py; \
             false; \
         fi
-	flake8 aiokafka tests setup.py
+	ruff aiokafka tests setup.py
 	mypy --install-types --non-interactive $(FORMATTED_AREAS)
 
 .PHONY: test
