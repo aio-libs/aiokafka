@@ -7,7 +7,9 @@ import aiokafka.errors as Errors
 from aiokafka import __version__
 from aiokafka.conn import collect_hosts, create_conn, CloseReason
 from aiokafka.cluster import ClusterMetadata
-from aiokafka.protocol.admin import DescribeAclsRequest_v2
+from aiokafka.protocol.admin import (
+    DescribeAclsRequest_v2, DescribeClientQuotasRequest_v0
+)
 from aiokafka.protocol.commit import OffsetFetchRequest
 from aiokafka.protocol.coordination import FindCoordinatorRequest
 from aiokafka.protocol.fetch import FetchRequest
@@ -421,7 +423,7 @@ class AIOKafkaClient:
                 # XXX: earlier we only did an assert here, but it seems it's
                 # possible to get a leader that is for some reason not in
                 # metadata.
-                # I think requerying metadata should solve this problem
+                # I think requiring metadata should solve this problem
                 if broker is None:
                     raise StaleMetadata(
                         'Broker id %s not in current metadata' % node_id)
@@ -581,8 +583,7 @@ class AIOKafkaClient:
         # in descending order. As soon as we find one that works, return it
         test_cases = [
             # format (<broker version>, <needed struct>)
-            # TODO Requires unreleased version of python-kafka
-            # ((2, 6, 0), DescribeClientQuotasRequest[0]),
+            ((2, 6, 0), DescribeClientQuotasRequest_v0),
             ((2, 5, 0), DescribeAclsRequest_v2),
             ((2, 4, 0), ProduceRequest[8]),
             ((2, 3, 0), FetchRequest[11]),
