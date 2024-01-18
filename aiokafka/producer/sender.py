@@ -807,9 +807,6 @@ class SendProduceReqHandler(BaseHandler):
         # as long as we set proper sequence, pid and epoch.
         if self._sender._txn_manager is None and batch.expired():
             return False
-        # XXX: remove unknown topic check as we fix
-        #      https://github.com/dpkp/kafka-python/issues/1155
-        if error.retriable or isinstance(error, UnknownTopicOrPartitionError)\
-                or error is UnknownTopicOrPartitionError:
+        if error.retriable:
             return True
         return False
