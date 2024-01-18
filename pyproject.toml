@@ -89,4 +89,5 @@ line-length = 88
 # For the reference, check https://beta.ruff.rs/docs/rules/
 select = [
     "F",  # pyflakes
+    "E", "W",  # pycodestyle
 ]

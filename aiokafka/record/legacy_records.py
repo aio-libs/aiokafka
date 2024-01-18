@@ -350,9 +350,9 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
         except struct.error:
             # perform expensive type checking only to translate struct errors
             # to human-readable messages
-            if type(offset) != int:
+            if not isinstance(offset, int):
                 raise TypeError(offset)
-            if type(timestamp) != int:
+            if not isinstance(timestamp, int):
                 raise TypeError(timestamp)
             if not isinstance(key, (bytes, bytearray, memoryview, NoneType)):
                 raise TypeError("Unsupported type for key: %s" % type(key))
