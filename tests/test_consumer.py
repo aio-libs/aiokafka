@@ -1,34 +1,45 @@
 import asyncio
 import gc
-import time
 import json
-from unittest import mock
+import time
 from contextlib import contextmanager
+from unittest import mock
 
-import pytest
 import async_timeout
+import pytest
 
 from aiokafka.abc import ConsumerRebalanceListener
-from aiokafka.consumer import AIOKafkaConsumer
-from aiokafka.consumer.fetcher import RecordTooLargeError, FetchRequest
-from aiokafka.consumer import fetcher
+from aiokafka.client import AIOKafkaClient
+from aiokafka.consumer import AIOKafkaConsumer, fetcher
+from aiokafka.consumer.fetcher import FetchRequest, RecordTooLargeError
+from aiokafka.errors import (
+    ConsumerStoppedError,
+    CorruptRecordException,
+    IllegalOperation,
+    IllegalStateError,
+    InvalidSessionTimeoutError,
+    KafkaError,
+    KafkaTimeoutError,
+    NoOffsetForPartitionError,
+    OffsetOutOfRangeError,
+    UnknownError,
+    UnsupportedVersionError,
+)
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.record import MemoryRecords
-from aiokafka.client import AIOKafkaClient
+from aiokafka.structs import OffsetAndMetadata, OffsetAndTimestamp, TopicPartition
 from aiokafka.util import create_task, get_running_loop
-from aiokafka.structs import (
-    OffsetAndTimestamp, TopicPartition, OffsetAndMetadata
-)
-from aiokafka.errors import (
-    IllegalStateError, OffsetOutOfRangeError, UnsupportedVersionError,
-    KafkaTimeoutError, NoOffsetForPartitionError, ConsumerStoppedError,
-    IllegalOperation, UnknownError, KafkaError, InvalidSessionTimeoutError,
-    CorruptRecordException
-)
 
 from ._testutil import (
-    KafkaIntegrationTestCase, StubRebalanceListener, DetectRebalanceListener,
-    run_until_complete, run_in_thread, random_string, kafka_versions, _wait_mock_count)
+    DetectRebalanceListener,
+    KafkaIntegrationTestCase,
+    StubRebalanceListener,
+    _wait_mock_count,
+    kafka_versions,
+    random_string,
+    run_in_thread,
+    run_until_complete,
+)
 
 
 class TestConsumerIntegration(KafkaIntegrationTestCase):

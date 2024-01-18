@@ -1,6 +1,6 @@
 import asyncio
-import collections
 import base64
+import collections
 import functools
 import hashlib
 import hmac
@@ -19,12 +19,15 @@ import async_timeout
 
 import aiokafka.errors as Errors
 from aiokafka.abc import AbstractTokenProvider
-from aiokafka.protocol.api import RequestHeader
 from aiokafka.protocol.admin import (
-    SaslHandShakeRequest, SaslAuthenticateRequest, ApiVersionRequest
+    ApiVersionRequest,
+    SaslAuthenticateRequest,
+    SaslHandShakeRequest,
 )
+from aiokafka.protocol.api import RequestHeader
 from aiokafka.protocol.commit import (
-    GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
+    GroupCoordinatorResponse_v0 as GroupCoordinatorResponse,
+)
 from aiokafka.util import create_future, create_task, get_running_loop, wait_for
 
 try:

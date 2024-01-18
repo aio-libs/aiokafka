@@ -6,19 +6,22 @@ import traceback
 import warnings
 from typing import Dict, List
 
+from aiokafka import __version__
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
 from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from aiokafka.errors import (
-    TopicAuthorizationFailedError, OffsetOutOfRangeError,
-    ConsumerStoppedError, IllegalOperation, UnsupportedVersionError,
-    IllegalStateError, NoOffsetForPartitionError, RecordTooLargeError
+    ConsumerStoppedError,
+    IllegalOperation,
+    IllegalStateError,
+    NoOffsetForPartitionError,
+    OffsetOutOfRangeError,
+    RecordTooLargeError,
+    TopicAuthorizationFailedError,
+    UnsupportedVersionError,
 )
-from aiokafka.structs import TopicPartition, ConsumerRecord
-from aiokafka.util import (
-    commit_structure_validate, get_running_loop
-)
-from aiokafka import __version__
+from aiokafka.structs import ConsumerRecord, TopicPartition
+from aiokafka.util import commit_structure_validate, get_running_loop
 
 from .fetcher import Fetcher, OffsetResetStrategy
 from .group_coordinator import GroupCoordinator, NoGroupCoordinator

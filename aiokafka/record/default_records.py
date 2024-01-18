@@ -58,14 +58,20 @@ import struct
 import time
 
 import aiokafka.codec as codecs
+from aiokafka.codec import (
+    gzip_decode,
+    gzip_encode,
+    lz4_decode,
+    lz4_encode,
+    snappy_decode,
+    snappy_encode,
+    zstd_decode,
+    zstd_encode,
+)
 from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from aiokafka.util import NO_EXTENSIONS
-from aiokafka.codec import (
-    gzip_encode, snappy_encode, lz4_encode, zstd_encode,
-    gzip_decode, snappy_decode, lz4_decode, zstd_decode
-)
 
-from .util import decode_varint, encode_varint, calc_crc32c, size_of_varint
+from .util import calc_crc32c, decode_varint, encode_varint, size_of_varint
 
 
 class DefaultRecordBase:
@@ -670,10 +676,16 @@ if NO_EXTENSIONS:
 else:
     try:
         from ._crecords import (
-            DefaultRecordBatchBuilder as _DefaultRecordBatchBuilderCython,
-            DefaultRecordMetadata as _DefaultRecordMetadataCython,
-            DefaultRecordBatch as _DefaultRecordBatchCython,
             DefaultRecord as _DefaultRecordCython,
+        )
+        from ._crecords import (
+            DefaultRecordBatch as _DefaultRecordBatchCython,
+        )
+        from ._crecords import (
+            DefaultRecordBatchBuilder as _DefaultRecordBatchBuilderCython,
+        )
+        from ._crecords import (
+            DefaultRecordMetadata as _DefaultRecordMetadataCython,
         )
         DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderCython
         DefaultRecordMetadata = _DefaultRecordMetadataCython

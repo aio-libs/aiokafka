@@ -1,29 +1,29 @@
 import asyncio
-import string
+import inspect
+import logging
+import operator
+import os
+import pathlib
 import random
+import shutil
+import string
+import subprocess
+import sys
 import time
 import unittest
-import pytest
-import operator
-import inspect
-import subprocess
-import pathlib
-import shutil
-import sys
-import os
-
 from concurrent import futures
 from contextlib import contextmanager
 from functools import wraps
 from unittest.mock import Mock
 
+import pytest
+
 from aiokafka import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import KafkaConnectionError
-from aiokafka.producer import AIOKafkaProducer
 from aiokafka.helpers import create_ssl_context
+from aiokafka.producer import AIOKafkaProducer
 
-import logging
 log = logging.getLogger(__name__)
 
 

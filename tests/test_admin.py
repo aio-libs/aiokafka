@@ -1,13 +1,12 @@
 import asyncio
 
-from aiokafka.admin import AIOKafkaAdminClient, NewTopic, NewPartitions
+from aiokafka.admin import AIOKafkaAdminClient, NewPartitions, NewTopic
 from aiokafka.admin.config_resource import ConfigResource, ConfigResourceType
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.structs import TopicPartition
-from ._testutil import (
-    KafkaIntegrationTestCase, kafka_versions, run_until_complete
-)
+
+from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_complete
 
 
 class TestAdmin(KafkaIntegrationTestCase):

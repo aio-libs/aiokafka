@@ -6,18 +6,31 @@ import time
 import aiokafka.errors as Errors
 from aiokafka.client import ConnectionGroup, CoordinationType
 from aiokafka.errors import (
-    KafkaError, UnknownTopicOrPartitionError,
-    CoordinatorNotAvailableError, NotCoordinatorError,
-    CoordinatorLoadInProgressError, InvalidProducerEpoch,
-    ProducerFenced, InvalidProducerIdMapping, InvalidTxnState,
-    ConcurrentTransactions, DuplicateSequenceNumber, RequestTimedOutError,
-    OutOfOrderSequenceNumber, TopicAuthorizationFailedError,
-    GroupAuthorizationFailedError, TransactionalIdAuthorizationFailed,
-    OperationNotAttempted)
+    ConcurrentTransactions,
+    CoordinatorLoadInProgressError,
+    CoordinatorNotAvailableError,
+    DuplicateSequenceNumber,
+    GroupAuthorizationFailedError,
+    InvalidProducerEpoch,
+    InvalidProducerIdMapping,
+    InvalidTxnState,
+    KafkaError,
+    NotCoordinatorError,
+    OperationNotAttempted,
+    OutOfOrderSequenceNumber,
+    ProducerFenced,
+    RequestTimedOutError,
+    TopicAuthorizationFailedError,
+    TransactionalIdAuthorizationFailed,
+    UnknownTopicOrPartitionError,
+)
 from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.protocol.transaction import (
-    InitProducerIdRequest, AddPartitionsToTxnRequest, EndTxnRequest,
-    AddOffsetsToTxnRequest, TxnOffsetCommitRequest
+    AddOffsetsToTxnRequest,
+    AddPartitionsToTxnRequest,
+    EndTxnRequest,
+    InitProducerIdRequest,
+    TxnOffsetCommitRequest,
 )
 from aiokafka.structs import TopicPartition
 from aiokafka.util import create_task

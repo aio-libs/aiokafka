@@ -1,13 +1,11 @@
 import struct
 from unittest import mock
 
-import aiokafka.codec
 import pytest
 
+import aiokafka.codec
 from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
-from aiokafka.record.legacy_records import (
-    LegacyRecordBatch, LegacyRecordBatchBuilder
-)
+from aiokafka.record.legacy_records import LegacyRecordBatch, LegacyRecordBatchBuilder
 
 
 @pytest.mark.parametrize("magic", [0, 1])

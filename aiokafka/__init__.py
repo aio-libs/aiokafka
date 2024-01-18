@@ -6,9 +6,11 @@ from .consumer import AIOKafkaConsumer
 from .errors import ConsumerStoppedError, IllegalOperation
 from .producer import AIOKafkaProducer
 from .structs import (
-    TopicPartition, ConsumerRecord, OffsetAndTimestamp, OffsetAndMetadata
+    ConsumerRecord,
+    OffsetAndMetadata,
+    OffsetAndTimestamp,
+    TopicPartition,
 )
-
 
 __all__ = [
     # Clients API

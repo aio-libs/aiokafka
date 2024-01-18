@@ -3,12 +3,14 @@ import collections
 import copy
 import time
 
-from aiokafka.errors import (KafkaTimeoutError,
-                             NotLeaderForPartitionError,
-                             LeaderNotAvailableError,
-                             ProducerClosed)
-from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
+from aiokafka.errors import (
+    KafkaTimeoutError,
+    LeaderNotAvailableError,
+    NotLeaderForPartitionError,
+    ProducerClosed,
+)
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
+from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import RecordMetadata
 from aiokafka.util import create_future, get_running_loop
 

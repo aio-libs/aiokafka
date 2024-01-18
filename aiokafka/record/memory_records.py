@@ -23,8 +23,9 @@ import struct
 
 from aiokafka.errors import CorruptRecordException
 from aiokafka.util import NO_EXTENSIONS
-from .legacy_records import LegacyRecordBatch
+
 from .default_records import DefaultRecordBatch
+from .legacy_records import LegacyRecordBatch
 
 
 class _MemoryRecordsPy:

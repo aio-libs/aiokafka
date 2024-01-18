@@ -1,7 +1,7 @@
 import asyncio
 import collections
-import logging
 import copy
+import logging
 import time
 
 import aiokafka.errors as Errors
@@ -9,15 +9,18 @@ from aiokafka.client import ConnectionGroup, CoordinationType
 from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from aiokafka.coordinator.protocol import ConsumerProtocol
 from aiokafka.protocol.api import Response
-from aiokafka.protocol.commit import (
-    OffsetCommitRequest_v2 as OffsetCommitRequest,
-    OffsetFetchRequest_v1 as OffsetFetchRequest)
+from aiokafka.protocol.commit import OffsetCommitRequest_v2 as OffsetCommitRequest
+from aiokafka.protocol.commit import OffsetFetchRequest_v1 as OffsetFetchRequest
 from aiokafka.protocol.group import (
-    HeartbeatRequest, JoinGroupRequest, LeaveGroupRequest,
-    SyncGroupRequest, JoinGroupResponse, JoinGroupResponse_v5)
+    HeartbeatRequest,
+    JoinGroupRequest,
+    JoinGroupResponse,
+    JoinGroupResponse_v5,
+    LeaveGroupRequest,
+    SyncGroupRequest,
+)
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.util import create_future, create_task
-
 
 log = logging.getLogger(__name__)
 

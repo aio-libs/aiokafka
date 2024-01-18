@@ -1,7 +1,6 @@
 import inspect
 import sys
 
-
 __all__ = [
     # aiokafka custom errors
     "ConsumerStoppedError",

@@ -1,11 +1,7 @@
-from aiokafka.protocol.admin import Request
-from aiokafka.protocol.admin import Response
-from aiokafka.protocol.types import Schema
-from aiokafka.protocol.types import Array
-from aiokafka.protocol.types import Int16
-from aiokafka.protocol.types import String
-
 import pytest
+
+from aiokafka.protocol.admin import Request, Response
+from aiokafka.protocol.types import Array, Int16, Schema, String
 
 
 @pytest.mark.parametrize("superclass", (Request, Response))

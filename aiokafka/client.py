@@ -5,10 +5,20 @@ import time
 
 import aiokafka.errors as Errors
 from aiokafka import __version__
-from aiokafka.conn import collect_hosts, create_conn, CloseReason
 from aiokafka.cluster import ClusterMetadata
+from aiokafka.conn import CloseReason, collect_hosts, create_conn
+from aiokafka.errors import (
+    KafkaConnectionError,
+    KafkaError,
+    NodeNotReadyError,
+    RequestTimedOutError,
+    StaleMetadata,
+    UnknownTopicOrPartitionError,
+    UnrecognizedBrokerVersion,
+)
 from aiokafka.protocol.admin import (
-    DescribeAclsRequest_v2, DescribeClientQuotasRequest_v0
+    DescribeAclsRequest_v2,
+    DescribeClientQuotasRequest_v0,
 )
 from aiokafka.protocol.commit import OffsetFetchRequest
 from aiokafka.protocol.coordination import FindCoordinatorRequest
@@ -16,18 +26,12 @@ from aiokafka.protocol.fetch import FetchRequest
 from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.protocol.offset import OffsetRequest
 from aiokafka.protocol.produce import ProduceRequest
-from aiokafka.errors import (
-    KafkaError,
-    KafkaConnectionError,
-    NodeNotReadyError,
-    RequestTimedOutError,
-    UnknownTopicOrPartitionError,
-    UnrecognizedBrokerVersion,
-    StaleMetadata)
 from aiokafka.util import (
-    create_future, create_task, parse_kafka_version, get_running_loop
+    create_future,
+    create_task,
+    get_running_loop,
+    parse_kafka_version,
 )
-
 
 __all__ = ['AIOKafkaClient']
 
@@ -526,10 +530,11 @@ class AIOKafkaClient:
                 assert self.cluster.brokers(), 'no brokers in metadata'
                 node_id = list(self.cluster.brokers())[0].nodeId
 
-        from aiokafka.protocol.admin import (
-            ListGroupsRequest_v0, ApiVersionRequest_v0)
+        from aiokafka.protocol.admin import ApiVersionRequest_v0, ListGroupsRequest_v0
         from aiokafka.protocol.commit import (
-            OffsetFetchRequest_v0, GroupCoordinatorRequest_v0)
+            GroupCoordinatorRequest_v0,
+            OffsetFetchRequest_v0,
+        )
         from aiokafka.protocol.metadata import MetadataRequest_v0
         test_cases = [
             ((0, 10), ApiVersionRequest_v0()),

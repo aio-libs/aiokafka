@@ -1,9 +1,9 @@
 import ssl
 import unittest
 
-from aiokafka.helpers import create_ssl_context
-
 import pytest
+
+from aiokafka.helpers import create_ssl_context
 
 
 @pytest.mark.usefixtures('setup_test_class_serverless')

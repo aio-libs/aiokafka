@@ -8,13 +8,12 @@ from itertools import chain
 import async_timeout
 
 import aiokafka.errors as Errors
-from aiokafka.errors import (
-    ConsumerStoppedError, RecordTooLargeError, KafkaTimeoutError)
-from aiokafka.protocol.offset import OffsetRequest
+from aiokafka.errors import ConsumerStoppedError, KafkaTimeoutError, RecordTooLargeError
 from aiokafka.protocol.fetch import FetchRequest
+from aiokafka.protocol.offset import OffsetRequest
+from aiokafka.record.control_record import ABORT_MARKER, ControlRecord
 from aiokafka.record.memory_records import MemoryRecords
-from aiokafka.record.control_record import ControlRecord, ABORT_MARKER
-from aiokafka.structs import OffsetAndTimestamp, TopicPartition, ConsumerRecord
+from aiokafka.structs import ConsumerRecord, OffsetAndTimestamp, TopicPartition
 from aiokafka.util import create_future, create_task
 
 log = logging.getLogger(__name__)

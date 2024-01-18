@@ -1,5 +1,6 @@
-from ._crc32c import crc as crc32c_py
 from aiokafka.util import NO_EXTENSIONS
+
+from ._crc32c import crc as crc32c_py
 
 
 def encode_varint_py(value, write):

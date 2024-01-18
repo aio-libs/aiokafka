@@ -1,7 +1,6 @@
 import pytest
 
-from aiokafka.record.control_record import \
-    ControlRecord, ABORT_MARKER, COMMIT_MARKER
+from aiokafka.record.control_record import ABORT_MARKER, COMMIT_MARKER, ControlRecord
 
 
 @pytest.mark.parametrize("data,marker", [

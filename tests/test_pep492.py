@@ -1,9 +1,10 @@
 import asyncio
+
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import ConsumerStoppedError, NoOffsetForPartitionError
 from aiokafka.util import create_task
-from ._testutil import (
-    KafkaIntegrationTestCase, run_until_complete, random_string)
+
+from ._testutil import KafkaIntegrationTestCase, random_string, run_until_complete
 
 
 class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):

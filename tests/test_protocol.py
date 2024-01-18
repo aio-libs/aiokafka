@@ -4,20 +4,20 @@ import struct
 
 import pytest
 
-from aiokafka.protocol.api import RequestHeader, Request, Response
+from aiokafka.protocol.api import Request, RequestHeader, Response
 from aiokafka.protocol.commit import GroupCoordinatorRequest
 from aiokafka.protocol.fetch import FetchRequest, FetchResponse
 from aiokafka.protocol.message import Message, MessageSet, PartialMessage
 from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.protocol.types import (
+    CompactArray,
+    CompactBytes,
+    CompactString,
     Int16,
     Int32,
     Int64,
     String,
     UnsignedVarInt32,
-    CompactString,
-    CompactArray,
-    CompactBytes,
 )
 
 

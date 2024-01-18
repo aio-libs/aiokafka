@@ -1,30 +1,39 @@
 import asyncio
-import pytest
 import unittest
 from unittest import mock
 
+import pytest
+
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer.fetcher import (
-    Fetcher, FetchResult, FetchError, ConsumerRecord, OffsetResetStrategy,
-    PartitionRecords, READ_COMMITTED, READ_UNCOMMITTED
+    READ_COMMITTED,
+    READ_UNCOMMITTED,
+    ConsumerRecord,
+    Fetcher,
+    FetchError,
+    FetchResult,
+    OffsetResetStrategy,
+    PartitionRecords,
 )
 from aiokafka.consumer.subscription_state import SubscriptionState
 from aiokafka.errors import (
-    TopicAuthorizationFailedError, UnknownError, UnknownTopicOrPartitionError,
-    OffsetOutOfRangeError, KafkaTimeoutError, NotLeaderForPartitionError
+    KafkaTimeoutError,
+    NotLeaderForPartitionError,
+    OffsetOutOfRangeError,
+    TopicAuthorizationFailedError,
+    UnknownError,
+    UnknownTopicOrPartitionError,
 )
-from aiokafka.protocol.fetch import (
-    FetchRequest_v0 as FetchRequest, FetchResponse_v0 as FetchResponse
-)
+from aiokafka.protocol.fetch import FetchRequest_v0 as FetchRequest
+from aiokafka.protocol.fetch import FetchResponse_v0 as FetchResponse
 from aiokafka.protocol.offset import OffsetResponse
-from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.record.default_records import (
     # NB: test_solitary_abort_marker relies on implementation details
-    _DefaultRecordBatchBuilderPy as DefaultRecordBatchBuilder)
-from aiokafka.record.memory_records import MemoryRecords
-from aiokafka.structs import (
-    TopicPartition, OffsetAndTimestamp, OffsetAndMetadata
+    _DefaultRecordBatchBuilderPy as DefaultRecordBatchBuilder,
 )
+from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
+from aiokafka.record.memory_records import MemoryRecords
+from aiokafka.structs import OffsetAndMetadata, OffsetAndTimestamp, TopicPartition
 from aiokafka.util import create_future, create_task, get_running_loop
 
 from ._testutil import run_until_complete

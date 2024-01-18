@@ -14,18 +14,13 @@ setup:
 
 .PHONY: format
 format:
-	isort $(FORMATTED_AREAS) setup.py
 	black $(FORMATTED_AREAS) setup.py
+	ruff check --fix aiokafka tests setup.py
 
 .PHONY: lint
 lint:
 	black --check $(FORMATTED_AREAS) setup.py
-	@if ! isort -c $(FORMATTED_AREAS) setup.py; then \
-            echo "Import sort errors, run 'make format' to fix them!!!"; \
-            isort --diff --color $(FORMATTED_AREAS) setup.py; \
-            false; \
-        fi
-	ruff aiokafka tests setup.py
+	ruff check aiokafka tests setup.py
 	mypy --install-types --non-interactive $(FORMATTED_AREAS)
 
 .PHONY: test

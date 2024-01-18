@@ -1,40 +1,56 @@
 from unittest import mock
 
-from aiokafka.client import AIOKafkaClient, CoordinationType, ConnectionGroup
+from aiokafka.client import AIOKafkaClient, ConnectionGroup, CoordinationType
 from aiokafka.errors import (
-    NoError, UnknownError,
-    CoordinatorNotAvailableError, NotCoordinatorError,
-    CoordinatorLoadInProgressError, ConcurrentTransactions,
-    UnknownTopicOrPartitionError, InvalidProducerEpoch,
-    ProducerFenced, InvalidProducerIdMapping, InvalidTxnState,
-    RequestTimedOutError, DuplicateSequenceNumber, KafkaError,
-    TopicAuthorizationFailedError, OperationNotAttempted,
-    TransactionalIdAuthorizationFailed, GroupAuthorizationFailedError
+    ConcurrentTransactions,
+    CoordinatorLoadInProgressError,
+    CoordinatorNotAvailableError,
+    DuplicateSequenceNumber,
+    GroupAuthorizationFailedError,
+    InvalidProducerEpoch,
+    InvalidProducerIdMapping,
+    InvalidTxnState,
+    KafkaError,
+    NoError,
+    NotCoordinatorError,
+    OperationNotAttempted,
+    ProducerFenced,
+    RequestTimedOutError,
+    TopicAuthorizationFailedError,
+    TransactionalIdAuthorizationFailed,
+    UnknownError,
+    UnknownTopicOrPartitionError,
 )
 from aiokafka.producer.message_accumulator import MessageAccumulator
 from aiokafka.producer.sender import (
-    Sender, InitPIDHandler, AddPartitionsToTxnHandler,
-    AddOffsetsToTxnHandler, TxnOffsetCommitHandler, EndTxnHandler,
-    BaseHandler, SendProduceReqHandler
+    AddOffsetsToTxnHandler,
+    AddPartitionsToTxnHandler,
+    BaseHandler,
+    EndTxnHandler,
+    InitPIDHandler,
+    Sender,
+    SendProduceReqHandler,
+    TxnOffsetCommitHandler,
 )
-from aiokafka.producer.transaction_manager import (
-    TransactionManager, TransactionState
-)
+from aiokafka.producer.transaction_manager import TransactionManager, TransactionState
 from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.protocol.produce import ProduceRequest, ProduceResponse
 from aiokafka.protocol.transaction import (
-    InitProducerIdRequest, InitProducerIdResponse,
-    AddPartitionsToTxnRequest, AddPartitionsToTxnResponse,
-    AddOffsetsToTxnRequest, AddOffsetsToTxnResponse,
-    TxnOffsetCommitRequest, TxnOffsetCommitResponse,
-    EndTxnRequest, EndTxnResponse
+    AddOffsetsToTxnRequest,
+    AddOffsetsToTxnResponse,
+    AddPartitionsToTxnRequest,
+    AddPartitionsToTxnResponse,
+    EndTxnRequest,
+    EndTxnResponse,
+    InitProducerIdRequest,
+    InitProducerIdResponse,
+    TxnOffsetCommitRequest,
+    TxnOffsetCommitResponse,
 )
-from aiokafka.structs import TopicPartition, OffsetAndMetadata
+from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.util import get_running_loop
 
-from ._testutil import (
-    KafkaIntegrationTestCase, run_until_complete, kafka_versions
-)
+from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_complete
 
 LOG_APPEND_TIME = 1
 

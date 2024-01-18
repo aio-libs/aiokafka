@@ -3,20 +3,20 @@ import time
 from binascii import crc32
 
 from aiokafka.codec import (
-    has_gzip,
-    has_snappy,
-    has_lz4,
-    has_zstd,
     gzip_decode,
+    has_gzip,
+    has_lz4,
+    has_snappy,
+    has_zstd,
+    lz4_decode,
     snappy_decode,
     zstd_decode,
-    lz4_decode,
 )
 from aiokafka.errors import UnsupportedCodecError
 from aiokafka.util import WeakMethod
 
 from .struct import Struct
-from .types import Int8, Int32, UInt32, Int64, Bytes, Schema, AbstractType
+from .types import AbstractType, Bytes, Int8, Int32, Int64, Schema, UInt32
 
 
 class Message(Struct):

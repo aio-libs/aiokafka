@@ -1,6 +1,7 @@
 import pytest
-from aiokafka.record import MemoryRecords
+
 from aiokafka.errors import CorruptRecordException
+from aiokafka.record import MemoryRecords
 
 # This is real live data from Kafka 11 broker
 record_batch_data_v2 = [

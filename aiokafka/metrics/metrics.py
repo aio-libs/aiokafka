@@ -1,7 +1,7 @@
 import logging
 import sys
-import time
 import threading
+import time
 
 from .kafka_metric import KafkaMetric
 from .measurable import AnonMeasurable

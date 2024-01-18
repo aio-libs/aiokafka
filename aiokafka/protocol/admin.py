@@ -3,15 +3,15 @@ from .types import (
     Array,
     Boolean,
     Bytes,
+    CompactArray,
+    CompactString,
+    Float64,
     Int8,
     Int16,
     Int32,
     Int64,
     Schema,
     String,
-    Float64,
-    CompactString,
-    CompactArray,
     TaggedFields,
 )
 

@@ -1,5 +1,5 @@
-from aiokafka.metrics.measurable import AnonMeasurable
 from aiokafka.metrics.compound_stat import AbstractCompoundStat, NamedMeasurable
+from aiokafka.metrics.measurable import AnonMeasurable
 
 from .histogram import Histogram
 from .sampled_stat import AbstractSampledStat

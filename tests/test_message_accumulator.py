@@ -1,17 +1,22 @@
 import asyncio
-import pytest
 import unittest
 from unittest import mock
 
+import pytest
+
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.errors import (
-    KafkaTimeoutError, NotLeaderForPartitionError, LeaderNotAvailableError
+    KafkaTimeoutError,
+    LeaderNotAvailableError,
+    NotLeaderForPartitionError,
 )
-from aiokafka.util import create_task, get_running_loop
 from aiokafka.producer.message_accumulator import (
-    MessageAccumulator, MessageBatch, BatchBuilder
+    BatchBuilder,
+    MessageAccumulator,
+    MessageBatch,
 )
 from aiokafka.structs import TopicPartition
+from aiokafka.util import create_task, get_running_loop
 
 from ._testutil import run_until_complete
 

@@ -3,8 +3,7 @@
 """
 
 import logging
-
-from ssl import create_default_context, Purpose
+from ssl import Purpose, create_default_context
 
 log = logging.getLogger(__name__)
 

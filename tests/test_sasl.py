@@ -1,18 +1,17 @@
 import pytest
 
-from ._testutil import (
-    KafkaIntegrationTestCase, run_until_complete, kafka_versions
-)
-
-from aiokafka.producer import AIOKafkaProducer
-from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.admin import AIOKafkaAdminClient
-
+from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import (
-    TopicAuthorizationFailedError, GroupAuthorizationFailedError,
-    TransactionalIdAuthorizationFailed, UnknownTopicOrPartitionError
+    GroupAuthorizationFailedError,
+    TopicAuthorizationFailedError,
+    TransactionalIdAuthorizationFailed,
+    UnknownTopicOrPartitionError,
 )
+from aiokafka.producer import AIOKafkaProducer
 from aiokafka.structs import TopicPartition
+
+from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_complete
 
 
 @pytest.mark.usefixtures('setup_test_class')

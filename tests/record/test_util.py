@@ -1,7 +1,8 @@
 import struct
-import pytest
-from aiokafka.record import util
 
+import pytest
+
+from aiokafka.record import util
 
 varint_data = [
     (b"\x00", 0),

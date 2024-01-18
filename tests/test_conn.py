@@ -1,29 +1,40 @@
 import asyncio
 import gc
-import pytest
 import struct
 from typing import Any
 from unittest import mock
 
-from aiokafka.conn import AIOKafkaConnection, create_conn, VersionInfo
+import pytest
+
+from aiokafka.conn import AIOKafkaConnection, VersionInfo, create_conn
 from aiokafka.errors import (
-    KafkaConnectionError, CorrelationIdError, KafkaError, NoError,
-    UnknownError, UnsupportedSaslMechanismError, IllegalSaslStateError
+    CorrelationIdError,
+    IllegalSaslStateError,
+    KafkaConnectionError,
+    KafkaError,
+    NoError,
+    UnknownError,
+    UnsupportedSaslMechanismError,
 )
-from aiokafka.protocol.metadata import (
-    MetadataRequest_v0 as MetadataRequest,
-    MetadataResponse_v0 as MetadataResponse)
+from aiokafka.protocol.admin import (
+    SaslAuthenticateRequest,
+    SaslAuthenticateResponse,
+    SaslHandShakeRequest,
+    SaslHandShakeResponse,
+)
 from aiokafka.protocol.commit import (
     GroupCoordinatorRequest_v0 as GroupCoordinatorRequest,
-    GroupCoordinatorResponse_v0 as GroupCoordinatorResponse)
-from aiokafka.protocol.admin import (
-    SaslHandShakeRequest, SaslHandShakeResponse, SaslAuthenticateRequest,
-    SaslAuthenticateResponse
 )
+from aiokafka.protocol.commit import (
+    GroupCoordinatorResponse_v0 as GroupCoordinatorResponse,
+)
+from aiokafka.protocol.metadata import MetadataRequest_v0 as MetadataRequest
+from aiokafka.protocol.metadata import MetadataResponse_v0 as MetadataResponse
 from aiokafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
-from ._testutil import KafkaIntegrationTestCase, run_until_complete
 from aiokafka.util import get_running_loop
+
+from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
 @pytest.mark.usefixtures('setup_test_class')

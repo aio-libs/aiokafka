@@ -1,11 +1,12 @@
 from unittest import mock
 
-import aiokafka.codec
 import pytest
 
+import aiokafka.codec
 from aiokafka.errors import UnsupportedCodecError
 from aiokafka.record.default_records import (
-    DefaultRecordBatch, DefaultRecordBatchBuilder
+    DefaultRecordBatch,
+    DefaultRecordBatchBuilder,
 )
 
 

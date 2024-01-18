@@ -1,23 +1,27 @@
 import asyncio
-from dataclasses import dataclass
 import gc
-import docker as libdocker
 import logging
 import os
-import pytest
-import socket
-import uuid
-import sys
 import pathlib
+import socket
+import sys
+import uuid
+from dataclasses import dataclass
 
-from aiokafka.record.legacy_records import (
-    LegacyRecordBatchBuilder, _LegacyRecordBatchBuilderPy)
+import pytest
+
+import docker as libdocker
 from aiokafka.record.default_records import (
-    DefaultRecordBatchBuilder, _DefaultRecordBatchBuilderPy)
+    DefaultRecordBatchBuilder,
+    _DefaultRecordBatchBuilderPy,
+)
+from aiokafka.record.legacy_records import (
+    LegacyRecordBatchBuilder,
+    _LegacyRecordBatchBuilderPy,
+)
 from aiokafka.util import NO_EXTENSIONS
 
 from ._testutil import wait_kafka
-
 
 if not NO_EXTENSIONS:
     assert LegacyRecordBatchBuilder is not _LegacyRecordBatchBuilderPy and \

@@ -90,4 +90,5 @@ line-length = 88
 select = [
     "F",  # pyflakes
     "E", "W",  # pycodestyle
+    "I",  # isort
 ]

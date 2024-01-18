@@ -1,25 +1,35 @@
 import asyncio
 import gc
 import json
-import pytest
 import time
 import weakref
 from unittest import mock
+
+import pytest
 
 from aiokafka.client import AIOKafkaClient
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import (
-    KafkaTimeoutError, UnknownTopicOrPartitionError,
-    MessageSizeTooLargeError, NotLeaderForPartitionError,
-    LeaderNotAvailableError, RequestTimedOutError,
-    UnsupportedVersionError, ProducerClosed, KafkaError)
+    KafkaError,
+    KafkaTimeoutError,
+    LeaderNotAvailableError,
+    MessageSizeTooLargeError,
+    NotLeaderForPartitionError,
+    ProducerClosed,
+    RequestTimedOutError,
+    UnknownTopicOrPartitionError,
+    UnsupportedVersionError,
+)
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.protocol.produce import ProduceResponse
 from aiokafka.util import create_future
 
 from ._testutil import (
-    KafkaIntegrationTestCase, run_until_complete, run_in_thread, kafka_versions
+    KafkaIntegrationTestCase,
+    kafka_versions,
+    run_in_thread,
+    run_until_complete,
 )
 
 LOG_APPEND_TIME = 1

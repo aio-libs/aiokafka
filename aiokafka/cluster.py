@@ -3,7 +3,6 @@ import copy
 import logging
 import threading
 import time
-
 from concurrent.futures import Future
 
 from aiokafka import errors as Errors

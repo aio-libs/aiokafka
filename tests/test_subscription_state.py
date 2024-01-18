@@ -1,10 +1,11 @@
-import pytest
 import re
 
+import pytest
+
+from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.consumer.subscription_state import SubscriptionState
 from aiokafka.errors import IllegalStateError
 from aiokafka.structs import TopicPartition
-from aiokafka.abc import ConsumerRebalanceListener
 
 
 @pytest.fixture

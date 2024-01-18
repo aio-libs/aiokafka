@@ -1,15 +1,14 @@
-import logging
 import contextlib
 import copy
+import logging
 import time
-from asyncio import shield, Event
+from asyncio import Event, shield
 from enum import Enum
-
 from typing import Dict, Iterable, Pattern, Set
 
+from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.errors import IllegalStateError
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.util import create_future, get_running_loop
 
 log = logging.getLogger(__name__)

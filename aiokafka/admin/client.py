@@ -1,27 +1,28 @@
-import logging
 import asyncio
+import logging
 from collections import defaultdict
 from ssl import SSLContext
-from typing import List, Optional, Dict, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import IncompatibleBrokerVersion, for_code
-from aiokafka.protocol.api import Request, Response
-from aiokafka.protocol.metadata import MetadataRequest
-from aiokafka.protocol.commit import OffsetFetchRequest, GroupCoordinatorRequest
 from aiokafka.protocol.admin import (
+    AlterConfigsRequest,
+    ApiVersionRequest_v0,
     CreatePartitionsRequest,
     CreateTopicsRequest,
     DeleteTopicsRequest,
-    DescribeGroupsRequest,
     DescribeConfigsRequest,
-    AlterConfigsRequest,
+    DescribeGroupsRequest,
     ListGroupsRequest,
-    ApiVersionRequest_v0)
-from aiokafka.structs import TopicPartition, OffsetAndMetadata
+)
+from aiokafka.protocol.api import Request, Response
+from aiokafka.protocol.commit import GroupCoordinatorRequest, OffsetFetchRequest
+from aiokafka.protocol.metadata import MetadataRequest
+from aiokafka.structs import OffsetAndMetadata, TopicPartition
 
-from .config_resource import ConfigResourceType, ConfigResource
+from .config_resource import ConfigResource, ConfigResourceType
 from .new_topic import NewTopic
 
 log = logging.getLogger(__name__)

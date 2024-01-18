@@ -10,7 +10,6 @@ from packaging.version import Version
 
 from .structs import OffsetAndMetadata, TopicPartition
 
-
 __all__ = [
     "create_task",
     "create_future",

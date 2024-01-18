@@ -1,18 +1,18 @@
 import asyncio
-from ._testutil import (
-    KafkaIntegrationTestCase, run_until_complete, kafka_versions
-)
 
+from aiokafka.consumer import AIOKafkaConsumer
+from aiokafka.errors import (
+    IllegalOperation,
+    OutOfOrderSequenceNumber,
+    ProducerFenced,
+    UnsupportedVersionError,
+)
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.producer.transaction_manager import TransactionState
-from aiokafka.consumer import AIOKafkaConsumer
-
-from aiokafka.errors import (
-    UnsupportedVersionError,
-    ProducerFenced, OutOfOrderSequenceNumber, IllegalOperation
-)
 from aiokafka.structs import TopicPartition
 from aiokafka.util import create_task
+
+from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_complete
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):

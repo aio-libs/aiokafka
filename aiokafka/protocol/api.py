@@ -1,7 +1,7 @@
 import abc
 
 from .struct import Struct
-from .types import Int16, Int32, String, Schema, Array, TaggedFields
+from .types import Array, Int16, Int32, Schema, String, TaggedFields
 
 
 class RequestHeader(Struct):

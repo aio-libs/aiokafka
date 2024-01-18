@@ -1,16 +1,18 @@
 import struct
 import time
-
 from binascii import crc32
 
 import aiokafka.codec as codecs
 from aiokafka.codec import (
-    gzip_encode, snappy_encode, lz4_encode,
-    gzip_decode, snappy_decode, lz4_decode,
+    gzip_decode,
+    gzip_encode,
+    lz4_decode,
+    lz4_encode,
+    snappy_decode,
+    snappy_encode,
 )
 from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from aiokafka.util import NO_EXTENSIONS
-
 
 NoneType = type(None)
 
@@ -513,12 +515,12 @@ if NO_EXTENSIONS:
     LegacyRecord = _LegacyRecordPy
 else:
     try:
+        from ._crecords import LegacyRecord as _LegacyRecordCython
+        from ._crecords import LegacyRecordBatch as _LegacyRecordBatchCython
         from ._crecords import (
             LegacyRecordBatchBuilder as _LegacyRecordBatchBuilderCython,
-            LegacyRecordMetadata as _LegacyRecordMetadataCython,
-            LegacyRecordBatch as _LegacyRecordBatchCython,
-            LegacyRecord as _LegacyRecordCython
         )
+        from ._crecords import LegacyRecordMetadata as _LegacyRecordMetadataCython
         LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderCython
         LegacyRecordMetadata = _LegacyRecordMetadataCython
         LegacyRecordBatch = _LegacyRecordBatchCython

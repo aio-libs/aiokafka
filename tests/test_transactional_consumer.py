@@ -1,17 +1,14 @@
 import asyncio
 
-from ._testutil import (
-    KafkaIntegrationTestCase, run_until_complete, kafka_versions
-)
-
-from aiokafka.producer import AIOKafkaProducer
 from aiokafka.consumer import AIOKafkaConsumer
-from aiokafka.structs import TopicPartition
-from aiokafka.util import create_task
-
 from aiokafka.errors import (
     UnsupportedVersionError,
 )
+from aiokafka.producer import AIOKafkaProducer
+from aiokafka.structs import TopicPartition
+from aiokafka.util import create_task
+
+from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_complete
 
 
 class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):

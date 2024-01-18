@@ -3,8 +3,8 @@ import logging
 
 from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor
 from aiokafka.coordinator.protocol import (
-    ConsumerProtocolMemberMetadata,
     ConsumerProtocolMemberAssignment,
+    ConsumerProtocolMemberMetadata,
 )
 
 log = logging.getLogger(__name__)
