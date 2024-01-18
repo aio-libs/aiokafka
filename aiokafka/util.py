@@ -3,7 +3,17 @@ import os
 import weakref
 from asyncio import AbstractEventLoop
 from types import MethodType
-from typing import Any, Awaitable, Coroutine, Dict, Tuple, TypeVar, Union, cast
+from typing import (
+    Any,
+    Awaitable,
+    Coroutine,
+    Dict,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import async_timeout
 from packaging.version import Version
@@ -27,7 +37,7 @@ def create_task(coro: Coroutine[Any, Any, T]) -> "asyncio.Task[T]":
     return loop.create_task(coro)
 
 
-def create_future(loop: AbstractEventLoop = None) -> "asyncio.Future[T]":
+def create_future(loop: Optional[AbstractEventLoop] = None) -> "asyncio.Future[T]":
     if loop is None:
         loop = get_running_loop()
     return loop.create_future()
