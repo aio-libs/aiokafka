@@ -289,7 +289,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         self.assertTrue(isinstance(resp, MetadataResponse))
         await client.close()
 
-    @kafka_versions('<2.6')  # FIXME Not implemented yet
+    @kafka_versions('<2.7')  # FIXME Not implemented yet
     @run_until_complete
     async def test_check_version(self):
         kafka_version = tuple(int(x) for x in self.kafka_version.split("."))
