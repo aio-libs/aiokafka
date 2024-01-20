@@ -462,10 +462,10 @@ class AIOKafkaProducer:
         tp = TopicPartition(topic, partition)
         log.debug("Sending (key=%s value=%s) to %s", key, value, tp)
 
-        fut = await self._message_accumulator.add_message(
+        deliver_future = await self._message_accumulator.add_message(
             tp, key_bytes, value_bytes, self._request_timeout_ms / 1000,
             timestamp_ms=timestamp_ms, headers=headers)
-        return fut
+        return deliver_future
 
     async def send_and_wait(
         self, topic, value=None, key=None, partition=None,
@@ -515,9 +515,9 @@ class AIOKafkaProducer:
 
         tp = TopicPartition(topic, partition)
         log.debug("Sending batch to %s", tp)
-        future = await self._message_accumulator.add_batch(
+        deliver_future = await self._message_accumulator.add_batch(
             batch, tp, self._request_timeout_ms / 1000)
-        return future
+        return deliver_future
 
     def _ensure_transactional(self):
         if self._txn_manager is None or \
