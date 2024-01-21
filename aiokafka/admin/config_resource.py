@@ -4,7 +4,7 @@ from enum import IntEnum
 class ConfigResourceType(IntEnum):
     """An enumerated type of config resources"""
 
-    BROKER = 4,
+    BROKER = 4
     TOPIC = 2
 
 
@@ -17,10 +17,10 @@ class ConfigResource:
     """
 
     def __init__(
-            self,
-            resource_type,
-            name,
-            configs=None
+        self,
+        resource_type,
+        name,
+        configs=None,
     ):
         if not isinstance(resource_type, (ConfigResourceType)):
             resource_type = ConfigResourceType[str(resource_type).upper()]

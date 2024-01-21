@@ -155,7 +155,7 @@ class CommitFailedError(KafkaError):
             with max_poll_records.
             """,
             *args,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -369,7 +369,7 @@ class OffsetMetadataTooLargeError(BrokerResponseError):
     errno = 12
     message = "OFFSET_METADATA_TOO_LARGE"
     description = (
-        "If you specify a string larger than configured maximum for" " offset metadata."
+        "If you specify a string larger than configured maximum for offset metadata."
     )
 
 
@@ -643,7 +643,7 @@ class UnsupportedForMessageFormatError(BrokerResponseError):
     errno = 43
     message = "UNSUPPORTED_FOR_MESSAGE_FORMAT"
     description = (
-        "The message format version on the broker does not" " support this request."
+        "The message format version on the broker does not support this request."
     )
 
 
@@ -857,10 +857,9 @@ class ListenerNotFound(BrokerResponseError):
 
 class MemberIdRequired(BrokerResponseError):
     errno = 79
-    message = 'MEMBER_ID_REQUIRED'
+    message = "MEMBER_ID_REQUIRED"
     description = (
-        'Consumer needs to have a valid member '
-        'id before actually entering group'
+        "Consumer needs to have a valid member id before actually entering group"
     )
 
 

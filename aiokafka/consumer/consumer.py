@@ -230,59 +230,70 @@ class AIOKafkaConsumer:
     _closed = None  # Serves as an uninitialized flag for __del__
     _source_traceback = None
 
-    def __init__(self, *topics, loop=None,
-                 bootstrap_servers='localhost',
-                 client_id='aiokafka-' + __version__,
-                 group_id=None,
-                 group_instance_id=None,
-                 key_deserializer=None, value_deserializer=None,
-                 fetch_max_wait_ms=500,
-                 fetch_max_bytes=52428800,
-                 fetch_min_bytes=1,
-                 max_partition_fetch_bytes=1 * 1024 * 1024,
-                 request_timeout_ms=40 * 1000,
-                 retry_backoff_ms=100,
-                 auto_offset_reset='latest',
-                 enable_auto_commit=True,
-                 auto_commit_interval_ms=5000,
-                 check_crcs=True,
-                 metadata_max_age_ms=5 * 60 * 1000,
-                 partition_assignment_strategy=(RoundRobinPartitionAssignor,),
-                 max_poll_interval_ms=300000,
-                 rebalance_timeout_ms=None,
-                 session_timeout_ms=10000,
-                 heartbeat_interval_ms=3000,
-                 consumer_timeout_ms=200,
-                 max_poll_records=None,
-                 ssl_context=None,
-                 security_protocol='PLAINTEXT',
-                 api_version='auto',
-                 exclude_internal_topics=True,
-                 connections_max_idle_ms=540000,
-                 isolation_level="read_uncommitted",
-                 sasl_mechanism="PLAIN",
-                 sasl_plain_password=None,
-                 sasl_plain_username=None,
-                 sasl_kerberos_service_name='kafka',
-                 sasl_kerberos_domain_name=None,
-                 sasl_oauth_token_provider=None):
+    def __init__(
+        self,
+        *topics,
+        loop=None,
+        bootstrap_servers="localhost",
+        client_id="aiokafka-" + __version__,
+        group_id=None,
+        group_instance_id=None,
+        key_deserializer=None,
+        value_deserializer=None,
+        fetch_max_wait_ms=500,
+        fetch_max_bytes=52428800,
+        fetch_min_bytes=1,
+        max_partition_fetch_bytes=1 * 1024 * 1024,
+        request_timeout_ms=40 * 1000,
+        retry_backoff_ms=100,
+        auto_offset_reset="latest",
+        enable_auto_commit=True,
+        auto_commit_interval_ms=5000,
+        check_crcs=True,
+        metadata_max_age_ms=5 * 60 * 1000,
+        partition_assignment_strategy=(RoundRobinPartitionAssignor,),
+        max_poll_interval_ms=300000,
+        rebalance_timeout_ms=None,
+        session_timeout_ms=10000,
+        heartbeat_interval_ms=3000,
+        consumer_timeout_ms=200,
+        max_poll_records=None,
+        ssl_context=None,
+        security_protocol="PLAINTEXT",
+        api_version="auto",
+        exclude_internal_topics=True,
+        connections_max_idle_ms=540000,
+        isolation_level="read_uncommitted",
+        sasl_mechanism="PLAIN",
+        sasl_plain_password=None,
+        sasl_plain_username=None,
+        sasl_kerberos_service_name="kafka",
+        sasl_kerberos_domain_name=None,
+        sasl_oauth_token_provider=None,
+    ):
         if loop is None:
             loop = get_running_loop()
         else:
-            warnings.warn("The loop argument is deprecated since 0.7.1, "
-                          "and scheduled for removal in 0.9.0",
-                          DeprecationWarning, stacklevel=2)
+            warnings.warn(
+                "The loop argument is deprecated since 0.7.1, "
+                "and scheduled for removal in 0.9.0",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         if max_poll_records is not None and (
-                not isinstance(max_poll_records, int) or max_poll_records < 1):
+            not isinstance(max_poll_records, int) or max_poll_records < 1
+        ):
             raise ValueError("`max_poll_records` should be positive Integer")
 
         if rebalance_timeout_ms is None:
             rebalance_timeout_ms = session_timeout_ms
 
         self._client = AIOKafkaClient(
-            loop=loop, bootstrap_servers=bootstrap_servers,
-            client_id=client_id, metadata_max_age_ms=metadata_max_age_ms,
+            loop=loop,
+            bootstrap_servers=bootstrap_servers,
+            client_id=client_id,
+            metadata_max_age_ms=metadata_max_age_ms,
             request_timeout_ms=request_timeout_ms,
             retry_backoff_ms=retry_backoff_ms,
             api_version=api_version,
@@ -294,7 +305,8 @@ class AIOKafkaConsumer:
             sasl_plain_password=sasl_plain_password,
             sasl_kerberos_service_name=sasl_kerberos_service_name,
             sasl_kerberos_domain_name=sasl_kerberos_domain_name,
-            sasl_oauth_token_provider=sasl_oauth_token_provider)
+            sasl_oauth_token_provider=sasl_oauth_token_provider,
+        )
 
         self._group_id = group_id
         self._group_instance_id = group_instance_id
@@ -336,42 +348,48 @@ class AIOKafkaConsumer:
 
     def __del__(self, _warnings=warnings):
         if self._closed is False:
-            _warnings.warn(f"Unclosed AIOKafkaConsumer {self!r}",
-                           ResourceWarning,
-                           source=self)
-            context = {'consumer': self,
-                       'message': 'Unclosed AIOKafkaConsumer'}
+            _warnings.warn(
+                f"Unclosed AIOKafkaConsumer {self!r}",
+                ResourceWarning,
+                source=self,
+            )
+            context = {
+                "consumer": self,
+                "message": "Unclosed AIOKafkaConsumer",
+            }
             if self._source_traceback is not None:
-                context['source_traceback'] = self._source_traceback
+                context["source_traceback"] = self._source_traceback
             self._loop.call_exception_handler(context)
 
     async def start(self):
-        """ Connect to Kafka cluster. This will:
+        """Connect to Kafka cluster. This will:
 
-            * Load metadata for all cluster nodes and partition allocation
-            * Wait for possible topic autocreation
-            * Join group if ``group_id`` provided
+        * Load metadata for all cluster nodes and partition allocation
+        * Wait for possible topic autocreation
+        * Join group if ``group_id`` provided
         """
-        assert self._loop is get_running_loop(), (
-            "Please create objects with the same loop as running with"
-        )
+        assert (
+            self._loop is get_running_loop()
+        ), "Please create objects with the same loop as running with"
         assert self._fetcher is None, "Did you call `start` twice?"
         await self._client.bootstrap()
         await self._wait_topics()
 
         if self._client.api_version < (0, 9):
-            raise ValueError(
-                f"Unsupported Kafka version: {self._client.api_version}"
-            )
+            raise ValueError(f"Unsupported Kafka version: {self._client.api_version}")
 
-        if self._isolation_level == "read_committed" and \
-                self._client.api_version < (0, 11):
+        if (
+            self._isolation_level == "read_committed"
+            and self._client.api_version < (0, 11)  # fmt: skip
+        ):
             raise UnsupportedVersionError(
                 "`read_committed` isolation_level available only for Brokers "
-                "0.11 and above")
+                "0.11 and above"
+            )
 
         self._fetcher = Fetcher(
-            self._client, self._subscription,
+            self._client,
+            self._subscription,
             key_deserializer=self._key_deserializer,
             value_deserializer=self._value_deserializer,
             fetch_min_bytes=self._fetch_min_bytes,
@@ -382,12 +400,14 @@ class AIOKafkaConsumer:
             fetcher_timeout=self._consumer_timeout,
             retry_backoff_ms=self._retry_backoff_ms,
             auto_offset_reset=self._auto_offset_reset,
-            isolation_level=self._isolation_level)
+            isolation_level=self._isolation_level,
+        )
 
         if self._group_id is not None:
             # using group coordinator for automatic partitions assignment
             self._coordinator = GroupCoordinator(
-                self._client, self._subscription,
+                self._client,
+                self._subscription,
                 group_id=self._group_id,
                 group_instance_id=self._group_instance_id,
                 heartbeat_interval_ms=self._heartbeat_interval_ms,
@@ -398,7 +418,7 @@ class AIOKafkaConsumer:
                 assignors=self._partition_assignment_strategy,
                 exclude_internal_topics=self._exclude_internal_topics,
                 rebalance_timeout_ms=self._rebalance_timeout_ms,
-                max_poll_interval_ms=self._max_poll_interval_ms
+                max_poll_interval_ms=self._max_poll_interval_ms,
             )
             if self._subscription.subscription is not None:
                 if self._subscription.partitions_auto_assigned():
@@ -410,13 +430,16 @@ class AIOKafkaConsumer:
                     # this task on that call, as coordinator was yet to be
                     # created
                     self._coordinator.start_commit_offsets_refresh_task(
-                        self._subscription.subscription.assignment)
+                        self._subscription.subscription.assignment
+                    )
         else:
             # Using a simple assignment coordinator for reassignment on
             # metadata changes
             self._coordinator = NoGroupCoordinator(
-                self._client, self._subscription,
-                exclude_internal_topics=self._exclude_internal_topics)
+                self._client,
+                self._subscription,
+                exclude_internal_topics=self._exclude_internal_topics,
+            )
 
             if self._subscription.subscription is not None:
                 if self._subscription.partitions_auto_assigned():
@@ -468,7 +491,7 @@ class AIOKafkaConsumer:
                 self._coordinator.start_commit_offsets_refresh_task(assignment)
 
     def assignment(self):
-        """ Get the set of partitions currently assigned to this consumer.
+        """Get the set of partitions currently assigned to this consumer.
 
         If partitions were directly assigned using :meth:`assign`, then this will
         simply return the same partitions that were previously assigned.
@@ -485,10 +508,10 @@ class AIOKafkaConsumer:
         return self._subscription.assigned_partitions()
 
     async def stop(self):
-        """ Close the consumer, while waiting for finalizers:
+        """Close the consumer, while waiting for finalizers:
 
-            * Commit last consumed message if autocommit enabled
-            * Leave group if used Consumer Groups
+        * Commit last consumed message if autocommit enabled
+        * Leave group if used Consumer Groups
         """
         if self._closed:
             return
@@ -502,7 +525,7 @@ class AIOKafkaConsumer:
         log.debug("The KafkaConsumer has closed.")
 
     async def commit(self, offsets=None):
-        """ Commit offsets to Kafka.
+        """Commit offsets to Kafka.
 
         This commits offsets only to Kafka. The offsets committed using this
         API will be used on the first fetch after every rebalance and also on
@@ -569,13 +592,12 @@ class AIOKafkaConsumer:
             offsets = commit_structure_validate(offsets)
             for tp in offsets:
                 if tp not in assignment.tps:
-                    raise IllegalStateError(
-                        f"Partition {tp} is not assigned")
+                    raise IllegalStateError(f"Partition {tp} is not assigned")
 
         await self._coordinator.commit_offsets(assignment, offsets)
 
     async def committed(self, partition):
-        """ Get the last committed offset for the given partition. (whether the
+        """Get the last committed offset for the given partition. (whether the
         commit happened by this process or another).
 
         This offset will be used as the position for the consumer in the event
@@ -597,8 +619,7 @@ class AIOKafkaConsumer:
         if self._group_id is None:
             raise IllegalOperation("Requires group_id")
 
-        commit_map = await self._coordinator.fetch_committed_offsets(
-            [partition])
+        commit_map = await self._coordinator.fetch_committed_offsets([partition])
         if partition in commit_map:
             committed = commit_map[partition].offset
             if committed == -1:
@@ -608,7 +629,7 @@ class AIOKafkaConsumer:
         return committed
 
     async def topics(self):
-        """ Get all topics the user is authorized to view.
+        """Get all topics the user is authorized to view.
 
         Returns:
             set: topics
@@ -617,7 +638,7 @@ class AIOKafkaConsumer:
         return cluster.topics()
 
     def partitions_for_topic(self, topic):
-        """ Get metadata about the partitions for a given topic.
+        """Get metadata about the partitions for a given topic.
 
         This method will return `None` if Consumer does not already have
         metadata for this topic.
@@ -631,7 +652,7 @@ class AIOKafkaConsumer:
         return self._client.cluster.partitions_for_topic(topic)
 
     async def position(self, partition):
-        """ Get the offset of the *next record* that will be fetched (if a
+        """Get the offset of the *next record* that will be fetched (if a
         record with that offset exists on broker).
 
         Arguments:
@@ -651,23 +672,22 @@ class AIOKafkaConsumer:
         """
         while True:
             if not self._subscription.is_assigned(partition):
-                raise IllegalStateError(
-                    f'Partition {partition} is not assigned')
+                raise IllegalStateError(f"Partition {partition} is not assigned")
 
             assignment = self._subscription.subscription.assignment
             tp_state = assignment.state_value(partition)
             if not tp_state.has_valid_position:
                 self._coordinator.check_errors()
                 await asyncio.wait(
-                    [tp_state.wait_for_position(),
-                     assignment.unassign_future],
+                    [tp_state.wait_for_position(), assignment.unassign_future],
                     timeout=self._request_timeout_ms / 1000,
-                    return_when=asyncio.FIRST_COMPLETED
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
                 if not tp_state.has_valid_position:
                     if self._subscription.subscription is None:
                         raise IllegalStateError(
-                            f'Partition {partition} is not assigned')
+                            f"Partition {partition} is not assigned"
+                        )
                     if self._subscription.subscription.assignment is None:
                         self._coordinator.check_errors()
                         await self._subscription.wait_for_assignment()
@@ -675,7 +695,7 @@ class AIOKafkaConsumer:
             return tp_state.position
 
     def highwater(self, partition):
-        """ Last known highwater offset for a partition.
+        """Last known highwater offset for a partition.
 
         A highwater offset is the offset that will be assigned to the next
         message that is produced. It may be useful for calculating lag, by
@@ -692,13 +712,12 @@ class AIOKafkaConsumer:
         Returns:
             int or None: offset if available
         """
-        assert self._subscription.is_assigned(partition), \
-            'Partition is not assigned'
+        assert self._subscription.is_assigned(partition), "Partition is not assigned"
         assignment = self._subscription.subscription.assignment
         return assignment.state_value(partition).highwater
 
     def last_stable_offset(self, partition):
-        """ Returns the Last Stable Offset of a topic. It will be the last
+        """Returns the Last Stable Offset of a topic. It will be the last
         offset up to which point all transactions were completed. Only
         available in with isolation_level `read_committed`, in
         `read_uncommitted` will always return -1. Will return None for older
@@ -713,13 +732,12 @@ class AIOKafkaConsumer:
         Returns:
             int or None: offset if available
         """
-        assert self._subscription.is_assigned(partition), \
-            'Partition is not assigned'
+        assert self._subscription.is_assigned(partition), "Partition is not assigned"
         assignment = self._subscription.subscription.assignment
         return assignment.state_value(partition).lso
 
     def last_poll_timestamp(self, partition):
-        """ Returns the timestamp of the last poll of this partition (in ms).
+        """Returns the timestamp of the last poll of this partition (in ms).
         It is the last time :meth:`highwater` and :meth:`last_stable_offset` were
         updated. However it does not mean that new messages were received.
 
@@ -732,13 +750,12 @@ class AIOKafkaConsumer:
         Returns:
             int or None: timestamp if available
         """
-        assert self._subscription.is_assigned(partition), \
-            'Partition is not assigned'
+        assert self._subscription.is_assigned(partition), "Partition is not assigned"
         assignment = self._subscription.subscription.assignment
         return assignment.state_value(partition).timestamp
 
     def seek(self, partition, offset):
-        """ Manually specify the fetch offset for a :class:`.TopicPartition`.
+        """Manually specify the fetch offset for a :class:`.TopicPartition`.
 
         Overrides the fetch offsets that the consumer will use on the next
         :meth:`getmany`/:meth:`getone` call. If this API is invoked for the same
@@ -770,7 +787,7 @@ class AIOKafkaConsumer:
         self._fetcher.seek_to(partition, offset)
 
     async def seek_to_beginning(self, *partitions):
-        """ Seek to the oldest available offset for partitions.
+        """Seek to the oldest available offset for partitions.
 
         Arguments:
             *partitions: Optionally provide specific :class:`.TopicPartition`,
@@ -784,29 +801,27 @@ class AIOKafkaConsumer:
 
         """
         if not all([isinstance(p, TopicPartition) for p in partitions]):
-            raise TypeError('partitions must be TopicPartition instances')
+            raise TypeError("partitions must be TopicPartition instances")
 
         if not partitions:
             partitions = self._subscription.assigned_partitions()
-            assert partitions, 'No partitions are currently assigned'
+            assert partitions, "No partitions are currently assigned"
         else:
-            not_assigned = (
-                set(partitions) - self._subscription.assigned_partitions()
-            )
+            not_assigned = set(partitions) - self._subscription.assigned_partitions()
             if not_assigned:
-                raise IllegalStateError(
-                    f"Partitions {not_assigned} are not assigned")
+                raise IllegalStateError(f"Partitions {not_assigned} are not assigned")
 
         for tp in partitions:
             log.debug("Seeking to beginning of partition %s", tp)
 
         fut = self._fetcher.request_offset_reset(
-            partitions, OffsetResetStrategy.EARLIEST)
+            partitions, OffsetResetStrategy.EARLIEST
+        )
         assignment = self._subscription.subscription.assignment
         await asyncio.wait(
             [fut, assignment.unassign_future],
             timeout=self._request_timeout_ms / 1000,
-            return_when=asyncio.FIRST_COMPLETED
+            return_when=asyncio.FIRST_COMPLETED,
         )
         self._coordinator.check_errors()
         return fut.done()
@@ -826,34 +841,30 @@ class AIOKafkaConsumer:
 
         """
         if not all([isinstance(p, TopicPartition) for p in partitions]):
-            raise TypeError('partitions must be TopicPartition instances')
+            raise TypeError("partitions must be TopicPartition instances")
 
         if not partitions:
             partitions = self._subscription.assigned_partitions()
-            assert partitions, 'No partitions are currently assigned'
+            assert partitions, "No partitions are currently assigned"
         else:
-            not_assigned = (
-                set(partitions) - self._subscription.assigned_partitions()
-            )
+            not_assigned = set(partitions) - self._subscription.assigned_partitions()
             if not_assigned:
-                raise IllegalStateError(
-                    f"Partitions {not_assigned} are not assigned")
+                raise IllegalStateError(f"Partitions {not_assigned} are not assigned")
 
         for tp in partitions:
             log.debug("Seeking to end of partition %s", tp)
-        fut = self._fetcher.request_offset_reset(
-            partitions, OffsetResetStrategy.LATEST)
+        fut = self._fetcher.request_offset_reset(partitions, OffsetResetStrategy.LATEST)
         assignment = self._subscription.subscription.assignment
         await asyncio.wait(
             [fut, assignment.unassign_future],
             timeout=self._request_timeout_ms / 1000,
-            return_when=asyncio.FIRST_COMPLETED
+            return_when=asyncio.FIRST_COMPLETED,
         )
         self._coordinator.check_errors()
         return fut.done()
 
     async def seek_to_committed(self, *partitions):
-        """ Seek to the committed offset for partitions.
+        """Seek to the committed offset for partitions.
 
         Arguments:
             *partitions: Optionally provide specific :class:`.TopicPartition`,
@@ -874,18 +885,15 @@ class AIOKafkaConsumer:
             partition
         """
         if not all([isinstance(p, TopicPartition) for p in partitions]):
-            raise TypeError('partitions must be TopicPartition instances')
+            raise TypeError("partitions must be TopicPartition instances")
 
         if not partitions:
             partitions = self._subscription.assigned_partitions()
-            assert partitions, 'No partitions are currently assigned'
+            assert partitions, "No partitions are currently assigned"
         else:
-            not_assigned = (
-                set(partitions) - self._subscription.assigned_partitions()
-            )
+            not_assigned = set(partitions) - self._subscription.assigned_partitions()
             if not_assigned:
-                raise IllegalStateError(
-                    f"Partitions {not_assigned} are not assigned")
+                raise IllegalStateError(f"Partitions {not_assigned} are not assigned")
 
         committed_offsets = {}
         for tp in partitions:
@@ -944,11 +952,12 @@ class AIOKafkaConsumer:
                     " The target time cannot be negative."
                 )
         offsets = await self._fetcher.get_offsets_by_times(
-            timestamps, self._request_timeout_ms)
+            timestamps, self._request_timeout_ms
+        )
         return offsets
 
     async def beginning_offsets(self, partitions):
-        """ Get the first offset for the given partitions.
+        """Get the first offset for the given partitions.
 
         This method does not change the current consumer position of the
         partitions.
@@ -978,11 +987,12 @@ class AIOKafkaConsumer:
                 f" for cluster version {self._client.api_version}"
             )
         offsets = await self._fetcher.beginning_offsets(
-            partitions, self._request_timeout_ms)
+            partitions, self._request_timeout_ms
+        )
         return offsets
 
     async def end_offsets(self, partitions):
-        """ Get the last offset for the given partitions. The last offset of a
+        """Get the last offset for the given partitions. The last offset of a
         partition is the offset of the upcoming message, i.e. the offset of the
         last available message + 1.
 
@@ -1013,12 +1023,11 @@ class AIOKafkaConsumer:
                 "offsets_for_times API not supported"
                 f" for cluster version {self._client.api_version}"
             )
-        offsets = await self._fetcher.end_offsets(
-            partitions, self._request_timeout_ms)
+        offsets = await self._fetcher.end_offsets(partitions, self._request_timeout_ms)
         return offsets
 
     def subscribe(self, topics=(), pattern=None, listener=None):
-        """ Subscribe to a list of topics, or a topic regex pattern.
+        """Subscribe to a list of topics, or a topic regex pattern.
 
         Partitions will be dynamically assigned via a group coordinator.
         Topic subscriptions are not incremental: this list will replace the
@@ -1058,23 +1067,19 @@ class AIOKafkaConsumer:
             TypeError: if listener is not a :class:`.ConsumerRebalanceListener`
         """
         if not (topics or pattern):
-            raise ValueError(
-                "You should provide either `topics` or `pattern`")
+            raise ValueError("You should provide either `topics` or `pattern`")
         if topics and pattern:
-            raise ValueError(
-                "You can't provide both `topics` and `pattern`")
-        if listener is not None and \
-                not isinstance(listener, ConsumerRebalanceListener):
+            raise ValueError("You can't provide both `topics` and `pattern`")
+        if listener is not None and not isinstance(listener, ConsumerRebalanceListener):
             raise TypeError(
-                "listener should be an instance of ConsumerRebalanceListener")
+                "listener should be an instance of ConsumerRebalanceListener"
+            )
         if pattern is not None:
             try:
                 pattern = re.compile(pattern)
             except re.error as err:
-                raise ValueError(
-                    f"{pattern!r} is not a valid pattern: {err}")
-            self._subscription.subscribe_pattern(
-                pattern=pattern, listener=listener)
+                raise ValueError(f"{pattern!r} is not a valid pattern: {err}")
+            self._subscription.subscribe_pattern(pattern=pattern, listener=listener)
             # NOTE: set_topics will trigger a rebalance, so the coordinator
             # will get the initial subscription shortly by ``metadata_changed``
             # handler.
@@ -1082,8 +1087,7 @@ class AIOKafkaConsumer:
             log.info("Subscribed to topic pattern: %s", pattern)
         elif topics:
             topics = self._validate_topics(topics)
-            self._subscription.subscribe(
-                topics=topics, listener=listener)
+            self._subscription.subscribe(topics=topics, listener=listener)
             self._client.set_topics(self._subscription.subscription.topics)
             if self._group_id is None:
                 # We have reset the assignment, but client.set_topics will
@@ -1097,7 +1101,7 @@ class AIOKafkaConsumer:
             log.info("Subscribed to topic(s): %s", topics)
 
     def subscription(self):
-        """ Get the current topics subscription.
+        """Get the current topics subscription.
 
         Returns:
             frozenset(str): a set of topics
@@ -1105,13 +1109,12 @@ class AIOKafkaConsumer:
         return self._subscription.topics
 
     def unsubscribe(self):
-        """ Unsubscribe from all topics and clear all assigned partitions. """
+        """Unsubscribe from all topics and clear all assigned partitions."""
         self._subscription.unsubscribe()
         if self._group_id is not None:
             self._coordinator.maybe_leave_group()
         self._client.set_topics([])
-        log.info(
-            "Unsubscribed all topics or patterns and assigned partitions")
+        log.info("Unsubscribed all topics or patterns and assigned partitions")
 
     async def getone(self, *partitions) -> ConsumerRecord:
         """
@@ -1198,7 +1201,8 @@ class AIOKafkaConsumer:
             raise ConsumerStoppedError()
 
         if max_records is not None and (
-                not isinstance(max_records, int) or max_records < 1):
+            not isinstance(max_records, int) or max_records < 1
+        ):
             raise ValueError("`max_records` must be a positive Integer")
 
         # Raise coordination errors if any
@@ -1207,8 +1211,8 @@ class AIOKafkaConsumer:
         timeout = timeout_ms / 1000
         with self._subscription.fetch_context():
             records = await self._fetcher.fetched_records(
-                partitions, timeout,
-                max_records=max_records or self._max_poll_records)
+                partitions, timeout, max_records=max_records or self._max_poll_records
+            )
         return records
 
     def pause(self, *partitions):
@@ -1225,7 +1229,7 @@ class AIOKafkaConsumer:
             *partitions (list[TopicPartition]): Partitions to pause.
         """
         if not all([isinstance(p, TopicPartition) for p in partitions]):
-            raise TypeError('partitions must be TopicPartition namedtuples')
+            raise TypeError("partitions must be TopicPartition namedtuples")
 
         for partition in partitions:
             log.debug("Pausing partition %s", partition)
@@ -1247,7 +1251,7 @@ class AIOKafkaConsumer:
             *partitions (list[TopicPartition]): Partitions to resume.
         """
         if not all([isinstance(p, TopicPartition) for p in partitions]):
-            raise TypeError('partitions must be TopicPartition namedtuples')
+            raise TypeError("partitions must be TopicPartition namedtuples")
 
         for partition in partitions:
             log.debug("Resuming partition %s", partition)
@@ -1268,13 +1272,15 @@ class AIOKafkaConsumer:
         """
         while True:
             try:
-                return (await self.getone())
+                return await self.getone()
             except ConsumerStoppedError:
                 raise StopAsyncIteration  # noqa: F821
-            except (TopicAuthorizationFailedError,
-                    OffsetOutOfRangeError,
-                    NoOffsetForPartitionError) as err:
-                raise err
+            except (
+                TopicAuthorizationFailedError,
+                OffsetOutOfRangeError,
+                NoOffsetForPartitionError,
+            ):
+                raise
             except RecordTooLargeError:
                 log.exception("error in consumer iterator: %s")
 

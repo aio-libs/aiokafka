@@ -56,7 +56,6 @@ LOG_APPEND_TIME = 1
 
 
 class TestSender(KafkaIntegrationTestCase):
-
     async def _setup_sender(self, no_init=False):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
@@ -68,8 +67,14 @@ class TestSender(KafkaIntegrationTestCase):
             tm.set_pid_and_epoch(120, 22)
         ma = MessageAccumulator(client.cluster, 1000, 0, 30)
         sender = Sender(
-            client, acks=-1, txn_manager=tm, message_accumulator=ma,
-            retry_backoff_ms=100, linger_ms=0, request_timeout_ms=40000)
+            client,
+            acks=-1,
+            txn_manager=tm,
+            message_accumulator=ma,
+            retry_backoff_ms=100,
+            linger_ms=0,
+            request_timeout_ms=40000,
+        )
         self.add_cleanup(sender.close)
         return sender
 
@@ -79,6 +84,7 @@ class TestSender(KafkaIntegrationTestCase):
 
         async def mocked_call():
             return
+
         sender._maybe_wait_for_pid = mock.Mock(side_effect=mocked_call)
         await sender.start()
 
@@ -94,10 +100,11 @@ class TestSender(KafkaIntegrationTestCase):
                 return False
             else:
                 return True
+
         sender._do_init_pid = mock.Mock(side_effect=mocked_call)
         return sender
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_sender_maybe_wait_for_pid_non_transactional(self):
         sender = await self._setup_sender_with_init_mocked()
@@ -107,18 +114,19 @@ class TestSender(KafkaIntegrationTestCase):
         await sender._maybe_wait_for_pid()
         sender._do_init_pid.assert_not_called()
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_sender_maybe_wait_for_pid_on_failure(self):
         sender = await self._setup_sender_with_init_mocked()
         # Should retry metadata on failure
         sender.client.force_metadata_update = mock.Mock(
-            side_effect=sender.client.force_metadata_update)
+            side_effect=sender.client.force_metadata_update
+        )
         await sender._maybe_wait_for_pid()
         self.assertNotEqual(sender._do_init_pid.call_count, 0)
         self.assertNotEqual(sender.client.force_metadata_update.call_count, 0)
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_sender__find_coordinator(self):
         sender = await self._setup_sender()
@@ -127,8 +135,8 @@ class TestSender(KafkaIntegrationTestCase):
             if coordinator_type == CoordinationType.GROUP:
                 return 0
             return 1
-        sender.client.coordinator_lookup = mock.Mock(
-            side_effect=coordinator_lookup)
+
+        sender.client.coordinator_lookup = mock.Mock(side_effect=coordinator_lookup)
 
         async def ready(coordinator_id, group, *, count=[0]):
             c = count[0]
@@ -137,44 +145,48 @@ class TestSender(KafkaIntegrationTestCase):
                 return False
             else:
                 return True
+
         sender.client.ready = mock.Mock(side_effect=ready)
 
         node_id = await sender._find_coordinator(
-            coordinator_type=CoordinationType.GROUP, coordinator_key="key")
+            coordinator_type=CoordinationType.GROUP, coordinator_key="key"
+        )
         self.assertEqual(node_id, 0)
         sender.client.coordinator_lookup.assert_called_with(
-            CoordinationType.GROUP, "key")
-        sender.client.ready.assert_called_with(
-            0, group=ConnectionGroup.COORDINATION)
+            CoordinationType.GROUP, "key"
+        )
+        sender.client.ready.assert_called_with(0, group=ConnectionGroup.COORDINATION)
 
         node_id = await sender._find_coordinator(
-            coordinator_type=CoordinationType.TRANSACTION,
-            coordinator_key="key")
+            coordinator_type=CoordinationType.TRANSACTION, coordinator_key="key"
+        )
         self.assertEqual(node_id, 1)
         sender.client.coordinator_lookup.assert_called_with(
-            CoordinationType.TRANSACTION, "key")
-        sender.client.ready.assert_called_with(
-            1, group=ConnectionGroup.COORDINATION)
+            CoordinationType.TRANSACTION, "key"
+        )
+        sender.client.ready.assert_called_with(1, group=ConnectionGroup.COORDINATION)
 
         # Repeat call will return from cache
         self.assertEqual(sender.client.coordinator_lookup.call_count, 3)
         node_id = await sender._find_coordinator(
-            coordinator_type=CoordinationType.GROUP, coordinator_key="key")
+            coordinator_type=CoordinationType.GROUP, coordinator_key="key"
+        )
         self.assertEqual(node_id, 0)
         node_id = await sender._find_coordinator(
-            coordinator_type=CoordinationType.TRANSACTION,
-            coordinator_key="key")
+            coordinator_type=CoordinationType.TRANSACTION, coordinator_key="key"
+        )
         self.assertEqual(node_id, 1)
         self.assertEqual(sender.client.coordinator_lookup.call_count, 3)
 
         sender._coordinator_dead(CoordinationType.TRANSACTION)
         node_id = await sender._find_coordinator(
-            coordinator_type=CoordinationType.GROUP, coordinator_key="key")
+            coordinator_type=CoordinationType.GROUP, coordinator_key="key"
+        )
         self.assertEqual(node_id, 0)
         self.assertEqual(sender.client.coordinator_lookup.call_count, 3)
         node_id = await sender._find_coordinator(
-            coordinator_type=CoordinationType.TRANSACTION,
-            coordinator_key="key")
+            coordinator_type=CoordinationType.TRANSACTION, coordinator_key="key"
+        )
         self.assertEqual(node_id, 1)
         self.assertEqual(sender.client.coordinator_lookup.call_count, 4)
 
@@ -183,8 +195,8 @@ class TestSender(KafkaIntegrationTestCase):
         sender.client.coordinator_lookup.side_effect = UnknownError
         with self.assertRaises(KafkaError):
             await sender._find_coordinator(
-                coordinator_type=CoordinationType.TRANSACTION,
-                coordinator_key="key")
+                coordinator_type=CoordinationType.TRANSACTION, coordinator_key="key"
+            )
 
     @run_until_complete
     async def test_sender__handler_base_do(self):
@@ -236,7 +248,7 @@ class TestSender(KafkaIntegrationTestCase):
             throttle_time_ms=300,
             error_code=NoError.errno,
             producer_id=17,
-            producer_epoch=1
+            producer_epoch=1,
         )
         backoff = init_handler.handle_response(resp)
         self.assertIsNone(backoff)
@@ -259,7 +271,7 @@ class TestSender(KafkaIntegrationTestCase):
                     throttle_time_ms=300,
                     error_code=error_cls.errno,
                     producer_id=17,
-                    producer_epoch=1
+                    producer_epoch=1,
                 )
                 backoff = init_handler.handle_response(resp)
                 self.assertEqual(backoff, 0.1)
@@ -269,14 +281,13 @@ class TestSender(KafkaIntegrationTestCase):
                 mocked.assert_called_with(CoordinationType.TRANSACTION)
 
         # Not coordination errors
-        for error_cls in [
-                CoordinatorLoadInProgressError, ConcurrentTransactions]:
+        for error_cls in [CoordinatorLoadInProgressError, ConcurrentTransactions]:
             cls = InitProducerIdResponse[0]
             resp = cls(
                 throttle_time_ms=300,
                 error_code=error_cls.errno,
                 producer_id=17,
-                producer_epoch=1
+                producer_epoch=1,
             )
             backoff = init_handler.handle_response(resp)
             self.assertEqual(backoff, 0.1)
@@ -289,7 +300,7 @@ class TestSender(KafkaIntegrationTestCase):
             throttle_time_ms=300,
             error_code=UnknownError.errno,
             producer_id=17,
-            producer_epoch=1
+            producer_epoch=1,
         )
         with self.assertRaises(UnknownError):
             init_handler.handle_response(resp)
@@ -302,7 +313,7 @@ class TestSender(KafkaIntegrationTestCase):
         tps = [
             TopicPartition("topic", 0),
             TopicPartition("topic", 1),
-            TopicPartition("topic2", 1)
+            TopicPartition("topic2", 1),
         ]
         add_handler = AddPartitionsToTxnHandler(sender, tps)
 
@@ -313,8 +324,8 @@ class TestSender(KafkaIntegrationTestCase):
         self.assertEqual(req.producer_id, 120)
         self.assertEqual(req.producer_epoch, 22)
         self.assertEqual(
-            list(sorted(req.topics)),
-            list(sorted([("topic", [0, 1]), ("topic2", [1])])))
+            list(sorted(req.topics)), list(sorted([("topic", [0, 1]), ("topic2", [1])]))
+        )
 
     @run_until_complete
     async def test_sender__do_add_partitions_to_txn_ok(self):
@@ -322,7 +333,7 @@ class TestSender(KafkaIntegrationTestCase):
         tps = [
             TopicPartition("topic", 0),
             TopicPartition("topic", 1),
-            TopicPartition("topic2", 1)
+            TopicPartition("topic2", 1),
         ]
         add_handler = AddPartitionsToTxnHandler(sender, tps)
         tm = sender._txn_manager
@@ -333,21 +344,25 @@ class TestSender(KafkaIntegrationTestCase):
         resp = cls(
             throttle_time_ms=300,
             errors=[
-                ("topic", [
-                    (0, NoError.errno),
-                    (1, NoError.errno)
-                ]),
-                ("topic2", [
-                    (1, NoError.errno)
-                ])
-            ]
+                (
+                    "topic",
+                    [
+                        (0, NoError.errno),
+                        (1, NoError.errno),
+                    ],
+                ),
+                (
+                    "topic2",
+                    [
+                        (1, NoError.errno),
+                    ],
+                ),
+            ],
         )
         backoff = add_handler.handle_response(resp)
         self.assertIsNone(backoff)
         self.assertEqual(tm.partition_added.call_count, 3)
-        tm.partition_added.assert_has_calls([
-            mock.call(tp) for tp in tps
-        ])
+        tm.partition_added.assert_has_calls([mock.call(tp) for tp in tps])
 
     @run_until_complete
     async def test_sender__do_add_partitions_to_txn_not_ok(self):
@@ -355,7 +370,7 @@ class TestSender(KafkaIntegrationTestCase):
         tps = [
             TopicPartition("topic", 0),
             TopicPartition("topic", 1),
-            TopicPartition("topic2", 1)
+            TopicPartition("topic2", 1),
         ]
         add_handler = AddPartitionsToTxnHandler(sender, tps)
         tm = sender._txn_manager
@@ -367,14 +382,20 @@ class TestSender(KafkaIntegrationTestCase):
             resp = cls(
                 throttle_time_ms=300,
                 errors=[
-                    ("topic", [
-                        (0, error_type.errno),
-                        (1, error_type.errno)
-                    ]),
-                    ("topic2", [
-                        (1, error_type.errno)
-                    ])
-                ]
+                    (
+                        "topic",
+                        [
+                            (0, error_type.errno),
+                            (1, error_type.errno),
+                        ],
+                    ),
+                    (
+                        "topic2",
+                        [
+                            (1, error_type.errno),
+                        ],
+                    ),
+                ],
             )
             return resp
 
@@ -401,8 +422,7 @@ class TestSender(KafkaIntegrationTestCase):
         tm.partition_added.assert_not_called()
 
         # Not coordination retriable errors
-        for error_cls in [
-                CoordinatorLoadInProgressError, UnknownTopicOrPartitionError]:
+        for error_cls in [CoordinatorLoadInProgressError, UnknownTopicOrPartitionError]:
             resp = create_response(error_cls)
             backoff = add_handler.handle_response(resp)
             self.assertEqual(backoff, 0.1)
@@ -469,10 +489,7 @@ class TestSender(KafkaIntegrationTestCase):
 
         # Handle response
         cls = AddOffsetsToTxnResponse[0]
-        resp = cls(
-            throttle_time_ms=300,
-            error_code=NoError.errno
-        )
+        resp = cls(throttle_time_ms=300, error_code=NoError.errno)
         backoff = add_handler.handle_response(resp)
         self.assertIsNone(backoff)
         tm.consumer_group_added.assert_called_with("some_group")
@@ -487,10 +504,7 @@ class TestSender(KafkaIntegrationTestCase):
 
         def create_response(error_type):
             cls = AddOffsetsToTxnResponse[0]
-            resp = cls(
-                throttle_time_ms=300,
-                error_code=error_type.errno
-            )
+            resp = cls(throttle_time_ms=300, error_code=error_type.errno)
             return resp
 
         # Handle coordination errors
@@ -503,8 +517,7 @@ class TestSender(KafkaIntegrationTestCase):
                 mocked.assert_called_with(CoordinationType.TRANSACTION)
 
         # Not coordination retriable errors
-        for error_cls in [
-                CoordinatorLoadInProgressError, ConcurrentTransactions]:
+        for error_cls in [CoordinatorLoadInProgressError, ConcurrentTransactions]:
             resp = create_response(error_cls)
             backoff = add_handler.handle_response(resp)
             self.assertEqual(backoff, 0.1)
@@ -559,12 +572,7 @@ class TestSender(KafkaIntegrationTestCase):
         self.assertEqual(req.group_id, "some_group")
         self.assertEqual(req.producer_id, 120)
         self.assertEqual(req.producer_epoch, 22)
-        self.assertEqual(req.topics, [
-            ("topic", [
-                (0, 10, ""),
-                (1, 11, "")
-            ])
-        ])
+        self.assertEqual(req.topics, [("topic", [(0, 10, ""), (1, 11, "")])])
 
     @run_until_complete
     async def test_sender__do_txn_offset_commit_ok(self):
@@ -581,20 +589,17 @@ class TestSender(KafkaIntegrationTestCase):
         cls = TxnOffsetCommitResponse[0]
         resp = cls(
             throttle_time_ms=300,
-            errors=[
-                ("topic", [
-                    (0, NoError.errno),
-                    (1, NoError.errno)
-                ])
-            ]
+            errors=[("topic", [(0, NoError.errno), (1, NoError.errno)])],
         )
         backoff = add_handler.handle_response(resp)
         self.assertIsNone(backoff)
         self.assertEqual(tm.offset_committed.call_count, 2)
-        tm.offset_committed.assert_has_calls([
-            mock.call(TopicPartition("topic", 0), 10, "some_group"),
-            mock.call(TopicPartition("topic", 1), 11, "some_group"),
-        ])
+        tm.offset_committed.assert_has_calls(
+            [
+                mock.call(TopicPartition("topic", 0), 10, "some_group"),
+                mock.call(TopicPartition("topic", 1), 11, "some_group"),
+            ]
+        )
 
     @run_until_complete
     async def test_sender__do_txn_offset_commit_not_ok(self):
@@ -612,19 +617,16 @@ class TestSender(KafkaIntegrationTestCase):
             cls = TxnOffsetCommitResponse[0]
             resp = cls(
                 throttle_time_ms=300,
-                errors=[
-                    ("topic", [
-                        (0, error_type.errno),
-                        (1, error_type.errno)
-                    ])
-                ]
+                errors=[("topic", [(0, error_type.errno), (1, error_type.errno)])],
             )
             return resp
 
         # Handle coordination errors
         for error_cls in [
-                CoordinatorNotAvailableError, NotCoordinatorError,
-                RequestTimedOutError]:
+            CoordinatorNotAvailableError,
+            NotCoordinatorError,
+            RequestTimedOutError,
+        ]:
             with mock.patch.object(sender, "_coordinator_dead") as mocked:
                 resp = create_response(error_cls)
                 backoff = add_handler.handle_response(resp)
@@ -633,8 +635,7 @@ class TestSender(KafkaIntegrationTestCase):
                 mocked.assert_called_with(CoordinationType.GROUP)
 
         # Not coordination retriable errors
-        for error_cls in [
-                CoordinatorLoadInProgressError, UnknownTopicOrPartitionError]:
+        for error_cls in [CoordinatorLoadInProgressError, UnknownTopicOrPartitionError]:
             resp = create_response(error_cls)
             backoff = add_handler.handle_response(resp)
             self.assertEqual(backoff, 0.1)
@@ -692,10 +693,7 @@ class TestSender(KafkaIntegrationTestCase):
 
         # Handle response
         cls = EndTxnResponse[0]
-        resp = cls(
-            throttle_time_ms=300,
-            error_code=NoError.errno
-        )
+        resp = cls(throttle_time_ms=300, error_code=NoError.errno)
         backoff = add_handler.handle_response(resp)
         self.assertIsNone(backoff)
         tm.complete_transaction.assert_called_with()
@@ -709,10 +707,7 @@ class TestSender(KafkaIntegrationTestCase):
 
         def create_response(error_type):
             cls = EndTxnResponse[0]
-            resp = cls(
-                throttle_time_ms=300,
-                error_code=error_type.errno
-            )
+            resp = cls(throttle_time_ms=300, error_code=error_type.errno)
             return resp
 
         # Handle coordination errors
@@ -725,8 +720,7 @@ class TestSender(KafkaIntegrationTestCase):
                 mocked.assert_called_with(CoordinationType.TRANSACTION)
 
         # Not coordination retriable errors
-        for error_cls in [
-                CoordinatorLoadInProgressError, ConcurrentTransactions]:
+        for error_cls in [CoordinatorLoadInProgressError, ConcurrentTransactions]:
             resp = create_response(error_cls)
             backoff = add_handler.handle_response(resp)
             self.assertEqual(backoff, 0.1)
@@ -756,8 +750,7 @@ class TestSender(KafkaIntegrationTestCase):
         tp = TopicPartition("my_topic", 0)
         batch_mock = mock.Mock()
         batch_mock.get_data_buffer = mock.Mock(return_value=b"123")
-        send_handler = SendProduceReqHandler(
-            sender, {tp: batch_mock})
+        send_handler = SendProduceReqHandler(sender, {tp: batch_mock})
 
         req = send_handler.create_request()
         self.assertEqual(req.API_KEY, ProduceRequest[0].API_KEY)
@@ -772,18 +765,20 @@ class TestSender(KafkaIntegrationTestCase):
         sender = await self._setup_sender()
         tp = TopicPartition("my_topic", 0)
         batch_mock = mock.Mock()
-        send_handler = SendProduceReqHandler(
-            sender, {tp: batch_mock})
+        send_handler = SendProduceReqHandler(sender, {tp: batch_mock})
 
         def create_response(error_type):
             cls = ProduceResponse[4]
             resp = cls(
                 throttle_time_ms=300,
                 topics=[
-                    ("my_topic", [
-                        (0, error_type.errno, 100, 200)
-                    ])
-                ]
+                    (
+                        "my_topic",
+                        [
+                            (0, error_type.errno, 100, 200),
+                        ],
+                    ),
+                ],
             )
             return resp
 
@@ -798,18 +793,13 @@ class TestSender(KafkaIntegrationTestCase):
         sender = await self._setup_sender()
         tp = TopicPartition("my_topic", 0)
         batch_mock = mock.Mock()
-        send_handler = SendProduceReqHandler(
-            sender, {tp: batch_mock})
+        send_handler = SendProduceReqHandler(sender, {tp: batch_mock})
 
         def create_response(error_type):
             cls = ProduceResponse[4]
             resp = cls(
                 throttle_time_ms=300,
-                topics=[
-                    ("my_topic", [
-                        (0, error_type.errno, 0, -1)
-                    ])
-                ]
+                topics=[("my_topic", [(0, error_type.errno, 0, -1)])],
             )
             return resp
 

@@ -35,7 +35,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 import re, os.path
 
 def get_release():
-    regexp = re.compile(r"^__version__\W*=\W*'([\d.abrcdev]+)'")
+    regexp = re.compile(r"^__version__\W*=\W*(?P<quote>['\"])([\d.abrcdev]+)(?P=quote)")
     here = os.path.dirname(__file__)
     root = os.path.dirname(here)
     init_py = os.path.join(root, 'aiokafka', '__init__.py')

@@ -27,7 +27,7 @@ def is_sublist(source, target):
       true if target is in source; false otherwise
     """
     for index in (i for i, e in enumerate(source) if e == target[0]):
-        if tuple(source[index:index + len(target)]) == target:
+        if tuple(source[index : index + len(target)]) == target:
             return True
     return False
 

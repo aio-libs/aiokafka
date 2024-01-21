@@ -58,8 +58,7 @@ def test_encode_varint(encoded, decoded):
 def test_decode_varint(encoded, decoded):
     # We add a bit of bytes around just to check position is calculated
     # correctly
-    value, pos = util.decode_varint(
-        bytearray(b"\x01\xf0" + encoded + b"\xff\x01"), 2)
+    value, pos = util.decode_varint(bytearray(b"\x01\xf0" + encoded + b"\xff\x01"), 2)
     assert value == decoded
     assert pos - 2 == len(encoded)
 
@@ -73,6 +72,7 @@ def test_crc32c():
     def make_crc(data):
         crc = util.calc_crc32c(data)
         return struct.pack(">I", crc)
+
     assert make_crc(b"") == b"\x00\x00\x00\x00"
     assert make_crc(b"a") == b"\xc1\xd0\x43\x30"
 

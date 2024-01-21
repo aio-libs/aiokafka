@@ -14,12 +14,12 @@ setup:
 
 .PHONY: format
 format:
-	ruff format $(FORMATTED_AREAS) setup.py
+	ruff format aiokafka tests setup.py
 	ruff check --fix aiokafka tests setup.py
 
 .PHONY: lint
 lint:
-	ruff format --check $(FORMATTED_AREAS) setup.py
+	ruff format --check aiokafka tests setup.py
 	ruff check aiokafka tests setup.py
 	mypy --install-types --non-interactive $(FORMATTED_AREAS)
 

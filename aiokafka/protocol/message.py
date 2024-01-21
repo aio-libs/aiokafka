@@ -194,7 +194,7 @@ class MessageSet(AbstractType):
             return items.read(size)
 
         encoded_values = []
-        for (offset, message) in items:
+        for offset, message in items:
             encoded_values.append(Int64.encode(offset))
             encoded_values.append(Bytes.encode(message))
         encoded = b"".join(encoded_values)
@@ -224,10 +224,14 @@ class MessageSet(AbstractType):
                 offset = Int64.decode(raw)
                 msg_bytes = Bytes.decode(raw)
                 bytes_to_read -= 8 + 4 + len(msg_bytes)
-                items.append((offset, len(msg_bytes), Message.decode(msg_bytes)))
+                items.append(
+                    (offset, len(msg_bytes), Message.decode(msg_bytes)),
+                )
             except ValueError:
                 # PartialMessage to signal that max_bytes may be too small
-                items.append((None, None, PartialMessage()))
+                items.append(
+                    (None, None, PartialMessage()),
+                )
                 break
         return items
 

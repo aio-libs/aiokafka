@@ -33,20 +33,18 @@ from aiokafka.util import (
     parse_kafka_version,
 )
 
-__all__ = ['AIOKafkaClient']
+__all__ = ["AIOKafkaClient"]
 
 
-log = logging.getLogger('aiokafka')
+log = logging.getLogger("aiokafka")
 
 
 class ConnectionGroup:
-
     DEFAULT = 0
     COORDINATION = 1
 
 
 class CoordinationType:
-
     GROUP = 0
     TRANSACTION = 1
 
@@ -89,45 +87,54 @@ class AIOKafkaClient:
             disable idle checks. Default: 540000 (9 minutes).
     """
 
-    def __init__(self, *, loop=None, bootstrap_servers='localhost',
-                 client_id='aiokafka-' + __version__,
-                 metadata_max_age_ms=300000,
-                 request_timeout_ms=40000,
-                 retry_backoff_ms=100,
-                 ssl_context=None,
-                 security_protocol='PLAINTEXT',
-                 api_version='auto',
-                 connections_max_idle_ms=540000,
-                 sasl_mechanism='PLAIN',
-                 sasl_plain_username=None,
-                 sasl_plain_password=None,
-                 sasl_kerberos_service_name='kafka',
-                 sasl_kerberos_domain_name=None,
-                 sasl_oauth_token_provider=None
-                 ):
+    def __init__(
+        self,
+        *,
+        loop=None,
+        bootstrap_servers="localhost",
+        client_id="aiokafka-" + __version__,
+        metadata_max_age_ms=300000,
+        request_timeout_ms=40000,
+        retry_backoff_ms=100,
+        ssl_context=None,
+        security_protocol="PLAINTEXT",
+        api_version="auto",
+        connections_max_idle_ms=540000,
+        sasl_mechanism="PLAIN",
+        sasl_plain_username=None,
+        sasl_plain_password=None,
+        sasl_kerberos_service_name="kafka",
+        sasl_kerberos_domain_name=None,
+        sasl_oauth_token_provider=None,
+    ):
         if loop is None:
             loop = get_running_loop()
 
-        if security_protocol not in (
-                'SSL', 'PLAINTEXT', 'SASL_PLAINTEXT', 'SASL_SSL'):
+        if security_protocol not in ("SSL", "PLAINTEXT", "SASL_PLAINTEXT", "SASL_SSL"):
             raise ValueError("`security_protocol` should be SSL or PLAINTEXT")
         if security_protocol in ["SSL", "SASL_SSL"] and ssl_context is None:
-            raise ValueError(
-                "`ssl_context` is mandatory if security_protocol=='SSL'")
+            raise ValueError("`ssl_context` is mandatory if security_protocol=='SSL'")
         if security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
             if sasl_mechanism not in (
-                    "PLAIN", "GSSAPI", "SCRAM-SHA-256", "SCRAM-SHA-512",
-                    "OAUTHBEARER"):
+                "PLAIN",
+                "GSSAPI",
+                "SCRAM-SHA-256",
+                "SCRAM-SHA-512",
+                "OAUTHBEARER",
+            ):
                 raise ValueError(
                     "only `PLAIN`, `GSSAPI`, `SCRAM-SHA-256`, "
                     "`SCRAM-SHA-512` and `OAUTHBEARER`"
                     "sasl_mechanism are supported "
-                    "at the moment")
-            if sasl_mechanism == "PLAIN" and \
-               (sasl_plain_username is None or sasl_plain_password is None):
+                    "at the moment"
+                )
+            if sasl_mechanism == "PLAIN" and (
+                sasl_plain_username is None or sasl_plain_password is None
+            ):
                 raise ValueError(
                     "sasl_plain_username and sasl_plain_password required for "
-                    "PLAIN sasl")
+                    "PLAIN sasl"
+                )
 
         self._bootstrap_servers = bootstrap_servers
         self._client_id = client_id
@@ -165,7 +172,7 @@ class AIOKafkaClient:
         return self._get_conn_lock_value
 
     def __repr__(self):
-        return '<AIOKafkaClient client_id=%s>' % self._client_id
+        return "<AIOKafkaClient client_id=%s>" % self._client_id
 
     @property
     def api_version(self):
@@ -196,9 +203,9 @@ class AIOKafkaClient:
 
     async def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
-        assert self._loop is get_running_loop(), (
-            "Please create objects with the same loop as running with"
-        )
+        assert (
+            self._loop is get_running_loop()
+        ), "Please create objects with the same loop as running with"
         # using request v0 for bootstrap if not sure v1 is available
         if self._api_version == "auto" or self._api_version < (0, 10):
             metadata_request = MetadataRequest[0]([])
@@ -214,7 +221,9 @@ class AIOKafkaClient:
 
             try:
                 bootstrap_conn = await create_conn(
-                    host, port, client_id=self._client_id,
+                    host,
+                    port,
+                    client_id=self._client_id,
                     request_timeout_ms=self._request_timeout_ms,
                     ssl_context=self._ssl_context,
                     security_protocol=self._security_protocol,
@@ -225,7 +234,8 @@ class AIOKafkaClient:
                     sasl_kerberos_service_name=self._sasl_kerberos_service_name,  # noqa: E501
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     sasl_oauth_token_provider=self._sasl_oauth_token_provider,
-                    version_hint=version_hint)
+                    version_hint=version_hint,
+                )
             except (OSError, asyncio.TimeoutError) as err:
                 log.error('Unable connect to "%s:%s": %s', host, port, err)
                 continue
@@ -233,8 +243,9 @@ class AIOKafkaClient:
             try:
                 metadata = await bootstrap_conn.send(metadata_request)
             except (KafkaError, asyncio.TimeoutError) as err:
-                log.warning('Unable to request metadata from "%s:%s": %s',
-                            host, port, err)
+                log.warning(
+                    'Unable to request metadata from "%s:%s": %s', host, port, err
+                )
                 bootstrap_conn.close()
                 continue
 
@@ -244,19 +255,18 @@ class AIOKafkaClient:
             # In that case, we should keep the bootstrap connection till
             # we get a normal cluster layout.
             if not len(self.cluster.brokers()):
-                bootstrap_id = ('bootstrap', ConnectionGroup.DEFAULT)
+                bootstrap_id = ("bootstrap", ConnectionGroup.DEFAULT)
                 self._conns[bootstrap_id] = bootstrap_conn
             else:
                 bootstrap_conn.close()
 
-            log.debug('Received cluster metadata: %s', self.cluster)
+            log.debug("Received cluster metadata: %s", self.cluster)
             break
         else:
-            raise KafkaConnectionError(
-                f'Unable to bootstrap from {self.hosts}')
+            raise KafkaConnectionError(f"Unable to bootstrap from {self.hosts}")
 
         # detect api version if need
-        if self._api_version == 'auto':
+        if self._api_version == "auto":
             self._api_version = await self.check_version()
 
         if self._sync_task is None:
@@ -269,7 +279,8 @@ class AIOKafkaClient:
         while True:
             await asyncio.wait(
                 [self._md_update_waiter],
-                timeout=self._metadata_max_age_ms / 1000)
+                timeout=self._metadata_max_age_ms / 1000,
+            )
 
             topics = self._topics
             if self._md_update_fut is None:
@@ -306,24 +317,25 @@ class AIOKafkaClient:
             topics = None
         metadata_request = MetadataRequest[version_id](topics)
         nodeids = [b.nodeId for b in self.cluster.brokers()]
-        bootstrap_id = ('bootstrap', ConnectionGroup.DEFAULT)
+        bootstrap_id = ("bootstrap", ConnectionGroup.DEFAULT)
         if bootstrap_id in self._conns:
-            nodeids.append('bootstrap')
+            nodeids.append("bootstrap")
         random.shuffle(nodeids)
         for node_id in nodeids:
             conn = await self._get_conn(node_id)
 
             if conn is None:
                 continue
-            log.debug("Sending metadata request %s to node %s",
-                      metadata_request, node_id)
+            log.debug(
+                "Sending metadata request %s to node %s", metadata_request, node_id
+            )
 
             try:
                 metadata = await conn.send(metadata_request)
             except (KafkaError, asyncio.TimeoutError) as err:
                 log.error(
-                    'Unable to request metadata from node with id %s: %r',
-                    node_id, err)
+                    "Unable to request metadata from node with id %s: %r", node_id, err
+                )
                 continue
 
             # don't update the cluster if there are no valid nodes...the topic
@@ -342,7 +354,7 @@ class AIOKafkaClient:
 
             break
         else:
-            log.error('Unable to update metadata from %s', nodeids)
+            log.error("Unable to update metadata from %s", nodeids)
             cluster_metadata.failed_update(None)
             return False
         return True
@@ -362,12 +374,10 @@ class AIOKafkaClient:
         return asyncio.shield(self._md_update_fut)
 
     async def fetch_all_metadata(self):
-        cluster_md = ClusterMetadata(
-            metadata_max_age_ms=self._metadata_max_age_ms)
+        cluster_md = ClusterMetadata(metadata_max_age_ms=self._metadata_max_age_ms)
         updated = await self._metadata_update(cluster_md, [])
         if not updated:
-            raise KafkaError(
-                'Unable to get cluster metadata over all known brokers')
+            raise KafkaError("Unable to get cluster metadata over all known brokers")
         return cluster_md
 
     def add_topic(self, topic):
@@ -400,18 +410,16 @@ class AIOKafkaClient:
         return res
 
     def _on_connection_closed(self, conn, reason):
-        """ Callback called when connection is closed
-        """
+        """Callback called when connection is closed"""
         # Connection failures imply that our metadata is stale, so let's
         # refresh
-        if reason == CloseReason.CONNECTION_BROKEN or \
-                reason == CloseReason.CONNECTION_TIMEOUT:
+        if (
+            reason == CloseReason.CONNECTION_BROKEN
+            or reason == CloseReason.CONNECTION_TIMEOUT
+        ):
             self.force_metadata_update()
 
-    async def _get_conn(
-        self, node_id, *, group=ConnectionGroup.DEFAULT,
-        no_hint=False
-    ):
+    async def _get_conn(self, node_id, *, group=ConnectionGroup.DEFAULT, no_hint=False):
         "Get or create a connection to a broker using host and port"
         conn_id = (node_id, group)
         if conn_id in self._conns:
@@ -430,13 +438,18 @@ class AIOKafkaClient:
                 # I think requiring metadata should solve this problem
                 if broker is None:
                     raise StaleMetadata(
-                        'Broker id %s not in current metadata' % node_id)
+                        "Broker id %s not in current metadata" % node_id
+                    )
             else:
                 broker = self.cluster.coordinator_metadata(node_id)
                 assert broker is not None
 
-            log.debug("Initiating connection to node %s at %s:%s",
-                      node_id, broker.host, broker.port)
+            log.debug(
+                "Initiating connection to node %s at %s:%s",
+                node_id,
+                broker.host,
+                broker.port,
+            )
 
             async with self._get_conn_lock:
                 if conn_id in self._conns:
@@ -447,7 +460,8 @@ class AIOKafkaClient:
                     version_hint = None
 
                 self._conns[conn_id] = await create_conn(
-                    broker.host, broker.port,
+                    broker.host,
+                    broker.port,
                     client_id=self._client_id,
                     request_timeout_ms=self._request_timeout_ms,
                     ssl_context=self._ssl_context,
@@ -460,10 +474,10 @@ class AIOKafkaClient:
                     sasl_kerberos_service_name=self._sasl_kerberos_service_name,  # noqa: E501
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     sasl_oauth_token_provider=self._sasl_oauth_token_provider,
-                    version_hint=version_hint
+                    version_hint=version_hint,
                 )
         except (OSError, asyncio.TimeoutError, KafkaError) as err:
-            log.error('Unable connect to node with id %s: %s', node_id, err)
+            log.error("Unable connect to node with id %s: %s", node_id, err)
             if group == ConnectionGroup.DEFAULT:
                 # Connection failures imply that our metadata is stale, so
                 # let's refresh
@@ -497,22 +511,22 @@ class AIOKafkaClient:
         if not (await self.ready(node_id, group=group)):
             raise NodeNotReadyError(
                 "Attempt to send a request to node"
-                " which is not ready (node id {}).".format(node_id))
+                " which is not ready (node id {}).".format(node_id)
+            )
 
         # Every request gets a response, except one special case:
         expect_response = True
-        if isinstance(request, tuple(ProduceRequest)) and \
-                request.required_acks == 0:
+        if isinstance(request, tuple(ProduceRequest)) and request.required_acks == 0:
             expect_response = False
 
         future = self._conns[(node_id, group)].send(
-            request, expect_response=expect_response)
+            request, expect_response=expect_response
+        )
         try:
             result = await future
         except asyncio.TimeoutError:
             # close connection so it is renewed in next request
-            self._conns[(node_id, group)].close(
-                reason=CloseReason.CONNECTION_TIMEOUT)
+            self._conns[(node_id, group)].close(reason=CloseReason.CONNECTION_TIMEOUT)
             raise RequestTimedOutError()
         else:
             return result
@@ -521,13 +535,14 @@ class AIOKafkaClient:
         """Attempt to guess the broker version"""
         if node_id is None:
             default_group_conns = [
-                n_id for (n_id, group) in self._conns.keys()
+                n_id
+                for (n_id, group) in self._conns.keys()
                 if group == ConnectionGroup.DEFAULT
             ]
             if default_group_conns:
                 node_id = default_group_conns[0]
             else:
-                assert self.cluster.brokers(), 'no brokers in metadata'
+                assert self.cluster.brokers(), "no brokers in metadata"
                 node_id = list(self.cluster.brokers())[0].nodeId
 
         from aiokafka.protocol.admin import ApiVersionRequest_v0, ListGroupsRequest_v0
@@ -536,11 +551,12 @@ class AIOKafkaClient:
             OffsetFetchRequest_v0,
         )
         from aiokafka.protocol.metadata import MetadataRequest_v0
+
         test_cases = [
             ((0, 10), ApiVersionRequest_v0()),
             ((0, 9), ListGroupsRequest_v0()),
-            ((0, 8, 2), GroupCoordinatorRequest_v0('aiokafka-default-group')),
-            ((0, 8, 1), OffsetFetchRequest_v0('aiokafka-default-group', [])),
+            ((0, 8, 2), GroupCoordinatorRequest_v0("aiokafka-default-group")),
+            ((0, 8, 1), OffsetFetchRequest_v0("aiokafka-default-group", [])),
             ((0, 8, 0), MetadataRequest_v0([])),
         ]
 
@@ -551,13 +567,12 @@ class AIOKafkaClient:
         # socket.error (32, 54, or 104)
         conn = await self._get_conn(node_id, no_hint=True)
         if conn is None:
-            raise KafkaConnectionError(
-                f"No connection to node with id {node_id}")
+            raise KafkaConnectionError(f"No connection to node with id {node_id}")
         for version, request in test_cases:
             try:
                 if not conn.connected():
                     await conn.connect()
-                assert conn, f'no connection to node with id {node_id}'
+                assert conn, f"no connection to node with id {node_id}"
                 # request can be ignored by Kafka broker,
                 # so we send metadata request and wait response
                 task = create_task(conn.send(request))
@@ -605,8 +620,7 @@ class AIOKafkaClient:
         error_type = Errors.for_code(response.error_code)
         assert error_type is Errors.NoError, "API version check failed"
         max_versions = {
-            api_key: max_version
-            for api_key, _, max_version in response.api_versions
+            api_key: max_version for api_key, _, max_version in response.api_versions
         }
         # Get the best match of test cases
         for broker_version, struct in test_cases:
@@ -656,7 +670,7 @@ class AIOKafkaClient:
             await asyncio.shield(self._md_update_fut)
 
     async def coordinator_lookup(self, coordinator_type, coordinator_key):
-        """ Lookup which node in the cluster is the coordinator for a certain
+        """Lookup which node in the cluster is the coordinator for a certain
         role (Transaction coordinator or Group coordinator atm.)
         NOTE: Client keeps track of all coordination nodes separately, as they
         all have different sockets and ids.
@@ -667,15 +681,17 @@ class AIOKafkaClient:
 
         log.debug(
             "Sending FindCoordinator request for key %s to broker %s",
-            coordinator_key, node_id)
+            coordinator_key,
+            node_id,
+        )
 
         if self.api_version > (0, 11):
-            request = FindCoordinatorRequest[1](
-                coordinator_key, coordinator_type)
+            request = FindCoordinatorRequest[1](coordinator_key, coordinator_type)
         else:
             # Group coordination only
-            assert coordinator_type == CoordinationType.GROUP, \
-                "No transactions for older brokers"
+            assert (
+                coordinator_type == CoordinationType.GROUP
+            ), "No transactions for older brokers"
             request = FindCoordinatorRequest[0](coordinator_key)
 
         resp = await self.send(node_id, request)
@@ -685,6 +701,10 @@ class AIOKafkaClient:
             err = error_type()
             raise err
         self.cluster.add_coordinator(
-            resp.coordinator_id, resp.host, resp.port, rack=None,
-            purpose=(coordinator_type, coordinator_key))
+            resp.coordinator_id,
+            resp.host,
+            resp.port,
+            rack=None,
+            purpose=(coordinator_type, coordinator_key),
+        )
         return resp.coordinator_id

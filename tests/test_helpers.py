@@ -6,9 +6,8 @@ import pytest
 from aiokafka.helpers import create_ssl_context
 
 
-@pytest.mark.usefixtures('setup_test_class_serverless')
+@pytest.mark.usefixtures("setup_test_class_serverless")
 class TestHelpers(unittest.TestCase):
-
     def _check_ssl_dir(self):
         ssl_cert = self.ssl_folder
         cafile = ssl_cert / "ca-cert"
@@ -46,7 +45,8 @@ class TestHelpers(unittest.TestCase):
             cafile=str(cafile),
             certfile=str(certfile),
             keyfile=str(keyfile),
-            password="abcdefgh")
+            password="abcdefgh",
+        )
         self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
         self.assertEqual(context.check_hostname, True)
         self.assertTrue(context.get_ca_certs())

@@ -18,7 +18,6 @@ NoneType = type(None)
 
 
 class LegacyRecordBase:
-
     __slots__ = ()
 
     HEADER_STRUCT_V0 = struct.Struct(
@@ -39,7 +38,7 @@ class LegacyRecordBase:
 
     LOG_OVERHEAD = CRC_OFFSET = struct.calcsize(
         ">q"  # Offset
-        "i"   # Size
+        "i"  # Size
     )
     MAGIC_OFFSET = LOG_OVERHEAD + struct.calcsize(
         ">I"  # CRC
@@ -47,18 +46,18 @@ class LegacyRecordBase:
     # Those are used for fast size calculations
     RECORD_OVERHEAD_V0 = struct.calcsize(
         ">I"  # CRC
-        "b"   # magic
-        "b"   # attributes
-        "i"   # Key length
-        "i"   # Value length
+        "b"  # magic
+        "b"  # attributes
+        "i"  # Key length
+        "i"  # Value length
     )
     RECORD_OVERHEAD_V1 = struct.calcsize(
         ">I"  # CRC
-        "b"   # magic
-        "b"   # attributes
-        "q"   # timestamp
-        "i"   # Key length
-        "i"   # Value length
+        "b"  # magic
+        "b"  # attributes
+        "q"  # timestamp
+        "i"  # Key length
+        "i"  # Value length
     )
     RECORD_OVERHEAD = {
         0: RECORD_OVERHEAD_V0,
@@ -87,14 +86,15 @@ class LegacyRecordBase:
             checker, name = codecs.has_lz4, "lz4"
         else:
             raise UnsupportedCodecError(
-                f"Unknown compression codec {compression_type:#04x}")
+                f"Unknown compression codec {compression_type:#04x}"
+            )
         if not checker():
             raise UnsupportedCodecError(
-                f"Libraries for {name} compression codec not found")
+                f"Libraries for {name} compression codec not found"
+            )
 
 
 class _LegacyRecordBatchPy(LegacyRecordBase):
-
     is_control_batch = False
     is_transactional = False
     producer_id = None
@@ -136,7 +136,7 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
         return self._offset + 1
 
     def validate_crc(self):
-        crc = crc32(self._buffer[self.MAGIC_OFFSET:])
+        crc = crc32(self._buffer[self.MAGIC_OFFSET :])
         return self._crc == crc
 
     def _decompress(self, key_offset):
@@ -151,7 +151,7 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
         if value_size == -1:
             raise CorruptRecordException("Value of compressed message is None")
         else:
-            data = self._buffer[pos:pos + value_size]
+            data = self._buffer[pos : pos + value_size]
 
         compression_type = self.compression_type
         self._assert_has_codec(compression_type)
@@ -171,12 +171,19 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
 
     def _read_header(self, pos):
         if self._magic == 0:
-            offset, length, crc, magic_read, attrs = \
-                self.HEADER_STRUCT_V0.unpack_from(self._buffer, pos)
+            offset, length, crc, magic_read, attrs = self.HEADER_STRUCT_V0.unpack_from(
+                self._buffer, pos
+            )
             timestamp = None
         else:
-            offset, length, crc, magic_read, attrs, timestamp = \
-                self.HEADER_STRUCT_V1.unpack_from(self._buffer, pos)
+            (
+                offset,
+                length,
+                crc,
+                magic_read,
+                attrs,
+                timestamp,
+            ) = self.HEADER_STRUCT_V1.unpack_from(self._buffer, pos)
         return offset, length, crc, magic_read, attrs, timestamp
 
     def _read_all_headers(self):
@@ -195,7 +202,7 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
         if key_size == -1:
             key = None
         else:
-            key = self._buffer[pos:pos + key_size].tobytes()
+            key = self._buffer[pos : pos + key_size].tobytes()
             pos += key_size
 
         value_size = struct.unpack_from(">i", self._buffer, pos)[0]
@@ -203,7 +210,7 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
         if value_size == -1:
             value = None
         else:
-            value = self._buffer[pos:pos + value_size].tobytes()
+            value = self._buffer[pos : pos + value_size].tobytes()
         return key, value
 
     def __iter__(self):
@@ -232,8 +239,9 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
                 offset, _, crc, _, attrs, timestamp = header
                 # There should only ever be a single layer of compression
                 assert not attrs & self.CODEC_MASK, (
-                    'MessageSet at offset %d appears double-compressed. This '
-                    'should not happen -- check your producers!' % offset)
+                    "MessageSet at offset %d appears double-compressed. This "
+                    "should not happen -- check your producers!" % offset
+                )
 
                 # When magic value is greater than 0, the timestamp
                 # of a compressed message depends on the
@@ -246,19 +254,17 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
 
                 key, value = self._read_key_value(msg_pos + key_offset)
                 yield _LegacyRecordPy(
-                    offset, timestamp, timestamp_type,
-                    key, value, crc)
+                    offset, timestamp, timestamp_type, key, value, crc
+                )
         else:
             key, value = self._read_key_value(key_offset)
             yield _LegacyRecordPy(
-                self._offset, self._timestamp, timestamp_type,
-                key, value, self._crc)
+                self._offset, self._timestamp, timestamp_type, key, value, self._crc
+            )
 
 
 class _LegacyRecordPy:
-
-    __slots__ = ("_offset", "_timestamp", "_timestamp_type", "_key", "_value",
-                 "_crc")
+    __slots__ = ("_offset", "_timestamp", "_timestamp_type", "_key", "_value", "_crc")
 
     def __init__(self, offset, timestamp, timestamp_type, key, value, crc):
         self._offset = offset
@@ -274,26 +280,22 @@ class _LegacyRecordPy:
 
     @property
     def timestamp(self):
-        """ Epoch milliseconds
-        """
+        """Epoch milliseconds"""
         return self._timestamp
 
     @property
     def timestamp_type(self):
-        """ CREATE_TIME(0) or APPEND_TIME(1)
-        """
+        """CREATE_TIME(0) or APPEND_TIME(1)"""
         return self._timestamp_type
 
     @property
     def key(self):
-        """ Bytes key or None
-        """
+        """Bytes key or None"""
         return self._key
 
     @property
     def value(self):
-        """ Bytes value or None
-        """
+        """Bytes value or None"""
         return self._value
 
     @property
@@ -313,7 +315,6 @@ class _LegacyRecordPy:
 
 
 class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
-
     def __init__(self, magic, compression_type, batch_size):
         assert magic in [0, 1]
         self._magic = magic
@@ -323,8 +324,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
         self._pos = 0
 
     def append(self, offset, timestamp, key, value, headers=None):
-        """ Append message to batch.
-        """
+        """Append message to batch."""
         if self._magic == 0:
             timestamp = -1
         elif timestamp is None:
@@ -344,7 +344,8 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
         msg_buf = bytearray(size)
         try:
             crc = self._encode_msg(
-                msg_buf, offset, timestamp, key_size, key, value_size, value)
+                msg_buf, offset, timestamp, key_size, key, value_size, value
+            )
             self._msg_buffers.append(msg_buf)
             self._pos += size
             return _LegacyRecordMetadataPy(offset, crc, size, timestamp)
@@ -362,51 +363,73 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
                 raise TypeError("Unsupported type for value: %s" % type(value))
             raise
 
-    def _encode_msg(self, buf, offset, timestamp, key_size, key,
-                    value_size, value, attributes=0):
-        """ Encode msg data into the `msg_buffer`, which should be allocated
-            to at least the size of this message.
+    def _encode_msg(
+        self, buf, offset, timestamp, key_size, key, value_size, value, attributes=0
+    ):
+        """Encode msg data into the `msg_buffer`, which should be allocated
+        to at least the size of this message.
         """
         magic = self._magic
-        length = (self.KEY_LENGTH + key_size +
-                  self.VALUE_LENGTH + value_size -
-                  self.LOG_OVERHEAD)
+        length = (
+            self.KEY_LENGTH
+            + key_size
+            + self.VALUE_LENGTH
+            + value_size
+            - self.LOG_OVERHEAD
+        )
 
         if magic == 0:
             length += self.KEY_OFFSET_V0
             struct.pack_into(
-                ">q"   # BaseOffset => Int64
-                "i"    # Length => Int32
-                "I"    # CRC => Int32
-                "b"    # Magic => Int8
-                "b"    # Attributes => Int8
-                "i"    # key length => Int32
+                ">q"  # BaseOffset => Int64
+                "i"  # Length => Int32
+                "I"  # CRC => Int32
+                "b"  # Magic => Int8
+                "b"  # Attributes => Int8
+                "i"  # key length => Int32
                 "%ds"  # key => bytes
-                "i"    # value length => Int32
-                "%ds"  # value => bytes
-                % (key_size, value_size),
-                buf, 0, offset, length, 0, magic, attributes,
-                key_size if key is not None else -1, key or b"",
-                value_size if value is not None else -1, value or b"")
+                "i"  # value length => Int32
+                "%ds" % (key_size, value_size),  # value => bytes
+                buf,
+                0,
+                offset,
+                length,
+                0,
+                magic,
+                attributes,
+                key_size if key is not None else -1,
+                key or b"",
+                value_size if value is not None else -1,
+                value or b"",
+            )
         else:
             length += self.KEY_OFFSET_V1
             struct.pack_into(
-                ">q"   # BaseOffset => Int64
-                "i"    # Length => Int32
-                "I"    # CRC => Int32
-                "b"    # Magic => Int8
-                "b"    # Attributes => Int8
-                "q"    # timestamp => Int64
-                "i"    # key length => Int32
+                ">q"  # BaseOffset => Int64
+                "i"  # Length => Int32
+                "I"  # CRC => Int32
+                "b"  # Magic => Int8
+                "b"  # Attributes => Int8
+                "q"  # timestamp => Int64
+                "i"  # key length => Int32
                 "%ds"  # key => bytes
-                "i"    # value length => Int32
-                "%ds"  # value => bytes
-                % (key_size, value_size),
-                buf, 0, offset, length, 0, magic, attributes, timestamp,
-                key_size if key is not None else -1, key or b"",
-                value_size if value is not None else -1, value or b"")
+                "i"  # value length => Int32
+                "%ds" % (key_size, value_size),  # value => bytes
+                buf,
+                0,
+                offset,
+                length,
+                0,
+                magic,
+                attributes,
+                timestamp,
+                key_size if key is not None else -1,
+                key or b"",
+                value_size if value is not None else -1,
+                value or b"",
+            )
 
-        crc = crc32(memoryview(buf)[self.MAGIC_OFFSET:])
+        crc = crc32(memoryview(buf)[self.MAGIC_OFFSET :])
         struct.pack_into(">I", buf, self.CRC_OFFSET, crc)
         return crc
 
@@ -434,9 +457,14 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
                 del self._buffer[size:]
             self._encode_msg(
                 self._buffer,
-                offset=0, timestamp=0, key_size=0, key=None,
-                value_size=compressed_size, value=compressed,
-                attributes=self._compression_type)
+                offset=0,
+                timestamp=0,
+                key_size=0,
+                key=None,
+                value_size=compressed_size,
+                value=compressed,
+                attributes=self._compression_type,
+            )
             self._pos = size
             return True
         return False
@@ -448,23 +476,23 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
         return self._buffer
 
     def size(self):
-        """ Return current size of data written to buffer
-        """
+        """Return current size of data written to buffer"""
         return self._pos
 
     def size_in_bytes(self, offset, timestamp, key, value, headers=None):
-        """ Actual size of message to add
-        """
+        """Actual size of message to add"""
         assert not headers, "Headers not supported in v0/v1"
         key_size = len(key) if key is not None else 0
         value_size = len(value) if value is not None else 0
         return self._size_in_bytes(key_size, value_size)
 
     def _size_in_bytes(self, key_size, value_size):
-        return (self.LOG_OVERHEAD +
-                self.RECORD_OVERHEAD[self._magic] +
-                key_size +
-                value_size)
+        return (
+            self.LOG_OVERHEAD
+            + self.RECORD_OVERHEAD[self._magic]
+            + key_size
+            + value_size
+        )
 
     @classmethod
     def record_overhead(cls, magic):
@@ -475,7 +503,6 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
 
 
 class _LegacyRecordMetadataPy:
-
     __slots__ = ("_crc", "_size", "_timestamp", "_offset")
 
     def __init__(self, offset, crc, size, timestamp):
@@ -521,6 +548,7 @@ else:
             LegacyRecordBatchBuilder as _LegacyRecordBatchBuilderCython,
         )
         from ._crecords import LegacyRecordMetadata as _LegacyRecordMetadataCython
+
         LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderCython
         LegacyRecordMetadata = _LegacyRecordMetadataCython
         LegacyRecordBatch = _LegacyRecordBatchCython

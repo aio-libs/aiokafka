@@ -33,10 +33,11 @@ class ClusterMetadata:
             Metadata API Request. Default port is 9092. If no servers are
             specified, will default to localhost:9092.
     """
+
     DEFAULT_CONFIG = {
-        'retry_backoff_ms': 100,
-        'metadata_max_age_ms': 300000,
-        'bootstrap_servers': [],
+        "retry_backoff_ms": 100,
+        "metadata_max_age_ms": 300000,
+        "bootstrap_servers": [],
     }
 
     def __init__(self, **configs):
@@ -68,11 +69,11 @@ class ClusterMetadata:
 
     def _generate_bootstrap_brokers(self):
         # collect_hosts does not perform DNS, so we should be fine to re-use
-        bootstrap_hosts = collect_hosts(self.config['bootstrap_servers'])
+        bootstrap_hosts = collect_hosts(self.config["bootstrap_servers"])
 
         brokers = {}
         for i, (host, port, _) in enumerate(bootstrap_hosts):
-            node_id = 'bootstrap-%s' % i
+            node_id = "bootstrap-%s" % i
             brokers[node_id] = BrokerMetadata(node_id, host, port, None)
         return brokers
 
@@ -97,9 +98,9 @@ class ClusterMetadata:
             BrokerMetadata or None if not found
         """
         return (
-            self._brokers.get(broker_id) or
-            self._bootstrap_brokers.get(broker_id) or
-            self._coordinator_brokers.get(broker_id)
+            self._brokers.get(broker_id)
+            or self._bootstrap_brokers.get(broker_id)
+            or self._coordinator_brokers.get(broker_id)
         )
 
     def partitions_for_topic(self, topic):
@@ -127,9 +128,13 @@ class ClusterMetadata:
         """
         if topic not in self._partitions:
             return None
-        return set([partition for partition, metadata
-                    in self._partitions[topic].items()
-                    if metadata.leader != -1])
+        return set(
+            [
+                partition
+                for partition, metadata in self._partitions[topic].items()
+                if metadata.leader != -1
+            ]
+        )
 
     def leader_for_partition(self, partition):
         """Return node_id of leader, -1 unavailable, None if unknown."""
@@ -226,9 +231,7 @@ class ClusterMetadata:
                 rack = None
             else:
                 node_id, host, port, rack = broker
-            _new_brokers.update({
-                node_id: BrokerMetadata(node_id, host, port, rack)
-            })
+            _new_brokers.update({node_id: BrokerMetadata(node_id, host, port, rack)})
 
         if metadata.API_VERSION == 0:
             _new_controller = None
@@ -253,19 +256,27 @@ class ClusterMetadata:
                 _new_partitions[topic] = {}
                 for p_error, partition, leader, replicas, isr in partitions:
                     _new_partitions[topic][partition] = PartitionMetadata(
-                        topic=topic, partition=partition, leader=leader,
-                        replicas=replicas, isr=isr, error=p_error)
+                        topic=topic,
+                        partition=partition,
+                        leader=leader,
+                        replicas=replicas,
+                        isr=isr,
+                        error=p_error,
+                    )
                     if leader != -1:
                         _new_broker_partitions[leader].add(
-                            TopicPartition(topic, partition))
+                            TopicPartition(topic, partition)
+                        )
 
             # Specific topic errors can be ignored if this is a full metadata fetch
             elif self.need_all_topic_metadata:
                 continue
 
             elif error_type is Errors.LeaderNotAvailableError:
-                log.warning("Topic %s is not available during auto-create"
-                            " initialization", topic)
+                log.warning(
+                    "Topic %s is not available during auto-create initialization",
+                    topic,
+                )
             elif error_type is Errors.UnknownTopicOrPartitionError:
                 log.error("Topic %s not found in cluster metadata", topic)
             elif error_type is Errors.TopicAuthorizationFailedError:
@@ -274,8 +285,7 @@ class ClusterMetadata:
             elif error_type is Errors.InvalidTopicError:
                 log.error("'%s' is not a valid topic name", topic)
             else:
-                log.error("Error fetching metadata for topic %s: %s",
-                          topic, error_type)
+                log.error("Error fetching metadata for topic %s: %s", topic, error_type)
 
         with self._lock:
             self._brokers = _new_brokers
@@ -335,12 +345,8 @@ class ClusterMetadata:
 
         # Use a coordinator-specific node id so that group requests
         # get a dedicated connection
-        node_id = 'coordinator-{}'.format(response.coordinator_id)
-        coordinator = BrokerMetadata(
-            node_id,
-            response.host,
-            response.port,
-            None)
+        node_id = "coordinator-{}".format(response.coordinator_id)
+        coordinator = BrokerMetadata(node_id, response.host, response.port, None)
 
         log.info("Group coordinator for %s is %s", group, coordinator)
         self._coordinator_brokers[node_id] = coordinator
@@ -362,7 +368,8 @@ class ClusterMetadata:
 
             if partition.leader is not None and partition.leader != -1:
                 new_metadata._broker_partitions[partition.leader].add(
-                    TopicPartition(partition.topic, partition.partition))
+                    TopicPartition(partition.topic, partition.partition)
+                )
 
         return new_metadata
 
@@ -370,7 +377,7 @@ class ClusterMetadata:
         return self._coordinators.get(node_id)
 
     def add_coordinator(self, node_id, host, port, rack=None, *, purpose):
-        """ Keep track of all coordinator nodes separately and remove them if
+        """Keep track of all coordinator nodes separately and remove them if
         a new one was elected for the same purpose (For example group
         coordinator for group X).
         """
@@ -382,5 +389,8 @@ class ClusterMetadata:
         self._coordinator_by_key[purpose] = node_id
 
     def __str__(self):
-        return 'ClusterMetadata(brokers: %d, topics: %d, groups: %d)' % \
-               (len(self._brokers), len(self._partitions), len(self._groups))
+        return "ClusterMetadata(brokers: %d, topics: %d, groups: %d)" % (
+            len(self._brokers),
+            len(self._partitions),
+            len(self._groups),
+        )

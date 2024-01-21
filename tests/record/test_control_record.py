@@ -3,10 +3,13 @@ import pytest
 from aiokafka.record.control_record import ABORT_MARKER, COMMIT_MARKER, ControlRecord
 
 
-@pytest.mark.parametrize("data,marker", [
-    (b"\x00\x00\x00\x00", ABORT_MARKER),
-    (b"\x00\x00\x00\x01", COMMIT_MARKER),
-])
+@pytest.mark.parametrize(
+    "data,marker",
+    [
+        (b"\x00\x00\x00\x00", ABORT_MARKER),
+        (b"\x00\x00\x00\x01", COMMIT_MARKER),
+    ],
+)
 def test_control_record_serde(data, marker):
     assert ControlRecord.parse(data) == marker
 
