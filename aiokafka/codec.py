@@ -95,13 +95,12 @@ def snappy_encode(payload, xerial_compatible=True, xerial_blocksize=32 * 1024):
 
     # Chunk through buffers to avoid creating intermediate slice copies
     def chunker(payload, i, size):
-        return memoryview(payload)[i:size + i]
+        return memoryview(payload)[i : size + i]
 
     for chunk in (
         chunker(payload, i, xerial_blocksize)
         for i in range(0, len(payload), xerial_blocksize)
     ):
-
         block = cramjam.snappy.compress_raw(chunk)
         block_size = len(block)
         out.write(struct.pack("!i", block_size))

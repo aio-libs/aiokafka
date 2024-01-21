@@ -4,17 +4,17 @@ import pytest
 
 from aiokafka import codec as codecs
 from aiokafka.codec import (
-    has_snappy,
-    has_lz4,
-    has_zstd,
-    gzip_encode,
     gzip_decode,
-    snappy_encode,
-    snappy_decode,
-    lz4_encode,
+    gzip_encode,
+    has_lz4,
+    has_snappy,
+    has_zstd,
     lz4_decode,
-    zstd_encode,
+    lz4_encode,
+    snappy_decode,
+    snappy_encode,
     zstd_decode,
+    zstd_encode,
 )
 
 from ._testutil import random_string

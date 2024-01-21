@@ -1,9 +1,10 @@
 import asyncio
+
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import ConsumerStoppedError, NoOffsetForPartitionError
 from aiokafka.util import create_task
-from ._testutil import (
-    KafkaIntegrationTestCase, run_until_complete, random_string)
+
+from ._testutil import KafkaIntegrationTestCase, random_string, run_until_complete
 
 
 class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
@@ -15,7 +16,8 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             self.topic,
             bootstrap_servers=self.hosts,
-            auto_offset_reset='earliest')
+            auto_offset_reset="earliest",
+        )
         await consumer.start()
         self.add_cleanup(consumer.stop)
 
@@ -43,15 +45,15 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             self.topic,
             bootstrap_servers=self.hosts,
-            auto_offset_reset='earliest',
+            auto_offset_reset="earliest",
             max_partition_fetch_bytes=4000,
-            api_version="0.9")
+            api_version="0.9",
+        )
         await consumer.start()
         self.add_cleanup(consumer.stop)
 
         messages = []
-        with self.assertLogs(
-                'aiokafka.consumer.consumer', level='ERROR') as cm:
+        with self.assertLogs("aiokafka.consumer.consumer", level="ERROR") as cm:
             async for m in consumer:
                 messages.append(m)
                 if len(messages) == 2:
@@ -62,19 +64,21 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
 
             self.assertEqual(len(cm.output), 1)
             self.assertTrue(
-                'ERROR:aiokafka.consumer.consumer:error in consumer iterator'
-                in cm.output[0])
+                "ERROR:aiokafka.consumer.consumer:error in consumer iterator"
+                in cm.output[0]
+            )
         self.assertEqual(messages[0].value, large_messages[0])
         self.assertEqual(messages[1].value, small_messages[0])
 
     @run_until_complete
     async def test_exception_in_aiter(self):
-        await self.send_messages(0, [b'test'])
+        await self.send_messages(0, [b"test"])
 
         consumer = AIOKafkaConsumer(
             self.topic,
             bootstrap_servers=self.hosts,
-            auto_offset_reset="none")
+            auto_offset_reset="none",
+        )
         await consumer.start()
         self.add_cleanup(consumer.stop)
 
@@ -87,7 +91,8 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             self.topic,
             bootstrap_servers=self.hosts,
-            auto_offset_reset="earliest")
+            auto_offset_reset="earliest",
+        )
         await consumer.start()
         self.add_cleanup(consumer.stop)
 

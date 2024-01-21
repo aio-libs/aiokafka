@@ -1,5 +1,5 @@
 from .api import Request, Response
-from .types import Int16, Int32, Int64, Schema, String, Array, Boolean
+from .types import Array, Boolean, Int16, Int32, Int64, Schema, String
 
 
 class InitProducerIdResponse_v0(Response):

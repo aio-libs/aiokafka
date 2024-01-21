@@ -3,13 +3,22 @@ import os
 import weakref
 from asyncio import AbstractEventLoop
 from types import MethodType
-from typing import Any, Awaitable, Coroutine, Dict, Tuple, TypeVar, Union, cast
+from typing import (
+    Any,
+    Awaitable,
+    Coroutine,
+    Dict,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import async_timeout
 from packaging.version import Version
 
 from .structs import OffsetAndMetadata, TopicPartition
-
 
 __all__ = [
     "create_task",
@@ -28,7 +37,7 @@ def create_task(coro: Coroutine[Any, Any, T]) -> "asyncio.Task[T]":
     return loop.create_task(coro)
 
 
-def create_future(loop: AbstractEventLoop = None) -> "asyncio.Future[T]":
+def create_future(loop: Optional[AbstractEventLoop] = None) -> "asyncio.Future[T]":
     if loop is None:
         loop = get_running_loop()
     return loop.create_future()
@@ -53,7 +62,7 @@ def parse_kafka_version(api_version: str) -> Tuple[int, int, int]:
 
 
 def commit_structure_validate(
-    offsets: Dict[TopicPartition, Union[int, Tuple[int, str], OffsetAndMetadata]]
+    offsets: Dict[TopicPartition, Union[int, Tuple[int, str], OffsetAndMetadata]],
 ) -> Dict[TopicPartition, OffsetAndMetadata]:
     # validate `offsets` structure
     if not offsets or not isinstance(offsets, dict):

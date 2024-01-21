@@ -2,7 +2,7 @@ from aiokafka.errors import IllegalArgumentError
 
 
 class NewTopic:
-    """ A class for new topic creation
+    """A class for new topic creation
     Arguments:
         name (string): name of the topic
         num_partitions (int): number of partitions
@@ -16,12 +16,12 @@ class NewTopic:
     """
 
     def __init__(
-            self,
-            name,
-            num_partitions,
-            replication_factor,
-            replica_assignments=None,
-            topic_configs=None,
+        self,
+        name,
+        num_partitions,
+        replication_factor,
+        replica_assignments=None,
+        topic_configs=None,
     ):
         if not (
             (num_partitions == -1 or replication_factor == -1)

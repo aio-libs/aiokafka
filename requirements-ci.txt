@@ -1,8 +1,6 @@
 -r requirements-cython.txt
-flake8==4.0.1
-black==22.3.0
-mypy==0.961
-isort[colors]==5.10.0
+ruff==0.1.14
+mypy==1.8.0
 pytest==7.4.3
 pytest-cov==4.1.0
 pytest-asyncio==0.21.1

@@ -1,27 +1,28 @@
-import logging
 import asyncio
+import logging
 from collections import defaultdict
 from ssl import SSLContext
-from typing import List, Optional, Dict, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import IncompatibleBrokerVersion, for_code
-from aiokafka.protocol.api import Request, Response
-from aiokafka.protocol.metadata import MetadataRequest
-from aiokafka.protocol.commit import OffsetFetchRequest, GroupCoordinatorRequest
 from aiokafka.protocol.admin import (
+    AlterConfigsRequest,
+    ApiVersionRequest_v0,
     CreatePartitionsRequest,
     CreateTopicsRequest,
     DeleteTopicsRequest,
-    DescribeGroupsRequest,
     DescribeConfigsRequest,
-    AlterConfigsRequest,
+    DescribeGroupsRequest,
     ListGroupsRequest,
-    ApiVersionRequest_v0)
-from aiokafka.structs import TopicPartition, OffsetAndMetadata
+)
+from aiokafka.protocol.api import Request, Response
+from aiokafka.protocol.commit import GroupCoordinatorRequest, OffsetFetchRequest
+from aiokafka.protocol.metadata import MetadataRequest
+from aiokafka.structs import OffsetAndMetadata, TopicPartition
 
-from .config_resource import ConfigResourceType, ConfigResource
+from .config_resource import ConfigResource, ConfigResourceType
 from .new_topic import NewTopic
 
 log = logging.getLogger(__name__)
@@ -72,29 +73,35 @@ class AIOKafkaAdminClient:
             probing various APIs. Default: auto
     """
 
-    def __init__(self, *, loop=None,
-                 bootstrap_servers: str = 'localhost',
-                 client_id: str = 'aiokafka-' + __version__,
-                 request_timeout_ms: int = 40000,
-                 connections_max_idle_ms: int = 540000,
-                 retry_backoff_ms: int = 100,
-                 metadata_max_age_ms: int = 300000,
-                 security_protocol: str = "PLAINTEXT",
-                 ssl_context: Optional[SSLContext] = None,
-                 api_version: str = "auto",
-                 sasl_mechanism: str = 'PLAIN',
-                 sasl_plain_username: Optional[str] = None,
-                 sasl_plain_password: Optional[str] = None,
-                 sasl_kerberos_service_name: str = 'kafka',
-                 sasl_kerberos_domain_name: Optional[str] = None,
-                 sasl_oauth_token_provider: Optional[str] = None):
+    def __init__(
+        self,
+        *,
+        loop=None,
+        bootstrap_servers: str = "localhost",
+        client_id: str = "aiokafka-" + __version__,
+        request_timeout_ms: int = 40000,
+        connections_max_idle_ms: int = 540000,
+        retry_backoff_ms: int = 100,
+        metadata_max_age_ms: int = 300000,
+        security_protocol: str = "PLAINTEXT",
+        ssl_context: Optional[SSLContext] = None,
+        api_version: str = "auto",
+        sasl_mechanism: str = "PLAIN",
+        sasl_plain_username: Optional[str] = None,
+        sasl_plain_password: Optional[str] = None,
+        sasl_kerberos_service_name: str = "kafka",
+        sasl_kerberos_domain_name: Optional[str] = None,
+        sasl_oauth_token_provider: Optional[str] = None,
+    ):
         self._closed = False
         self._started = False
         self._version_info = {}
         self._request_timeout_ms = request_timeout_ms
         self._client = AIOKafkaClient(
-            loop=loop, bootstrap_servers=bootstrap_servers,
-            client_id=client_id, metadata_max_age_ms=metadata_max_age_ms,
+            loop=loop,
+            bootstrap_servers=bootstrap_servers,
+            client_id=client_id,
+            metadata_max_age_ms=metadata_max_age_ms,
             request_timeout_ms=request_timeout_ms,
             retry_backoff_ms=retry_backoff_ms,
             api_version=api_version,
@@ -106,11 +113,12 @@ class AIOKafkaAdminClient:
             sasl_plain_password=sasl_plain_password,
             sasl_kerberos_service_name=sasl_kerberos_service_name,
             sasl_kerberos_domain_name=sasl_kerberos_domain_name,
-            sasl_oauth_token_provider=sasl_oauth_token_provider)
+            sasl_oauth_token_provider=sasl_oauth_token_provider,
+        )
 
     async def close(self):
         """Close the AIOKafkaAdminClient connection to the Kafka broker."""
-        if not hasattr(self, '_closed') or self._closed:
+        if not hasattr(self, "_closed") or self._closed:
             log.info("AIOKafkaAdminClient already closed.")
             return
 
@@ -119,9 +127,10 @@ class AIOKafkaAdminClient:
         log.debug("AIOKafkaAdminClient is now closed.")
 
     async def _send_request(
-            self,
-            request: Request,
-            node_id: Optional[int] = None) -> Response:
+        self,
+        request: Request,
+        node_id: Optional[int] = None,
+    ) -> Response:
         if node_id is None:
             node_id = self._client.get_random_node()
         return await self._client.send(node_id, request)
@@ -154,15 +163,17 @@ class AIOKafkaAdminClient:
         api_key = operation[0].API_KEY
         if not self._version_info or api_key not in self._version_info:
             raise IncompatibleBrokerVersion(
-                "Kafka broker does not support the '{}' Kafka protocol."
-                .format(operation[0].__name__))
+                "Kafka broker does not support the '{}' Kafka protocol.".format(
+                    operation[0].__name__
+                )
+            )
         min_version, max_version = self._version_info[api_key]
         version = min(len(operation) - 1, max_version)
         if version < min_version:
             raise IncompatibleBrokerVersion(
                 "No version of the '{}' Kafka protocol is supported by "
-                "both the client and broker."
-                .format(operation[0].__name__))
+                "both the client and broker.".format(operation[0].__name__)
+            )
         return version
 
     @staticmethod
@@ -178,14 +189,14 @@ class AIOKafkaAdminClient:
             [
                 (config_key, config_value)
                 for config_key, config_value in new_topic.topic_configs.items()
-            ]
+            ],
         )
 
     async def create_topics(
-            self,
-            new_topics: List[NewTopic],
-            timeout_ms: Optional[int] = None,
-            validate_only: bool = False
+        self,
+        new_topics: List[NewTopic],
+        timeout_ms: Optional[int] = None,
+        validate_only: bool = False,
     ) -> Response:
         """Create new topics in the cluster.
 
@@ -204,32 +215,33 @@ class AIOKafkaAdminClient:
             if validate_only:
                 raise IncompatibleBrokerVersion(
                     "validate_only requires CreateTopicsRequest >= v1, "
-                    "which is not supported by Kafka {}."
-                    .format(self._client.api_version))
+                    "which is not supported by Kafka {}.".format(
+                        self._client.api_version
+                    )
+                )
             request = CreateTopicsRequest[version](
                 create_topic_requests=topics,
-                timeout=timeout_ms
+                timeout=timeout_ms,
             )
         elif version <= 3:
             request = CreateTopicsRequest[version](
                 create_topic_requests=topics,
                 timeout=timeout_ms,
-                validate_only=validate_only
+                validate_only=validate_only,
             )
         else:
             raise NotImplementedError(
                 "Support for CreateTopics v{} has not yet been added "
-                "to AIOKafkaAdminClient."
-                .format(version))
-        response = await self._client.send(
-            self._client.get_random_node(),
-            request)
+                "to AIOKafkaAdminClient.".format(version)
+            )
+        response = await self._client.send(self._client.get_random_node(), request)
         return response
 
     async def delete_topics(
-            self,
-            topics: List[str],
-            timeout_ms: Optional[int] = None) -> Response:
+        self,
+        topics: List[str],
+        timeout_ms: Optional[int] = None,
+    ) -> Response:
         """Delete topics from the cluster.
 
         :param topics: A list of topic name strings.
@@ -244,8 +256,9 @@ class AIOKafkaAdminClient:
         return response
 
     async def _get_cluster_metadata(
-            self,
-            topics: Optional[List[str]] = None) -> Response:
+        self,
+        topics: Optional[List[str]] = None,
+    ) -> Response:
         """
         Retrieve cluster metadata
         :param topics List of topic names, None means "get all topics"
@@ -259,25 +272,27 @@ class AIOKafkaAdminClient:
     async def list_topics(self) -> List[str]:
         metadata = await self._get_cluster_metadata(topics=None)
         obj = metadata.to_object()
-        return [t['topic'] for t in obj['topics']]
+        return [t["topic"] for t in obj["topics"]]
 
     async def describe_topics(
-            self,
-            topics: Optional[List[str]] = None) -> List[Any]:
+        self,
+        topics: Optional[List[str]] = None,
+    ) -> List[Any]:
         metadata = await self._get_cluster_metadata(topics=topics)
         obj = metadata.to_object()
-        return obj['topics']
+        return obj["topics"]
 
     async def describe_cluster(self) -> Dict[str, Any]:
         metadata = await self._get_cluster_metadata()
         obj = metadata.to_object()
-        obj.pop('topics')  # We have 'describe_topics' for this
+        obj.pop("topics")  # We have 'describe_topics' for this
         return obj
 
     async def describe_configs(
-            self,
-            config_resources: List[ConfigResource],
-            include_synonyms: bool = False) -> List[Response]:
+        self,
+        config_resources: List[ConfigResource],
+        include_synonyms: bool = False,
+    ) -> List[Response]:
         """Fetch configuration parameters for one or more Kafka resources.
 
         :param config_resources: An list of ConfigResource objects.
@@ -294,11 +309,11 @@ class AIOKafkaAdminClient:
         if version == 0 and include_synonyms:
             raise IncompatibleBrokerVersion(
                 "include_synonyms requires DescribeConfigsRequest >= v1,"
-                " which is not supported by Kafka {}.".format(
-                    self._client.api_version))
+                " which is not supported by Kafka {}.".format(self._client.api_version)
+            )
         broker_res, topic_res = self._convert_config_resources(
             config_resources,
-            "describe"
+            "describe",
         )
         req_cls = DescribeConfigsRequest[version]
         for broker_id in broker_res:
@@ -307,7 +322,8 @@ class AIOKafkaAdminClient:
             else:
                 req = req_cls(
                     resources=broker_res[broker_id],
-                    include_synonyms=include_synonyms)
+                    include_synonyms=include_synonyms,
+                )
             futures.append(self._send_request(req, broker_id))
         if topic_res:
             if version == 0:
@@ -326,7 +342,7 @@ class AIOKafkaAdminClient:
         version = self._matching_api_version(AlterConfigsRequest)
         broker_resources, topic_resources = self._convert_config_resources(
             config_resources,
-            "alter"
+            "alter",
         )
         req_cls = AlterConfigsRequest[version]
         futures.append(self._send_request(req_cls(resources=topic_resources)))
@@ -340,7 +356,7 @@ class AIOKafkaAdminClient:
         return (
             config_resource.resource_type,
             config_resource.name,
-            list(config_resource.configs.keys()) if config_resource.configs else None
+            list(config_resource.configs.keys()) if config_resource.configs else None,
         )
 
     @staticmethod
@@ -348,14 +364,15 @@ class AIOKafkaAdminClient:
         return (
             config_resource.resource_type,
             config_resource.name,
-            list(config_resource.configs.items())
+            list(config_resource.configs.items()),
         )
 
     @classmethod
     def _convert_config_resources(
-            cls,
-            config_resources: List[ConfigResource],
-            op_type: str = "describe") -> Tuple[Dict[int, Any], List[Any]]:
+        cls,
+        config_resources: List[ConfigResource],
+        op_type: str = "describe",
+    ) -> Tuple[Dict[int, Any], List[Any]]:
         broker_resources = defaultdict(list)
         topic_resources = []
         if op_type == "describe":
@@ -372,14 +389,17 @@ class AIOKafkaAdminClient:
 
     @staticmethod
     def _convert_topic_partitions(topic_partitions: Dict[str, TopicPartition]):
-        return [(topic_name, (new_part.total_count, new_part.new_assignments))
-                for topic_name, new_part in topic_partitions.items()]
+        return [
+            (topic_name, (new_part.total_count, new_part.new_assignments))
+            for topic_name, new_part in topic_partitions.items()
+        ]
 
     async def create_partitions(
-            self,
-            topic_partitions: Dict[str, TopicPartition],
-            timeout_ms: Optional[int] = None,
-            validate_only: bool = False) -> Response:
+        self,
+        topic_partitions: Dict[str, TopicPartition],
+        timeout_ms: Optional[int] = None,
+        validate_only: bool = False,
+    ) -> Response:
         """Create additional partitions for an existing topic.
 
         :param topic_partitions: A map of topic name strings to NewPartition
@@ -396,7 +416,7 @@ class AIOKafkaAdminClient:
         req = req_class(
             topic_partitions=converted_partitions,
             timeout=timeout_ms or self._request_timeout_ms,
-            validate_only=validate_only
+            validate_only=validate_only,
         )
         resp = await self._send_request(req)
         for topic, code, message in resp.topic_errors:
@@ -406,10 +426,11 @@ class AIOKafkaAdminClient:
         return resp
 
     async def describe_consumer_groups(
-            self,
-            group_ids: List[str],
-            group_coordinator_id: Optional[int] = None,
-            include_authorized_operations: bool = False) -> List[Response]:
+        self,
+        group_ids: List[str],
+        group_coordinator_id: Optional[int] = None,
+        include_authorized_operations: bool = False,
+    ) -> List[Response]:
         """Describe a set of consumer groups.
 
         Any errors are immediately raised.
@@ -448,7 +469,7 @@ class AIOKafkaAdminClient:
             if include_authorized_operations:
                 req = req_class(
                     groups=list(groups),
-                    include_authorized_operations=include_authorized_operations
+                    include_authorized_operations=include_authorized_operations,
                 )
             else:
                 req = req_class(groups=list(groups))
@@ -458,8 +479,9 @@ class AIOKafkaAdminClient:
         return results
 
     async def list_consumer_groups(
-            self,
-            broker_ids: Optional[List[int]] = None) -> List[Tuple[Any, ...]]:
+        self,
+        broker_ids: Optional[List[int]] = None,
+    ) -> List[Tuple[Any, ...]]:
         """List all consumer groups known to the cluster.
 
         This returns a list of Consumer Group tuples. The tuples are
@@ -491,7 +513,7 @@ class AIOKafkaAdminClient:
         for broker_id in broker_ids:
             response = await self._send_request(
                 ListGroupsRequest[self._matching_api_version(ListGroupsRequest)](),
-                broker_id
+                broker_id,
             )
             if response.error_code:
                 raise for_code(response.error_code)("Error listing consumer groups")
@@ -525,10 +547,10 @@ class AIOKafkaAdminClient:
         return response.coordinator_id
 
     async def list_consumer_group_offsets(
-            self,
-            group_id: str,
-            group_coordinator_id: Optional[int] = None,
-            partitions: Optional[List[TopicPartition]] = None
+        self,
+        group_id: str,
+        group_coordinator_id: Optional[int] = None,
+        partitions: Optional[List[TopicPartition]] = None,
     ) -> Dict[TopicPartition, OffsetAndMetadata]:
         """Fetch Consumer Offsets for a single consumer group.
 
@@ -557,15 +579,18 @@ class AIOKafkaAdminClient:
         version = self._matching_api_version(OffsetFetchRequest)
         if version <= 1 and partitions is None:
             raise ValueError(
-               f"""OffsetFetchRequest_v{version} requires specifying the
+                f"""OffsetFetchRequest_v{version} requires specifying the
                 partitions for which to fetch offsets. Omitting the
-                partitions is only supported on brokers >= 0.10.2""")
+                partitions is only supported on brokers >= 0.10.2"""
+            )
         if partitions:
             topics_partitions_dict = defaultdict(set)
             for topic, partition in partitions:
                 topics_partitions_dict[topic].add(partition)
-            partitions = [(topic, list(partitions)) for
-                          topic, partitions in topics_partitions_dict.items()]
+            partitions = [
+                (topic, list(partitions))
+                for topic, partitions in topics_partitions_dict.items()
+            ]
         request = OffsetFetchRequest[version](group_id, partitions)
         if group_coordinator_id is None:
             group_coordinator_id = await self.find_coordinator(group_id)

@@ -6,12 +6,12 @@ from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor
 from aiokafka.coordinator.assignors.sticky.partition_movements import PartitionMovements
 from aiokafka.coordinator.assignors.sticky.sorted_set import SortedSet
 from aiokafka.coordinator.protocol import (
-    ConsumerProtocolMemberMetadata,
     ConsumerProtocolMemberAssignment,
+    ConsumerProtocolMemberMetadata,
+    Schema,
 )
-from aiokafka.coordinator.protocol import Schema
 from aiokafka.protocol.struct import Struct
-from aiokafka.protocol.types import String, Array, Int32
+from aiokafka.protocol.types import Array, Int32, String
 from aiokafka.structs import TopicPartition
 
 log = logging.getLogger(__name__)
@@ -469,9 +469,7 @@ class StickyAssignmentExecutor:
         if current_assignment_size > max_assignment_size:
             log.error(
                 "The consumer {} is assigned more partitions than the maximum "
-                "possible.".format(
-                    consumer
-                )
+                "possible.".format(consumer)
             )
         if current_assignment_size < max_assignment_size:
             # if a consumer is not assigned all its potential partitions it is subject
@@ -753,9 +751,7 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
             decoded_user_data = StickyAssignorUserDataV1.decode(user_data)
         except Exception as e:
             # ignore the consumer's previous assignment if it cannot be parsed
-            log.error(
-                "Could not parse member data", e
-            )  # pylint: disable=logging-too-many-args
+            log.error("Could not parse member data", e)  # pylint: disable=logging-too-many-args
             return StickyAssignorMemberMetadataV1(
                 partitions=[],
                 generation=cls.DEFAULT_GENERATION_ID,

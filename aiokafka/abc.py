@@ -143,5 +143,5 @@ class AbstractTokenProvider(abc.ABC):
 
 __all__ = [
     "ConsumerRebalanceListener",
-    "AbstractTokenProvider"
+    "AbstractTokenProvider",
 ]

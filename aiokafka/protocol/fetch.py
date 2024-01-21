@@ -1,5 +1,5 @@
 from .api import Request, Response
-from .types import Array, Int8, Int16, Int32, Int64, Schema, String, Bytes
+from .types import Array, Bytes, Int8, Int16, Int32, Int64, Schema, String
 
 
 class FetchResponse_v0(Response):

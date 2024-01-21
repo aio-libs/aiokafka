@@ -56,7 +56,7 @@ jobs:
 
     - name: Lint code
       run: |
-        make flake
+        make lint
 
     - name: Check readme for package
       run: |

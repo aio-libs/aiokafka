@@ -1,26 +1,28 @@
 import struct
 from unittest import mock
 
-import aiokafka.codec
 import pytest
 
+import aiokafka.codec
 from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
-from aiokafka.record.legacy_records import (
-    LegacyRecordBatch, LegacyRecordBatchBuilder
-)
+from aiokafka.record.legacy_records import LegacyRecordBatch, LegacyRecordBatchBuilder
 
 
 @pytest.mark.parametrize("magic", [0, 1])
-@pytest.mark.parametrize("key,value,checksum", [
-    (b"test", b"Super", [278251978, -2095076219]),
-    (b"test", None, [580701536, 164492157]),
-    (None, b"Super", [2797021502, 3315209433]),
-    (b"", b"Super", [1446809667, 890351012]),
-    (b"test", b"", [4230475139, 3614888862]),
-])
+@pytest.mark.parametrize(
+    "key,value,checksum",
+    [
+        (b"test", b"Super", [278251978, -2095076219]),
+        (b"test", None, [580701536, 164492157]),
+        (None, b"Super", [2797021502, 3315209433]),
+        (b"", b"Super", [1446809667, 890351012]),
+        (b"test", b"", [4230475139, 3614888862]),
+    ],
+)
 def test_read_write_serde_v0_v1_no_compression(magic, key, value, checksum):
     builder = LegacyRecordBatchBuilder(
-        magic=magic, compression_type=0, batch_size=1024 * 1024)
+        magic=magic, compression_type=0, batch_size=1024 * 1024
+    )
     builder.append(0, timestamp=9999999, key=key, value=value)
     buffer = builder.build()
 
@@ -41,23 +43,26 @@ def test_read_write_serde_v0_v1_no_compression(magic, key, value, checksum):
     assert msg.timestamp_type == (0 if magic else None)
     assert msg.key == key
     assert msg.value == value
-    assert msg.checksum == checksum[magic] & 0xffffffff
+    assert msg.checksum == checksum[magic] & 0xFFFFFFFF
 
 
-@pytest.mark.parametrize("compression_type, magic", [
-    (LegacyRecordBatch.CODEC_GZIP, 0),
-    (LegacyRecordBatch.CODEC_SNAPPY, 0),
-    # We don't support LZ4 for kafka 0.8/0.9
-    (LegacyRecordBatch.CODEC_GZIP, 1),
-    (LegacyRecordBatch.CODEC_SNAPPY, 1),
-    (LegacyRecordBatch.CODEC_LZ4, 1),
-])
+@pytest.mark.parametrize(
+    "compression_type, magic",
+    [
+        (LegacyRecordBatch.CODEC_GZIP, 0),
+        (LegacyRecordBatch.CODEC_SNAPPY, 0),
+        # We don't support LZ4 for kafka 0.8/0.9
+        (LegacyRecordBatch.CODEC_GZIP, 1),
+        (LegacyRecordBatch.CODEC_SNAPPY, 1),
+        (LegacyRecordBatch.CODEC_LZ4, 1),
+    ],
+)
 def test_read_write_serde_v0_v1_with_compression(compression_type, magic):
     builder = LegacyRecordBatchBuilder(
-        magic=magic, compression_type=compression_type, batch_size=1024 * 1024)
+        magic=magic, compression_type=compression_type, batch_size=1024 * 1024
+    )
     for offset in range(10):
-        builder.append(
-            offset, timestamp=9999999, key=b"test", value=b"Super")
+        builder.append(offset, timestamp=9999999, key=b"test", value=b"Super")
     buffer = builder.build()
 
     # Broker will set the offset to a proper last offset value
@@ -79,8 +84,7 @@ def test_read_write_serde_v0_v1_with_compression(compression_type, magic):
         assert msg.timestamp_type == (0 if magic else None)
         assert msg.key == b"test"
         assert msg.value == b"Super"
-        assert msg.checksum == (-2095076219 if magic else 278251978) & \
-            0xffffffff
+        assert msg.checksum == (-2095076219 if magic else 278251978) & 0xFFFFFFFF
 
 
 @pytest.mark.parametrize("magic", [0, 1])
@@ -88,10 +92,10 @@ def test_written_bytes_equals_size_in_bytes(magic):
     key = b"test"
     value = b"Super"
     builder = LegacyRecordBatchBuilder(
-        magic=magic, compression_type=0, batch_size=1024 * 1024)
+        magic=magic, compression_type=0, batch_size=1024 * 1024
+    )
 
-    size_in_bytes = builder.size_in_bytes(
-        0, timestamp=9999999, key=key, value=value)
+    size_in_bytes = builder.size_in_bytes(0, timestamp=9999999, key=key, value=value)
 
     pos = builder.size()
     builder.append(0, timestamp=9999999, key=key, value=value)
@@ -102,28 +106,25 @@ def test_written_bytes_equals_size_in_bytes(magic):
 @pytest.mark.parametrize("magic", [0, 1])
 def test_legacy_batch_builder_validates_arguments(magic):
     builder = LegacyRecordBatchBuilder(
-        magic=magic, compression_type=0, batch_size=1024 * 1024)
+        magic=magic, compression_type=0, batch_size=1024 * 1024
+    )
 
     # Key should not be str
     with pytest.raises(TypeError):
-        builder.append(
-            0, timestamp=9999999, key="some string", value=None)
+        builder.append(0, timestamp=9999999, key="some string", value=None)
 
     # Value should not be str
     with pytest.raises(TypeError):
-        builder.append(
-            0, timestamp=9999999, key=None, value="some string")
+        builder.append(0, timestamp=9999999, key=None, value="some string")
 
     # Timestamp should be of proper type (timestamp is ignored for magic == 0)
     if magic != 0:
         with pytest.raises(TypeError):
-            builder.append(
-                0, timestamp="1243812793", key=None, value=b"some string")
+            builder.append(0, timestamp="1243812793", key=None, value=b"some string")
 
     # Offset of invalid type
     with pytest.raises(TypeError):
-        builder.append(
-            "0", timestamp=9999999, key=None, value=b"some string")
+        builder.append("0", timestamp=9999999, key=None, value=b"some string")
 
     # Unknown struct errors are passed through. These are theoretical and
     # indicate a bug in the implementation. The C implementation locates
@@ -134,21 +135,17 @@ def test_legacy_batch_builder_validates_arguments(magic):
             err = struct.error("test error")
             mocked.side_effect = err
             with pytest.raises(struct.error) as excinfo:
-                builder.append(
-                    0, timestamp=None, key=None, value=b"some string")
+                builder.append(0, timestamp=None, key=None, value=b"some string")
             assert excinfo.value == err
 
     # Ok to pass value as None
-    builder.append(
-        0, timestamp=9999999, key=b"123", value=None)
+    builder.append(0, timestamp=9999999, key=b"123", value=None)
 
     # Timestamp can be None
-    builder.append(
-        1, timestamp=None, key=None, value=b"some string")
+    builder.append(1, timestamp=None, key=None, value=b"some string")
 
     # Ok to pass offsets in not incremental order. This should not happen thou
-    builder.append(
-        5, timestamp=9999999, key=b"123", value=None)
+    builder.append(5, timestamp=9999999, key=b"123", value=None)
 
     # in case error handling code fails to fix inner buffer in builder
     assert len(builder.build()) == 119 if magic else 95
@@ -157,24 +154,24 @@ def test_legacy_batch_builder_validates_arguments(magic):
 @pytest.mark.parametrize("magic", [0, 1])
 def test_legacy_correct_metadata_response(magic):
     builder = LegacyRecordBatchBuilder(
-        magic=magic, compression_type=0, batch_size=1024 * 1024)
-    meta = builder.append(
-        0, timestamp=9999999, key=b"test", value=b"Super")
+        magic=magic, compression_type=0, batch_size=1024 * 1024
+    )
+    meta = builder.append(0, timestamp=9999999, key=b"test", value=b"Super")
 
     assert meta.offset == 0
     assert meta.timestamp == (9999999 if magic else -1)
-    assert meta.crc == (-2095076219 if magic else 278251978) & 0xffffffff
+    assert meta.crc == (-2095076219 if magic else 278251978) & 0xFFFFFFFF
     assert repr(meta) == (
-        "LegacyRecordMetadata(offset=0, crc={}, size={}, "
-        "timestamp={})".format(meta.crc, meta.size, meta.timestamp)
+        "LegacyRecordMetadata(offset=0, crc={}, size={}, timestamp={})".format(
+            meta.crc, meta.size, meta.timestamp
+        )
     )
 
 
 @pytest.mark.parametrize("magic", [0, 1])
 def test_legacy_batch_size_limit(magic):
     # First message can be added even if it's too big
-    builder = LegacyRecordBatchBuilder(
-        magic=magic, compression_type=0, batch_size=1024)
+    builder = LegacyRecordBatchBuilder(magic=magic, compression_type=0, batch_size=1024)
     meta = builder.append(0, timestamp=None, key=None, value=b"M" * 2000)
     assert meta.size > 0
     assert meta.crc is not None
@@ -182,8 +179,7 @@ def test_legacy_batch_size_limit(magic):
     assert meta.timestamp is not None
     assert len(builder.build()) > 2000
 
-    builder = LegacyRecordBatchBuilder(
-        magic=magic, compression_type=0, batch_size=1024)
+    builder = LegacyRecordBatchBuilder(magic=magic, compression_type=0, batch_size=1024)
     meta = builder.append(0, timestamp=None, key=None, value=b"M" * 700)
     assert meta is not None
     meta = builder.append(1, timestamp=None, key=None, value=b"M" * 700)
@@ -193,13 +189,17 @@ def test_legacy_batch_size_limit(magic):
     assert len(builder.build()) < 1000
 
 
-@pytest.mark.parametrize("compression_type,name,checker_name", [
-    (LegacyRecordBatch.CODEC_GZIP, "gzip", "has_gzip"),
-    (LegacyRecordBatch.CODEC_SNAPPY, "snappy", "has_snappy"),
-])
+@pytest.mark.parametrize(
+    "compression_type,name,checker_name",
+    [
+        (LegacyRecordBatch.CODEC_GZIP, "gzip", "has_gzip"),
+        (LegacyRecordBatch.CODEC_SNAPPY, "snappy", "has_snappy"),
+    ],
+)
 def test_unavailable_codec(compression_type, name, checker_name):
     builder = LegacyRecordBatchBuilder(
-        magic=0, compression_type=compression_type, batch_size=1024)
+        magic=0, compression_type=compression_type, batch_size=1024
+    )
     builder.append(0, timestamp=None, key=None, value=b"M")
     correct_buffer = builder.build()
 
@@ -207,7 +207,8 @@ def test_unavailable_codec(compression_type, name, checker_name):
         mocked.return_value = False
         # Check that builder raises error
         builder = LegacyRecordBatchBuilder(
-            magic=0, compression_type=compression_type, batch_size=1024)
+            magic=0, compression_type=compression_type, batch_size=1024
+        )
         error_msg = "Libraries for {} compression codec not found".format(name)
         with pytest.raises(UnsupportedCodecError, match=error_msg):
             builder.append(0, timestamp=None, key=None, value=b"M")
@@ -222,7 +223,8 @@ def test_unavailable_codec(compression_type, name, checker_name):
 def test_unsupported_yet_codec():
     compression_type = LegacyRecordBatch.CODEC_MASK  # It doesn't exist
     builder = LegacyRecordBatchBuilder(
-        magic=0, compression_type=compression_type, batch_size=1024)
+        magic=0, compression_type=compression_type, batch_size=1024
+    )
     with pytest.raises(UnsupportedCodecError):
         builder.append(0, timestamp=None, key=None, value=b"M")
         builder.build()
@@ -235,11 +237,12 @@ TIMESTAMP_TYPE_MASK = 0x08
 
 def _make_compressed_batch(magic):
     builder = LegacyRecordBatchBuilder(
-        magic=magic, compression_type=LegacyRecordBatch.CODEC_GZIP,
-        batch_size=1024 * 1024)
+        magic=magic,
+        compression_type=LegacyRecordBatch.CODEC_GZIP,
+        batch_size=1024 * 1024,
+    )
     for offset in range(10):
-        builder.append(
-            offset, timestamp=9999999, key=b"test", value=b"Super")
+        builder.append(offset, timestamp=9999999, key=b"test", value=b"Super")
     return builder.build()
 
 
@@ -270,9 +273,9 @@ def test_reader_corrupt_record_v0_v1(magic):
     # If the wrapper of compressed messages has a key it will just be ignored.
     key_offset = 26 if magic else 18
     new_buffer = (
-        buffer[:key_offset] +
-        b"\x00\x00\x00\x03123" +  # Insert some KEY into wrapper
-        buffer[key_offset + 4:]  # Ignore the 4 byte -1 value for old KEY==None
+        buffer[:key_offset]
+        + b"\x00\x00\x00\x03123"  # Insert some KEY into wrapper
+        + buffer[key_offset + 4 :]  # Ignore the 4 byte -1 value for old KEY==None
     )
     struct.pack_into(">i", new_buffer, len_offset, len(new_buffer) - 12)
     batch = LegacyRecordBatch(new_buffer, magic)
@@ -283,19 +286,18 @@ def test_reader_corrupt_record_v0_v1(magic):
         assert msg.timestamp_type == (0 if magic else None)
         assert msg.key == b"test"
         assert msg.value == b"Super"
-        assert msg.checksum == (-2095076219 if magic else 278251978) & \
-            0xffffffff
+        assert msg.checksum == (-2095076219 if magic else 278251978) & 0xFFFFFFFF
 
     # If the wrapper does not contain a `value` it's corrupted
     value_offset = 30 if magic else 22
     new_buffer = (
-        buffer[:value_offset] +
-        b"\xff\xff\xff\xff"  # Set `value` to None by altering size to -1
+        buffer[:value_offset]
+        + b"\xff\xff\xff\xff"  # Set `value` to None by altering size to -1
     )
     struct.pack_into(">i", new_buffer, len_offset, len(new_buffer) - 12)
     with pytest.raises(
-            CorruptRecordException,
-            match="Value of compressed message is None"):
+        CorruptRecordException, match="Value of compressed message is None"
+    ):
         batch = LegacyRecordBatch(new_buffer, magic)
         list(batch)
 

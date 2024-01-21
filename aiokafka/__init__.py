@@ -1,4 +1,4 @@
-__version__ = '0.10.0'  # noqa
+__version__ = "0.10.0"  # noqa
 
 from .abc import ConsumerRebalanceListener
 from .client import AIOKafkaClient
@@ -6,9 +6,11 @@ from .consumer import AIOKafkaConsumer
 from .errors import ConsumerStoppedError, IllegalOperation
 from .producer import AIOKafkaProducer
 from .structs import (
-    TopicPartition, ConsumerRecord, OffsetAndTimestamp, OffsetAndMetadata
+    ConsumerRecord,
+    OffsetAndMetadata,
+    OffsetAndTimestamp,
+    TopicPartition,
 )
-
 
 __all__ = [
     # Clients API
@@ -17,10 +19,13 @@ __all__ = [
     # ABC's
     "ConsumerRebalanceListener",
     # Errors
-    "ConsumerStoppedError", "IllegalOperation",
+    "ConsumerStoppedError",
+    "IllegalOperation",
     # Structs
-    "ConsumerRecord", "TopicPartition", "OffsetAndTimestamp",
-    "OffsetAndMetadata"
+    "ConsumerRecord",
+    "TopicPartition",
+    "OffsetAndTimestamp",
+    "OffsetAndMetadata",
 ]
 
 AIOKafkaClient

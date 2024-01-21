@@ -1,5 +1,5 @@
-from aiokafka.metrics.measurable import AnonMeasurable
 from aiokafka.metrics.compound_stat import AbstractCompoundStat, NamedMeasurable
+from aiokafka.metrics.measurable import AnonMeasurable
 
 from .histogram import Histogram
 from .sampled_stat import AbstractSampledStat
@@ -25,7 +25,7 @@ class Percentiles(AbstractSampledStat, AbstractCompoundStat):
             )
         elif bucketing == BucketSizing.LINEAR:
             if min_val != 0.0:
-                raise ValueError("Linear bucket sizing requires min_val" " to be 0.0.")
+                raise ValueError("Linear bucket sizing requires min_val to be 0.0.")
             self.bin_scheme = Histogram.LinearBinScheme(self._buckets, max_val)
         else:
             ValueError("Unknown bucket type: %s" % (bucketing,))

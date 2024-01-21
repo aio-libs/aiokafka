@@ -3,8 +3,8 @@ import logging
 
 from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor
 from aiokafka.coordinator.protocol import (
-    ConsumerProtocolMemberMetadata,
     ConsumerProtocolMemberAssignment,
+    ConsumerProtocolMemberMetadata,
 )
 
 log = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ class RangePartitionAssignor(AbstractPartitionAssignor):
                 length = partitions_per_consumer
                 if not i + 1 > consumers_with_extra:
                     length += 1
-                assignment[member][topic] = partitions[start:start + length]
+                assignment[member][topic] = partitions[start : start + length]
 
         protocol_assignment = {}
         for member_id in member_metadata:

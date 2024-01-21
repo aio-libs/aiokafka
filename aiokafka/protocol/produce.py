@@ -1,5 +1,5 @@
 from .api import Request, Response
-from .types import Int16, Int32, Int64, String, Array, Schema, Bytes
+from .types import Array, Bytes, Int16, Int32, Int64, Schema, String
 
 
 class ProduceResponse_v0(Response):

@@ -23,12 +23,12 @@ import struct
 
 from aiokafka.errors import CorruptRecordException
 from aiokafka.util import NO_EXTENSIONS
-from .legacy_records import LegacyRecordBatch
+
 from .default_records import DefaultRecordBatch
+from .legacy_records import LegacyRecordBatch
 
 
 class _MemoryRecordsPy:
-
     LENGTH_OFFSET = struct.calcsize(">q")
     LOG_OVERHEAD = struct.calcsize(">qi")
     MAGIC_OFFSET = struct.calcsize(">qii")
@@ -60,8 +60,7 @@ class _MemoryRecordsPy:
             self._next_slice = None
             return
 
-        length, = struct.unpack_from(
-            ">i", buffer, pos + len_offset)
+        (length,) = struct.unpack_from(">i", buffer, pos + len_offset)
 
         slice_end = pos + log_overhead + length
         if slice_end > buffer_len:
@@ -70,22 +69,23 @@ class _MemoryRecordsPy:
             self._next_slice = None
             return
 
-        self._next_slice = memoryview(buffer)[pos: slice_end]
+        self._next_slice = memoryview(buffer)[pos:slice_end]
         self._pos = slice_end
 
     def has_next(self):
         return self._next_slice is not None
 
     # NOTE: same cache for LOAD_FAST as above
-    def next_batch(self, _min_slice=MIN_SLICE,
-                   _magic_offset=MAGIC_OFFSET):
+    def next_batch(self, _min_slice=MIN_SLICE, _magic_offset=MAGIC_OFFSET):
         next_slice = self._next_slice
         if next_slice is None:
             return None
         if len(next_slice) < _min_slice:
             raise CorruptRecordException(
-                "Record size is less than the minimum record overhead "
-                "({})".format(_min_slice - self.LOG_OVERHEAD))
+                "Record size is less than the minimum record overhead ({})".format(
+                    _min_slice - self.LOG_OVERHEAD
+                )
+            )
         self._cache_next()
         magic = next_slice[_magic_offset]
         if magic >= 2:  # pragma: no cover
@@ -99,6 +99,7 @@ if NO_EXTENSIONS:
 else:
     try:
         from ._crecords import MemoryRecords as _MemoryRecordsCython
+
         MemoryRecords = _MemoryRecordsCython
     except ImportError:  # pragma: no cover
         MemoryRecords = _MemoryRecordsPy

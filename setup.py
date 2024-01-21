@@ -6,7 +6,6 @@ from setuptools.command.bdist_rpm import bdist_rpm as _bdist_rpm
 from setuptools.command.build_ext import build_ext
 from setuptools.errors import CCompilerError, ExecError, PlatformError
 
-
 # Those are needed to build _hton for windows
 
 CFLAGS = ["-O2"]
