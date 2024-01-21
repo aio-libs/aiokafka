@@ -93,6 +93,9 @@ select = [
     "I",  # isort
 ]
 
+[tool.ruff.format]
+docstring-code-format = true
+
 
 [tool.mypy]
 python_version = "3.8"

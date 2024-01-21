@@ -62,7 +62,7 @@ def parse_kafka_version(api_version: str) -> Tuple[int, int, int]:
 
 
 def commit_structure_validate(
-    offsets: Dict[TopicPartition, Union[int, Tuple[int, str], OffsetAndMetadata]]
+    offsets: Dict[TopicPartition, Union[int, Tuple[int, str], OffsetAndMetadata]],
 ) -> Dict[TopicPartition, OffsetAndMetadata]:
     # validate `offsets` structure
     if not offsets or not isinstance(offsets, dict):
