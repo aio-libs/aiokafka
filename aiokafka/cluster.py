@@ -254,6 +254,7 @@ class ClusterMetadata:
             error_type = Errors.for_code(error_code)
             if error_type is Errors.NoError:
                 _new_partitions[topic] = {}
+                # Starting with v5, MetadataResponse contains more than 5 fields
                 for p_error, partition, leader, replicas, isr, *_ in partitions:
                     _new_partitions[topic][partition] = PartitionMetadata(
                         topic=topic,
