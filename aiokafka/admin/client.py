@@ -646,8 +646,7 @@ class AIOKafkaAdminClient:
         for leader, delete_request in requests.items():
             request = req_cls(
                 self._convert_records_to_delete(delete_request),
-                timeout_ms or self._request_timeout_ms,
-                {},
+                timeout_ms or self._request_timeout_ms
             )
             response = await self._client.send(leader, request)
             for topic, partitions in response.topics:
@@ -665,8 +664,7 @@ class AIOKafkaAdminClient:
         return [
             (
                 topic,
-                [(partition, rec.before_offset, {}) for partition, rec in records],
-                {},
+                [(partition, rec.before_offset) for partition, rec in records]
             )
             for topic, records in records_to_delete.items()
         ]

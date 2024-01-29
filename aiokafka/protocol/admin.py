@@ -1389,11 +1389,13 @@ class DeleteRecordsRequest_v2(Request):
 DeleteRecordsRequest = [
     DeleteRecordsRequest_v0,
     DeleteRecordsRequest_v1,
-    DeleteRecordsRequest_v2,
+    # FIXME: We have some problems with `TaggedFields`
+    # DeleteRecordsRequest_v2,
 ]
 
 DeleteRecordsResponse = [
     DeleteRecordsResponse_v0,
     DeleteRecordsResponse_v1,
-    DeleteRecordsResponse_v2,
+    # FIXME: We have some problems with `TaggedFields`
+    # DeleteRecordsResponse_v2,
 ]
