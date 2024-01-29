@@ -12,7 +12,7 @@ class RequestHeader(Struct):
         ("client_id", String("utf-8")),
     )
 
-    def __init__(self, request, correlation_id=0, client_id="kafka-python"):
+    def __init__(self, request, correlation_id=0, client_id="aiokafka"):
         super(RequestHeader, self).__init__(
             request.API_KEY, request.API_VERSION, correlation_id, client_id
         )
@@ -28,7 +28,7 @@ class RequestHeaderV2(Struct):
         ("tags", TaggedFields),
     )
 
-    def __init__(self, request, correlation_id=0, client_id="kafka-python", tags=None):
+    def __init__(self, request, correlation_id=0, client_id="aiokafka", tags=None):
         super(RequestHeaderV2, self).__init__(
             request.API_KEY, request.API_VERSION, correlation_id, client_id, tags or {}
         )
