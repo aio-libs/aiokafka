@@ -88,9 +88,9 @@ Running tests with coverage::
 
     make cov
 
-To run tests with a specific version of Kafka (default one is 1.0.2) use KAFKA_VERSION variable::
+To run tests with a specific version of Kafka (default one is 2.8.1) use KAFKA_VERSION variable::
 
-    make cov KAFKA_VERSION=0.10.2.1
+    make cov SCALA_VERSION=2.11 KAFKA_VERSION=0.10.2.1
 
 Test running cheatsheat:
 
