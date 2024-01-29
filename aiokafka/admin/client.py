@@ -6,12 +6,18 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient
-from aiokafka.errors import IncompatibleBrokerVersion, for_code
+from aiokafka.errors import (
+    IncompatibleBrokerVersion,
+    LeaderNotAvailableError,
+    NotLeaderForPartitionError,
+    for_code,
+)
 from aiokafka.protocol.admin import (
     AlterConfigsRequest,
     ApiVersionRequest_v0,
     CreatePartitionsRequest,
     CreateTopicsRequest,
+    DeleteRecordsRequest,
     DeleteTopicsRequest,
     DescribeConfigsRequest,
     DescribeGroupsRequest,
@@ -24,6 +30,7 @@ from aiokafka.structs import OffsetAndMetadata, TopicPartition
 
 from .config_resource import ConfigResource, ConfigResourceType
 from .new_topic import NewTopic
+from .records_to_delete import RecordsToDelete
 
 log = logging.getLogger(__name__)
 
@@ -605,3 +612,56 @@ class AIOKafkaAdminClient:
                 offset_plus_meta = OffsetAndMetadata(offset, metadata)
                 response_dict[tp] = offset_plus_meta
         return response_dict
+
+    async def delete_records(
+        self,
+        records_to_delete: Dict[TopicPartition, RecordsToDelete],
+        timeout_ms: Optional[int] = None,
+    ) -> Dict[TopicPartition, int]:
+        """Delete records from partitions.
+
+        :param records_to_delete: A map of RecordsToDelete for each TopicPartition
+        :param timeout_ms: Milliseconds to wait for the deletion to complete.
+        :return: Appropriate version of DeleteRecordsResponse class.
+        """
+        version = self._matching_api_version(DeleteRecordsRequest)
+
+        metadata = await self._get_cluster_metadata()
+
+        self._client.cluster.update_metadata(metadata)
+
+        requests = defaultdict(lambda: defaultdict(list))
+        responses = {}
+
+        for tp, records in records_to_delete.items():
+            leader = self._client.cluster.leader_for_partition(tp)
+            if leader is None:
+                raise NotLeaderForPartitionError()
+            elif leader == -1:
+                raise LeaderNotAvailableError()
+            requests[leader][tp.topic].append((tp.partition, records))
+
+        req_cls = DeleteRecordsRequest[version]
+
+        for leader, delete_request in requests.items():
+            request = req_cls(
+                self._convert_records_to_delete(delete_request),
+                timeout_ms or self._request_timeout_ms,
+            )
+            response = await self._client.send(leader, request)
+            for topic, partitions in response.topics:
+                for partition_index, low_watermark, error_code in partitions:
+                    if error_code:
+                        err = for_code(error_code)
+                        raise err
+                    responses[TopicPartition(topic, partition_index)] = low_watermark
+        return responses
+
+    @staticmethod
+    def _convert_records_to_delete(
+        records_to_delete: Dict[str, List[Tuple[int, RecordsToDelete]]],
+    ):
+        return [
+            (topic, [(partition, rec.before_offset) for partition, rec in records])
+            for topic, records in records_to_delete.items()
+        ]

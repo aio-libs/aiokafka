@@ -1276,3 +1276,126 @@ class ListPartitionReassignmentsRequest_v0(Request):
 ListPartitionReassignmentsRequest = [ListPartitionReassignmentsRequest_v0]
 
 ListPartitionReassignmentsResponse = [ListPartitionReassignmentsResponse_v0]
+
+
+class DeleteRecordsResponse_v0(Response):
+    API_KEY = 21
+    API_VERSION = 0
+    SCHEMA = Schema(
+        ("throttle_time_ms", Int32),
+        (
+            "topics",
+            Array(
+                ("name", String("utf-8")),
+                (
+                    "partitions",
+                    Array(
+                        ("partition_index", Int32),
+                        ("low_watermark", Int64),
+                        ("error_code", Int16),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+
+class DeleteRecordsResponse_v1(Response):
+    API_KEY = 21
+    API_VERSION = 1
+    SCHEMA = DeleteRecordsResponse_v0.SCHEMA
+
+
+class DeleteRecordsResponse_v2(Response):
+    API_KEY = 21
+    API_VERSION = 2
+    SCHEMA = Schema(
+        ("throttle_time_ms", Int32),
+        (
+            "topics",
+            CompactArray(
+                ("name", CompactString("utf-8")),
+                (
+                    "partitions",
+                    CompactArray(
+                        ("partition_index", Int32),
+                        ("low_watermark", Int64),
+                        ("error_code", Int16),
+                        ("tags", TaggedFields),
+                    ),
+                ),
+                ("tags", TaggedFields),
+            ),
+        ),
+        ("tags", TaggedFields),
+    )
+
+
+class DeleteRecordsRequest_v0(Request):
+    API_KEY = 21
+    API_VERSION = 0
+    RESPONSE_TYPE = DeleteRecordsResponse_v0
+    SCHEMA = Schema(
+        (
+            "topics",
+            Array(
+                ("name", String("utf-8")),
+                (
+                    "partitions",
+                    Array(
+                        ("partition_index", Int32),
+                        ("offset", Int64),
+                    ),
+                ),
+            ),
+        ),
+        ("timeout_ms", Int32),
+    )
+
+
+class DeleteRecordsRequest_v1(Request):
+    API_KEY = 21
+    API_VERSION = 1
+    RESPONSE_TYPE = DeleteRecordsResponse_v1
+    SCHEMA = DeleteRecordsRequest_v0.SCHEMA
+
+
+class DeleteRecordsRequest_v2(Request):
+    API_KEY = 21
+    API_VERSION = 2
+    FLEXIBLE_VERSION = True
+    RESPONSE_TYPE = DeleteRecordsResponse_v2
+    SCHEMA = Schema(
+        (
+            "topics",
+            CompactArray(
+                ("name", CompactString("utf-8")),
+                (
+                    "partitions",
+                    CompactArray(
+                        ("partition_index", Int32),
+                        ("offset", Int64),
+                        ("tags", TaggedFields),
+                    ),
+                ),
+                ("tags", TaggedFields),
+            ),
+        ),
+        ("timeout_ms", Int32),
+        ("tags", TaggedFields),
+    )
+
+
+DeleteRecordsRequest = [
+    DeleteRecordsRequest_v0,
+    DeleteRecordsRequest_v1,
+    # FIXME: We have some problems with `TaggedFields`
+    # DeleteRecordsRequest_v2,
+]
+
+DeleteRecordsResponse = [
+    DeleteRecordsResponse_v0,
+    DeleteRecordsResponse_v1,
+    # FIXME: We have some problems with `TaggedFields`
+    # DeleteRecordsResponse_v2,
+]

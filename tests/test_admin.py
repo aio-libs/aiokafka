@@ -1,6 +1,6 @@
 import asyncio
 
-from aiokafka.admin import AIOKafkaAdminClient, NewPartitions, NewTopic
+from aiokafka.admin import AIOKafkaAdminClient, NewPartitions, NewTopic, RecordsToDelete
 from aiokafka.admin.config_resource import ConfigResource, ConfigResourceType
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.producer import AIOKafkaProducer
@@ -201,3 +201,38 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert resp[tp].offset == msg.offset + 1
         resp = await admin.list_consumer_group_offsets(group_id, partitions=[tp])
         assert resp[tp].offset == msg.offset + 1
+
+    @kafka_versions(">=1.1.0")
+    @run_until_complete
+    async def test_delete_records(self):
+        admin = await self.create_admin()
+
+        await admin.create_topics([NewTopic(self.topic, 1, 1)])
+
+        async with AIOKafkaProducer(bootstrap_servers=self.hosts) as producer:
+            first_message = await producer.send_and_wait(
+                self.topic, partition=0, value=b"some-message"
+            )
+            await producer.send_and_wait(
+                self.topic, partition=0, value=b"other-message"
+            )
+
+        await admin.delete_records(
+            {
+                TopicPartition(self.topic, 0): RecordsToDelete(
+                    before_offset=first_message.offset + 1
+                )
+            }
+        )
+
+        consumer = AIOKafkaConsumer(
+            self.topic,
+            bootstrap_servers=self.hosts,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+        )
+        await consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        msg = await consumer.getone()
+        assert msg.value == b"other-message"
