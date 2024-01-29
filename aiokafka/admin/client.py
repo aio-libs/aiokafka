@@ -626,12 +626,7 @@ class AIOKafkaAdminClient:
         """
         version = self._matching_api_version(DeleteRecordsRequest)
 
-        if self._version_info[MetadataRequest[0].API_KEY] < (0, 10):
-            metadata_request = MetadataRequest[0]([])
-        else:
-            metadata_request = MetadataRequest[1](None)
-
-        metadata = await self._send_request(metadata_request)
+        metadata = await self._get_cluster_metadata()
 
         self._client.cluster.update_metadata(metadata)
 
