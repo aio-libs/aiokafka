@@ -649,8 +649,9 @@ class AIOKafkaAdminClient:
                 timeout_ms or self._request_timeout_ms,
             )
             response = await self._client.send(leader, request)
-            for topic, partitions in response.topics:
-                for partition_index, low_watermark, error_code in partitions:
+            # Starting with v2, DeleteRecordsResponse contains extra field with tags
+            for topic, partitions, *_ in response.topics:
+                for partition_index, low_watermark, error_code, *_ in partitions:
                     if error_code:
                         err = for_code(error_code)
                         raise err

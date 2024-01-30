@@ -313,7 +313,6 @@ class CompactString(String):
         return UnsignedVarInt32.encode(len(value) + 1) + value
 
 
-# FIXME: TaggedFields doesn't seem to work properly so they should be avoided
 class TaggedFields(AbstractType):
     @classmethod
     def decode(cls, data):
