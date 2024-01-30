@@ -1385,17 +1385,32 @@ class DeleteRecordsRequest_v2(Request):
         ("tags", TaggedFields),
     )
 
+    def __init__(self, topics, timeout_ms, tags=None):
+        super().__init__(
+            [
+                (
+                    topic,
+                    [
+                        (partition, before_offset, {})
+                        for partition, before_offset in partitions
+                    ],
+                    {},
+                )
+                for (topic, partitions) in topics
+            ],
+            timeout_ms,
+            tags or {},
+        )
+
 
 DeleteRecordsRequest = [
     DeleteRecordsRequest_v0,
     DeleteRecordsRequest_v1,
-    # FIXME: We have some problems with `TaggedFields`
-    # DeleteRecordsRequest_v2,
+    DeleteRecordsRequest_v2,
 ]
 
 DeleteRecordsResponse = [
     DeleteRecordsResponse_v0,
     DeleteRecordsResponse_v1,
-    # FIXME: We have some problems with `TaggedFields`
-    # DeleteRecordsResponse_v2,
+    DeleteRecordsResponse_v2,
 ]

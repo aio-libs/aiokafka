@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from aiokafka.protocol.api import Request, RequestHeader, Response
+from aiokafka.protocol.api import Request, RequestHeader_v0, Response
 from aiokafka.protocol.commit import GroupCoordinatorRequest
 from aiokafka.protocol.fetch import FetchRequest, FetchResponse
 from aiokafka.protocol.message import Message, MessageSet, PartialMessage
@@ -188,7 +188,7 @@ def test_encode_message_header():
     )
 
     req = GroupCoordinatorRequest[0]("foo")
-    header = RequestHeader(req, correlation_id=4, client_id="client3")
+    header = RequestHeader_v0(req, correlation_id=4, client_id="client3")
     assert header.encode() == expect
 
 

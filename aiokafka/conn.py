@@ -4,6 +4,7 @@ import collections
 import functools
 import hashlib
 import hmac
+import io
 import logging
 import random
 import socket
@@ -24,7 +25,6 @@ from aiokafka.protocol.admin import (
     SaslAuthenticateRequest,
     SaslHandShakeRequest,
 )
-from aiokafka.protocol.api import RequestHeader
 from aiokafka.protocol.commit import (
     GroupCoordinatorResponse_v0 as GroupCoordinatorResponse,
 )
@@ -459,10 +459,8 @@ class AIOKafkaConnection:
             )
 
         correlation_id = self._next_correlation_id()
-        header = RequestHeader(
-            request,
-            correlation_id=correlation_id,
-            client_id=self._client_id,
+        header = request.build_request_header(
+            correlation_id=correlation_id, client_id=self._client_id
         )
         message = header.encode() + request.encode()
         size = struct.pack(">i", len(message))
@@ -480,7 +478,7 @@ class AIOKafkaConnection:
             return self._writer.drain()
         fut = self._loop.create_future()
         self._requests.append(
-            (correlation_id, request.RESPONSE_TYPE, fut),
+            (correlation_id, request, fut),
         )
         return wait_for(fut, self._request_timeout)
 
@@ -569,31 +567,33 @@ class AIOKafkaConnection:
             del self
 
     def _handle_frame(self, resp):
-        correlation_id, resp_type, fut = self._requests[0]
+        correlation_id, request, fut = self._requests[0]
 
         if correlation_id is None:  # Is a SASL packet, just pass it though
             if not fut.done():
                 fut.set_result(resp)
         else:
-            (recv_correlation_id,) = struct.unpack_from(">i", resp, 0)
+            resp = io.BytesIO(resp)
+            response_header = request.parse_response_header(resp)
+            resp_type = request.RESPONSE_TYPE
 
             if (
                 self._api_version == (0, 8, 2)
                 and resp_type is GroupCoordinatorResponse
                 and correlation_id != 0
-                and recv_correlation_id == 0
+                and response_header.correlation_id == 0
             ):
                 log.warning(
                     "Kafka 0.8.2 quirk -- GroupCoordinatorResponse"
-                    " coorelation id does not match request. This"
+                    " correlation id does not match request. This"
                     " should go away once at least one topic has been"
                     " initialized on the broker"
                 )
 
-            elif correlation_id != recv_correlation_id:
+            elif response_header.correlation_id != correlation_id:
                 error = Errors.CorrelationIdError(
                     f"Correlation ids do not match: sent {correlation_id},"
-                    f" recv {recv_correlation_id}"
+                    f" recv {response_header.correlation_id}"
                 )
                 if not fut.done():
                     fut.set_exception(error)
@@ -601,7 +601,7 @@ class AIOKafkaConnection:
                 return
 
             if not fut.done():
-                response = resp_type.decode(resp[4:])
+                response = resp_type.decode(resp)
                 log.debug("%s Response %d: %s", self, correlation_id, response)
                 fut.set_result(response)
 
