@@ -4,7 +4,7 @@ from .struct import Struct
 from .types import Array, Int16, Int32, Schema, String, TaggedFields
 
 
-class RequestHeader(Struct):
+class RequestHeader_v0(Struct):
     SCHEMA = Schema(
         ("api_key", Int16),
         ("api_version", Int16),
@@ -13,12 +13,12 @@ class RequestHeader(Struct):
     )
 
     def __init__(self, request, correlation_id=0, client_id="aiokafka"):
-        super(RequestHeader, self).__init__(
+        super().__init__(
             request.API_KEY, request.API_VERSION, correlation_id, client_id
         )
 
 
-class RequestHeaderV2(Struct):
+class RequestHeader_v1(Struct):
     # Flexible response / request headers end in field buffer
     SCHEMA = Schema(
         ("api_key", Int16),
@@ -29,18 +29,18 @@ class RequestHeaderV2(Struct):
     )
 
     def __init__(self, request, correlation_id=0, client_id="aiokafka", tags=None):
-        super(RequestHeaderV2, self).__init__(
+        super().__init__(
             request.API_KEY, request.API_VERSION, correlation_id, client_id, tags or {}
         )
 
 
-class ResponseHeader(Struct):
+class ResponseHeader_v0(Struct):
     SCHEMA = Schema(
         ("correlation_id", Int32),
     )
 
 
-class ResponseHeaderV2(Struct):
+class ResponseHeader_v1(Struct):
     SCHEMA = Schema(
         ("correlation_id", Int32),
         ("tags", TaggedFields),
@@ -81,15 +81,17 @@ class Request(Struct):
 
     def build_request_header(self, correlation_id, client_id):
         if self.FLEXIBLE_VERSION:
-            return RequestHeaderV2(
+            return RequestHeader_v1(
                 self, correlation_id=correlation_id, client_id=client_id
             )
-        return RequestHeader(self, correlation_id=correlation_id, client_id=client_id)
+        return RequestHeader_v0(
+            self, correlation_id=correlation_id, client_id=client_id
+        )
 
     def parse_response_header(self, read_buffer):
         if self.FLEXIBLE_VERSION:
-            return ResponseHeaderV2.decode(read_buffer)
-        return ResponseHeader.decode(read_buffer)
+            return ResponseHeader_v1.decode(read_buffer)
+        return ResponseHeader_v0.decode(read_buffer)
 
 
 class Response(Struct):
