@@ -14,10 +14,10 @@ async def main() -> None:
             await client.create_topics(
                 [NewTopic(name=topic, num_partitions=3, replication_factor=2)]
             )
-            await asyncio.sleep(5)
+            await asyncio.sleep(1)
             print("Deleting topic:", topic)
             await client.delete_topics([topic])
-            await asyncio.sleep(5)
+            await asyncio.sleep(1)
     finally:
         await client.close()
 
