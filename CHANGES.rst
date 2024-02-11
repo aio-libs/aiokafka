@@ -8,6 +8,7 @@ Unreleased
 Bugfixes:
 
 * Fix serialization for batch (issue #886, pr #887 by @ydjin0602)
+* Fix type annotation for `AIOKafkaAdminClient.create_partitions` (pr #978 by @alm0ra)
 
 
 0.10.0 (2023-12-15)
