@@ -27,7 +27,7 @@ from aiokafka.protocol.api import Request, Response
 from aiokafka.protocol.commit import GroupCoordinatorRequest, OffsetFetchRequest
 from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from aiokafka.admin import NewPartitions
+from .new_partitions import NewPartitions
 
 from .config_resource import ConfigResource, ConfigResourceType
 from .new_topic import NewTopic
