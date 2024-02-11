@@ -27,6 +27,7 @@ from aiokafka.protocol.api import Request, Response
 from aiokafka.protocol.commit import GroupCoordinatorRequest, OffsetFetchRequest
 from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
+from aiokafka.admin import NewPartitions
 
 from .config_resource import ConfigResource, ConfigResourceType
 from .new_topic import NewTopic
@@ -395,7 +396,7 @@ class AIOKafkaAdminClient:
         return broker_resources, topic_resources
 
     @staticmethod
-    def _convert_topic_partitions(topic_partitions: Dict[str, TopicPartition]):
+    def _convert_topic_partitions(topic_partitions: Dict[str, NewPartitions]):
         return [
             (topic_name, (new_part.total_count, new_part.new_assignments))
             for topic_name, new_part in topic_partitions.items()
@@ -403,7 +404,7 @@ class AIOKafkaAdminClient:
 
     async def create_partitions(
         self,
-        topic_partitions: Dict[str, TopicPartition],
+        topic_partitions: Dict[str, NewPartitions],
         timeout_ms: Optional[int] = None,
         validate_only: bool = False,
     ) -> Response:
