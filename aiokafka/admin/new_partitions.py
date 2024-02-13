@@ -1,3 +1,6 @@
+from typing import Optional
+
+
 class NewPartitions:
     """A class for new partition creation on existing topics.  Note that the
     length of new_assignments, if specified, must be the difference between the
@@ -12,8 +15,8 @@ class NewPartitions:
 
     def __init__(
         self,
-        total_count,
-        new_assignments=None,
+        total_count: int,
+        new_assignments: Optional[int] = None,
     ):
-        self.total_count = total_count
-        self.new_assignments = new_assignments
+        self.total_count: int = total_count
+        self.new_assignments: Optional[int] = new_assignments
