@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 from concurrent.futures import Future
+from typing import Dict, Optional, Set
 
 from aiokafka import errors as Errors
 from aiokafka.conn import collect_hosts
@@ -67,7 +68,7 @@ class ClusterMetadata:
         self._coordinators = {}
         self._coordinator_by_key = {}
 
-    def _generate_bootstrap_brokers(self):
+    def _generate_bootstrap_brokers(self) -> Dict[str, BrokerMetadata]:
         # collect_hosts does not perform DNS, so we should be fine to re-use
         bootstrap_hosts = collect_hosts(self.config["bootstrap_servers"])
 
@@ -103,7 +104,7 @@ class ClusterMetadata:
             or self._coordinator_brokers.get(broker_id)
         )
 
-    def partitions_for_topic(self, topic):
+    def partitions_for_topic(self, topic: str) -> Optional[Set[int]]:
         """Return set of all partitions for topic (whether available or not)
 
         Arguments:
@@ -136,7 +137,7 @@ class ClusterMetadata:
             ]
         )
 
-    def leader_for_partition(self, partition):
+    def leader_for_partition(self, partition: PartitionMetadata) -> Optional[int]:
         """Return node_id of leader, -1 unavailable, None if unknown."""
         if partition.topic not in self._partitions:
             return None

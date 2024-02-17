@@ -2,6 +2,7 @@ import asyncio
 import logging
 import random
 import time
+from typing import Optional
 
 import aiokafka.errors as Errors
 from aiokafka import __version__
@@ -90,20 +91,20 @@ class AIOKafkaClient:
     def __init__(
         self,
         *,
-        loop=None,
-        bootstrap_servers="localhost",
-        client_id="aiokafka-" + __version__,
-        metadata_max_age_ms=300000,
-        request_timeout_ms=40000,
-        retry_backoff_ms=100,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+        bootstrap_servers: str = "localhost",
+        client_id: str = "aiokafka-" + __version__,
+        metadata_max_age_ms: int = 300000,
+        request_timeout_ms: int = 40000,
+        retry_backoff_ms: int = 100,
         ssl_context=None,
-        security_protocol="PLAINTEXT",
-        api_version="auto",
-        connections_max_idle_ms=540000,
-        sasl_mechanism="PLAIN",
-        sasl_plain_username=None,
-        sasl_plain_password=None,
-        sasl_kerberos_service_name="kafka",
+        security_protocol: str = "PLAINTEXT",
+        api_version: str = "auto",
+        connections_max_idle_ms: int = 540000,
+        sasl_mechanism: str = "PLAIN",
+        sasl_plain_username: Optional[str] = None,
+        sasl_plain_password: Optional[str] = None,
+        sasl_kerberos_service_name: str = "kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
     ):

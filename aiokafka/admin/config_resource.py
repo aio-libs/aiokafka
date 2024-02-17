@@ -1,4 +1,5 @@
 from enum import IntEnum
+from typing import Dict, Optional
 
 
 class ConfigResourceType(IntEnum):
@@ -18,11 +19,11 @@ class ConfigResource:
 
     def __init__(
         self,
-        resource_type,
-        name,
-        configs=None,
-    ):
-        if not isinstance(resource_type, (ConfigResourceType)):
+        resource_type: ConfigResourceType,
+        name: str,
+        configs: Optional[Dict[str, str]] = None,
+    ) -> None:
+        if not isinstance(resource_type, ConfigResourceType):
             resource_type = ConfigResourceType[str(resource_type).upper()]
         self.resource_type = resource_type
         self.name = name

@@ -1,10 +1,24 @@
+from __future__ import annotations
+
+import asyncio
 import contextlib
 import copy
 import logging
 import time
 from asyncio import Event, shield
 from enum import Enum
-from typing import Dict, Iterable, Pattern, Set
+from typing import (
+    Awaitable,
+    Dict,
+    FrozenSet,
+    Iterable,
+    List,
+    Optional,
+    Pattern,
+    Set,
+    TypeVar,
+    Union,
+)
 
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.errors import IllegalStateError
@@ -12,6 +26,8 @@ from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.util import create_future, get_running_loop
 
 log = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 class SubscriptionType(Enum):
@@ -33,29 +49,29 @@ class SubscriptionState:
     yield statements of a rebalance or other critical IO operation.
     """
 
-    _subscription_type = SubscriptionType.NONE  # type: SubscriptionType
-    _subscribed_pattern = None  # type: str
-    _subscription = None  # type: Subscription
-    _listener = None  # type: ConsumerRebalanceListener
+    _subscription_type: SubscriptionType = SubscriptionType.NONE
+    _subscribed_pattern: Optional[str] = None
+    _subscription: "Subscription" = None
+    _listener: Optional[ConsumerRebalanceListener] = None
 
-    def __init__(self, loop=None):
+    def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None):
         if loop is None:
             loop = get_running_loop()
         self._loop = loop
 
-        self._subscription_waiters = []  # type: List[Future]
-        self._assignment_waiters = []  # type: List[Future]
+        self._subscription_waiters: List[asyncio.Future[T]] = []
+        self._assignment_waiters: List[asyncio.Future[T]] = []
 
         # Fetch contexts
-        self._fetch_count = 0
-        self._last_fetch_ended = time.monotonic()
+        self._fetch_count: int = 0
+        self._last_fetch_ended: float = time.monotonic()
 
     @property
     def subscription(self) -> "Subscription":
         return self._subscription
 
     @property
-    def subscribed_pattern(self) -> Pattern:
+    def subscribed_pattern(self) -> Optional[Pattern]:
         return self._subscribed_pattern
 
     @property
@@ -63,12 +79,12 @@ class SubscriptionState:
         return self._listener
 
     @property
-    def topics(self):
+    def topics(self) -> Union[FrozenSet[str], set[None]]:
         if self._subscription is not None:
             return self._subscription.topics
         return set()
 
-    def assigned_partitions(self) -> Set[TopicPartition]:
+    def assigned_partitions(self) -> Iterable[TopicPartition]:
         if self._subscription is None:
             return set()
         if self._subscription.assignment is None:
@@ -76,7 +92,7 @@ class SubscriptionState:
         return self._subscription.assignment.tps
 
     @property
-    def reassignment_in_progress(self):
+    def reassignment_in_progress(self) -> bool:
         if self._subscription is None:
             return True
         return self._subscription._reassignment_in_progress
@@ -94,7 +110,7 @@ class SubscriptionState:
             return False
         return tp in self._subscription.assignment.tps
 
-    def _set_subscription_type(self, subscription_type: SubscriptionType):
+    def _set_subscription_type(self, subscription_type: SubscriptionType) -> None:
         if (
             self._subscription_type == SubscriptionType.NONE
             or self._subscription_type == subscription_type
@@ -106,7 +122,7 @@ class SubscriptionState:
                 "exclusive"
             )
 
-    def _change_subscription(self, subscription: "Subscription"):
+    def _change_subscription(self, subscription: "Subscription") -> None:
         log.info("Updating subscribed topics to: %s", subscription.topics)
         # Set old subscription as inactive
         if self._subscription is not None:
@@ -122,13 +138,13 @@ class SubscriptionState:
             raise IllegalStateError(f"No current assignment for partition {tp}")
         return tp_state
 
-    def _notify_subscription_waiters(self):
+    def _notify_subscription_waiters(self) -> None:
         for waiter in self._subscription_waiters:
             if not waiter.done():
                 waiter.set_result(None)
         self._subscription_waiters.clear()
 
-    def _notify_assignment_waiters(self):
+    def _notify_assignment_waiters(self) -> None:
         for waiter in self._assignment_waiters:
             if not waiter.done():
                 waiter.set_result(None)
@@ -136,7 +152,9 @@ class SubscriptionState:
 
     # Consumer callable API:
 
-    def subscribe(self, topics: Set[str], listener=None):
+    def subscribe(
+        self, topics: Set[str], listener: Optional[ConsumerRebalanceListener] = None
+    ) -> None:
         """Subscribe to a list (or tuple) of topics
 
         Caller: Consumer.
@@ -150,7 +168,9 @@ class SubscriptionState:
         self._listener = listener
         self._notify_subscription_waiters()
 
-    def subscribe_pattern(self, pattern: Pattern, listener=None):
+    def subscribe_pattern(
+        self, pattern: Pattern, listener: Optional[ConsumerRebalanceListener] = None
+    ) -> None:
         """Subscribe to all topics matching a regex pattern.
         Subsequent calls `subscribe_from_pattern()` by Coordinator will provide
         the actual subscription topics.
@@ -162,10 +182,10 @@ class SubscriptionState:
         assert listener is None or isinstance(listener, ConsumerRebalanceListener)
         self._set_subscription_type(SubscriptionType.AUTO_PATTERN)
 
-        self._subscribed_pattern = pattern
-        self._listener = listener
+        self._subscribed_pattern: Optional[Pattern] = pattern
+        self._listener: Optional[ConsumerRebalanceListener] = listener
 
-    def assign_from_user(self, partitions: Iterable[TopicPartition]):
+    def assign_from_user(self, partitions: Iterable[TopicPartition]) -> None:
         """Manually assign partitions. After this call automatic assignment
         will be impossible and will raise an ``IllegalStateError``.
 
@@ -177,7 +197,7 @@ class SubscriptionState:
         self._change_subscription(ManualSubscription(partitions, loop=self._loop))
         self._notify_assignment_waiters()
 
-    def unsubscribe(self):
+    def unsubscribe(self) -> None:
         """Unsubscribe from the last subscription. This will also clear the
         subscription type.
 
@@ -188,14 +208,14 @@ class SubscriptionState:
         if self._subscription is not None:
             self._subscription._unsubscribe()
 
-        self._subscription = None
-        self._subscribed_pattern = None
-        self._listener = None
-        self._subscription_type = SubscriptionType.NONE
+        self._subscription: Optional[Subscription] = None
+        self._subscribed_pattern: Optional[Pattern] = None
+        self._listener: Optional[ConsumerRebalanceListener] = None
+        self._subscription_type: SubscriptionType = SubscriptionType.NONE
 
     # Coordinator callable API:
 
-    def subscribe_from_pattern(self, topics: Set[str]):
+    def subscribe_from_pattern(self, topics: Set[str]) -> None:
         """Change subscription on cluster metadata update if a new topic
         created or one is removed.
 
@@ -205,7 +225,7 @@ class SubscriptionState:
         assert self._subscription_type == SubscriptionType.AUTO_PATTERN
         self._change_subscription(Subscription(topics))
 
-    def assign_from_subscribed(self, assignment: Set[TopicPartition]):
+    def assign_from_subscribed(self, assignment: Set[TopicPartition]) -> None:
         """Set assignment if automatic assignment is used.
 
         Caller: Coordinator
@@ -219,7 +239,7 @@ class SubscriptionState:
         self._subscription._assign(assignment)
         self._notify_assignment_waiters()
 
-    def begin_reassignment(self):
+    def begin_reassignment(self) -> None:
         """Signal from Coordinator that a group re-join is needed. For example
         this will be called if a commit or heartbeat fails with an
         InvalidMember error.
@@ -231,7 +251,7 @@ class SubscriptionState:
 
     # Fetcher callable API:
 
-    def seek(self, tp: TopicPartition, offset: int):
+    def seek(self, tp: TopicPartition, offset: int) -> None:
         """Force reset of position to the specified offset.
 
         Caller: Consumer, Fetcher
@@ -241,26 +261,26 @@ class SubscriptionState:
 
     # Waiters
 
-    def wait_for_subscription(self):
+    def wait_for_subscription(self) -> asyncio.Future[T]:
         """Wait for subscription change. This will always wait for next
         subscription.
         """
-        fut = create_future()
+        fut: asyncio.Future[T] = create_future()
         self._subscription_waiters.append(fut)
         return fut
 
-    def wait_for_assignment(self):
+    def wait_for_assignment(self) -> asyncio.Future[T]:
         """Wait for next assignment. Be careful, as this will always wait for
         next assignment, even if the current one is active.
         """
-        fut = create_future()
+        fut: asyncio.Future[T] = create_future()
         self._assignment_waiters.append(fut)
         return fut
 
-    def register_fetch_waiters(self, waiters):
+    def register_fetch_waiters(self, waiters) -> None:
         self._fetch_waiters = waiters
 
-    def abort_waiters(self, exc):
+    def abort_waiters(self, exc: Exception) -> None:
         """Critical error occurred, we will abort any pending waiter"""
         for waiter in self._assignment_waiters:
             if not waiter.done():
@@ -297,7 +317,7 @@ class SubscriptionState:
             self._last_fetch_ended = time.monotonic()
 
     @property
-    def fetcher_idle_time(self):
+    def fetcher_idle_time(self) -> float:
         """How much time (in seconds) spent without consuming any records"""
         if self._fetch_count == 0:
             return time.monotonic() - self._last_fetch_ended
@@ -316,28 +336,30 @@ class Subscription:
         * Unsubscribed
     """
 
-    def __init__(self, topics: Iterable[str], loop=None):
+    def __init__(
+        self, topics: Iterable[str], loop: Optional[asyncio.AbstractEventLoop] = None
+    ) -> None:
         if loop is None:
             loop = get_running_loop()
 
-        self._topics = frozenset(topics)  # type: FrozenSet[str]
-        self._assignment = None  # type: Assignment
-        self.unsubscribe_future = loop.create_future()  # type: Future
-        self._reassignment_in_progress = True
+        self._topics: FrozenSet[str] = frozenset(topics)
+        self._assignment: Optional[Assignment] = None
+        self.unsubscribe_future: asyncio.Future[T] = loop.create_future()
+        self._reassignment_in_progress: bool = True
 
     @property
-    def active(self):
+    def active(self) -> bool:
         return self.unsubscribe_future.done() is False
 
     @property
-    def topics(self):
+    def topics(self) -> FrozenSet[str]:
         return self._topics
 
     @property
-    def assignment(self):
+    def assignment(self) -> "Assignment":
         return self._assignment
 
-    def _assign(self, topic_partitions: Iterable[TopicPartition]):
+    def _assign(self, topic_partitions: Iterable[TopicPartition]) -> None:
         for tp in topic_partitions:
             assert (
                 tp.topic in self._topics
@@ -349,35 +371,41 @@ class Subscription:
         self._assignment = Assignment(topic_partitions)
         self._reassignment_in_progress = False
 
-    def _unsubscribe(self):
+    def _unsubscribe(self) -> None:
         self.unsubscribe_future.set_result(None)
         if self._assignment is not None:
             self._assignment._unassign()
 
-    def _begin_reassignment(self):
+    def _begin_reassignment(self) -> None:
         self._reassignment_in_progress = True
 
 
 class ManualSubscription(Subscription):
     """Describes a user assignment"""
 
-    def __init__(self, user_assignment: Iterable[TopicPartition], loop=None):
+    def __init__(
+        self,
+        user_assignment: Iterable[TopicPartition],
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+    ) -> None:
         topics = (tp.topic for tp in user_assignment)
         super().__init__(topics, loop=loop)
         self._assignment = Assignment(user_assignment)
 
-    def _assign(self, topic_partitions: Set[TopicPartition]):  # pragma: no cover
+    def _assign(
+        self, topic_partitions: Iterable[TopicPartition]
+    ) -> None:  # pragma: no cover
         assert False, "Should not be called"
 
     @property
-    def _reassignment_in_progress(self):
+    def _reassignment_in_progress(self) -> bool:
         return False
 
     @_reassignment_in_progress.setter
-    def _reassignment_in_progress(self, value):
+    def _reassignment_in_progress(self, value: bool) -> None:
         pass
 
-    def _begin_reassignment(self):  # pragma: no cover
+    def _begin_reassignment(self) -> None:  # pragma: no cover
         assert False, "Should not be called"
 
 
@@ -390,48 +418,48 @@ class Assignment:
         * Unassigned
     """
 
-    def __init__(self, topic_partitions: Iterable[TopicPartition]):
+    def __init__(self, topic_partitions: Iterable[TopicPartition]) -> None:
         assert isinstance(topic_partitions, (list, set, tuple))
 
-        self._topic_partitions = frozenset(topic_partitions)
+        self._topic_partitions: FrozenSet[TopicPartition] = frozenset(topic_partitions)
 
-        self._tp_state = {}  # type: Dict[TopicPartition, TopicPartitionState]
+        self._tp_state: Dict[TopicPartition, TopicPartitionState] = {}
         for tp in self._topic_partitions:
             self._tp_state[tp] = TopicPartitionState(self)
 
-        self.unassign_future = create_future()
+        self.unassign_future: asyncio.Future[T] = create_future()
         self.commit_refresh_needed = Event()
 
     @property
-    def tps(self):
+    def tps(self) -> Iterable[TopicPartition]:
         return self._topic_partitions
 
     @property
-    def active(self):
+    def active(self) -> bool:
         return self.unassign_future.done() is False
 
-    def _unassign(self):
+    def _unassign(self) -> None:
         self.unassign_future.set_result(None)
 
-    def state_value(self, tp: TopicPartition) -> "TopicPartitionState":
-        return self._tp_state.get(tp)
+    def state_value(self, topic_partition: TopicPartition) -> "TopicPartitionState":
+        return self._tp_state.get(topic_partition)
 
     def all_consumed_offsets(self) -> Dict[TopicPartition, OffsetAndMetadata]:
         """Returns consumed offsets as {TopicPartition: OffsetAndMetadata}"""
         all_consumed = {}
-        for tp in self._topic_partitions:
-            state = self.state_value(tp)
+        for topic_partition in self._topic_partitions:
+            state = self.state_value(topic_partition)
             if state.has_valid_position:
-                all_consumed[tp] = OffsetAndMetadata(state.position, "")
+                all_consumed[topic_partition] = OffsetAndMetadata(state.position, "")
         return all_consumed
 
-    def requesting_committed(self):
+    def requesting_committed(self) -> List[TopicPartition]:
         """Return all partitions that are requesting commit point fetch"""
         requesting = []
-        for tp in self._topic_partitions:
-            tp_state = self.state_value(tp)
+        for topic_partition in self._topic_partitions:
+            tp_state = self.state_value(topic_partition)
             if tp_state._committed_futs:
-                requesting.append(tp)
+                requesting.append(topic_partition)
         return requesting
 
 
@@ -455,33 +483,33 @@ class TopicPartitionState:
 
     """
 
-    def __init__(self, assignment):
+    def __init__(self, assignment: Assignment) -> None:
         # Synchronized values
-        self._committed_futs = []
+        self._committed_futs: List[asyncio.Future[T]] = []
 
         self.highwater = None  # Last fetched highwater mark
         self.lso = None  # Last fetched stable offset mark
-        self.timestamp = None  # timestamp of last poll
-        self._position = None  # The current position of the topic
-        self._position_fut = create_future()
+        self.timestamp: Optional[float] = None  # timestamp of last poll
+        self._position: Optional[int] = None  # The current position of the topic
+        self._position_fut: asyncio.Future[T] = create_future()
 
         # Will be set by `seek_to_beginning` or `seek_to_end` if called by user
         # or by Fetcher after confirming that current position is no longer
         # reachable.
-        self._reset_strategy = None  # type: int
-        self._status = PartitionStatus.AWAITING_RESET  # type: PartitionStatus
+        self._reset_strategy: Optional[int] = None
+        self._status: PartitionStatus = PartitionStatus.AWAITING_RESET
 
-        self._assignment = assignment
+        self._assignment: Assignment = assignment
 
-        self._paused = False
-        self._resume_fut = None
+        self._paused: bool = False
+        self._resume_fut: Optional[asyncio.Future[T]] = None
 
     @property
-    def paused(self):
+    def paused(self) -> bool:
         return self._paused
 
     @property
-    def resume_fut(self):
+    def resume_fut(self) -> Optional[asyncio.Future[T]]:
         return self._resume_fut
 
     @property
@@ -494,15 +522,15 @@ class TopicPartitionState:
         return self._position
 
     @property
-    def awaiting_reset(self):
+    def awaiting_reset(self) -> bool:
         return self._reset_strategy is not None
 
     @property
-    def reset_strategy(self) -> int:
+    def reset_strategy(self) -> Optional[int]:
         return self._reset_strategy
 
-    def await_reset(self, strategy):
-        """Called by either Coonsumer in `seek_to_*` or by Coordinator after
+    def await_reset(self, strategy: int) -> None:
+        """Called by either Consumer in `seek_to_*` or by Coordinator after
         setting initial committed point.
         """
         self._reset_strategy = strategy
@@ -513,13 +541,13 @@ class TopicPartitionState:
 
     # Committed manipulation
 
-    def fetch_committed(self):
-        fut = create_future()
+    def fetch_committed(self) -> asyncio.Future[T]:
+        fut: asyncio.Future[T] = create_future()
         self._committed_futs.append(fut)
         self._assignment.commit_refresh_needed.set()
         return fut
 
-    def update_committed(self, offset_meta: OffsetAndMetadata):
+    def update_committed(self, offset_meta: OffsetAndMetadata) -> None:
         """Called by Coordinator on successful commit to update commit cache."""
         for fut in self._committed_futs:
             if not fut.done():
@@ -528,12 +556,12 @@ class TopicPartitionState:
 
     # Position manipulation
 
-    def consumed_to(self, position: int):
+    def consumed_to(self, position: int) -> None:
         """Called by Fetcher when yielding results to Consumer"""
         assert self._status == PartitionStatus.CONSUMING
         self._position = position
 
-    def reset_to(self, position: int):
+    def reset_to(self, position: int) -> None:
         """Called by Fetcher after performing a reset to force position to
         a new point.
         """
@@ -544,7 +572,7 @@ class TopicPartitionState:
         if not self._position_fut.done():
             self._position_fut.set_result(None)
 
-    def seek(self, position: int):
+    def seek(self, position: int) -> None:
         """Called by Consumer to force position to a specific offset"""
         self._position = position
         self._reset_strategy = None
@@ -552,21 +580,22 @@ class TopicPartitionState:
         if not self._position_fut.done():
             self._position_fut.set_result(None)
 
-    def wait_for_position(self):
+    def wait_for_position(self) -> Awaitable[T]:
         return shield(self._position_fut)
 
     # Pause/Unpause
-    def pause(self):
+    def pause(self) -> None:
         if not self._paused:
             self._paused = True
             assert self._resume_fut is None
             self._resume_fut = create_future()
 
-    def resume(self):
+    def resume(self) -> None:
         if self._paused:
             self._paused = False
-            self._resume_fut.set_result(None)
+            if self._resume_fut is not None:
+                self._resume_fut.set_result(None)
             self._resume_fut = None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"TopicPartitionState<Status={self._status} position={self._position}>"

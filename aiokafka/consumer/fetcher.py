@@ -4,10 +4,12 @@ import logging
 import random
 import time
 from itertools import chain
+from typing import List, Optional
 
 import async_timeout
 
 import aiokafka.errors as Errors
+from aiokafka.consumer.subscription_state import Assignment
 from aiokafka.errors import ConsumerStoppedError, KafkaTimeoutError, RecordTooLargeError
 from aiokafka.protocol.fetch import FetchRequest
 from aiokafka.protocol.offset import OffsetRequest
@@ -31,25 +33,25 @@ class OffsetResetStrategy:
     NONE = 0
 
     @classmethod
-    def from_str(cls, name):
+    def from_str(cls, name: str) -> int:
         name = name.lower()
         if name == "latest":
             return cls.LATEST
-        if name == "earliest":
+        elif name == "earliest":
             return cls.EARLIEST
-        if name == "none":
+        elif name == "none":
             return cls.NONE
         else:
             log.warning("Unrecognized ``auto_offset_reset`` config, using NONE")
             return cls.NONE
 
     @classmethod
-    def to_str(cls, value):
+    def to_str(cls, value: int) -> str:
         if value == cls.LATEST:
             return "latest"
-        if value == cls.EARLIEST:
+        elif value == cls.EARLIEST:
             return "earliest"
-        if value == cls.NONE:
+        elif value == cls.NONE:
             return "none"
         else:
             return f"timestamp({value})"
@@ -65,19 +67,19 @@ class FetchResult:
 
         self._assignment = assignment
 
-    def calculate_backoff(self):
+    def calculate_backoff(self) -> float:
         lifetime = time.monotonic() - self._created
         if lifetime < self._backoff:
             return self._backoff - lifetime
         return 0
 
-    def check_assignment(self, tp):
+    def check_assignment(self, tp) -> bool:
         assignment = self._assignment
 
         # There are cases where the returned offset from broker differs from
         # what was requested. This would not be much of an issue if the user
         # could not seek to a different position between yielding results,
-        # so we should double check that position did not change between each
+        # so we should double-check that position did not change between each
         # result yielding.
         return_result = True
         if assignment.active:
@@ -104,7 +106,7 @@ class FetchResult:
             return False
         return True
 
-    def _update_position(self):
+    def _update_position(self) -> None:
         state = self._assignment.state_value(self._topic_partition)
         state.consumed_to(self._partition_records.next_fetch_offset)
 
@@ -125,7 +127,7 @@ class FetchResult:
                 self._update_position()
                 return msg
 
-    def getall(self, max_records=None):
+    def getall(self, max_records: Optional[int] = None) -> list:
         tp = self._topic_partition
         if not self.check_assignment(tp) or not self.has_more():
             return []
@@ -142,30 +144,30 @@ class FetchResult:
 
         return ret_list
 
-    def has_more(self):
+    def has_more(self) -> bool:
         return self._partition_records is not None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<FetchResult position={self._partition_records.next_fetch_offset!r}>"
 
 
 class FetchError:
-    def __init__(self, *, error, backoff):
+    def __init__(self, *, error, backoff) -> None:
         self._error = error
         self._created = time.monotonic()
         self._backoff = backoff
 
-    def calculate_backoff(self):
+    def calculate_backoff(self) -> float:
         lifetime = time.monotonic() - self._created
         if lifetime < self._backoff:
             return self._backoff - lifetime
         return 0
 
-    def check_raise(self):
+    def check_raise(self) -> None:
         # TODO: Do we need to raise error if partition not assigned anymore
         raise self._error
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<FetchError error={self._error!r}>"
 
 
@@ -180,7 +182,7 @@ class PartitionRecords:
         value_deserializer,
         check_crcs,
         isolation_level,
-    ):
+    ) -> None:
         self._tp = tp
         self._records = records
         self._aborted_transactions = sorted(
@@ -441,7 +443,7 @@ class Fetcher:
 
         self._closed = False
 
-    async def close(self):
+    async def close(self) -> None:
         self._closed = True
 
         self._fetch_task.cancel()
@@ -475,7 +477,7 @@ class Fetcher:
     def error_future(self):
         return self._fetch_task
 
-    async def _fetch_requests_routine(self):
+    async def _fetch_requests_routine(self) -> None:
         """Implements a background task to populate internal fetch queue
         ``self._records`` with prefetched messages. This helps isolate the
         ``getall/getone`` calls from actual calls to broker. This way we don't
@@ -582,7 +584,7 @@ class Fetcher:
             log.error("Unexpected error in fetcher routine", exc_info=True)
             raise Errors.KafkaError("Unexpected error during data retrieval")
 
-    def _get_actions_per_node(self, assignment):
+    def _get_actions_per_node(self, assignment: Assignment):
         """For each assigned partition determine the action needed to be
         performed and group those by leader node id.
         """
@@ -941,7 +943,7 @@ class Fetcher:
                 "Failed to get offsets by times in %s ms" % timeout_ms
             )
 
-    async def _proc_offset_requests(self, timestamps):
+    async def _proc_offset_requests(self, timestamps: dict[TopicPartition, int]):
         """Fetch offsets for each partition in timestamps dict. This may send
         request to multiple nodes, based on who is Leader for partition.
 
@@ -1073,7 +1075,7 @@ class Fetcher:
                     raise error_type(partition)
         return res_offsets
 
-    async def next_record(self, partitions):
+    async def next_record(self, partitions: Optional[List[TopicPartition]] = None):
         """Return one fetched records
 
         This method will contain a little overhead as we will do more work this

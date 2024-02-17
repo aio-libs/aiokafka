@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import re
 import sys
 import traceback
 import warnings
-from typing import Dict, List
+from typing import Dict, FrozenSet, List, Optional, Set
 
 from aiokafka import __version__
 from aiokafka.abc import ConsumerRebalanceListener
@@ -20,7 +22,7 @@ from aiokafka.errors import (
     TopicAuthorizationFailedError,
     UnsupportedVersionError,
 )
-from aiokafka.structs import ConsumerRecord, TopicPartition
+from aiokafka.structs import ConsumerRecord, OffsetAndTimestamp, TopicPartition
 from aiokafka.util import commit_structure_validate, get_running_loop
 
 from .fetcher import Fetcher, OffsetResetStrategy
@@ -186,7 +188,7 @@ class AIOKafkaConsumer:
             of milliseconds specified by this config. Specifying `None` will
             disable idle checks. Default: 540000 (9 minutes).
         isolation_level (str): Controls how to read messages written
-            transactionally.
+            transactional.
 
             If set to ``read_committed``, :meth:`.getmany` will only return
             transactional messages which have been committed.
@@ -346,7 +348,7 @@ class AIOKafkaConsumer:
             self._client.set_topics(topics)
             self._subscription.subscribe(topics=topics)
 
-    def __del__(self, _warnings=warnings):
+    def __del__(self, _warnings=warnings) -> None:
         if self._closed is False:
             _warnings.warn(
                 f"Unclosed AIOKafkaConsumer {self!r}",
@@ -361,7 +363,7 @@ class AIOKafkaConsumer:
                 context["source_traceback"] = self._source_traceback
             self._loop.call_exception_handler(context)
 
-    async def start(self):
+    async def start(self) -> None:
         """Connect to Kafka cluster. This will:
 
         * Load metadata for all cluster nodes and partition allocation
@@ -458,7 +460,7 @@ class AIOKafkaConsumer:
             raise ValueError("Topics should be list of strings")
         return set(topics)
 
-    def assign(self, partitions):
+    def assign(self, partitions: List[TopicPartition]) -> None:
         """Manually assign a list of :class:`.TopicPartition` to this consumer.
 
         This interface does not support incremental assignment and will
@@ -596,7 +598,7 @@ class AIOKafkaConsumer:
 
         await self._coordinator.commit_offsets(assignment, offsets)
 
-    async def committed(self, partition):
+    async def committed(self, partition: TopicPartition) -> Optional[int]:
         """Get the last committed offset for the given partition. (whether the
         commit happened by this process or another).
 
@@ -637,7 +639,7 @@ class AIOKafkaConsumer:
         cluster = await self._client.fetch_all_metadata()
         return cluster.topics()
 
-    def partitions_for_topic(self, topic):
+    def partitions_for_topic(self, topic: str):
         """Get metadata about the partitions for a given topic.
 
         This method will return `None` if Consumer does not already have
@@ -716,7 +718,7 @@ class AIOKafkaConsumer:
         assignment = self._subscription.subscription.assignment
         return assignment.state_value(partition).highwater
 
-    def last_stable_offset(self, partition):
+    def last_stable_offset(self, partition: TopicPartition):
         """Returns the Last Stable Offset of a topic. It will be the last
         offset up to which point all transactions were completed. Only
         available in with isolation_level `read_committed`, in
@@ -736,10 +738,10 @@ class AIOKafkaConsumer:
         assignment = self._subscription.subscription.assignment
         return assignment.state_value(partition).lso
 
-    def last_poll_timestamp(self, partition):
+    def last_poll_timestamp(self, partition: TopicPartition):
         """Returns the timestamp of the last poll of this partition (in ms).
         It is the last time :meth:`highwater` and :meth:`last_stable_offset` were
-        updated. However it does not mean that new messages were received.
+        updated. However, it does not mean that new messages were received.
 
         As with :meth:`highwater` will not be available until some messages are
         consumed.
@@ -754,7 +756,7 @@ class AIOKafkaConsumer:
         assignment = self._subscription.subscription.assignment
         return assignment.state_value(partition).timestamp
 
-    def seek(self, partition, offset):
+    def seek(self, partition: TopicPartition, offset: int) -> None:
         """Manually specify the fetch offset for a :class:`.TopicPartition`.
 
         Overrides the fetch offsets that the consumer will use on the next
@@ -904,7 +906,9 @@ class AIOKafkaConsumer:
                 self._fetcher.seek_to(tp, offset)
         return committed_offsets
 
-    async def offsets_for_times(self, timestamps):
+    async def offsets_for_times(
+        self, timestamps: Dict[TopicPartition, int]
+    ) -> Dict[TopicPartition, OffsetAndTimestamp]:
         """
         Look up the offsets for the given partitions by timestamp. The returned
         offset for each partition is the earliest offset whose timestamp is
@@ -956,7 +960,9 @@ class AIOKafkaConsumer:
         )
         return offsets
 
-    async def beginning_offsets(self, partitions):
+    async def beginning_offsets(
+        self, partitions: List[TopicPartition]
+    ) -> Dict[TopicPartition, int]:
         """Get the first offset for the given partitions.
 
         This method does not change the current consumer position of the
@@ -991,7 +997,9 @@ class AIOKafkaConsumer:
         )
         return offsets
 
-    async def end_offsets(self, partitions):
+    async def end_offsets(
+        self, partitions: List[TopicPartition]
+    ) -> Dict[TopicPartition, int]:
         """Get the last offset for the given partitions. The last offset of a
         partition is the offset of the upcoming message, i.e. the offset of the
         last available message + 1.
@@ -1026,7 +1034,12 @@ class AIOKafkaConsumer:
         offsets = await self._fetcher.end_offsets(partitions, self._request_timeout_ms)
         return offsets
 
-    def subscribe(self, topics=(), pattern=None, listener=None):
+    def subscribe(
+        self,
+        topics=(),
+        pattern=None,
+        listener: Optional[ConsumerRebalanceListener] = None,
+    ):
         """Subscribe to a list of topics, or a topic regex pattern.
 
         Partitions will be dynamically assigned via a group coordinator.
@@ -1100,7 +1113,7 @@ class AIOKafkaConsumer:
                     self._coordinator._metadata_snapshot = {}
             log.info("Subscribed to topic(s): %s", topics)
 
-    def subscription(self):
+    def subscription(self) -> FrozenSet[str]:
         """Get the current topics subscription.
 
         Returns:
@@ -1108,7 +1121,7 @@ class AIOKafkaConsumer:
         """
         return self._subscription.topics
 
-    def unsubscribe(self):
+    def unsubscribe(self) -> None:
         """Unsubscribe from all topics and clear all assigned partitions."""
         self._subscription.unsubscribe()
         if self._group_id is not None:
@@ -1215,7 +1228,7 @@ class AIOKafkaConsumer:
             )
         return records
 
-    def pause(self, *partitions):
+    def pause(self, *partitions) -> None:
         """Suspend fetching from the requested partitions.
 
         Future calls to :meth:`.getmany` will not return any records from these
@@ -1235,7 +1248,7 @@ class AIOKafkaConsumer:
             log.debug("Pausing partition %s", partition)
             self._subscription.pause(partition)
 
-    def paused(self):
+    def paused(self) -> Set[TopicPartition]:
         """Get the partitions that were previously paused using
         :meth:`.pause`.
 
@@ -1257,7 +1270,7 @@ class AIOKafkaConsumer:
             log.debug("Resuming partition %s", partition)
             self._subscription.resume(partition)
 
-    def __aiter__(self):
+    def __aiter__(self) -> AIOKafkaConsumer:
         if self._closed:
             raise ConsumerStoppedError()
         return self
@@ -1284,9 +1297,9 @@ class AIOKafkaConsumer:
             except RecordTooLargeError:
                 log.exception("error in consumer iterator: %s")
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> AIOKafkaConsumer:
         await self.start()
         return self
 
-    async def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(self, exc_type, exc, tb) -> None:
         await self.stop()

@@ -84,7 +84,7 @@ class AIOKafkaAdminClient:
     def __init__(
         self,
         *,
-        loop=None,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
         bootstrap_servers: str = "localhost",
         client_id: str = "aiokafka-" + __version__,
         request_timeout_ms: int = 40000,
@@ -124,7 +124,7 @@ class AIOKafkaAdminClient:
             sasl_oauth_token_provider=sasl_oauth_token_provider,
         )
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the AIOKafkaAdminClient connection to the Kafka broker."""
         if not hasattr(self, "_closed") or self._closed:
             log.info("AIOKafkaAdminClient already closed.")
@@ -143,12 +143,12 @@ class AIOKafkaAdminClient:
             node_id = self._client.get_random_node()
         return await self._client.send(node_id, request)
 
-    async def _get_version_info(self):
+    async def _get_version_info(self) -> None:
         resp = await self._send_request(ApiVersionRequest_v0())
         for api_key, min_version, max_version in resp.api_versions:
             self._version_info[api_key] = (min_version, max_version)
 
-    async def start(self):
+    async def start(self) -> None:
         if self._started:
             return
         await self._client.bootstrap()
@@ -662,7 +662,7 @@ class AIOKafkaAdminClient:
     @staticmethod
     def _convert_records_to_delete(
         records_to_delete: Dict[str, List[Tuple[int, RecordsToDelete]]],
-    ):
+    ) -> List[Tuple[str, List[Tuple[int, int]]]]:
         return [
             (topic, [(partition, rec.before_offset) for partition, rec in records])
             for topic, records in records_to_delete.items()
