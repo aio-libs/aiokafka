@@ -5,7 +5,6 @@ import contextlib
 import copy
 import logging
 import time
-from asyncio import Event, shield
 from enum import Enum
 from typing import (
     Awaitable,
@@ -428,7 +427,7 @@ class Assignment:
             self._tp_state[tp] = TopicPartitionState(self)
 
         self.unassign_future: asyncio.Future[T] = create_future()
-        self.commit_refresh_needed = Event()
+        self.commit_refresh_needed = asyncio.Event()
 
     @property
     def tps(self) -> Iterable[TopicPartition]:
@@ -581,7 +580,7 @@ class TopicPartitionState:
             self._position_fut.set_result(None)
 
     def wait_for_position(self) -> Awaitable[T]:
-        return shield(self._position_fut)
+        return asyncio.shield(self._position_fut)
 
     # Pause/Unpause
     def pause(self) -> None:
