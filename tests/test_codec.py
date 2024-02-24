@@ -20,7 +20,7 @@ from aiokafka.codec import (
 from ._testutil import random_string
 
 
-def test_gzip():
+def test_gzip() -> None:
     for i in range(1000):
         b1 = random_string(100)
         b2 = gzip_decode(gzip_encode(b1))
@@ -28,7 +28,7 @@ def test_gzip():
 
 
 @pytest.mark.skipif(not has_snappy(), reason="Snappy not available")
-def test_snappy():
+def test_snappy() -> None:
     for i in range(1000):
         b1 = random_string(100)
         b2 = snappy_decode(snappy_encode(b1))
@@ -36,7 +36,7 @@ def test_snappy():
 
 
 @pytest.mark.skipif(not has_snappy(), reason="Snappy not available")
-def test_snappy_detect_xerial():
+def test_snappy_detect_xerial() -> None:
     _detect_xerial_stream = codecs._detect_xerial_stream
 
     header = b"\x82SNAPPY\x00\x00\x00\x00\x01\x00\x00\x00\x01Some extra bytes"
@@ -55,7 +55,7 @@ def test_snappy_detect_xerial():
 
 
 @pytest.mark.skipif(not has_snappy(), reason="Snappy not available")
-def test_snappy_decode_xerial():
+def test_snappy_decode_xerial() -> None:
     header = b"\x82SNAPPY\x00\x00\x00\x00\x01\x00\x00\x00\x01"
     random_snappy = snappy_encode(b"SNAPPY" * 50, xerial_compatible=False)
     block_len = len(random_snappy)
@@ -73,7 +73,7 @@ def test_snappy_decode_xerial():
 
 
 @pytest.mark.skipif(not has_snappy(), reason="Snappy not available")
-def test_snappy_encode_xerial():
+def test_snappy_encode_xerial() -> None:
     to_ensure = (
         b"\x82SNAPPY\x00\x00\x00\x00\x01\x00\x00\x00\x01"
         b"\x00\x00\x00\x18\xac\x02\x14SNAPPY\xfe\x06\x00\xfe\x06\x00\xfe\x06\x00"
@@ -88,7 +88,7 @@ def test_snappy_encode_xerial():
 
 
 @pytest.mark.skipif(not has_lz4(), reason="LZ4 not available")
-def test_lz4():
+def test_lz4() -> None:
     for i in range(1000):
         b1 = random_string(100)
         b2 = lz4_decode(lz4_encode(b1))
@@ -97,7 +97,7 @@ def test_lz4():
 
 
 @pytest.mark.skipif(not has_lz4(), reason="LZ4 not available")
-def test_lz4_incremental():
+def test_lz4_incremental() -> None:
     for i in range(1000):
         # lz4 max single block size is 4MB
         # make sure we test with multiple-blocks
@@ -108,7 +108,7 @@ def test_lz4_incremental():
 
 
 @pytest.mark.skipif(not has_zstd(), reason="Zstd not available")
-def test_zstd():
+def test_zstd() -> None:
     for _ in range(1000):
         b1 = random_string(100)
         b2 = zstd_decode(zstd_encode(b1))
