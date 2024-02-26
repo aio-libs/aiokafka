@@ -92,7 +92,7 @@ class AIOKafkaClient:
         self,
         *,
         loop: Optional[asyncio.AbstractEventLoop] = None,
-        bootstrap_servers: str = "localhost",
+        bootstrap_servers: Union[str, List[str]] = "localhost",
         client_id: str = "aiokafka-" + __version__,
         metadata_max_age_ms: int = 300000,
         request_timeout_ms: int = 40000,
