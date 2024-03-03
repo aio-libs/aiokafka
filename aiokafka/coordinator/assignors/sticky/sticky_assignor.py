@@ -237,9 +237,9 @@ class StickyAssignmentExecutor:
                         consumers[member_metadata.generation] = consumer
                 else:
                     sorted_consumers = {member_metadata.generation: consumer}
-                    sorted_partition_consumers_by_generation[
-                        partitions
-                    ] = sorted_consumers
+                    sorted_partition_consumers_by_generation[partitions] = (
+                        sorted_consumers
+                    )
 
         # previous_assignment holds the prior ConsumerGenerationPair (before current) of
         # each partition current and previous consumers are the last two consumers of

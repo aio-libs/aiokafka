@@ -83,7 +83,7 @@ skip_covered = true
 skip_empty = true
 
 
-[tool.ruff]
+[tool.ruff.lint]
 # For the reference, check https://docs.astral.sh/ruff/rules/
 select = [
     "F",  # pyflakes
