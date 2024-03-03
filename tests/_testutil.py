@@ -9,7 +9,6 @@ import shutil
 import string
 import subprocess
 import sys
-import time
 import unittest
 from concurrent import futures
 from contextlib import contextmanager
@@ -484,7 +483,7 @@ async def _wait_kafka(kafka_host, kafka_port, timeout):
             pass
         finally:
             await client.close()
-        time.sleep(0.5)
+        await asyncio.sleep(0.5)
         if loop.time() - start > timeout:
             return False
 

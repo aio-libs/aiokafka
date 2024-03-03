@@ -90,6 +90,8 @@ select = [
     "E", "W",  # pycodestyle
     "I",  # isort
     "UP",  # pyupgrade
+    "YTT",  # flake8-2020
+    "ASYNC",  # flake8-async
 ]
 
 [tool.ruff.format]
