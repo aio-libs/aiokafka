@@ -275,10 +275,10 @@ class StickyAssignmentExecutor:
 
     def _populate_sorted_partitions(self):
         # set of topic partitions with their respective potential consumers
-        all_partitions = set(
+        all_partitions = {
             (tp, tuple(consumers))
             for tp, consumers in self.partition_to_all_potential_consumers.items()
-        )
+        }
         partitions_sorted_by_num_of_potential_consumers = sorted(
             all_partitions, key=partitions_comparator_key
         )

@@ -83,5 +83,5 @@ class ve_build_ext(build_ext):
 
 setup(
     ext_modules=cythonize(extensions),
-    cmdclass=dict(build_ext=ve_build_ext, bdist_rpm=bdist_rpm),
+    cmdclass={"build_ext": ve_build_ext, "bdist_rpm": bdist_rpm},
 )

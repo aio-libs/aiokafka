@@ -326,7 +326,7 @@ class TestSender(KafkaIntegrationTestCase):
         self.assertEqual(req.producer_id, 120)
         self.assertEqual(req.producer_epoch, 22)
         self.assertEqual(
-            list(sorted(req.topics)), list(sorted([("topic", [0, 1]), ("topic2", [1])]))
+            sorted(req.topics), sorted([("topic", [0, 1]), ("topic2", [1])])
         )
 
     @run_until_complete

@@ -128,13 +128,11 @@ class ClusterMetadata:
         """
         if topic not in self._partitions:
             return None
-        return set(
-            [
-                partition
-                for partition, metadata in self._partitions[topic].items()
-                if metadata.leader != -1
-            ]
-        )
+        return {
+            partition
+            for partition, metadata in self._partitions[topic].items()
+            if metadata.leader != -1
+        }
 
     def leader_for_partition(self, partition):
         """Return node_id of leader, -1 unavailable, None if unknown."""

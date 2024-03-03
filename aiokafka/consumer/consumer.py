@@ -800,7 +800,7 @@ class AIOKafkaConsumer:
         .. versionadded:: 0.3.0
 
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition instances")
 
         if not partitions:
@@ -840,7 +840,7 @@ class AIOKafkaConsumer:
         .. versionadded:: 0.3.0
 
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition instances")
 
         if not partitions:
@@ -884,7 +884,7 @@ class AIOKafkaConsumer:
             :exc:`~aiokafka.errors.IllegalStateError` in case of unassigned
             partition
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition instances")
 
         if not partitions:
@@ -1149,7 +1149,7 @@ class AIOKafkaConsumer:
                 print(message.offset, message.key, message.value)
 
         """
-        assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
+        assert all(isinstance(k, TopicPartition) for k in partitions)
         if self._closed:
             raise ConsumerStoppedError()
 
@@ -1196,7 +1196,7 @@ class AIOKafkaConsumer:
                     print(message.offset, message.key, message.value)
 
         """
-        assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
+        assert all(isinstance(k, TopicPartition) for k in partitions)
         if self._closed:
             raise ConsumerStoppedError()
 
@@ -1228,7 +1228,7 @@ class AIOKafkaConsumer:
         Arguments:
             *partitions (list[TopicPartition]): Partitions to pause.
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition namedtuples")
 
         for partition in partitions:
@@ -1250,7 +1250,7 @@ class AIOKafkaConsumer:
         Arguments:
             *partitions (list[TopicPartition]): Partitions to resume.
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition namedtuples")
 
         for partition in partitions:

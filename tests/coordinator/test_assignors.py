@@ -477,10 +477,10 @@ def test_sticky_add_remove_topic_two_consumers(mocker):
 
 
 def test_sticky_reassignment_after_one_consumer_leaves(mocker):
-    partitions = dict([(f"t{i}", set(range(i))) for i in range(1, 20)])
+    partitions = {f"t{i}": set(range(i)) for i in range(1, 20)}
     cluster = create_cluster(
         mocker,
-        topics=set([f"t{i}" for i in range(1, 20)]),
+        topics={f"t{i}" for i in range(1, 20)},
         topic_partitions_lambda=lambda t: partitions[t],
     )
 
@@ -532,10 +532,10 @@ def test_sticky_reassignment_after_one_consumer_added(mocker):
 
 
 def test_sticky_same_subscriptions(mocker):
-    partitions = dict([(f"t{i}", set(range(i))) for i in range(1, 15)])
+    partitions = {f"t{i}": set(range(i)) for i in range(1, 15)}
     cluster = create_cluster(
         mocker,
-        topics=set([f"t{i}" for i in range(1, 15)]),
+        topics={f"t{i}" for i in range(1, 15)},
         topic_partitions_lambda=lambda t: partitions[t],
     )
 
@@ -564,8 +564,8 @@ def test_sticky_large_assignment_with_multiple_consumers_leaving(mocker):
     n_topics = 40
     n_consumers = 200
 
-    all_topics = set([f"t{i}" for i in range(1, n_topics + 1)])
-    partitions = dict([(t, set(range(1, randint(0, 10) + 1))) for t in all_topics])
+    all_topics = {f"t{i}" for i in range(1, n_topics + 1)}
+    partitions = {t: set(range(1, randint(0, 10) + 1)) for t in all_topics}
     cluster = create_cluster(
         mocker, topics=all_topics, topic_partitions_lambda=lambda t: partitions[t]
     )
@@ -780,7 +780,7 @@ def test_reassignment_with_random_subscriptions_and_changes(
     mocker, execution_number, n_topics, n_consumers
 ):
     all_topics = sorted([f"t{i}" for i in range(1, n_topics + 1)])
-    partitions = dict([(t, set(range(1, i + 1))) for i, t in enumerate(all_topics)])
+    partitions = {t: set(range(1, i + 1)) for i, t in enumerate(all_topics)}
     cluster = create_cluster(
         mocker, topics=all_topics, topic_partitions_lambda=lambda t: partitions[t]
     )
@@ -836,16 +836,12 @@ def test_assignment_with_multiple_generations1(mocker):
     assert len(assignment2["C1"].assignment[0][1]) == 3
     assert len(assignment2["C2"].assignment[0][1]) == 3
     assert all(
-        [
-            partition in assignment2["C1"].assignment[0][1]
-            for partition in assignment1["C1"].assignment[0][1]
-        ]
+        partition in assignment2["C1"].assignment[0][1]
+        for partition in assignment1["C1"].assignment[0][1]
     )
     assert all(
-        [
-            partition in assignment2["C2"].assignment[0][1]
-            for partition in assignment1["C2"].assignment[0][1]
-        ]
+        partition in assignment2["C2"].assignment[0][1]
+        for partition in assignment1["C2"].assignment[0][1]
     )
     assert StickyPartitionAssignor._latest_partition_movements.are_sticky()
 
@@ -890,10 +886,8 @@ def test_assignment_with_multiple_generations2(mocker):
     verify_validity_and_balance({"C2": {"t"}}, assignment2)
     assert len(assignment2["C2"].assignment[0][1]) == 6
     assert all(
-        [
-            partition in assignment2["C2"].assignment[0][1]
-            for partition in assignment1["C2"].assignment[0][1]
-        ]
+        partition in assignment2["C2"].assignment[0][1]
+        for partition in assignment1["C2"].assignment[0][1]
     )
     assert StickyPartitionAssignor._latest_partition_movements.are_sticky()
 

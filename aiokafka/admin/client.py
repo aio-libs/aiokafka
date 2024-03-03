@@ -190,14 +190,8 @@ class AIOKafkaAdminClient:
             new_topic.name,
             new_topic.num_partitions,
             new_topic.replication_factor,
-            [
-                (partition_id, replicas)
-                for partition_id, replicas in new_topic.replica_assignments.items()
-            ],
-            [
-                (config_key, config_value)
-                for config_key, config_value in new_topic.topic_configs.items()
-            ],
+            list(new_topic.replica_assignments.items()),
+            list(new_topic.topic_configs.items()),
         )
 
     async def create_topics(

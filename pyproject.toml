@@ -95,6 +95,8 @@ select = [
     # "S",  # flake8-bandit
     # "BLE",  # flake8-blind-except
     # "B",  # flake8-bugbear
+    "A",  # flake8-builtins
+    "C4",  # flake8-comprehensions
 ]
 
 [tool.ruff.format]

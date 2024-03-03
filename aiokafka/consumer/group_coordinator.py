@@ -1050,7 +1050,7 @@ class GroupCoordinator(BaseCoordinator):
             self.generation,
             self.member_id,
             OffsetCommitRequest.DEFAULT_RETENTION_TIME,
-            [(topic, tp_offsets) for topic, tp_offsets in offset_data.items()],
+            list(offset_data.items()),
         )
 
         log.debug(

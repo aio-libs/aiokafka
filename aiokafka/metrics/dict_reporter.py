@@ -28,13 +28,10 @@ class DictReporter(AbstractMetricsReporter):
             }
         }
         """
-        return dict(
-            (
-                category,
-                dict((name, metric.value()) for name, metric in list(metrics.items())),
-            )
+        return {
+            category: {name: metric.value() for name, metric in list(metrics.items())}
             for category, metrics in list(self._store.items())
-        )
+        }
 
     def init(self, metrics):
         for metric in metrics:

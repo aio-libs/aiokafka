@@ -91,13 +91,13 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         p0 = TopicPartition(self.topic, 0)
         p1 = TopicPartition(self.topic, 1)
         assignment = consumer.assignment()
-        self.assertEqual(sorted(list(assignment)), [p0, p1])
+        self.assertEqual(sorted(assignment), [p0, p1])
 
         topics = await consumer.topics()
         self.assertTrue(self.topic in topics)
 
         parts = consumer.partitions_for_topic(self.topic)
-        self.assertEqual(sorted(list(parts)), [0, 1])
+        self.assertEqual(sorted(parts), [0, 1])
 
         offset = await consumer.committed(TopicPartition("uknown-topic", 2))
         self.assertEqual(offset, None)
