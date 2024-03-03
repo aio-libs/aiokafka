@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import contextlib
 import copy
 import logging
 import time
 from asyncio import Event, shield
 from enum import Enum
-from typing import Dict, Iterable, Pattern, Set
+from typing import Iterable, Pattern
 
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.errors import IllegalStateError
@@ -51,7 +53,7 @@ class SubscriptionState:
         self._last_fetch_ended = time.monotonic()
 
     @property
-    def subscription(self) -> "Subscription":
+    def subscription(self) -> Subscription:
         return self._subscription
 
     @property
@@ -68,7 +70,7 @@ class SubscriptionState:
             return self._subscription.topics
         return set()
 
-    def assigned_partitions(self) -> Set[TopicPartition]:
+    def assigned_partitions(self) -> set[TopicPartition]:
         if self._subscription is None:
             return set()
         if self._subscription.assignment is None:
@@ -106,7 +108,7 @@ class SubscriptionState:
                 "exclusive"
             )
 
-    def _change_subscription(self, subscription: "Subscription"):
+    def _change_subscription(self, subscription: Subscription):
         log.info("Updating subscribed topics to: %s", subscription.topics)
         # Set old subscription as inactive
         if self._subscription is not None:
@@ -114,7 +116,7 @@ class SubscriptionState:
         self._subscription = subscription
         self._notify_subscription_waiters()
 
-    def _assigned_state(self, tp: TopicPartition) -> "TopicPartitionState":
+    def _assigned_state(self, tp: TopicPartition) -> TopicPartitionState:
         assert self._subscription is not None
         assert self._subscription.assignment is not None
         tp_state = self._subscription.assignment.state_value(tp)
@@ -136,7 +138,7 @@ class SubscriptionState:
 
     # Consumer callable API:
 
-    def subscribe(self, topics: Set[str], listener=None):
+    def subscribe(self, topics: set[str], listener=None):
         """Subscribe to a list (or tuple) of topics
 
         Caller: Consumer.
@@ -195,7 +197,7 @@ class SubscriptionState:
 
     # Coordinator callable API:
 
-    def subscribe_from_pattern(self, topics: Set[str]):
+    def subscribe_from_pattern(self, topics: set[str]):
         """Change subscription on cluster metadata update if a new topic
         created or one is removed.
 
@@ -205,7 +207,7 @@ class SubscriptionState:
         assert self._subscription_type == SubscriptionType.AUTO_PATTERN
         self._change_subscription(Subscription(topics))
 
-    def assign_from_subscribed(self, assignment: Set[TopicPartition]):
+    def assign_from_subscribed(self, assignment: set[TopicPartition]):
         """Set assignment if automatic assignment is used.
 
         Caller: Coordinator
@@ -276,7 +278,7 @@ class SubscriptionState:
     def pause(self, tp: TopicPartition) -> None:
         self._assigned_state(tp).pause()
 
-    def paused_partitions(self) -> Set[TopicPartition]:
+    def paused_partitions(self) -> set[TopicPartition]:
         res = set()
         for tp in self.assigned_partitions():
             if self._assigned_state(tp).paused:
@@ -366,7 +368,7 @@ class ManualSubscription(Subscription):
         super().__init__(topics, loop=loop)
         self._assignment = Assignment(user_assignment)
 
-    def _assign(self, topic_partitions: Set[TopicPartition]):  # pragma: no cover
+    def _assign(self, topic_partitions: set[TopicPartition]):  # pragma: no cover
         raise AssertionError("Should not be called")
 
     @property
@@ -413,10 +415,10 @@ class Assignment:
     def _unassign(self):
         self.unassign_future.set_result(None)
 
-    def state_value(self, tp: TopicPartition) -> "TopicPartitionState":
+    def state_value(self, tp: TopicPartition) -> TopicPartitionState:
         return self._tp_state.get(tp)
 
-    def all_consumed_offsets(self) -> Dict[TopicPartition, OffsetAndMetadata]:
+    def all_consumed_offsets(self) -> dict[TopicPartition, OffsetAndMetadata]:
         """Returns consumed offsets as {TopicPartition: OffsetAndMetadata}"""
         all_consumed = {}
         for tp in self._topic_partitions:

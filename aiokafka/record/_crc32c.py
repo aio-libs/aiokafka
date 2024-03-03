@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-#
 # Taken from https://cloud.google.com/appengine/docs/standard/python/refdocs/\
 # modules/google/appengine/api/files/crc32c?hl=ru
 #
