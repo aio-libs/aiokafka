@@ -10,7 +10,7 @@ from ._testutil import KafkaIntegrationTestCase, random_string, run_until_comple
 class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_aiter(self):
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
         await self.send_messages(1, list(range(10, 20)))
 
         consumer = AIOKafkaConsumer(

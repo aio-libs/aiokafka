@@ -83,7 +83,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             consumer = await self.consumer_factory(api_version="0.8")
 
         now = time.time()
-        await self.send_messages(0, list(range(0, 100)))
+        await self.send_messages(0, list(range(100)))
         await self.send_messages(1, list(range(100, 200)))
         # Start a consumer_factory
         consumer = await self.consumer_factory()
@@ -137,7 +137,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             )
         loop.run_until_complete(consumer.start())
         try:
-            loop.run_until_complete(self.send_messages(0, list(range(0, 10))))
+            loop.run_until_complete(self.send_messages(0, list(range(10))))
             for _ in range(10):
                 loop.run_until_complete(consumer.getone())
         finally:
@@ -146,7 +146,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_consumer_context_manager(self):
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
 
         group = "group-%s" % self.id()
         consumer = AIOKafkaConsumer(
@@ -190,7 +190,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_consumer_api_version(self):
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
         for text_version, api_version in [
             ("auto", (0, 9, 0)),
             ("0.9.1", (0, 9, 1)),
@@ -226,7 +226,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_get_by_partition(self):
-        await self.send_messages(0, list(range(0, 100)))
+        await self.send_messages(0, list(range(100)))
         await self.send_messages(1, list(range(100, 200)))
         consumer = await self.consumer_factory()
 
@@ -247,7 +247,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_none_group(self):
-        await self.send_messages(0, list(range(0, 100)))
+        await self.send_messages(0, list(range(100)))
         await self.send_messages(1, list(range(100, 200)))
         # Start a consumer_factory
         consumer1 = await self.consumer_factory(group=None, enable_auto_commit=False)
@@ -270,7 +270,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_consumer_poll(self):
-        await self.send_messages(0, list(range(0, 100)))
+        await self.send_messages(0, list(range(100)))
         await self.send_messages(1, list(range(100, 200)))
         # Start a consumer_factory
         consumer = await self.consumer_factory()
@@ -286,7 +286,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         p0 = TopicPartition(self.topic, 0)
         p1 = TopicPartition(self.topic, 1)
-        await self.send_messages(0, list(range(0, 100)))
+        await self.send_messages(0, list(range(100)))
         await self.send_messages(1, list(range(100, 200)))
 
         # Check consumption for a specific partition
@@ -385,7 +385,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_offset_behavior__resuming_behavior(self):
-        msgs1 = await self.send_messages(0, range(0, 100))
+        msgs1 = await self.send_messages(0, range(100))
         msgs2 = await self.send_messages(1, range(100, 200))
 
         available_msgs = msgs1 + msgs2
@@ -409,7 +409,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_subscribe_manual(self):
-        msgs1 = await self.send_messages(0, range(0, 10))
+        msgs1 = await self.send_messages(0, range(10))
         msgs2 = await self.send_messages(1, range(10, 20))
         available_msgs = msgs1 + msgs2
 
@@ -438,7 +438,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_manual_subscribe_pattern(self):
-        msgs1 = await self.send_messages(0, range(0, 10))
+        msgs1 = await self.send_messages(0, range(10))
         msgs2 = await self.send_messages(1, range(10, 20))
         available_msgs = msgs1 + msgs2
 
@@ -693,7 +693,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_manual_subscribe_nogroup(self):
-        msgs1 = await self.send_messages(0, range(0, 10))
+        msgs1 = await self.send_messages(0, range(10))
         msgs2 = await self.send_messages(1, range(10, 20))
         available_msgs = msgs1 + msgs2
 
@@ -1299,7 +1299,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_rebalance_listener_with_coroutines(self):
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
         await self.send_messages(1, list(range(10, 20)))
 
         main_self = self
@@ -1442,7 +1442,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_commit_not_blocked_by_long_poll_fetch(self):
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
 
         consumer = await self.consumer_factory(fetch_max_wait_ms=10000)
 
@@ -1624,7 +1624,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Following issue #394 we seemed to mix subscription with manual
         # assignment. The main test above probably missed this scenario cause
         # it was initialized for subscription.
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
 
         consumer = AIOKafkaConsumer(
             enable_auto_commit=False,
@@ -1666,7 +1666,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Following issue #394 we seemed to mix subscription with manual
         # assignment. The main test above probably missed this scenario cause
         # it was initialized for subscription.
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
 
         consumer = AIOKafkaConsumer(
             enable_auto_commit=False,
@@ -1688,7 +1688,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Following issue #394 we seemed to mix subscription with manual
         # assignment. The main test above probably missed this scenario cause
         # it was initialized for subscription.
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
 
         consumer = AIOKafkaConsumer(
             enable_auto_commit=False,
@@ -1711,7 +1711,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # more cases, where aiokafka just does not handle correctly in
         # coordination (like ConnectionError is said issue).
         # Original issue #294
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
 
         consumer = AIOKafkaConsumer(
             self.topic,
@@ -1763,7 +1763,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_consumer_compacted_topic(self):
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
 
         consumer = await self.consumer_factory()
         with mock.patch.object(
@@ -2030,7 +2030,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_max_poll_interval_ms(self):
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
         await self.send_messages(1, list(range(10, 20)))
         # Start a consumer_factory
         consumer1 = await self.consumer_factory(
@@ -2083,7 +2083,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             msg = await consumer2.getone()
             seen.append(int(msg.value))
 
-        self.assertEqual(set(seen), set(range(0, 20)))
+        self.assertEqual(set(seen), set(range(20)))
 
         took = loop.time() - start_time
         self.assertAlmostEqual(took, 3, delta=1)
@@ -2100,7 +2100,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @kafka_versions(">=2.3.0")
     @run_until_complete
     async def test_kip_345_enabled(self):
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
         await self.send_messages(1, list(range(10, 20)))
 
         # group_instance_id key enables KIP-345 mode
@@ -2210,7 +2210,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @kafka_versions(">=2.3.0")
     @run_until_complete
     async def test_kip_345_disabled(self):
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
         await self.send_messages(1, list(range(10, 20)))
 
         # default session_timeout_ms is 10s

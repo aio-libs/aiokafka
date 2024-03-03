@@ -17,7 +17,6 @@ class AbstractMeasurable:
         Returns:
             The measured value
         """
-        ...
 
 
 class AnonMeasurable(AbstractMeasurable):

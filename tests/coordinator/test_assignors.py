@@ -572,7 +572,7 @@ def test_sticky_large_assignment_with_multiple_consumers_leaving(mocker):
 
     subscriptions = defaultdict(set)
     for i in range(1, n_consumers + 1):
-        for _ in range(0, randint(1, 20)):
+        for _ in range(randint(1, 20)):
             subscriptions[f"C{i}"].add(f"t{randint(1, n_topics)}")
 
     member_metadata = make_member_metadata(subscriptions)

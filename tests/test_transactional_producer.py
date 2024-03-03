@@ -182,7 +182,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # This will update commit point in Consumer too.
 
         # Setup some messages in INPUT topic
-        await self.send_messages(0, list(range(0, 100)))
+        await self.send_messages(0, list(range(100)))
         await self.send_messages(1, list(range(100, 200)))
         in_topic = self.topic
         out_topic = self.topic + "-out"
@@ -243,7 +243,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # reset
 
         # Setup some messages in INPUT topic
-        await self.send_messages(0, list(range(0, 100)))
+        await self.send_messages(0, list(range(100)))
         await self.send_messages(1, list(range(100, 200)))
         in_topic = self.topic
         out_topic = self.topic + "-out"

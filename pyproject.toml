@@ -104,6 +104,8 @@ select = [
     # XXX Causes warning https://github.com/astral-sh/ruff/issues/8272
     "ISC",  # flake8-implicit-str-concat
     "G",  # flake8-logging-format
+    "INP",  # flake8-no-pep420
+    "PIE",  # flake8-pie
 ]
 
 [tool.ruff.format]

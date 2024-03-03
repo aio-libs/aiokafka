@@ -63,7 +63,6 @@ class ConsumerRebalanceListener(abc.ABC):
             revoked (list(TopicPartition)): the partitions that were assigned
                 to the consumer on the last rebalance
         """
-        ...
 
     @abc.abstractmethod
     def on_partitions_assigned(self, assigned):
@@ -83,7 +82,6 @@ class ConsumerRebalanceListener(abc.ABC):
             assigned (list(TopicPartition)): the partitions assigned to the
                 consumer (may include partitions that were previously assigned)
         """
-        ...
 
 
 class AbstractTokenProvider(abc.ABC):
@@ -123,7 +121,6 @@ class AbstractTokenProvider(abc.ABC):
                 def _token(self):
                     # The actual synchronous token callback.
         """
-        ...
 
     def extensions(self):
         """

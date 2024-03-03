@@ -876,7 +876,6 @@ def get_ip_port_afi(host_and_port_str):
                     "socket.inet_pton not available on this platform."
                     " consider `pip install win_inet_pton`"
                 )
-                pass
             except (OSError, ValueError):
                 # it's a host:port pair
                 pass

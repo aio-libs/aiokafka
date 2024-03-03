@@ -12,7 +12,6 @@ class AbstractPartitionAssignor:
     @abc.abstractproperty
     def name(self):
         """.name should be a string identifying the assignor"""
-        ...
 
     @abc.abstractmethod
     def assign(self, cluster, members):
@@ -26,7 +25,6 @@ class AbstractPartitionAssignor:
         Returns:
             dict: {member_id: MemberAssignment}
         """
-        ...
 
     @abc.abstractmethod
     def metadata(self, topics):
@@ -38,7 +36,6 @@ class AbstractPartitionAssignor:
         Returns:
             MemberMetadata struct
         """
-        ...
 
     @abc.abstractmethod
     def on_assignment(self, assignment):
@@ -50,4 +47,3 @@ class AbstractPartitionAssignor:
         Arguments:
             assignment (MemberAssignment): the member's assignment
         """
-        ...
