@@ -258,9 +258,7 @@ class KafkaConfig:
         self._exec(
             "--alter",
             "--add-config",
-            "SCRAM-SHA-256=[password={0}],SCRAM-SHA-512=[password={0}]".format(
-                password
-            ),
+            f"SCRAM-SHA-256=[password={password}],SCRAM-SHA-512=[password={password}]",
             "--entity-type",
             "users",
             "--entity-name",
@@ -304,34 +302,32 @@ class KerberosUtils:
                     password,
                 ],
                 cwd=str(keytab_dir.absolute()),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
             )
             if res.returncode != 0:
                 print(
                     "Failed to setup keytab for Kerberos.\n"
-                    "stdout: \n{}\nstrerr: \n{}".format(res.stdout, res.stderr),
+                    f"stdout: \n{res.stdout}\nstrerr: \n{res.stderr}",
                     file=sys.stderr,
                 )
                 res.check_returncode()
         elif sys.platform != "win32":
             input_data = (
-                "add_entry -password -p {principal} -k 1 "
+                f"add_entry -password -p {principal} -k 1 "
                 "-e aes256-cts-hmac-sha1-96\n"
-                "{password}\n"
-                "write_kt {keytab_file}\n"
-            ).format(principal=principal, password=password, keytab_file=keytab_file)
+                f"{password}\n"
+                f"write_kt {keytab_file}\n"
+            )
             res = subprocess.run(
                 ["ktutil"],
                 cwd=str(keytab_dir.absolute()),
                 input=input_data.encode(),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
             )
             if res.returncode != 0:
                 print(
                     "Failed to setup keytab for Kerberos.\n"
-                    "stdout: \n{}\nstrerr: \n{}".format(res.stdout, res.stderr),
+                    f"stdout: \n{res.stdout}\nstrerr: \n{res.stderr}",
                     file=sys.stderr,
                 )
                 res.check_returncode()

@@ -196,7 +196,7 @@ class StickyAssignmentExecutor:
             self.consumer_to_all_potential_partitions[consumer_id] = []
             for topic in member_metadata.subscription:
                 if cluster.partitions_for_topic(topic) is None:
-                    log.warning("No partition metadata for topic {}".format(topic))
+                    log.warning(f"No partition metadata for topic {topic}")
                     continue
                 for p in cluster.partitions_for_topic(topic):
                     partition = TopicPartition(topic=topic, partition=p)
@@ -421,9 +421,7 @@ class StickyAssignmentExecutor:
         for consumer_id, consumer_partitions in self.current_assignment.items():
             for partition in consumer_partitions:
                 if partition in all_assigned_partitions:
-                    log.error(
-                        "{} is assigned to more than one consumer.".format(partition)
-                    )
+                    log.error(f"{partition} is assigned to more than one consumer.")
                 all_assigned_partitions[partition] = consumer_id
 
         # for each consumer that does not have all the topic partitions it can get
@@ -468,8 +466,8 @@ class StickyAssignmentExecutor:
         max_assignment_size = len(self.consumer_to_all_potential_partitions[consumer])
         if current_assignment_size > max_assignment_size:
             log.error(
-                "The consumer {} is assigned more partitions than the maximum "
-                "possible.".format(consumer)
+                f"The consumer {consumer} is assigned more partitions than the maximum "
+                "possible."
             )
         if current_assignment_size < max_assignment_size:
             # if a consumer is not assigned all its potential partitions it is subject
@@ -498,15 +496,13 @@ class StickyAssignmentExecutor:
                 if len(self.partition_to_all_potential_consumers[partition]) <= 1:
                     log.error(
                         "Expected more than one potential consumer for partition "
-                        "{}".format(partition)
+                        f"{partition}"
                     )
                 # the partition must have a current consumer
                 consumer = self.current_partition_consumer.get(partition)
                 if consumer is None:
                     log.error(
-                        "Expected partition {} to be assigned to a consumer".format(
-                            partition
-                        )
+                        f"Expected partition {partition} to be assigned to a consumer"
                     )
 
                 if (
@@ -785,7 +781,7 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
         else:
             log.debug(
                 "Member assignment is available, generating the metadata: "
-                "generation {}".format(cls.generation)
+                f"generation {cls.generation}"
             )
             partitions_by_topic = defaultdict(list)
             for topic_partition in member_assignment_partitions:
@@ -803,7 +799,7 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
         Arguments:
           assignment: MemberAssignment
         """
-        log.debug("On assignment: assignment={}".format(assignment))
+        log.debug(f"On assignment: assignment={assignment}")
         cls.member_assignment = assignment.partitions()
 
     @classmethod
@@ -813,5 +809,5 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
         Arguments:
           generation: generation id
         """
-        log.debug("On generation assignment: generation={}".format(generation))
+        log.debug(f"On generation assignment: generation={generation}")
         cls.generation = generation

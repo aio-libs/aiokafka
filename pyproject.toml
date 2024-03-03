@@ -89,6 +89,7 @@ select = [
     "F",  # pyflakes
     "E", "W",  # pycodestyle
     "I",  # isort
+    "UP",  # pyupgrade
 ]
 
 [tool.ruff.format]

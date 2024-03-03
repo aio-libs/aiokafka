@@ -93,7 +93,7 @@ class Message(Struct):
         elif version == 0:
             fields = (self.crc, self.magic, self.attributes, self.key, self.value)
         else:
-            raise ValueError("Unrecognized message version: %s" % (version,))
+            raise ValueError(f"Unrecognized message version: {version}")
         message = Message.SCHEMAS[version].encode(fields)
         if not recalc_crc:
             return message
@@ -109,7 +109,7 @@ class Message(Struct):
             data = io.BytesIO(data)
         # Partial decode required to determine message version
         base_fields = cls.SCHEMAS[0].fields[0:3]
-        crc, magic, attributes = [field.decode(data) for field in base_fields]
+        crc, magic, attributes = (field.decode(data) for field in base_fields)
         remaining = cls.SCHEMAS[magic].fields[3:]
         fields = [field.decode(data) for field in remaining]
         if magic == 1:
@@ -175,7 +175,7 @@ class Message(Struct):
 
 class PartialMessage(bytes):
     def __repr__(self):
-        return "PartialMessage(%s)" % (self,)
+        return f"PartialMessage({self})"
 
 
 class MessageSet(AbstractType):

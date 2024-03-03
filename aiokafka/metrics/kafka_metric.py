@@ -1,7 +1,7 @@
 import time
 
 
-class KafkaMetric(object):
+class KafkaMetric:
     # NOTE java constructor takes a lock instance
     def __init__(self, metric_name, measurable, config):
         if not metric_name:

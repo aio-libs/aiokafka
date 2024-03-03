@@ -1,7 +1,7 @@
 import abc
 
 
-class AbstractType(object):
+class AbstractType:
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod

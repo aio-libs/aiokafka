@@ -73,9 +73,7 @@ class DictReporter(AbstractMetricsReporter):
             prefix = None, group = 'bar', tags = None
             returns: 'bar'
         """
-        tags = ",".join(
-            "%s=%s" % (k, v) for k, v in sorted(metric.metric_name.tags.items())
-        )
+        tags = ",".join(f"{k}={v}" for k, v in sorted(metric.metric_name.tags.items()))
         return ".".join(x for x in [self._prefix, metric.metric_name.group, tags] if x)
 
     def configure(self, configs):

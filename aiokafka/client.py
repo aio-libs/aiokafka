@@ -511,7 +511,7 @@ class AIOKafkaClient:
         if not (await self.ready(node_id, group=group)):
             raise NodeNotReadyError(
                 "Attempt to send a request to node"
-                " which is not ready (node id {}).".format(node_id)
+                f" which is not ready (node id {node_id})."
             )
 
         # Every request gets a response, except one special case:

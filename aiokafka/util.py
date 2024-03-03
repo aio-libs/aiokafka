@@ -104,7 +104,7 @@ INTEGER_MAX_VALUE = 2**31 - 1
 INTEGER_MIN_VALUE = -(2**31)
 
 
-class WeakMethod(object):
+class WeakMethod:
     """
     Callable that weakly references a method and the object it is bound to. It
     is based on https://stackoverflow.com/a/24287465.

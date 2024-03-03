@@ -26,7 +26,7 @@ class ConsumerProtocolMemberAssignment(Struct):
         ]
 
 
-class ConsumerProtocol(object):
+class ConsumerProtocol:
     PROTOCOL_TYPE = "consumer"
     ASSIGNMENT_STRATEGIES = ("range", "roundrobin")
     METADATA = ConsumerProtocolMemberMetadata

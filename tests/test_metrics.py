@@ -554,7 +554,7 @@ def test_reporter(metrics):
 
     for key in list(expected.keys()):
         metrics = expected.pop(key)
-        expected["foo.%s" % (key,)] = metrics
+        expected[f"foo.{key}"] = metrics
     assert expected == foo_reporter.snapshot()
 
 
@@ -565,7 +565,7 @@ class ConstantMeasurable(AbstractMeasurable):
         return self._value
 
 
-class TimeKeeper(object):
+class TimeKeeper:
     """
     A clock that you can manually advance by calling sleep
     """

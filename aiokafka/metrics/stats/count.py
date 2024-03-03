@@ -7,7 +7,7 @@ class Count(AbstractSampledStat):
     """
 
     def __init__(self):
-        super(Count, self).__init__(0.0)
+        super().__init__(0.0)
 
     def update(self, sample, config, value, now):
         sample.value += 1.0

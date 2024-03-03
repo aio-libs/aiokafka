@@ -1,7 +1,7 @@
 import sys
 
 
-class MetricConfig(object):
+class MetricConfig:
     """Configuration values for metrics"""
 
     def __init__(

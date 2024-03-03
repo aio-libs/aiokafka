@@ -1,7 +1,7 @@
 import abc
 
 
-class AbstractMetricsReporter(object):
+class AbstractMetricsReporter:
     """
     An abstract class to allow things to listen as new metrics
     are created so they can be reported.

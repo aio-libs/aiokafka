@@ -25,7 +25,7 @@ class ControlRecord:
         return cls(version, type_)
 
     def __repr__(self):
-        return "ControlRecord(version={}, type_={})".format(self._version, self._type)
+        return f"ControlRecord(version={self._version}, type_={self._type})"
 
 
 ABORT_MARKER = ControlRecord(0, 0)

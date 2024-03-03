@@ -244,7 +244,7 @@ class AIOKafkaProducer:
             checker, compression_attrs = self._COMPRESSORS[compression_type]
             if not checker():
                 raise RuntimeError(
-                    "Compression library for {} not found".format(compression_type)
+                    f"Compression library for {compression_type} not found"
                 )
         else:
             compression_attrs = 0
@@ -259,7 +259,7 @@ class AIOKafkaProducer:
                 acks = -1
             elif acks not in ("all", -1):
                 raise ValueError(
-                    "acks={} not supported if enable_idempotence=True".format(acks)
+                    f"acks={acks} not supported if enable_idempotence=True"
                 )
             self._txn_manager = TransactionManager(
                 transactional_id, transaction_timeout_ms

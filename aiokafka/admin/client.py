@@ -223,9 +223,7 @@ class AIOKafkaAdminClient:
             if validate_only:
                 raise IncompatibleBrokerVersion(
                     "validate_only requires CreateTopicsRequest >= v1, "
-                    "which is not supported by Kafka {}.".format(
-                        self._client.api_version
-                    )
+                    f"which is not supported by Kafka {self._client.api_version}."
                 )
             request = CreateTopicsRequest[version](
                 create_topic_requests=topics,
@@ -239,8 +237,8 @@ class AIOKafkaAdminClient:
             )
         else:
             raise NotImplementedError(
-                "Support for CreateTopics v{} has not yet been added "
-                "to AIOKafkaAdminClient.".format(version)
+                f"Support for CreateTopics v{version} has not yet been added "
+                "to AIOKafkaAdminClient."
             )
         response = await self._client.send(self._client.get_random_node(), request)
         return response
@@ -317,7 +315,7 @@ class AIOKafkaAdminClient:
         if version == 0 and include_synonyms:
             raise IncompatibleBrokerVersion(
                 "include_synonyms requires DescribeConfigsRequest >= v1,"
-                " which is not supported by Kafka {}.".format(self._client.api_version)
+                f" which is not supported by Kafka {self._client.api_version}."
             )
         broker_res, topic_res = self._convert_config_resources(
             config_resources,
@@ -462,7 +460,7 @@ class AIOKafkaAdminClient:
             raise IncompatibleBrokerVersion(
                 "include_authorized_operations requests "
                 "DescribeGroupsRequest >= v3, which is not "
-                "supported by Kafka {}".format(version)
+                f"supported by Kafka {version}"
             )
         req_class = DescribeGroupsRequest[version]
         futures = []

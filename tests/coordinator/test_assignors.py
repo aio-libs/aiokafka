@@ -1,5 +1,4 @@
 # pylint: skip-file
-from __future__ import absolute_import
 
 from collections import defaultdict
 from random import randint, sample
@@ -478,10 +477,10 @@ def test_sticky_add_remove_topic_two_consumers(mocker):
 
 
 def test_sticky_reassignment_after_one_consumer_leaves(mocker):
-    partitions = dict([("t{}".format(i), set(range(i))) for i in range(1, 20)])
+    partitions = dict([(f"t{i}", set(range(i))) for i in range(1, 20)])
     cluster = create_cluster(
         mocker,
-        topics=set(["t{}".format(i) for i in range(1, 20)]),
+        topics=set([f"t{i}" for i in range(1, 20)]),
         topic_partitions_lambda=lambda t: partitions[t],
     )
 
@@ -489,8 +488,8 @@ def test_sticky_reassignment_after_one_consumer_leaves(mocker):
     for i in range(1, 20):
         topics = set()
         for j in range(1, i + 1):
-            topics.add("t{}".format(j))
-        subscriptions["C{}".format(i)] = topics
+            topics.add(f"t{j}")
+        subscriptions[f"C{i}"] = topics
 
     member_metadata = make_member_metadata(subscriptions)
 
@@ -514,7 +513,7 @@ def test_sticky_reassignment_after_one_consumer_added(mocker):
 
     subscriptions = defaultdict(set)
     for i in range(1, 10):
-        subscriptions["C{}".format(i)] = {"t"}
+        subscriptions[f"C{i}"] = {"t"}
 
     member_metadata = make_member_metadata(subscriptions)
 
@@ -533,17 +532,17 @@ def test_sticky_reassignment_after_one_consumer_added(mocker):
 
 
 def test_sticky_same_subscriptions(mocker):
-    partitions = dict([("t{}".format(i), set(range(i))) for i in range(1, 15)])
+    partitions = dict([(f"t{i}", set(range(i))) for i in range(1, 15)])
     cluster = create_cluster(
         mocker,
-        topics=set(["t{}".format(i) for i in range(1, 15)]),
+        topics=set([f"t{i}" for i in range(1, 15)]),
         topic_partitions_lambda=lambda t: partitions[t],
     )
 
     subscriptions = defaultdict(set)
     for i in range(1, 9):
         for j in range(1, len(partitions) + 1):
-            subscriptions["C{}".format(i)].add("t{}".format(j))
+            subscriptions[f"C{i}"].add(f"t{j}")
 
     member_metadata = make_member_metadata(subscriptions)
 
@@ -565,7 +564,7 @@ def test_sticky_large_assignment_with_multiple_consumers_leaving(mocker):
     n_topics = 40
     n_consumers = 200
 
-    all_topics = set(["t{}".format(i) for i in range(1, n_topics + 1)])
+    all_topics = set([f"t{i}" for i in range(1, n_topics + 1)])
     partitions = dict([(t, set(range(1, randint(0, 10) + 1))) for t in all_topics])
     cluster = create_cluster(
         mocker, topics=all_topics, topic_partitions_lambda=lambda t: partitions[t]
@@ -574,7 +573,7 @@ def test_sticky_large_assignment_with_multiple_consumers_leaving(mocker):
     subscriptions = defaultdict(set)
     for i in range(1, n_consumers + 1):
         for j in range(0, randint(1, 20)):
-            subscriptions["C{}".format(i)].add("t{}".format(randint(1, n_topics)))
+            subscriptions[f"C{i}"].add(f"t{randint(1, n_topics)}")
 
     member_metadata = make_member_metadata(subscriptions)
 
@@ -588,7 +587,7 @@ def test_sticky_large_assignment_with_multiple_consumers_leaving(mocker):
         )
 
     for i in range(50):
-        member = "C{}".format(randint(1, n_consumers))
+        member = f"C{randint(1, n_consumers)}"
         if member in subscriptions:
             del subscriptions[member]
             del member_metadata[member]
@@ -606,7 +605,7 @@ def test_new_subscription(mocker):
     subscriptions = defaultdict(set)
     for i in range(3):
         for j in range(i, 3 * i - 2 + 1):
-            subscriptions["C{}".format(i)].add("t{}".format(j))
+            subscriptions[f"C{i}"].add(f"t{j}")
 
     member_metadata = make_member_metadata(subscriptions)
 
@@ -669,9 +668,7 @@ def test_stickiness(mocker):
     for consumer, consumer_assignment in assignment.items():
         assert (
             len(consumer_assignment.partitions()) <= 1
-        ), "Consumer {} is assigned more topic partitions than expected.".format(
-            consumer
-        )
+        ), f"Consumer {consumer} is assigned more topic partitions than expected."
         if len(consumer_assignment.partitions()) == 1:
             partitions_assigned[consumer] = consumer_assignment.partitions()[0]
 
@@ -690,13 +687,11 @@ def test_stickiness(mocker):
     for consumer, consumer_assignment in assignment.items():
         assert (
             len(consumer_assignment.partitions()) <= 1
-        ), "Consumer {} is assigned more topic partitions than expected.".format(
-            consumer
-        )
+        ), f"Consumer {consumer} is assigned more topic partitions than expected."
         assert (
             consumer not in partitions_assigned
             or partitions_assigned[consumer] in consumer_assignment.partitions()
-        ), "Stickiness was not honored for consumer {}".format(consumer)
+        ), f"Stickiness was not honored for consumer {consumer}"
 
 
 def test_assignment_updated_for_deleted_topic(mocker):
@@ -784,7 +779,7 @@ def test_conflicting_previous_assignments(mocker):
 def test_reassignment_with_random_subscriptions_and_changes(
     mocker, execution_number, n_topics, n_consumers
 ):
-    all_topics = sorted(["t{}".format(i) for i in range(1, n_topics + 1)])
+    all_topics = sorted([f"t{i}" for i in range(1, n_topics + 1)])
     partitions = dict([(t, set(range(1, i + 1))) for i, t in enumerate(all_topics)])
     cluster = create_cluster(
         mocker, topics=all_topics, topic_partitions_lambda=lambda t: partitions[t]
@@ -793,7 +788,7 @@ def test_reassignment_with_random_subscriptions_and_changes(
     subscriptions = defaultdict(set)
     for i in range(n_consumers):
         topics_sample = sample(all_topics, randint(1, len(all_topics) - 1))
-        subscriptions["C{}".format(i)].update(topics_sample)
+        subscriptions[f"C{i}"].update(topics_sample)
 
     member_metadata = make_member_metadata(subscriptions)
 
@@ -803,7 +798,7 @@ def test_reassignment_with_random_subscriptions_and_changes(
     subscriptions = defaultdict(set)
     for i in range(n_consumers):
         topics_sample = sample(all_topics, randint(1, len(all_topics) - 1))
-        subscriptions["C{}".format(i)].update(topics_sample)
+        subscriptions[f"C{i}"].update(topics_sample)
 
     member_metadata = {}
     for member, topics in subscriptions.items():
@@ -992,12 +987,10 @@ def verify_validity_and_balance(subscriptions, assignment):
         partitions = assignment[consumer].partitions()
         for partition in partitions:
             assert partition.topic in subscriptions[consumer], (
-                "Error: Partition {} is assigned to consumer {}, "
-                "but it is not subscribed to topic {}\n"
-                "Subscriptions: {}\n"
-                "Assignments: {}".format(
-                    partition, consumers[i], partition.topic, subscriptions, assignment
-                )
+                f"Error: Partition {partition} is assigned to consumer {consumers[i]}, "
+                f"but it is not subscribed to topic {partition.topic}\n"
+                f"Subscriptions: {subscriptions}\n"
+                f"Assignments: {assignment}"
             )
         if i == len(consumers) - 1:
             continue

@@ -10,7 +10,7 @@ def _pack(f, value):
     except error as e:
         raise ValueError(
             "Error encountered when attempting to convert value: "
-            "{!r} to struct format: '{}', hit error: {}".format(value, f, e)
+            f"{value!r} to struct format: '{f}', hit error: {e}"
         )
 
 
@@ -21,7 +21,7 @@ def _unpack(f, data):
     except error as e:
         raise ValueError(
             "Error encountered when attempting to convert value: "
-            "{!r} to struct format: '{}', hit error: {}".format(data, f, e)
+            f"{data!r} to struct format: '{f}', hit error: {e}"
         )
 
 
@@ -187,9 +187,7 @@ class Schema(AbstractType):
                     field_val = getattr(value, self.names[i])
                 except AttributeError:
                     field_val = value[i]
-                key_vals.append(
-                    "%s=%s" % (self.names[i], self.fields[i].repr(field_val))
-                )
+                key_vals.append(f"{self.names[i]}={self.fields[i].repr(field_val)}")
             return "(" + ", ".join(key_vals) + ")"
         except Exception:
             return repr(value)
@@ -238,7 +236,7 @@ class UnsignedVarInt32(AbstractType):
             value |= (b & 0x7F) << i
             i += 7
             if i > 28:
-                raise ValueError("Invalid value {}".format(value))
+                raise ValueError(f"Invalid value {value}")
         value |= b << i
         return value
 
@@ -278,7 +276,7 @@ class VarInt64(AbstractType):
             value |= (b & 0x7F) << i
             i += 7
             if i > 63:
-                raise ValueError("Invalid value {}".format(value))
+                raise ValueError(f"Invalid value {value}")
         value |= b << i
         return (value >> 1) ^ -(value & 1)
 
@@ -324,7 +322,7 @@ class TaggedFields(AbstractType):
         for i in range(num_fields):
             tag = UnsignedVarInt32.decode(data)
             if tag <= prev_tag:
-                raise ValueError("Invalid or out-of-order tag {}".format(tag))
+                raise ValueError(f"Invalid or out-of-order tag {tag}")
             prev_tag = tag
             size = UnsignedVarInt32.decode(data)
             val = data.read(size)
@@ -336,10 +334,8 @@ class TaggedFields(AbstractType):
         ret = UnsignedVarInt32.encode(len(value))
         for k, v in value.items():
             # do we allow for other data types ?? It could get complicated really fast
-            assert isinstance(v, bytes), "Value {} is not a byte array".format(v)
-            assert (
-                isinstance(k, int) and k > 0
-            ), "Key {} is not a positive integer".format(k)
+            assert isinstance(v, bytes), f"Value {v} is not a byte array"
+            assert isinstance(k, int) and k > 0, f"Key {k} is not a positive integer"
             ret += UnsignedVarInt32.encode(k)
             ret += v
         return ret

@@ -5,7 +5,7 @@ class Max(AbstractSampledStat):
     """An AbstractSampledStat that gives the max over its samples."""
 
     def __init__(self):
-        super(Max, self).__init__(float("-inf"))
+        super().__init__(float("-inf"))
 
     def update(self, sample, config, value, now):
         sample.value = max(sample.value, value)

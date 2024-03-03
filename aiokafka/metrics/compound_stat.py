@@ -19,7 +19,7 @@ class AbstractCompoundStat(AbstractStat):
         raise NotImplementedError
 
 
-class NamedMeasurable(object):
+class NamedMeasurable:
     def __init__(self, metric_name, measurable_stat):
         self._name = metric_name
         self._stat = measurable_stat

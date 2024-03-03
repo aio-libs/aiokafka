@@ -829,7 +829,7 @@ def _address_family(address):
         try:
             socket.inet_pton(af, address)
             return af
-        except (ValueError, AttributeError, socket.error):
+        except (OSError, ValueError, AttributeError):
             continue
     return socket.AF_UNSPEC
 
@@ -877,7 +877,7 @@ def get_ip_port_afi(host_and_port_str):
                     " consider `pip install win_inet_pton`"
                 )
                 pass
-            except (ValueError, socket.error):
+            except (OSError, ValueError):
                 # it's a host:port pair
                 pass
             host, port = host_and_port_str.rsplit(":", 1)

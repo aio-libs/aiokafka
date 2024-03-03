@@ -346,7 +346,7 @@ class ClusterMetadata:
 
         # Use a coordinator-specific node id so that group requests
         # get a dedicated connection
-        node_id = "coordinator-{}".format(response.coordinator_id)
+        node_id = f"coordinator-{response.coordinator_id}"
         coordinator = BrokerMetadata(node_id, response.host, response.port, None)
 
         log.info("Group coordinator for %s is %s", group, coordinator)

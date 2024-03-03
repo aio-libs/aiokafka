@@ -209,7 +209,7 @@ def test_unavailable_codec(compression_type, name, checker_name):
         builder = LegacyRecordBatchBuilder(
             magic=0, compression_type=compression_type, batch_size=1024
         )
-        error_msg = "Libraries for {} compression codec not found".format(name)
+        error_msg = f"Libraries for {name} compression codec not found"
         with pytest.raises(UnsupportedCodecError, match=error_msg):
             builder.append(0, timestamp=None, key=None, value=b"M")
             builder.build()

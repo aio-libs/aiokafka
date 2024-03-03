@@ -176,9 +176,7 @@ def test_default_correct_metadata_response():
     assert meta.crc is None
     assert meta.size == 16
     assert repr(meta) == (
-        "DefaultRecordMetadata(offset=0, size={}, timestamp={})".format(
-            meta.size, meta.timestamp
-        )
+        f"DefaultRecordMetadata(offset=0, size={meta.size}, timestamp={meta.timestamp})"
     )
 
 
@@ -252,7 +250,7 @@ def test_unavailable_codec(compression_type, name, checker_name):
             base_sequence=-1,
             batch_size=1024,
         )
-        error_msg = "Libraries for {} compression codec not found".format(name)
+        error_msg = f"Libraries for {name} compression codec not found"
         with pytest.raises(UnsupportedCodecError, match=error_msg):
             builder.append(0, timestamp=None, key=None, value=b"M", headers=[])
             builder.build()

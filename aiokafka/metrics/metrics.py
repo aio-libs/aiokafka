@@ -12,7 +12,7 @@ from .stats import Sensor
 logger = logging.getLogger(__name__)
 
 
-class Metrics(object):
+class Metrics:
     """
     A registry of sensors and metrics.
 
@@ -240,14 +240,14 @@ class Metrics(object):
         with self._lock:
             if metric.metric_name in self.metrics:
                 raise ValueError(
-                    'A metric named "%s" already exists, cannot'
-                    " register another one." % (metric.metric_name,)
+                    f'A metric named "{metric.metric_name}" already exists, cannot'
+                    " register another one."
                 )
             self.metrics[metric.metric_name] = metric
             for reporter in self._reporters:
                 reporter.metric_change(metric)
 
-    class ExpireSensorTask(object):
+    class ExpireSensorTask:
         """
         This iterates over every Sensor and triggers a remove_sensor
         if it has expired. Package private for testing
