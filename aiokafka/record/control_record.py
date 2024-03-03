@@ -1,5 +1,7 @@
 import struct
 
+_SCHEMA = struct.Struct(">HH")
+
 
 class ControlRecord:
     def __init__(self, version, type_):
@@ -20,8 +22,8 @@ class ControlRecord:
         return False
 
     @classmethod
-    def parse(cls, data: bytes, _schema=struct.Struct(">HH")):
-        version, type_ = _schema.unpack_from(data)
+    def parse(cls, data: bytes):
+        version, type_ = _SCHEMA.unpack_from(data)
         return cls(version, type_)
 
     def __repr__(self):

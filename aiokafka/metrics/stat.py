@@ -19,4 +19,4 @@ class AbstractStat:
             value (float): The value to record
             timeMs (int): The POSIX time in milliseconds this value occurred
         """
-        raise NotImplementedError
+        ...

@@ -1078,7 +1078,7 @@ class AIOKafkaConsumer:
             try:
                 pattern = re.compile(pattern)
             except re.error as err:
-                raise ValueError(f"{pattern!r} is not a valid pattern: {err}")
+                raise ValueError(f"{pattern!r} is not a valid pattern: {err}") from err
             self._subscription.subscribe_pattern(pattern=pattern, listener=listener)
             # NOTE: set_topics will trigger a rebalance, so the coordinator
             # will get the initial subscription shortly by ``metadata_changed``
@@ -1274,7 +1274,7 @@ class AIOKafkaConsumer:
             try:
                 return await self.getone()
             except ConsumerStoppedError:
-                raise StopAsyncIteration  # noqa: F821
+                raise StopAsyncIteration from None
             except (
                 TopicAuthorizationFailedError,
                 OffsetOutOfRangeError,

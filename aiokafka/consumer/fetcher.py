@@ -292,7 +292,9 @@ class PartitionRecords:
         try:
             control_record = next(next_batch)
         except StopIteration:  # pragma: no cover
-            raise Errors.KafkaError("Control batch did not contain any records")
+            raise Errors.KafkaError(
+                "Control batch did not contain any records"
+            ) from None
         return ControlRecord.parse(control_record.key) == ABORT_MARKER
 
     def _consumer_record(self, tp, record):
@@ -578,9 +580,9 @@ class Fetcher:
                     self._pending_tasks -= done_pending
         except asyncio.CancelledError:
             pass
-        except Exception:  # pragma: no cover
-            log.error("Unexpected error in fetcher routine", exc_info=True)
-            raise Errors.KafkaError("Unexpected error during data retrieval")
+        except Exception as exc:  # pragma: no cover
+            log.exception("Unexpected error in fetcher routine")
+            raise Errors.KafkaError("Unexpected error during data retrieval") from exc
 
     def _get_actions_per_node(self, assignment):
         """For each assigned partition determine the action needed to be
@@ -936,10 +938,10 @@ class Fetcher:
                         await asyncio.sleep(self._retry_backoff)
                     else:
                         return offsets
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as exc:
             raise KafkaTimeoutError(
-                "Failed to get offsets by times in %s ms" % timeout_ms
-            )
+                f"Failed to get offsets by times in {timeout_ms} ms"
+            ) from exc
 
     async def _proc_offset_requests(self, timestamps):
         """Fetch offsets for each partition in timestamps dict. This may send

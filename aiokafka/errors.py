@@ -860,7 +860,7 @@ class MemberIdRequired(BrokerResponseError):
 
 
 def _iter_broker_errors():
-    for name, obj in inspect.getmembers(sys.modules[__name__]):
+    for _, obj in inspect.getmembers(sys.modules[__name__]):
         if (
             inspect.isclass(obj)
             and issubclass(obj, BrokerResponseError)

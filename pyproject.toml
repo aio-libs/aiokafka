@@ -92,6 +92,9 @@ select = [
     "UP",  # pyupgrade
     "YTT",  # flake8-2020
     "ASYNC",  # flake8-async
+    # "S",  # flake8-bandit
+    # "BLE",  # flake8-blind-except
+    # "B",  # flake8-bugbear
 ]
 
 [tool.ruff.format]

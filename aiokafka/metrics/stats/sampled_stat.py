@@ -27,12 +27,10 @@ class AbstractSampledStat(AbstractMeasurableStat):
         self._current = 0
 
     @abc.abstractmethod
-    def update(self, sample, config, value, time_ms):
-        raise NotImplementedError
+    def update(self, sample, config, value, time_ms): ...
 
     @abc.abstractmethod
-    def combine(self, samples, config, now):
-        raise NotImplementedError
+    def combine(self, samples, config, now): ...
 
     def record(self, config, value, time_ms):
         sample = self.current(time_ms)

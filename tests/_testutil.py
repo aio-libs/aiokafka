@@ -383,7 +383,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 
     async def wait_topic(self, client, topic):
         client.add_topic(topic)
-        for i in range(5):
+        for _ in range(5):
             ok = await client.force_metadata_update()
             if ok:
                 ok = topic in client.cluster.topics()

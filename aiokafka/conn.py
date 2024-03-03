@@ -470,7 +470,7 @@ class AIOKafkaConnection:
             self.close(reason=CloseReason.CONNECTION_BROKEN)
             raise Errors.KafkaConnectionError(
                 f"Connection at {self._host}:{self._port} broken: {err}"
-            )
+            ) from err
 
         log.debug("%s Request %d: %s", self, correlation_id, request)
 
@@ -494,7 +494,7 @@ class AIOKafkaConnection:
             self.close(reason=CloseReason.CONNECTION_BROKEN)
             raise Errors.KafkaConnectionError(
                 f"Connection at {self._host}:{self._port} broken: {err}"
-            )
+            ) from err
 
         if not expect_response:
             return self._writer.drain()

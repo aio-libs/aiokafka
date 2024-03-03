@@ -130,7 +130,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
         # produce messages without acknowledge
         req = []
-        for i in range(10):
+        for _ in range(10):
             req.append(conn.send(request, expect_response=False))
         # make sure futures no stuck in queue
         self.assertEqual(len(conn._requests), 0)

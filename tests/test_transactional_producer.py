@@ -23,7 +23,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer",
         )
-        producer
         with self.assertRaises(UnsupportedVersionError):
             await producer.start()
         await producer.stop()
@@ -346,7 +345,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         await producer.begin_transaction()
         futs = []
-        for i in range(10):
+        for _ in range(10):
             fut = await producer.send(self.topic, b"Super msg")
             futs.append(fut)
 

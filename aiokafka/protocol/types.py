@@ -11,7 +11,7 @@ def _pack(f, value):
         raise ValueError(
             "Error encountered when attempting to convert value: "
             f"{value!r} to struct format: '{f}', hit error: {e}"
-        )
+        ) from e
 
 
 def _unpack(f, data):
@@ -22,7 +22,7 @@ def _unpack(f, data):
         raise ValueError(
             "Error encountered when attempting to convert value: "
             f"{data!r} to struct format: '{f}', hit error: {e}"
-        )
+        ) from e
 
 
 class Int8(AbstractType):
@@ -319,7 +319,7 @@ class TaggedFields(AbstractType):
         if not num_fields:
             return ret
         prev_tag = -1
-        for i in range(num_fields):
+        for _ in range(num_fields):
             tag = UnsignedVarInt32.decode(data)
             if tag <= prev_tag:
                 raise ValueError(f"Invalid or out-of-order tag {tag}")

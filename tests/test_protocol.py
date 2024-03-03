@@ -291,11 +291,9 @@ def test_decode_fetch_response_partial():
 
 
 def test_struct_unrecognized_kwargs():
-    try:
+    # Structs should not allow unrecognized kwargs
+    with pytest.raises(ValueError):
         MetadataRequest[0](topicz="foo")
-        assert False, "Structs should not allow unrecognized kwargs"
-    except ValueError:
-        pass
 
 
 def test_struct_missing_kwargs():

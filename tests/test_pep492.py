@@ -83,8 +83,8 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(consumer.stop)
 
         with self.assertRaises(NoOffsetForPartitionError):
-            async for m in consumer:
-                m  # pragma: no cover
+            async for _m in consumer:
+                pass  # pragma: no cover
 
     @run_until_complete
     async def test_consumer_stops_iter(self):
@@ -98,7 +98,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
 
         async def iterator():
             async for msg in consumer:  # pragma: no cover
-                assert False, f"No items should be here, got {msg}"
+                raise AssertionError(f"No items should be here, got {msg}")
 
         task = create_task(iterator())
         await asyncio.sleep(0.1)

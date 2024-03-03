@@ -17,7 +17,7 @@ class AbstractMeasurable:
         Returns:
             The measured value
         """
-        raise NotImplementedError
+        ...
 
 
 class AnonMeasurable(AbstractMeasurable):

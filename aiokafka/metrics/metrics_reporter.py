@@ -18,7 +18,7 @@ class AbstractMetricsReporter:
         Arguments:
             metrics (list of KafkaMetric): All currently existing metrics
         """
-        raise NotImplementedError
+        ...
 
     @abc.abstractmethod
     def metric_change(self, metric):
@@ -28,7 +28,7 @@ class AbstractMetricsReporter:
         Arguments:
             metric (KafkaMetric)
         """
-        raise NotImplementedError
+        ...
 
     @abc.abstractmethod
     def metric_removal(self, metric):
@@ -38,7 +38,7 @@ class AbstractMetricsReporter:
         Arguments:
             metric (KafkaMetric)
         """
-        raise NotImplementedError
+        ...
 
     @abc.abstractmethod
     def configure(self, configs):
@@ -48,9 +48,9 @@ class AbstractMetricsReporter:
         Arguments:
             configs (dict of {str, ?})
         """
-        raise NotImplementedError
+        ...
 
     @abc.abstractmethod
     def close(self):
         """Called when the metrics repository is closed."""
-        raise NotImplementedError
+        ...

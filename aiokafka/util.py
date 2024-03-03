@@ -78,8 +78,8 @@ def commit_structure_validate(
         else:
             try:
                 offset, metadata = offset_and_metadata
-            except Exception:
-                raise ValueError(offsets)
+            except Exception as exc:
+                raise ValueError(offsets) from exc
 
             if not isinstance(metadata, str):
                 raise ValueError("Metadata should be a string")

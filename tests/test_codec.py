@@ -21,7 +21,7 @@ from ._testutil import random_string
 
 
 def test_gzip() -> None:
-    for i in range(1000):
+    for _ in range(1000):
         b1 = random_string(100)
         b2 = gzip_decode(gzip_encode(b1))
         assert b1 == b2
@@ -29,7 +29,7 @@ def test_gzip() -> None:
 
 @pytest.mark.skipif(not has_snappy(), reason="Snappy not available")
 def test_snappy() -> None:
-    for i in range(1000):
+    for _ in range(1000):
         b1 = random_string(100)
         b2 = snappy_decode(snappy_encode(b1))
         assert b1 == b2
@@ -89,7 +89,7 @@ def test_snappy_encode_xerial() -> None:
 
 @pytest.mark.skipif(not has_lz4(), reason="LZ4 not available")
 def test_lz4() -> None:
-    for i in range(1000):
+    for _ in range(1000):
         b1 = random_string(100)
         b2 = lz4_decode(lz4_encode(b1))
         assert len(b1) == len(b2)
@@ -98,7 +98,7 @@ def test_lz4() -> None:
 
 @pytest.mark.skipif(not has_lz4(), reason="LZ4 not available")
 def test_lz4_incremental() -> None:
-    for i in range(1000):
+    for _ in range(1000):
         # lz4 max single block size is 4MB
         # make sure we test with multiple-blocks
         b1 = random_string(100) * 50000

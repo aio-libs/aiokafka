@@ -350,17 +350,17 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
             self._pos += size
             return _LegacyRecordMetadataPy(offset, crc, size, timestamp)
 
-        except struct.error:
+        except struct.error as exc:
             # perform expensive type checking only to translate struct errors
             # to human-readable messages
             if not isinstance(offset, int):
-                raise TypeError(offset)
+                raise TypeError(offset) from exc
             if not isinstance(timestamp, int):
-                raise TypeError(timestamp)
+                raise TypeError(timestamp) from exc
             if not isinstance(key, (bytes, bytearray, memoryview, NoneType)):
-                raise TypeError("Unsupported type for key: %s" % type(key))
+                raise TypeError(f"Unsupported type for key: {type(key)}") from exc
             if not isinstance(value, (bytes, bytearray, memoryview, NoneType)):
-                raise TypeError("Unsupported type for value: %s" % type(value))
+                raise TypeError(f"Unsupported type for value: {type(value)}") from exc
             raise
 
     def _encode_msg(
@@ -499,7 +499,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
         try:
             return cls.RECORD_OVERHEAD[magic]
         except KeyError:
-            raise ValueError("Unsupported magic: %d" % magic)
+            raise ValueError(f"Unsupported magic: {magic}") from None
 
 
 class _LegacyRecordMetadataPy:

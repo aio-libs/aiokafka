@@ -367,7 +367,7 @@ class ManualSubscription(Subscription):
         self._assignment = Assignment(user_assignment)
 
     def _assign(self, topic_partitions: Set[TopicPartition]):  # pragma: no cover
-        assert False, "Should not be called"
+        raise AssertionError("Should not be called")
 
     @property
     def _reassignment_in_progress(self):
@@ -378,7 +378,7 @@ class ManualSubscription(Subscription):
         pass
 
     def _begin_reassignment(self):  # pragma: no cover
-        assert False, "Should not be called"
+        raise AssertionError("Should not be called")
 
 
 class Assignment:

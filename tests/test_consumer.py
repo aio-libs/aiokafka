@@ -107,7 +107,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             offset = 0
 
         messages = []
-        for i in range(200):
+        for _ in range(200):
             message = await consumer.getone()
             messages.append(message)
         self.assert_message_count(messages, 200)
@@ -235,7 +235,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         messages = []
 
         async def task(tp, messages):
-            for i in range(100):
+            for _ in range(100):
                 m = await consumer.getone(tp)
                 self.assertEqual(m.partition, tp.partition)
                 messages.append(m)
@@ -254,7 +254,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer2 = await self.consumer_factory(group=None)
 
         messages = []
-        for i in range(200):
+        for _ in range(200):
             message = await consumer1.getone()
             messages.append(message)
         self.assert_message_count(messages, 200)
@@ -263,7 +263,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             await consumer1.commit()
 
         messages = []
-        for i in range(200):
+        for _ in range(200):
             message = await consumer2.getone()
             messages.append(message)
         self.assert_message_count(messages, 200)
@@ -278,7 +278,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         messages = []
         while True:
             resp = await consumer.getmany(timeout_ms=1000)
-            for partition, msg_list in resp.items():
+            for _partition, msg_list in resp.items():
                 messages += msg_list
             if len(messages) >= 200:
                 break
@@ -293,7 +293,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         messages = []
         while True:
             resp = await consumer.getmany(p0, timeout_ms=1000)
-            for partition, msg_list in resp.items():
+            for _partition, msg_list in resp.items():
                 messages += msg_list
             if len(messages) >= 100:
                 break
@@ -301,7 +301,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         while True:
             resp = await consumer.getmany(p1, timeout_ms=1000)
-            for partition, msg_list in resp.items():
+            for _partition, msg_list in resp.items():
                 messages += msg_list
             if len(messages) >= 200:
                 break
@@ -321,7 +321,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer = await self.consumer_factory()
         expected_messages = set(small_messages + large_messages)
         actual_messages = []
-        for i in range(20):
+        for _ in range(20):
             m = await consumer.getone()
             actual_messages.append(m)
         actual_messages = {m.value for m in actual_messages}
@@ -393,7 +393,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer1 = await self.consumer_factory()
         consumer2 = await self.consumer_factory()
         result = []
-        for i in range(10):
+        for _ in range(10):
             msg = await consumer1.getone()
             result.append(msg.value)
         await consumer1.stop()
@@ -420,7 +420,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer.unsubscribe()
         consumer.assign([TopicPartition(self.topic, 0)])
         result = []
-        for i in range(10):
+        for _ in range(10):
             msg = await consumer.getone()
             result.append(msg.value)
         self.assertEqual(set(result), set(msgs1))
@@ -430,7 +430,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         consumer.unsubscribe()
         consumer.assign([TopicPartition(self.topic, 1)])
-        for i in range(10):
+        for _ in range(10):
             msg = await consumer.getone()
             result.append(msg.value)
         await consumer.stop()
@@ -453,7 +453,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(consumer.stop)
         await consumer.seek_to_committed()
         result = []
-        for i in range(20):
+        for _ in range(20):
             msg = await consumer.getone()
             result.append(msg.value)
         self.assertEqual(set(available_msgs), set(result))
@@ -479,7 +479,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(consumer.stop)
         await consumer.seek_to_committed()
         result = []
-        for i in range(10):
+        for _ in range(10):
             msg = await consumer.getone()
             result.append(msg.value)
         self.assertEqual(set(msgs2), set(result))
@@ -707,7 +707,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await consumer.start()
         self.add_cleanup(consumer.stop)
         result = []
-        for i in range(20):
+        for _ in range(20):
             msg = await consumer.getone()
             result.append(msg.value)
         self.assertEqual(set(available_msgs), set(result))
@@ -1219,18 +1219,18 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         tp = TopicPartition(self.topic, 0)
 
         with self.assertRaises(NoOffsetForPartitionError):
-            for x in range(2):
+            for _ in range(2):
                 await consumer.getmany(timeout_ms=1000)
         with self.assertRaises(NoOffsetForPartitionError):
-            for x in range(2):
+            for _ in range(2):
                 await consumer.getone()
 
         consumer.seek(tp, 19999)
         with self.assertRaises(OffsetOutOfRangeError):
-            for x in range(2):
+            for _ in range(2):
                 await consumer.getmany(tp, timeout_ms=1000)
         with self.assertRaises(OffsetOutOfRangeError):
-            for x in range(2):
+            for _ in range(2):
                 await consumer.getone(tp)
 
     @run_until_complete
@@ -1736,7 +1736,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             async def mock_send(node_id, req, group=None):
                 res = await orig_send(node_id, req, group=group)
                 if res.API_KEY == FetchRequest[0].API_KEY and not corrupted:
-                    for topic, partitions in res.topics:
+                    for _topic, partitions in res.topics:
                         for index, partition_data in enumerate(partitions):
                             partition_data = list(partition_data)
                             records_data = bytearray(partition_data[-1])
@@ -1856,7 +1856,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             async def mock_send(node_id, req, group=None, test_case=self):
                 res = await orig_send(node_id, req, group=group)
                 if res.API_KEY == FetchRequest[0].API_KEY:
-                    for topic, partitions in res.topics:
+                    for _topic, partitions in res.topics:
                         for partition_data in partitions:
                             data = partition_data[-1]
                             # Manually do unpack using internal tools so that
@@ -2079,7 +2079,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         loop = get_running_loop()
         start_time = loop.time()
         seen = []
-        for i in range(20):
+        for _ in range(20):
             msg = await consumer2.getone()
             seen.append(int(msg.value))
 
@@ -2093,7 +2093,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await self.send_messages(0, list(range(20, 30)))
         await self.send_messages(1, list(range(30, 40)))
 
-        for i in range(10):
+        for _ in range(10):
             msg = await consumer1.getone()
             self.assertGreaterEqual(int(msg.value), 20)
 

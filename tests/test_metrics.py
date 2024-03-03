@@ -67,12 +67,12 @@ def test_MetricName():
     assert name1 != name2
 
     # name and group must be non-empty. Everything else is optional.
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         MetricName("", "group")
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         MetricName("name", None)
     # tags must be a dict if supplied
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         MetricName("name", "group", tags=set())
 
     # Because of the implementation of __eq__ and __hash__, the values of
@@ -483,7 +483,7 @@ def test_Percentiles(metrics):
     assert abs(p50.value() - 50) < 1.0
     assert abs(p75.value() - 75) < 1.0
 
-    for i in range(buckets):
+    for _ in range(buckets):
         sensor.record(0.0)
 
     assert p25.value() < 1.0
@@ -502,7 +502,7 @@ def test_rate_windowing(mocker, time_keeper, metrics):
     sum_val = 0
     count = config.samples - 1
     # Advance 1 window after every record
-    for i in range(count):
+    for _ in range(count):
         sensor.record(100)
         sum_val += 100
         time_keeper.sleep(config.time_window_ms / 1000.0)

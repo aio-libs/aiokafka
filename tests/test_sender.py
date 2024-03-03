@@ -138,10 +138,12 @@ class TestSender(KafkaIntegrationTestCase):
 
         sender.client.coordinator_lookup = mock.Mock(side_effect=coordinator_lookup)
 
-        async def ready(coordinator_id, group, *, count=[0]):
-            c = count[0]
-            count[0] += 1
-            if c == 0:
+        ready_count = 0
+
+        async def ready(coordinator_id, group):
+            nonlocal ready_count
+            ready_count += 1
+            if ready_count == 1:
                 return False
             else:
                 return True

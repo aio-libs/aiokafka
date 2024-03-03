@@ -16,6 +16,7 @@ __all__ = [
     # Clients API
     "AIOKafkaProducer",
     "AIOKafkaConsumer",
+    "AIOKafkaClient",
     # ABC's
     "ConsumerRebalanceListener",
     # Errors
@@ -27,5 +28,3 @@ __all__ = [
     "OffsetAndTimestamp",
     "OffsetAndMetadata",
 ]
-
-AIOKafkaClient

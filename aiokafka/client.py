@@ -524,10 +524,10 @@ class AIOKafkaClient:
         )
         try:
             result = await future
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as exc:
             # close connection so it is renewed in next request
             self._conns[(node_id, group)].close(reason=CloseReason.CONNECTION_TIMEOUT)
-            raise RequestTimedOutError()
+            raise RequestTimedOutError() from exc
         else:
             return result
 

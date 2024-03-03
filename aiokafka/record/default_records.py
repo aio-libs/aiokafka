@@ -313,7 +313,9 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
         try:
             msg = self._read_msg()
         except (ValueError, IndexError) as err:
-            raise CorruptRecordException(f"Found invalid record structure: {err!r}")
+            raise CorruptRecordException(
+                f"Found invalid record structure: {err!r}"
+            ) from err
         else:
             self._next_record_index += 1
         return msg
