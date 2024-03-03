@@ -606,7 +606,7 @@ class GroupCoordinator(BaseCoordinator):
         except asyncio.CancelledError:  # pragma: no cover
             raise
         except Exception as exc:
-            log.error("Unexpected error in coordinator routine", exc_info=True)
+            log.exception("Unexpected error in coordinator routine")
             kafka_exc = Errors.KafkaError(
                 f"Unexpected error during coordination {exc!r}"
             )

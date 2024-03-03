@@ -101,6 +101,9 @@ select = [
     "T10",  # flake8-debugger
     "EXE",  # flake8-executable
     "FA",  # flake8-future-annotations
+    # XXX Causes warning https://github.com/astral-sh/ruff/issues/8272
+    "ISC",  # flake8-implicit-str-concat
+    "G",  # flake8-logging-format
 ]
 
 [tool.ruff.format]

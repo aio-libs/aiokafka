@@ -189,7 +189,7 @@ class Sender:
         ):
             raise
         except Exception:  # pragma: no cover
-            log.error("Unexpected error in sender routine", exc_info=True)
+            log.exception("Unexpected error in sender routine")
             raise KafkaError("Unexpected error during batch delivery")
 
     async def _maybe_wait_for_pid(self):
