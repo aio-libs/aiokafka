@@ -91,8 +91,11 @@ select = [
     "I",  # isort
     "UP",  # pyupgrade
     "YTT",  # flake8-2020
+    # TODO Uncomment after adding annotations to all modules
+    # All "ANN" rules are covered by mypy, except "ANN204"
+    # "ANN204",  # Missing return type annotation for special method ...
     "ASYNC",  # flake8-async
-    # "S",  # flake8-bandit
+    "S",  # flake8-bandit
     # "BLE",  # flake8-blind-except
     # "B",  # flake8-bugbear
     "A",  # flake8-builtins
@@ -107,10 +110,19 @@ select = [
     "INP",  # flake8-no-pep420
     "PIE",  # flake8-pie
     "T20",  # flake8-print
+    # "PT",  # flake8-pytest-style
+]
+
+ignore = [
+    "S101",  #  Use of `assert` detected
+    "S311",  # Standard pseudo-random generators are not suitable for cryptographic purposes
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**.py" = [
+    "S106", "S107",  # Possible hardcoded password
+    "S603",  # `subprocess` call: check for execution of untrusted input
+    "S607",  # Starting a process with a partial executable path
     "T201"  # `print` found
 ]
 
