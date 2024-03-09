@@ -42,6 +42,7 @@ Bugfixes:
 
 * Fix type annotation for `ConsumerRecord` (pr #912 by @zschumacher)
 * Improve send performance (issue #943)
+* Fix `DescribeConfigsResponse_v1`
 
 
 Improved Documentation:
