@@ -125,9 +125,9 @@ if NO_EXTENSIONS:
     encode_varint = encode_varint_py
 else:
     try:
-        from ._crecords import (  # noqa
-            decode_varint_cython,
+        from ._crecords import (
             crc32c_cython,
+            decode_varint_cython,
             encode_varint_cython,
             size_of_varint_cython,
         )

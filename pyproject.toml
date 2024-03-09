@@ -116,6 +116,10 @@ select = [
     "RET501", "RET502", "RET503",  # flake8-return
     "SLOT",  # flake8-slots
     "SIM",  # flake8-simplify
+    "TID",  # flake8-tidy-imports
+    "PTH",  # flake8-use-pathlib
+    # "FIX",  # flake8-fixme
+    "PGH",  # pygrep-hooks
 ]
 
 ignore = [
@@ -123,6 +127,7 @@ ignore = [
     "S311",  # Standard pseudo-random generators are not suitable for cryptographic purposes
     "B011",  # Do not `assert False`
     "SIM108",  # Use ternary operator
+    # TODO Remove when we drop support for Python <=3.10
     "SIM117",  # Use a single `with` statement with multiple contexts
 ]
 
