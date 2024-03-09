@@ -111,7 +111,7 @@ class FetchResult:
     def getone(self):
         tp = self._topic_partition
         if not self.check_assignment(tp) or not self.has_more():
-            return
+            return None
 
         while True:
             try:
@@ -120,7 +120,7 @@ class FetchResult:
                 # We should update position in any case
                 self._update_position()
                 self._partition_records = None
-                return
+                return None
             else:
                 self._update_position()
                 return msg

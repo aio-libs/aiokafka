@@ -101,7 +101,7 @@ def decode_varint_py(buffer, pos=0):
     result &= 0x7F
     pos += 1
     shift = 7
-    while 1:
+    while True:
         b = buffer[pos]
         result |= (b & 0x7F) << shift
         pos += 1

@@ -696,8 +696,9 @@ def test_assignment_updated_for_deleted_topic(mocker):
     def topic_partitions(topic):
         if topic == "t1":
             return {0}
-        if topic == "t3":
+        elif topic == "t3":
             return set(range(100))
+        return None
 
     cluster = create_cluster(
         mocker, topics={"t1", "t3"}, topic_partitions_lambda=topic_partitions

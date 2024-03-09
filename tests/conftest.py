@@ -112,7 +112,7 @@ if sys.platform != "win32":
         image = request.config.getoption("--docker-image")
         if not image:
             pytest.skip("Skipping functional test as `--docker-image` not provided")
-            return
+            return None
         if not request.config.getoption("--no-pull"):
             docker.images.pull(image)
         return image

@@ -220,7 +220,8 @@ class ClusterMetadata:
         """
         if not metadata.brokers:
             log.warning("No broker metadata found in MetadataResponse -- ignoring.")
-            return self.failed_update(Errors.MetadataEmptyBrokerList(metadata))
+            self.failed_update(Errors.MetadataEmptyBrokerList(metadata))
+            return
 
         _new_brokers = {}
         for broker in metadata.brokers:
@@ -340,7 +341,7 @@ class ClusterMetadata:
         if error_type is not Errors.NoError:
             log.error("GroupCoordinatorResponse error: %s", error_type)
             self._groups[group] = -1
-            return
+            return None
 
         # Use a coordinator-specific node id so that group requests
         # get a dedicated connection

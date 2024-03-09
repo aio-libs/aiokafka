@@ -110,12 +110,16 @@ select = [
     "INP",  # flake8-no-pep420
     "PIE",  # flake8-pie
     "T20",  # flake8-print
+    # TODO Uncomment after completely moving to pytest style
     # "PT",  # flake8-pytest-style
+    # The rest of RET rules don't improve code and may even worsen readability
+    "RET501", "RET502", "RET503",  # flake8-return
 ]
 
 ignore = [
-    "S101",  #  Use of `assert` detected
+    "S101",  # Use of `assert` detected
     "S311",  # Standard pseudo-random generators are not suitable for cryptographic purposes
+    "B011",  # Do not `assert False`
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -123,7 +127,7 @@ ignore = [
     "S106", "S107",  # Possible hardcoded password
     "S603",  # `subprocess` call: check for execution of untrusted input
     "S607",  # Starting a process with a partial executable path
-    "T201"  # `print` found
+    "T201",  # `print` found
 ]
 
 [tool.ruff.format]

@@ -325,6 +325,8 @@ class Sender:
         if commit_result is not None:
             return create_task(self._do_txn_commit(commit_result))
 
+        return None
+
     async def _do_add_partitions_to_txn(self, tps):
         # First assert we have a valid coordinator to send the request to
         node_id = await self._find_coordinator(
@@ -358,7 +360,7 @@ class Sender:
             node_id,
         )
         handler = TxnOffsetCommitHandler(self, offsets, group_id)
-        return await handler.do(node_id)
+        await handler.do(node_id)
 
     async def _do_txn_commit(self, commit_result):
         """Committing transaction should be done with care.
@@ -385,7 +387,7 @@ class Sender:
         )
 
         handler = EndTxnHandler(self, commit_result)
-        return await handler.do(node_id)
+        await handler.do(node_id)
 
 
 class BaseHandler:
@@ -439,7 +441,7 @@ class InitPIDHandler(BaseHandler):
             self._sender._txn_manager.set_pid_and_epoch(
                 resp.producer_id, resp.producer_epoch
             )
-            return
+            return None
         elif (
             error_type is CoordinatorNotAvailableError
             or error_type is NotCoordinatorError
@@ -537,7 +539,7 @@ class AddPartitionsToTxnHandler(BaseHandler):
             txn_manager.error_transaction(
                 TopicAuthorizationFailedError(unauthorized_topics)
             )
-        return
+        return None
 
 
 class AddOffsetsToTxnHandler(BaseHandler):
@@ -566,7 +568,7 @@ class AddOffsetsToTxnHandler(BaseHandler):
         if error_type is Errors.NoError:
             log.debug("Successfully added consumer group %s to transaction", group_id)
             txn_manager.consumer_group_added(group_id)
-            return
+            return None
         elif (
             error_type is CoordinatorNotAvailableError
             or error_type is NotCoordinatorError
@@ -586,7 +588,7 @@ class AddOffsetsToTxnHandler(BaseHandler):
             raise error_type(txn_manager.transactional_id)
         elif error_type is GroupAuthorizationFailedError:
             txn_manager.error_transaction(error_type(self._group_id))
-            return
+            return None
         else:
             log.error(
                 "Could not add consumer group due to unexpected error: %s", error_type
@@ -661,7 +663,7 @@ class TxnOffsetCommitHandler(BaseHandler):
                 elif error_type is GroupAuthorizationFailedError:
                     exc = error_type(self._group_id)
                     txn_manager.error_transaction(exc)
-                    return
+                    return None
                 else:
                     log.error(
                         "Could not commit offset for partition %s due to "
@@ -670,6 +672,8 @@ class TxnOffsetCommitHandler(BaseHandler):
                         error_type,
                     )
                     raise error_type()
+
+        return None
 
 
 class EndTxnHandler(BaseHandler):
@@ -695,7 +699,7 @@ class EndTxnHandler(BaseHandler):
 
         if error_type is Errors.NoError:
             txn_manager.complete_transaction()
-            return
+            return None
         elif (
             error_type is CoordinatorNotAvailableError
             or error_type is NotCoordinatorError

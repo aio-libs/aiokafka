@@ -630,7 +630,7 @@ class BaseSaslAuthenticator:
         try:
             data = self._authenticator.send(payload)
         except StopIteration:
-            return
+            return None
         else:
             return data
 
@@ -787,7 +787,7 @@ class OAuthAuthenticator(BaseSaslAuthenticator):
 
     async def step(self, payload):
         if self._token_sent:
-            return
+            return None
         token = await self._sasl_oauth_token_provider.token()
         token_extensions = self._token_extensions()
         self._token_sent = True
