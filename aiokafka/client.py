@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import random
 import time
@@ -188,10 +189,8 @@ class AIOKafkaClient:
     async def close(self):
         if self._sync_task:
             self._sync_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._sync_task
-            except asyncio.CancelledError:
-                pass
             self._sync_task = None
         # Be careful to wait for graceful closure of all connections, so we
         # process all pending buffers.
@@ -536,7 +535,7 @@ class AIOKafkaClient:
         if node_id is None:
             default_group_conns = [
                 n_id
-                for (n_id, group) in self._conns.keys()
+                for (n_id, group) in self._conns
                 if group == ConnectionGroup.DEFAULT
             ]
             if default_group_conns:
@@ -577,12 +576,10 @@ class AIOKafkaClient:
                 # so we send metadata request and wait response
                 task = create_task(conn.send(request))
                 await asyncio.wait([task], timeout=0.1)
-                try:
+                # metadata request can be cancelled in case
+                # of invalid correlationIds order
+                with contextlib.suppress(KafkaError):
                     await conn.send(MetadataRequest_v0([]))
-                except KafkaError:
-                    # metadata request can be cancelled in case
-                    # of invalid correlationIds order
-                    pass
                 response = await task
             except KafkaError:
                 continue

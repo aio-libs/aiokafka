@@ -328,8 +328,8 @@ def test_compact_data_structs():
     assert encoded == struct.pack("B", 0)
     decoded = cs.decode(io.BytesIO(encoded))
     assert decoded is None
-    assert b"\x01" == cs.encode("")
-    assert "" == cs.decode(io.BytesIO(b"\x01"))
+    assert cs.encode("") == b"\x01"
+    assert cs.decode(io.BytesIO(b"\x01")) == ""
     encoded = cs.encode("foobarbaz")
     assert cs.decode(io.BytesIO(encoded)) == "foobarbaz"
 

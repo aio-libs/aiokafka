@@ -94,10 +94,9 @@ class Sender:
         return self._sender_task
 
     async def close(self):
-        if self._sender_task is not None:
-            if not self._sender_task.done():
-                self._sender_task.cancel()
-                await self._sender_task
+        if self._sender_task is not None and not self._sender_task.done():
+            self._sender_task.cancel()
+            await self._sender_task
 
     async def _sender_routine(self):
         """Background task, that sends pending batches to leader nodes for

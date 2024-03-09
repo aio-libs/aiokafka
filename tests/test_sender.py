@@ -96,10 +96,7 @@ class TestSender(KafkaIntegrationTestCase):
 
         async def mocked_call(node_id):
             call_count[0] += 1
-            if call_count[0] == 1:
-                return False
-            else:
-                return True
+            return call_count[0] != 1
 
         sender._do_init_pid = mock.Mock(side_effect=mocked_call)
         return sender
@@ -143,10 +140,7 @@ class TestSender(KafkaIntegrationTestCase):
         async def ready(coordinator_id, group):
             nonlocal ready_count
             ready_count += 1
-            if ready_count == 1:
-                return False
-            else:
-                return True
+            return ready_count != 1
 
         sender.client.ready = mock.Mock(side_effect=ready)
 

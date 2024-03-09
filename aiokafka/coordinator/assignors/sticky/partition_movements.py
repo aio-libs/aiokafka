@@ -126,10 +126,10 @@ class PartitionMovements:
         # consumers seem to be very low (according to various randomized tests with the
         # given sticky algorithm) that it should not worth the added complexity of
         # handling those cases.
-        for cycle in cycles:
-            if len(cycle) == 3:  # indicates a cycle of length 2
-                return True
-        return False
+        return any(
+            len(cycle) == 3  # indicates a cycle of length 2
+            for cycle in cycles
+        )
 
     @staticmethod
     def _is_subcycle(cycle, cycles):

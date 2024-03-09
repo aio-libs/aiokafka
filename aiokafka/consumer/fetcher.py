@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import contextlib
 import logging
 import random
 import time
@@ -228,12 +229,14 @@ class PartitionRecords:
             ):
                 self._consume_aborted_up_to(next_batch.base_offset)
 
-                if next_batch.is_control_batch:
-                    if self._contains_abort_marker(next_batch):
-                        # Using `discard` instead of `remove`, because Kafka
-                        # may return an abort marker for an otherwise empty
-                        # topic-partition.
-                        self._aborted_producers.discard(next_batch.producer_id)
+                if (
+                    next_batch.is_control_batch  # fmt: skip
+                    and self._contains_abort_marker(next_batch)
+                ):
+                    # Using `discard` instead of `remove`, because Kafka
+                    # may return an abort marker for an otherwise empty
+                    # topic-partition.
+                    self._aborted_producers.discard(next_batch.producer_id)
 
                 if (
                     next_batch.is_transactional
@@ -447,10 +450,8 @@ class Fetcher:
         self._closed = True
 
         self._fetch_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await self._fetch_task
-        except asyncio.CancelledError:
-            pass
 
         # Fail all pending fetchone/fetchall calls
         for waiter in self._fetch_waiters:

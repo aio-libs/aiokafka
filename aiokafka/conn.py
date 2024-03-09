@@ -60,18 +60,17 @@ class VersionInfo:
 
     def pick_best(self, request_versions):
         api_key = request_versions[0].API_KEY
-        supported_versions = self._versions.get(api_key)
-        if supported_versions is None:
+        if api_key not in self._versions:
             return request_versions[0]
-        else:
-            for req_klass in reversed(request_versions):
-                if (
-                    supported_versions[0] <= req_klass.API_VERSION
-                    and req_klass.API_VERSION <= supported_versions[1]
-                ):
-                    return req_klass
+
+        min_version, max_version = self._versions[api_key]
+        for req_klass in reversed(request_versions):
+            if min_version <= req_klass.API_VERSION <= max_version:
+                return req_klass
+
         raise Errors.KafkaError(
-            f"Could not pick a version for API_KEY={api_key} from {supported_versions}."
+            f"Could not pick a version for API_KEY={api_key} from "
+            f"[{min_version}, {max_version}]."
         )
 
 

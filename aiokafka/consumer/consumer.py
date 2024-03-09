@@ -442,12 +442,14 @@ class AIOKafkaConsumer:
                 exclude_internal_topics=self._exclude_internal_topics,
             )
 
-            if self._subscription.subscription is not None:
-                if self._subscription.partitions_auto_assigned():
-                    # Either we passed `topics` to constructor or `subscribe`
-                    # was called before `start`
-                    await self._client.force_metadata_update()
-                    self._coordinator.assign_all_partitions(check_unknown=True)
+            if (
+                self._subscription.subscription is not None
+                and self._subscription.partitions_auto_assigned()
+            ):
+                # Either we passed `topics` to constructor or `subscribe`
+                # was called before `start`
+                await self._client.force_metadata_update()
+                self._coordinator.assign_all_partitions(check_unknown=True)
 
     async def _wait_topics(self):
         if self._subscription.subscription is not None:
@@ -485,11 +487,10 @@ class AIOKafkaConsumer:
         self._client.set_topics([tp.topic for tp in partitions])
 
         # If called before `start` we will delegate this to `start` call
-        if self._coordinator is not None:
-            if self._group_id is not None:
-                # refresh commit positions for all assigned partitions
-                assignment = self._subscription.subscription.assignment
-                self._coordinator.start_commit_offsets_refresh_task(assignment)
+        if self._coordinator is not None and self._group_id is not None:
+            # refresh commit positions for all assigned partitions
+            assignment = self._subscription.subscription.assignment
+            self._coordinator.start_commit_offsets_refresh_task(assignment)
 
     def assignment(self):
         """Get the set of partitions currently assigned to this consumer.

@@ -114,12 +114,16 @@ select = [
     # "PT",  # flake8-pytest-style
     # The rest of RET rules don't improve code and may even worsen readability
     "RET501", "RET502", "RET503",  # flake8-return
+    "SLOT",  # flake8-slots
+    "SIM",  # flake8-simplify
 ]
 
 ignore = [
     "S101",  # Use of `assert` detected
     "S311",  # Standard pseudo-random generators are not suitable for cryptographic purposes
     "B011",  # Do not `assert False`
+    "SIM108",  # Use ternary operator
+    "SIM117",  # Use a single `with` statement with multiple contexts
 ]
 
 [tool.ruff.lint.per-file-ignores]

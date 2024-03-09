@@ -181,14 +181,13 @@ class Metrics:
         sensor = self._sensors.get(name)
         if sensor:
             child_sensors = None
-            with sensor._lock:
-                with self._lock:
-                    val = self._sensors.pop(name, None)
-                    if val and val == sensor:
-                        for metric in sensor.metrics:
-                            self.remove_metric(metric.metric_name)
-                        logger.debug("Removed sensor with name %s", name)
-                        child_sensors = self._children_sensors.pop(sensor, None)
+            with sensor._lock, self._lock:
+                val = self._sensors.pop(name, None)
+                if val and val == sensor:
+                    for metric in sensor.metrics:
+                        self.remove_metric(metric.metric_name)
+                    logger.debug("Removed sensor with name %s", name)
+                    child_sensors = self._children_sensors.pop(sensor, None)
             if child_sensors:
                 for child_sensor in child_sensors:
                     self.remove_sensor(child_sensor.name)

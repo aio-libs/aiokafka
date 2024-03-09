@@ -931,7 +931,7 @@ def test_assignment_with_conflicting_previous_generations(mocker, execution_numb
         "C3": 2,
     }
     member_metadata = {}
-    for member in member_assignments.keys():
+    for member in member_assignments:
         member_metadata[member] = StickyPartitionAssignor._metadata(
             {"t"}, member_assignments[member], member_generations[member]
         )
@@ -1013,7 +1013,7 @@ def verify_validity_and_balance(subscriptions, assignment):
             assignments_by_topic = group_partitions_by_topic(partitions)
             other_assignments_by_topic = group_partitions_by_topic(other_partitions)
             if len(partitions) > len(other_partitions):
-                for topic in assignments_by_topic.keys():
+                for topic in assignments_by_topic:
                     assert topic not in other_assignments_by_topic, (
                         "Error: Some partitions can be moved from {} ({} partitions) "
                         "to {} ({} partitions) "
@@ -1029,7 +1029,7 @@ def verify_validity_and_balance(subscriptions, assignment):
                         )
                     )
             if len(other_partitions) > len(partitions):
-                for topic in other_assignments_by_topic.keys():
+                for topic in other_assignments_by_topic:
                     assert topic not in assignments_by_topic, (
                         "Error: Some partitions can be moved from {} ({} partitions) "
                         "to {} ({} partitions) "

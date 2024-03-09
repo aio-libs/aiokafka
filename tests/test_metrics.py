@@ -217,9 +217,9 @@ def test_hierarchical_sensors(metrics):
     gc = grandchild.metrics[0].value()
 
     # each metric should have a count equal to one + its children's count
-    assert 1.0 == gc
+    assert gc == 1.0
     assert 1.0 + gc == c1
-    assert 1.0 == c2
+    assert c2 == 1.0
     assert 1.0 + c1 == p2
     assert 1.0 + c1 + c2 == p1
     assert [child1, child2] == metrics._children_sensors.get(parent1)
@@ -373,9 +373,9 @@ def test_event_windowing(mocker, time_keeper):
     config = MetricConfig(event_window=1, samples=2)
     count.record(config, 1.0, time_keeper.ms())
     count.record(config, 1.0, time_keeper.ms())
-    assert 2.0 == count.measure(config, time_keeper.ms())
+    assert count.measure(config, time_keeper.ms()) == 2.0
     count.record(config, 1.0, time_keeper.ms())  # first event times out
-    assert 2.0 == count.measure(config, time_keeper.ms())
+    assert count.measure(config, time_keeper.ms()) == 2.0
 
 
 def test_time_windowing(mocker, time_keeper):
@@ -386,10 +386,10 @@ def test_time_windowing(mocker, time_keeper):
     count.record(config, 1.0, time_keeper.ms())
     time_keeper.sleep(0.001)
     count.record(config, 1.0, time_keeper.ms())
-    assert 2.0 == count.measure(config, time_keeper.ms())
+    assert count.measure(config, time_keeper.ms()) == 2.0
     time_keeper.sleep(0.001)
     count.record(config, 1.0, time_keeper.ms())  # oldest event times out
-    assert 2.0 == count.measure(config, time_keeper.ms())
+    assert count.measure(config, time_keeper.ms()) == 2.0
 
 
 def test_old_data_has_no_effect(mocker, time_keeper):
@@ -410,8 +410,8 @@ def test_old_data_has_no_effect(mocker, time_keeper):
     time_keeper.sleep(samples * window_ms / 1000.0)
     assert float("-inf") == max_stat.measure(config, time_keeper.ms())
     assert float(sys.maxsize) == min_stat.measure(config, time_keeper.ms())
-    assert 0.0 == avg_stat.measure(config, time_keeper.ms())
-    assert 0 == count_stat.measure(config, time_keeper.ms())
+    assert avg_stat.measure(config, time_keeper.ms()) == 0.0
+    assert count_stat.measure(config, time_keeper.ms()) == 0
 
 
 def test_duplicate_MetricName(metrics):

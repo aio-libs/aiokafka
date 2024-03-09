@@ -138,9 +138,10 @@ class ClusterMetadata:
         """Return node_id of leader, -1 unavailable, None if unknown."""
         if partition.topic not in self._partitions:
             return None
-        elif partition.partition not in self._partitions[partition.topic]:
+        partitions = self._partitions[partition.topic]
+        if partition.partition not in partitions:
             return None
-        return self._partitions[partition.topic][partition.partition].leader
+        return partitions[partition.partition].leader
 
     def partitions_for_broker(self, broker_id):
         """Return TopicPartitions for which the broker is a leader.

@@ -1,3 +1,4 @@
+import contextlib
 import logging
 from collections import defaultdict, namedtuple
 from copy import deepcopy
@@ -32,10 +33,7 @@ def has_identical_list_elements(list_):
     """
     if not list_:
         return True
-    for i in range(1, len(list_)):
-        if list_[i] != list_[i - 1]:
-            return False
-    return True
+    return all(list_[i] == list_[i - 1] for i in range(1, len(list_)))
 
 
 def subscriptions_comparator_key(element):
@@ -47,10 +45,8 @@ def partitions_comparator_key(element):
 
 
 def remove_if_present(collection, element):
-    try:
+    with contextlib.suppress(ValueError, KeyError):
         collection.remove(element)
-    except (ValueError, KeyError):
-        pass
 
 
 StickyAssignorMemberMetadataV1 = namedtuple(
@@ -127,7 +123,7 @@ class StickyAssignmentExecutor:
         # narrow down the reassignment scope to only those partitions that can actually
         # be reassigned
         fixed_partitions = set()
-        for partition in self.partition_to_all_potential_consumers.keys():
+        for partition in self.partition_to_all_potential_consumers:
             if not self._can_partition_participate_in_reassignment(partition):
                 fixed_partitions.add(partition)
         for fixed_partition in fixed_partitions:
@@ -137,7 +133,7 @@ class StickyAssignmentExecutor:
         # narrow down the reassignment scope to only those consumers that are subject to
         # reassignment
         fixed_assignments = {}
-        for consumer in self.consumer_to_all_potential_partitions.keys():
+        for consumer in self.consumer_to_all_potential_partitions:
             if not self._can_consumer_participate_in_reassignment(consumer):
                 self._remove_consumer_from_current_subscriptions_and_maintain_order(
                     consumer
@@ -599,7 +595,7 @@ class StickyAssignmentExecutor:
             consumer_to_assignment[consumer_id] = len(partitions)
 
         consumers_to_explore = set(consumer_to_assignment.keys())
-        for consumer_id in consumer_to_assignment.keys():
+        for consumer_id in consumer_to_assignment:
             if consumer_id in consumers_to_explore:
                 consumers_to_explore.remove(consumer_id)
                 for other_consumer_id in consumers_to_explore:
