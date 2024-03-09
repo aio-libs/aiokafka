@@ -106,11 +106,16 @@ select = [
     "G",  # flake8-logging-format
     "INP",  # flake8-no-pep420
     "PIE",  # flake8-pie
+    "T20",  # flake8-print
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**.py" = [
+    "T201"  # `print` found
 ]
 
 [tool.ruff.format]
 docstring-code-format = true
-
 
 [tool.mypy]
 python_version = "3.8"
