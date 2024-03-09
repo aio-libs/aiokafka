@@ -31,6 +31,9 @@ log = logging.getLogger(__name__)
 _missing = object()
 
 
+_DEFAULT_PARTITIONER = DefaultPartitioner()
+
+
 class AIOKafkaProducer:
     """A Kafka client that publishes records to the Kafka cluster.
 
@@ -205,10 +208,9 @@ class AIOKafkaProducer:
         value_serializer=None,
         compression_type=None,
         max_batch_size=16384,
-        partitioner=DefaultPartitioner(),
+        partitioner=_DEFAULT_PARTITIONER,
         max_request_size=1048576,
         linger_ms=0,
-        send_backoff_ms=100,
         retry_backoff_ms=100,
         security_protocol="PLAINTEXT",
         ssl_context=None,

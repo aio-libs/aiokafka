@@ -146,10 +146,10 @@ class Sender:
                 )
 
                 # create produce task for every batch
-                for node_id, batches in batches.items():
-                    task = create_task(self._send_produce_req(node_id, batches))
+                for node_id, node_batches in batches.items():
+                    task = create_task(self._send_produce_req(node_id, node_batches))
                     self._in_flight.add(node_id)
-                    for tp in batches:
+                    for tp in node_batches:
                         self._muted_partitions.add(tp)
                     tasks.add(task)
 
@@ -188,9 +188,9 @@ class Sender:
             TransactionalIdAuthorizationFailed,
         ):
             raise
-        except Exception:  # pragma: no cover
+        except Exception as exc:  # pragma: no cover
             log.exception("Unexpected error in sender routine")
-            raise KafkaError("Unexpected error during batch delivery")
+            raise KafkaError("Unexpected error during batch delivery") from exc
 
     async def _maybe_wait_for_pid(self):
         if self._txn_manager is None or self._txn_manager.has_pid():
@@ -223,21 +223,21 @@ class Sender:
                 coordinator_id = await self.client.coordinator_lookup(
                     coordinator_type, coordinator_key
                 )
-            except Errors.TransactionalIdAuthorizationFailed:
-                err = Errors.TransactionalIdAuthorizationFailed(
+            except Errors.TransactionalIdAuthorizationFailed as err:
+                new_err = Errors.TransactionalIdAuthorizationFailed(
                     self._txn_manager.transactional_id
                 )
-                raise err
-            except Errors.GroupAuthorizationFailedError:
-                err = Errors.GroupAuthorizationFailedError(coordinator_key)
-                raise err
+                raise new_err from err
+            except Errors.GroupAuthorizationFailedError as err:
+                new_err = Errors.GroupAuthorizationFailedError(coordinator_key)
+                raise new_err from err
             except Errors.CoordinatorNotAvailableError:
                 await self.client.force_metadata_update()
                 await asyncio.sleep(self._retry_backoff)
                 continue
             except Errors.KafkaError as err:
                 log.error("FindCoordinator Request failed: %s", err)
-                raise KafkaError(repr(err))
+                raise KafkaError(repr(err)) from err
 
             # Try to connect to confirm that the connection can be
             # established.

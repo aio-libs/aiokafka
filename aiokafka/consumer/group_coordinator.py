@@ -571,9 +571,9 @@ class GroupCoordinator(BaseCoordinator):
                     coordinator_id = await self._client.coordinator_lookup(
                         CoordinationType.GROUP, self.group_id
                     )
-                except Errors.GroupAuthorizationFailedError:
-                    err = Errors.GroupAuthorizationFailedError(self.group_id)
-                    raise err
+                except Errors.GroupAuthorizationFailedError as err:
+                    new_err = Errors.GroupAuthorizationFailedError(self.group_id)
+                    raise new_err from err
                 except Errors.KafkaError as err:
                     log.error("Group Coordinator Request failed: %s", err)
                     if err.retriable:
@@ -611,7 +611,7 @@ class GroupCoordinator(BaseCoordinator):
                 f"Unexpected error during coordination {exc!r}"
             )
             self._subscription.abort_waiters(kafka_exc)
-            raise kafka_exc
+            raise kafka_exc from exc
 
     async def __coordination_routine(self):
         """Main background task, that keeps track of changes in group
@@ -1018,12 +1018,12 @@ class GroupCoordinator(BaseCoordinator):
                 Errors.UnknownMemberIdError,
                 Errors.IllegalGenerationError,
                 Errors.RebalanceInProgressError,
-            ):
+            ) as exc:
                 raise Errors.CommitFailedError(
                     "Commit cannot be completed since the group has already "
                     "rebalanced and may have assigned the partitions "
                     "to another member"
-                )
+                ) from exc
             except Errors.KafkaError as err:
                 if not err.retriable:
                     raise
