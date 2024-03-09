@@ -1323,7 +1323,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                     main_self.assertTrue(
                         self.consumer._coordinator._rejoin_needed_fut.done()
                     )
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     # Exceptions here are intercepted by GroupCoordinator
                     faults.append(exc)
 
@@ -1336,7 +1336,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                     main_self.assertFalse(
                         self.consumer._coordinator._rejoin_needed_fut.done()
                     )
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     # Exceptions here are intercepted by GroupCoordinator
                     faults.append(exc)
 

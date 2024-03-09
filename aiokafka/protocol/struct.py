@@ -31,7 +31,7 @@ class Struct(AbstractType):
         self.encode = WeakMethod(self._encode_self)
 
     @classmethod
-    def encode(cls, item):  # pylint: disable=E0202
+    def encode(cls, item):
         bits = []
         for i, field in enumerate(cls.SCHEMA.fields):
             bits.append(field.encode(item[i]))

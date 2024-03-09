@@ -1474,8 +1474,8 @@ class CoordinatorGroupRebalance:
         """
         try:
             group_assignment = await self._coordinator._perform_assignment(response)
-        except Exception as e:
-            raise Errors.KafkaError(repr(e))
+        except Exception as e:  # noqa: BLE001
+            raise Errors.KafkaError(repr(e)) from e
 
         assignment_req = []
         for member_id, assignment in group_assignment.items():

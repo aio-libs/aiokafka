@@ -21,7 +21,7 @@ class ConsumerProtocolMemberAssignment(Struct):
     def partitions(self):
         return [
             TopicPartition(topic, partition)
-            for topic, partitions in self.assignment  # pylint: disable-msg=no-member
+            for topic, partitions in self.assignment
             for partition in partitions
         ]
 

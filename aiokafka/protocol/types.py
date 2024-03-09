@@ -189,7 +189,7 @@ class Schema(AbstractType):
                     field_val = value[i]
                 key_vals.append(f"{self.names[i]}={self.fields[i].repr(field_val)}")
             return "(" + ", ".join(key_vals) + ")"
-        except Exception:
+        except Exception:  # noqa: BLE001
             return repr(value)
 
 

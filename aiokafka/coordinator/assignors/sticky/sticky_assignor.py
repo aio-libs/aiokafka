@@ -748,9 +748,9 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
 
         try:
             decoded_user_data = StickyAssignorUserDataV1.decode(user_data)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             # ignore the consumer's previous assignment if it cannot be parsed
-            log.error("Could not parse member data", e)  # pylint: disable=logging-too-many-args
+            log.error("Could not parse member data: %r", e)
             return StickyAssignorMemberMetadataV1(
                 partitions=[],
                 generation=cls.DEFAULT_GENERATION_ID,
@@ -761,12 +761,11 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
         for (
             topic,
             partitions,
-        ) in decoded_user_data.previous_assignment:  # pylint: disable=no-member
+        ) in decoded_user_data.previous_assignment:
             member_partitions.extend(
                 [TopicPartition(topic, partition) for partition in partitions]
             )
         return StickyAssignorMemberMetadataV1(
-            # pylint: disable=no-member
             partitions=member_partitions,
             generation=decoded_user_data.generation,
             subscription=metadata.subscription,

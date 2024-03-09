@@ -77,7 +77,7 @@ def commit_structure_validate(
         else:
             try:
                 offset, metadata = offset_and_metadata
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 raise ValueError(offsets) from exc
 
             if not isinstance(metadata, str):
