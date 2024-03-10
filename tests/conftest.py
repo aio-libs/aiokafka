@@ -102,7 +102,6 @@ else:
     @pytest.fixture()
     def kerberos_utils():
         pytest.skip("Only unit tests on windows for now =(")
-        return
 
 
 if sys.platform != "win32":
@@ -285,7 +284,6 @@ else:
     @pytest.fixture(scope="session")
     def kafka_server():
         pytest.skip("Only unit tests on windows for now =(")
-        return
 
 
 @pytest.fixture(scope="class")

@@ -412,10 +412,7 @@ class AIOKafkaClient:
         """Callback called when connection is closed"""
         # Connection failures imply that our metadata is stale, so let's
         # refresh
-        if (
-            reason == CloseReason.CONNECTION_BROKEN
-            or reason == CloseReason.CONNECTION_TIMEOUT
-        ):
+        if reason in [CloseReason.CONNECTION_BROKEN, CloseReason.CONNECTION_TIMEOUT]:
             self.force_metadata_update()
 
     async def _get_conn(self, node_id, *, group=ConnectionGroup.DEFAULT, no_hint=False):
@@ -590,7 +587,7 @@ class AIOKafkaClient:
                 if isinstance(request, ApiVersionRequest_v0):
                     # Starting from 0.10 kafka broker we determine version
                     # by looking at ApiVersionResponse
-                    version = self._check_api_version_response(response)
+                    return self._check_api_version_response(response)
                 return version
 
         raise UnrecognizedBrokerVersion()

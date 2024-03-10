@@ -1152,16 +1152,15 @@ class Fetcher:
                         assert max_records >= 0  # Just in case
                         if max_records == 0:
                             break
-                else:
+                elif drained:
                     # We already got some messages from another partition -
                     # return them. We will raise this error on next call
-                    if drained:
-                        return drained
-                    else:
-                        # Remove error, so we can fetch on partition again
-                        del self._records[tp]
-                        self._notify(self._wait_consume_future)
-                        res_or_error.check_raise()
+                    return drained
+                else:
+                    # Remove error, so we can fetch on partition again
+                    del self._records[tp]
+                    self._notify(self._wait_consume_future)
+                    res_or_error.check_raise()
 
             if drained or not timeout:
                 return drained

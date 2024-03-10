@@ -1224,7 +1224,6 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         async def do_commit(*args, **kw):
             await asyncio.sleep(0.1)
-            return
 
         mocked.side_effect = do_commit
 

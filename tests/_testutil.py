@@ -302,6 +302,7 @@ class KerberosUtils:
                 ],
                 cwd=str(keytab_dir.absolute()),
                 capture_output=True,
+                check=False,
             )
             if res.returncode != 0:
                 print(
@@ -322,6 +323,7 @@ class KerberosUtils:
                 cwd=str(keytab_dir.absolute()),
                 input=input_data.encode(),
                 capture_output=True,
+                check=False,
             )
             if res.returncode != 0:
                 print(

@@ -921,9 +921,9 @@ def test_assignment_with_conflicting_previous_generations(mocker, execution_numb
     cluster = create_cluster(mocker, topics={"t"}, topics_partitions={0, 1, 2, 3, 4, 5})
 
     member_assignments = {
-        "C1": [TopicPartition("t", p) for p in {0, 1, 4}],
-        "C2": [TopicPartition("t", p) for p in {0, 2, 3}],
-        "C3": [TopicPartition("t", p) for p in {3, 4, 5}],
+        "C1": [TopicPartition("t", p) for p in [0, 1, 4]],
+        "C2": [TopicPartition("t", p) for p in [0, 2, 3]],
+        "C3": [TopicPartition("t", p) for p in [3, 4, 5]],
     }
     member_generations = {
         "C1": 1,

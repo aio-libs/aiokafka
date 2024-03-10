@@ -84,10 +84,10 @@ class SubscriptionState:
         return self._subscription._reassignment_in_progress
 
     def partitions_auto_assigned(self) -> bool:
-        return (
-            self._subscription_type == SubscriptionType.AUTO_TOPICS
-            or self._subscription_type == SubscriptionType.AUTO_PATTERN
-        )
+        return self._subscription_type in [
+            SubscriptionType.AUTO_TOPICS,
+            SubscriptionType.AUTO_PATTERN,
+        ]
 
     def is_assigned(self, tp: TopicPartition) -> bool:
         if self._subscription is None:
@@ -97,10 +97,7 @@ class SubscriptionState:
         return tp in self._subscription.assignment.tps
 
     def _set_subscription_type(self, subscription_type: SubscriptionType):
-        if (
-            self._subscription_type == SubscriptionType.NONE
-            or self._subscription_type == subscription_type
-        ):
+        if self._subscription_type in [SubscriptionType.NONE, subscription_type]:
             self._subscription_type = subscription_type
         else:
             raise IllegalStateError(
