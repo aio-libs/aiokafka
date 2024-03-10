@@ -458,7 +458,7 @@ class AIOKafkaConsumer:
 
     def _validate_topics(self, topics):
         if not isinstance(topics, (tuple, set, list)):
-            raise ValueError("Topics should be list of strings")
+            raise TypeError("Topics should be list of strings")
         return set(topics)
 
     def assign(self, partitions):
@@ -1069,9 +1069,9 @@ class AIOKafkaConsumer:
             TypeError: if listener is not a :class:`.ConsumerRebalanceListener`
         """
         if not (topics or pattern):
-            raise ValueError("You should provide either `topics` or `pattern`")
+            raise TypeError("You should provide either `topics` or `pattern`")
         if topics and pattern:
-            raise ValueError("You can't provide both `topics` and `pattern`")
+            raise TypeError("You can't provide both `topics` and `pattern`")
         if listener is not None and not isinstance(listener, ConsumerRebalanceListener):
             raise TypeError(
                 "listener should be an instance of ConsumerRebalanceListener"

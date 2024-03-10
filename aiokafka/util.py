@@ -70,7 +70,7 @@ def commit_structure_validate(
     formatted_offsets = {}
     for tp, offset_and_metadata in offsets.items():
         if not isinstance(tp, TopicPartition):
-            raise ValueError("Key should be TopicPartition instance")
+            raise TypeError("Key should be TopicPartition instance")
 
         if isinstance(offset_and_metadata, int):
             offset, metadata = offset_and_metadata, ""
@@ -81,7 +81,7 @@ def commit_structure_validate(
                 raise ValueError(offsets) from exc
 
             if not isinstance(metadata, str):
-                raise ValueError("Metadata should be a string")
+                raise TypeError("Metadata should be a string")
 
         formatted_offsets[tp] = OffsetAndMetadata(offset, metadata)
     return formatted_offsets

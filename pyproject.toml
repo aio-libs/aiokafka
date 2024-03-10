@@ -121,6 +121,7 @@ select = [
     # "FIX",  # flake8-fixme
     "PGH",  # pygrep-hooks
     "PL",  # Pylint
+    "TRY",  # tryceratops
 ]
 
 ignore = [
@@ -136,6 +137,8 @@ ignore = [
     "PLR0911", "PLR0912", "PLR0915",  # Too many ...
     # Too many false positives
     "PLW2901",  # ... loop variable ... overwritten by assignment target
+    "TRY003",  # Avoid specifying long messages outside the exception class
+    "TRY400",  # Use `logging.exception` instead of `logging.error`
 ]
 
 [tool.ruff.lint.per-file-ignores]

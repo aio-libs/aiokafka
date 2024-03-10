@@ -17,12 +17,13 @@ def _pack(f, value):
 def _unpack(f, data):
     try:
         (value,) = f(data)
-        return value
     except error as e:
         raise ValueError(
             "Error encountered when attempting to convert value: "
             f"{data!r} to struct format: '{f}', hit error: {e}"
         ) from e
+    else:
+        return value
 
 
 class Int8(AbstractType):

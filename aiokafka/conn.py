@@ -827,9 +827,10 @@ def _address_family(address):
     for af in (socket.AF_INET, socket.AF_INET6):
         try:
             socket.inet_pton(af, address)
-            return af
         except (OSError, ValueError, AttributeError):
             continue
+        else:
+            return af
     return socket.AF_UNSPEC
 
 
@@ -868,7 +869,6 @@ def get_ip_port_afi(host_and_port_str):
         try:
             # if it decodes as an IPv6 address, use that
             socket.inet_pton(socket.AF_INET6, host_and_port_str)
-            return host_and_port_str, DEFAULT_KAFKA_PORT, socket.AF_INET6
         except AttributeError:
             log.warning(
                 "socket.inet_pton not available on this platform."
@@ -877,6 +877,8 @@ def get_ip_port_afi(host_and_port_str):
         except (OSError, ValueError):
             # it's a host:port pair
             pass
+        else:
+            return host_and_port_str, DEFAULT_KAFKA_PORT, socket.AF_INET6
         host, port = host_and_port_str.rsplit(":", 1)
         port = int(port)
 

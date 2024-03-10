@@ -165,7 +165,7 @@ class Message(Struct):
             assert has_zstd(), "ZSTD decompression unsupported"
             raw_bytes = zstd_decode(self.value)
         else:
-            raise Exception("This should be impossible")
+            raise AssertionError("This should be impossible")
 
         return MessageSet.decode(raw_bytes, bytes_to_read=len(raw_bytes))
 

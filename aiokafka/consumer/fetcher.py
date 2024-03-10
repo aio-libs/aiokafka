@@ -933,7 +933,7 @@ class Fetcher:
                         offsets = await self._proc_offset_requests(timestamps)
                     except Errors.KafkaError as error:
                         if not error.retriable:
-                            raise error
+                            raise
                         if error.invalid_metadata:
                             self._client.force_metadata_update()
                         await asyncio.sleep(self._retry_backoff)

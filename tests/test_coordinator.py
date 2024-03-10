@@ -41,11 +41,11 @@ class RebalanceListenerForTest(ConsumerRebalanceListener):
 
     def on_partitions_revoked(self, revoked):
         self.revoked.append(revoked)
-        raise Exception("coordinator should ignore this exception")
+        raise Exception("coordinator should ignore this exception")  # noqa: TRY002
 
     def on_partitions_assigned(self, assigned):
         self.assigned.append(assigned)
-        raise Exception("coordinator should ignore this exception")
+        raise Exception("coordinator should ignore this exception")  # noqa: TRY002
 
 
 class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):

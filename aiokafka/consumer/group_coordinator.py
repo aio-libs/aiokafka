@@ -446,7 +446,7 @@ class GroupCoordinator(BaseCoordinator):
             ):
                 member_id, metadata_bytes = member
             else:
-                raise Exception("unknown protocol returned from assignment")
+                raise RuntimeError("unknown protocol returned from assignment")  # noqa: TRY004
             metadata = ConsumerProtocol.METADATA.decode(metadata_bytes)
             member_metadata[member_id] = metadata
             all_subscribed_topics.update(metadata.subscription)

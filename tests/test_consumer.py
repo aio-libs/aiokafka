@@ -488,13 +488,13 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_subscribe_errors(self):
         consumer = await self.consumer_factory()
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             consumer.subscribe(topics=(self.topic,), pattern="some")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             consumer.subscribe(topics=(), pattern=None)
         with self.assertRaises(ValueError):
             consumer.subscribe(pattern="^(spome(")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             consumer.subscribe("some_topic")  # should be a list
         with self.assertRaises(TypeError):
             consumer.subscribe(topics=["some_topic"], listener=object())
@@ -841,13 +841,11 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             await consumer.commit("something")
         with self.assertRaises(ValueError):
             await consumer.commit({tp: (offset, "metadata", 100)})
-        with self.assertRaisesRegex(
-            ValueError, "Key should be TopicPartition instance"
-        ):
+        with self.assertRaisesRegex(TypeError, "Key should be TopicPartition instance"):
             await consumer.commit({"my_topic": offset_and_metadata})
-        with self.assertRaisesRegex(ValueError, "Metadata should be a string"):
+        with self.assertRaisesRegex(TypeError, "Metadata should be a string"):
             await consumer.commit({tp: (offset, 1000)})
-        with self.assertRaisesRegex(ValueError, "Metadata should be a string"):
+        with self.assertRaisesRegex(TypeError, "Metadata should be a string"):
             await consumer.commit({tp: (offset, b"\x00\x02")})
 
         with self.assertRaisesRegex(IllegalStateError, "Partition .* is not assigned"):
