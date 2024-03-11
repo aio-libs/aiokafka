@@ -158,8 +158,8 @@ class ACLManager:
                 self.cmd,
                 "--force",
                 "--authorizer-properties zookeeper.connect=localhost:2181",
+                *cmd_options,
             ]
-            + list(cmd_options)
         )
         exit_code, output = self._docker.exec_run(cmd)
         if exit_code != 0:
@@ -242,7 +242,7 @@ class KafkaConfig:
         return f"/opt/kafka_{self._tag}/bin/kafka-configs.sh"
 
     def _exec(self, *cmd_options):
-        cmd = " ".join([self.cmd, "--zookeeper", "localhost:2181"] + list(cmd_options))
+        cmd = " ".join([self.cmd, "--zookeeper", "localhost:2181", *cmd_options])
         exit_code, output = self._docker.exec_run(cmd)
         if exit_code != 0:
             for line in output.split(b"\n"):

@@ -262,7 +262,7 @@ class AIOKafkaConnection:
 
             if self._security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
                 await self._do_sasl_handshake()
-        except:  # noqa: E722
+        except:
             self.close()
             raise
 

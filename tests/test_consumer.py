@@ -1757,7 +1757,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
             # All other calls should succeed
             res = await consumer.getmany(timeout_ms=2000)
-            self.assertEqual(len(list(res.values())[0]), 1)
+            [records] = res.values()
+            self.assertEqual(len(records), 1)
 
     @run_until_complete
     async def test_consumer_compacted_topic(self):
@@ -1783,7 +1784,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
             # All other calls should succeed
             res = await consumer.getmany(timeout_ms=2000)
-            self.assertEqual(len(list(res.values())[0]), 6)
+            [records] = res.values()
+            self.assertEqual(len(records), 6)
             # Even thou 9'th offset was compacted out we still need to proceed
             # from 10th as record batch contains information about that and
             # the same batch will be returned over and over if we try to fetch
@@ -1868,7 +1870,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             m.side_effect = mock_send
 
             res = await consumer.getmany(timeout_ms=2000)
-            self.assertEqual(len(list(res.values())[0]), 5)
+            [records] = res.values()
+            self.assertEqual(len(records), 5)
             self.assertEqual(len(recv_records), 10)
 
         pos = await consumer.position(TopicPartition(self.topic, 0))

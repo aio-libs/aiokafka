@@ -53,7 +53,7 @@ def parse_kafka_version(api_version: str) -> tuple[int, int, int]:
     parsed = Version(api_version).release
     if not 2 <= len(parsed) <= 3:
         raise ValueError(api_version)
-    version = cast(Tuple[int, int, int], (parsed + (0,))[:3])
+    version = cast(Tuple[int, int, int], (*parsed, 0)[:3])
 
     if not (0, 9) <= version < (3, 0):
         raise ValueError(api_version)

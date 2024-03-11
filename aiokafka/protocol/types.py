@@ -172,10 +172,10 @@ class Schema(AbstractType):
     def encode(self, item):
         if len(item) != len(self.fields):
             raise ValueError("Item field count does not match Schema")
-        return b"".join([field.encode(item[i]) for i, field in enumerate(self.fields)])
+        return b"".join(field.encode(item[i]) for i, field in enumerate(self.fields))
 
     def decode(self, data):
-        return tuple([field.decode(data) for field in self.fields])
+        return tuple(field.decode(data) for field in self.fields)
 
     def __len__(self):
         return len(self.fields)
@@ -209,8 +209,10 @@ class Array(AbstractType):
     def encode(self, items):
         if items is None:
             return Int32.encode(-1)
-        encoded_items = [self.array_of.encode(item) for item in items]
-        return b"".join([Int32.encode(len(encoded_items))] + encoded_items)
+        encoded_items = (self.array_of.encode(item) for item in items)
+        return b"".join(
+            (Int32.encode(len(items)), *encoded_items),
+        )
 
     def decode(self, data):
         length = Int32.decode(data)
@@ -221,9 +223,7 @@ class Array(AbstractType):
     def repr(self, list_of_items):
         if list_of_items is None:
             return "NULL"
-        return (
-            "[" + ", ".join([self.array_of.repr(item) for item in list_of_items]) + "]"
-        )
+        return "[" + ", ".join(self.array_of.repr(item) for item in list_of_items) + "]"
 
 
 class UnsignedVarInt32(AbstractType):
@@ -365,9 +365,9 @@ class CompactArray(Array):
     def encode(self, items):
         if items is None:
             return UnsignedVarInt32.encode(0)
+        encoded_items = (self.array_of.encode(item) for item in items)
         return b"".join(
-            [UnsignedVarInt32.encode(len(items) + 1)]
-            + [self.array_of.encode(item) for item in items]
+            (UnsignedVarInt32.encode(len(items) + 1), *encoded_items),
         )
 
     def decode(self, data):

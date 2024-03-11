@@ -157,7 +157,7 @@ def ssl_folder(docker_ip_address, docker, kafka_image):
             ["client", "ca-cert", "cl_", docker_ip_address],
         ]:
             exit_code, output = container.exec_run(
-                ["bash", "/gen-ssl-certs.sh"] + args,
+                ["bash", "/gen-ssl-certs.sh", *args],
                 user=f"{os.getuid()}:{os.getgid()}",
             )
             if exit_code != 0:

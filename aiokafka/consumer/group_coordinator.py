@@ -1155,7 +1155,7 @@ class GroupCoordinator(BaseCoordinator):
                     errored[tp] = error_type()
 
         if errored:
-            first_error = list(errored.values())[0]
+            first_error, *_ = errored.values()
             raise first_error
         if unauthorized_topics:
             log.error(

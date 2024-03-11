@@ -123,6 +123,8 @@ select = [
     "PL",  # Pylint
     "TRY",  # tryceratops
     "PERF",  # Perflint
+    "LOG",  # flake8-logging
+    "RUF",  # Ruff-specific
 ]
 
 ignore = [
@@ -140,6 +142,7 @@ ignore = [
     "PLW2901",  # ... loop variable ... overwritten by assignment target
     "TRY003",  # Avoid specifying long messages outside the exception class
     "TRY400",  # Use `logging.exception` instead of `logging.error`
+    "RUF012",  # Mutable class attributes should be annotated with `typing.ClassVar`
 ]
 
 [tool.ruff.lint.per-file-ignores]

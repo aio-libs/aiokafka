@@ -230,7 +230,7 @@ class AIOKafkaClient:
                     sasl_mechanism=self._sasl_mechanism,
                     sasl_plain_username=self._sasl_plain_username,
                     sasl_plain_password=self._sasl_plain_password,
-                    sasl_kerberos_service_name=self._sasl_kerberos_service_name,  # noqa: E501
+                    sasl_kerberos_service_name=self._sasl_kerberos_service_name,
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     sasl_oauth_token_provider=self._sasl_oauth_token_provider,
                     version_hint=version_hint,
@@ -467,7 +467,7 @@ class AIOKafkaClient:
                     sasl_mechanism=self._sasl_mechanism,
                     sasl_plain_username=self._sasl_plain_username,
                     sasl_plain_password=self._sasl_plain_password,
-                    sasl_kerberos_service_name=self._sasl_kerberos_service_name,  # noqa: E501
+                    sasl_kerberos_service_name=self._sasl_kerberos_service_name,
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     sasl_oauth_token_provider=self._sasl_oauth_token_provider,
                     version_hint=version_hint,
@@ -539,7 +539,7 @@ class AIOKafkaClient:
                 node_id = default_group_conns[0]
             else:
                 assert self.cluster.brokers(), "no brokers in metadata"
-                node_id = list(self.cluster.brokers())[0].nodeId
+                node_id = next(iter(self.cluster.brokers())).nodeId
 
         from aiokafka.protocol.admin import ApiVersionRequest_v0, ListGroupsRequest_v0
         from aiokafka.protocol.commit import (

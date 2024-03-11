@@ -699,7 +699,7 @@ class AIOKafkaConsumer:
         A highwater offset is the offset that will be assigned to the next
         message that is produced. It may be useful for calculating lag, by
         comparing with the reported position. Note that both position and
-        highwater refer to the *next* offset – i.e., highwater offset is one
+        highwater refer to the *next* offset - i.e., highwater offset is one
         greater than the newest available message.
 
         Highwater offsets are returned as part of ``FetchResponse``, so will
