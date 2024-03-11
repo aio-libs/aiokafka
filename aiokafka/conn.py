@@ -827,7 +827,7 @@ def _address_family(address):
     for af in (socket.AF_INET, socket.AF_INET6):
         try:
             socket.inet_pton(af, address)
-        except (OSError, ValueError, AttributeError):
+        except (OSError, ValueError, AttributeError):  # noqa: PERF203
             continue
         else:
             return af

@@ -114,17 +114,12 @@ class FetchResult:
         if not self.check_assignment(tp) or not self.has_more():
             return None
 
-        while True:
-            try:
-                msg = next(self._partition_records)
-            except StopIteration:
-                # We should update position in any case
-                self._update_position()
-                self._partition_records = None
-                return None
-            else:
-                self._update_position()
-                return msg
+        msg = next(self._partition_records, None)
+        # We should update position in any case
+        self._update_position()
+        if msg is None:
+            self._partition_records = None
+        return msg
 
     def getall(self, max_records=None):
         tp = self._topic_partition
@@ -931,7 +926,7 @@ class Fetcher:
                 while True:
                     try:
                         offsets = await self._proc_offset_requests(timestamps)
-                    except Errors.KafkaError as error:
+                    except Errors.KafkaError as error:  # noqa: PERF203
                         if not error.retriable:
                             raise
                         if error.invalid_metadata:

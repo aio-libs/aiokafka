@@ -278,7 +278,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         messages = []
         while True:
             resp = await consumer.getmany(timeout_ms=1000)
-            for _partition, msg_list in resp.items():
+            for msg_list in resp.values():
                 messages += msg_list
             if len(messages) >= 200:
                 break
@@ -293,7 +293,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         messages = []
         while True:
             resp = await consumer.getmany(p0, timeout_ms=1000)
-            for _partition, msg_list in resp.items():
+            for msg_list in resp.values():
                 messages += msg_list
             if len(messages) >= 100:
                 break
@@ -301,7 +301,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         while True:
             resp = await consumer.getmany(p1, timeout_ms=1000)
-            for _partition, msg_list in resp.items():
+            for msg_list in resp.values():
                 messages += msg_list
             if len(messages) >= 200:
                 break

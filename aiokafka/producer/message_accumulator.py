@@ -342,12 +342,10 @@ class MessageAccumulator:
         self._api_version = api_version
 
     async def flush(self):
-        waiters = []
-        for batches in self._batches.values():
-            for batch in list(batches):
-                waiters.append(batch.future)
-        for batch in list(self._pending_batches):
-            waiters.append(batch.future)
+        waiters = [
+            batch.future for batches in self._batches.values() for batch in batches
+        ]
+        waiters += [batch.future for batch in self._pending_batches]
         if waiters:
             await asyncio.wait(waiters)
 
@@ -355,12 +353,11 @@ class MessageAccumulator:
         waiters = []
         for batches in self._batches.values():
             for batch in batches:
-                # We force all buffers to close to finalyze the transaction
+                # We force all buffers to close to finalize the transaction
                 # scope. We should not add anything to this transaction.
                 batch._builder.close()
                 waiters.append(batch.future)
-        for batch in self._pending_batches:
-            waiters.append(batch.future)
+        waiters += [batch.future for batch in self._pending_batches]
         # Wait for all waiters to finish. We only wait for the scope we defined
         # above, other batches should not be delivered as part of this
         # transaction

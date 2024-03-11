@@ -219,20 +219,19 @@ class MessageSet(AbstractType):
         raw = io.BytesIO(data.read(bytes_to_read))
 
         items = []
-        while bytes_to_read:
-            try:
+        try:
+            while bytes_to_read:
                 offset = Int64.decode(raw)
                 msg_bytes = Bytes.decode(raw)
                 bytes_to_read -= 8 + 4 + len(msg_bytes)
                 items.append(
                     (offset, len(msg_bytes), Message.decode(msg_bytes)),
                 )
-            except ValueError:
-                # PartialMessage to signal that max_bytes may be too small
-                items.append(
-                    (None, None, PartialMessage()),
-                )
-                break
+        except ValueError:
+            # PartialMessage to signal that max_bytes may be too small
+            items.append(
+                (None, None, PartialMessage()),
+            )
         return items
 
     @classmethod

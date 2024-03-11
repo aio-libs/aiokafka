@@ -122,6 +122,7 @@ select = [
     "PGH",  # pygrep-hooks
     "PL",  # Pylint
     "TRY",  # tryceratops
+    "PERF",  # Perflint
 ]
 
 ignore = [

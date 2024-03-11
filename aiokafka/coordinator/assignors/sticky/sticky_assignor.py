@@ -287,12 +287,11 @@ class StickyAssignmentExecutor:
             # partitions to those with least)
             assignments = deepcopy(self.current_assignment)
             for partitions in assignments.values():
-                to_remove = []
-                for partition in partitions:
-                    if partition not in self.partition_to_all_potential_consumers:
-                        to_remove.append(partition)
-                for partition in to_remove:
-                    partitions.remove(partition)
+                partitions[:] = [
+                    partition
+                    for partition in partitions
+                    if partition in self.partition_to_all_potential_consumers
+                ]
 
             sorted_consumers = SortedSet(
                 iterable=[

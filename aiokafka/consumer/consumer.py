@@ -15,10 +15,7 @@ from aiokafka.errors import (
     ConsumerStoppedError,
     IllegalOperation,
     IllegalStateError,
-    NoOffsetForPartitionError,
-    OffsetOutOfRangeError,
     RecordTooLargeError,
-    TopicAuthorizationFailedError,
     UnsupportedVersionError,
 )
 from aiokafka.structs import ConsumerRecord, TopicPartition
@@ -1275,14 +1272,8 @@ class AIOKafkaConsumer:
         while True:
             try:
                 return await self.getone()
-            except ConsumerStoppedError:
+            except ConsumerStoppedError:  # noqa: PERF203
                 raise StopAsyncIteration from None
-            except (
-                TopicAuthorizationFailedError,
-                OffsetOutOfRangeError,
-                NoOffsetForPartitionError,
-            ):
-                raise
             except RecordTooLargeError:
                 log.exception("error in consumer iterator: %s")
 

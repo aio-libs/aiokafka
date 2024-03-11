@@ -49,10 +49,11 @@ class BaseCoordinator:
     def _handle_metadata_update(self, cluster):
         subscription = self._subscription
         if subscription.subscribed_pattern:
-            topics = []
-            for topic in cluster.topics(self._exclude_internal_topics):
-                if subscription.subscribed_pattern.match(topic):
-                    topics.append(topic)
+            topics = [
+                topic
+                for topic in cluster.topics(self._exclude_internal_topics)
+                if subscription.subscribed_pattern.match(topic)
+            ]
 
             if (
                 subscription.subscription is None
@@ -122,8 +123,7 @@ class NoGroupCoordinator(BaseCoordinator):
                     # update. No problem, lets wait for the next metadata
                     # update
                     continue
-            for p_id in p_ids:
-                partitions.append(TopicPartition(topic, p_id))
+            partitions += [TopicPartition(topic, p_id) for p_id in p_ids]
 
         # If assignment did not change no need to reset it
         assignment = self._subscription.subscription.assignment

@@ -194,9 +194,9 @@ class AIOKafkaClient:
             self._sync_task = None
         # Be careful to wait for graceful closure of all connections, so we
         # process all pending buffers.
-        futs = []
-        for conn in self._conns.values():
-            futs.append(conn.close(reason=CloseReason.SHUTDOWN))
+        futs = [
+            conn.close(reason=CloseReason.SHUTDOWN) for conn in self._conns.values()
+        ]
         if futs:
             await asyncio.gather(*futs)
 
@@ -578,7 +578,7 @@ class AIOKafkaClient:
                 with contextlib.suppress(KafkaError):
                     await conn.send(MetadataRequest_v0([]))
                 response = await task
-            except KafkaError:
+            except KafkaError:  # noqa: PERF203
                 continue
             else:
                 # To avoid having a connection in undefined state
