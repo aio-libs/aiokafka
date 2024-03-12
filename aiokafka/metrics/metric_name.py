@@ -102,9 +102,7 @@ class MetricName:
         return not self.__eq__(other)
 
     def __str__(self):
-        return "MetricName(name={}, group={}, description={}, tags={})".format(
-            self.name,
-            self.group,
-            self.description,
-            self.tags,
+        return (
+            f"MetricName(name={self.name}, group={self.group}, "
+            f"description={self.description}, tags={self.tags})"
         )

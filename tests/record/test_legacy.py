@@ -162,9 +162,8 @@ def test_legacy_correct_metadata_response(magic):
     assert meta.timestamp == (9999999 if magic else -1)
     assert meta.crc == (-2095076219 if magic else 278251978) & 0xFFFFFFFF
     assert repr(meta) == (
-        "LegacyRecordMetadata(offset=0, crc={}, size={}, timestamp={})".format(
-            meta.crc, meta.size, meta.timestamp
-        )
+        f"LegacyRecordMetadata(offset=0, crc={meta.crc}, size={meta.size}, "
+        f"timestamp={meta.timestamp})"
     )
 
 

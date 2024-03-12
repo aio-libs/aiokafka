@@ -995,16 +995,10 @@ def verify_validity_and_balance(subscriptions, assignment):
                 set(other_partitions)
             )
             assert partitions_intersection == set(), (
-                "Error: Consumers {} and {} have common partitions "
-                "assigned to them: {}\n"
-                "Subscriptions: {}\n"
-                "Assignments: {}".format(
-                    consumer,
-                    other_consumer,
-                    partitions_intersection,
-                    subscriptions,
-                    assignment,
-                )
+                f"Error: Consumers {consumer} and {other_consumer} have common "
+                f"partitions assigned to them: {partitions_intersection}\n"
+                f"Subscriptions: {subscriptions}\n"
+                f"Assignments: {assignment}"
             )
 
             if abs(len(partitions) - len(other_partitions)) <= 1:
@@ -1015,34 +1009,21 @@ def verify_validity_and_balance(subscriptions, assignment):
             if len(partitions) > len(other_partitions):
                 for topic in assignments_by_topic:
                     assert topic not in other_assignments_by_topic, (
-                        "Error: Some partitions can be moved from {} ({} partitions) "
-                        "to {} ({} partitions) "
+                        f"Error: Some partitions can be moved from {consumer} "
+                        f"({len(partitions)} partitions) to {other_consumer} "
+                        f"({len(other_partitions)} partitions) "
                         "to achieve a better balance\n"
-                        "Subscriptions: {}\n"
-                        "Assignments: {}".format(
-                            consumer,
-                            len(partitions),
-                            other_consumer,
-                            len(other_partitions),
-                            subscriptions,
-                            assignment,
-                        )
+                        f"Subscriptions: {subscriptions}\n"
+                        f"Assignments: {assignment}"
                     )
             if len(other_partitions) > len(partitions):
                 for topic in other_assignments_by_topic:
                     assert topic not in assignments_by_topic, (
-                        "Error: Some partitions can be moved from {} ({} partitions) "
-                        "to {} ({} partitions) "
-                        "to achieve a better balance\n"
-                        "Subscriptions: {}\n"
-                        "Assignments: {}".format(
-                            other_consumer,
-                            len(other_partitions),
-                            consumer,
-                            len(partitions),
-                            subscriptions,
-                            assignment,
-                        )
+                        f"Error: Some partitions can be moved from {other_consumer} "
+                        f"({len(other_partitions)} partitions) to {consumer} "
+                        f"({len(partitions)} partitions) to achieve a better balance\n"
+                        f"Subscriptions: {subscriptions}\n"
+                        f"Assignments: {assignment}"
                     )
 
 

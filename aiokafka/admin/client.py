@@ -173,16 +173,15 @@ class AIOKafkaAdminClient:
         api_key = operation[0].API_KEY
         if not self._version_info or api_key not in self._version_info:
             raise IncompatibleBrokerVersion(
-                "Kafka broker does not support the '{}' Kafka protocol.".format(
-                    operation[0].__name__
-                )
+                f"Kafka broker does not support the '{operation[0].__name__}' "
+                "Kafka protocol."
             )
         min_version, max_version = self._version_info[api_key]
         version = min(len(operation) - 1, max_version)
         if version < min_version:
             raise IncompatibleBrokerVersion(
-                "No version of the '{}' Kafka protocol is supported by "
-                "both the client and broker.".format(operation[0].__name__)
+                f"No version of the '{operation[0].__name__}' Kafka protocol "
+                "is supported by both the client and broker."
             )
         return version
 
