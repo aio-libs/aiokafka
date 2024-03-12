@@ -1,7 +1,5 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import Generic, NamedTuple, Sequence, TypeVar
+from typing import Generic, List, NamedTuple, Optional, Sequence, Tuple, TypeVar
 
 from aiokafka.errors import KafkaError
 
@@ -37,7 +35,7 @@ class BrokerMetadata(NamedTuple):
     port: int
     "The Kafka broker port"
 
-    rack: str | None
+    rack: Optional[str]
     """The rack of the broker, which is used to in rack aware partition
     assignment for fault tolerance.
     Examples: `RACK1`, `us-east-1d`. Default: None
@@ -56,12 +54,12 @@ class PartitionMetadata(NamedTuple):
     leader: int
     "The id of the broker that is the leader for the partition"
 
-    replicas: list[int]
+    replicas: List[int]
     "The ids of all brokers that contain replicas of the partition"
-    isr: list[int]
+    isr: List[int]
     "The ids of all brokers that contain in-sync replicas of the partition"
 
-    error: KafkaError | None
+    error: Optional[KafkaError]
     "A KafkaError object associated with the request for this partition metadata"
 
 
@@ -102,7 +100,7 @@ class RecordMetadata(NamedTuple):
     details on offsets.
     """
 
-    timestamp: int | None
+    timestamp: Optional[int]
     "Timestamp in millis, None for older Brokers"
 
     timestamp_type: int
@@ -114,7 +112,7 @@ class RecordMetadata(NamedTuple):
     If the broker set it's own timestamp, ``1`` will be returned (``LogAppendTime``).
     """
 
-    log_start_offset: int | None
+    log_start_offset: Optional[int]
     ""
 
 
@@ -139,13 +137,13 @@ class ConsumerRecord(Generic[KT, VT]):
     timestamp_type: int
     "The timestamp type of this record"
 
-    key: KT | None
+    key: Optional[KT]
     "The key (or `None` if no key is specified)"
 
-    value: VT | None
+    value: Optional[VT]
     "The value"
 
-    checksum: int | None
+    checksum: Optional[int]
     "Deprecated"
 
     serialized_key_size: int
@@ -154,10 +152,10 @@ class ConsumerRecord(Generic[KT, VT]):
     serialized_value_size: int
     "The size of the serialized, uncompressed value in bytes."
 
-    headers: Sequence[tuple[str, bytes]]
+    headers: Sequence[Tuple[str, bytes]]
     "The headers"
 
 
 class OffsetAndTimestamp(NamedTuple):
     offset: int
-    timestamp: int | None  # Only None if used with old broker version
+    timestamp: Optional[int]  # Only None if used with old broker version

@@ -6,7 +6,7 @@ import logging
 import time
 from asyncio import Event, shield
 from enum import Enum
-from typing import Iterable, Pattern
+from typing import Dict, Iterable, Pattern, Set
 
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.errors import IllegalStateError
@@ -70,7 +70,7 @@ class SubscriptionState:
             return self._subscription.topics
         return set()
 
-    def assigned_partitions(self) -> set[TopicPartition]:
+    def assigned_partitions(self) -> Set[TopicPartition]:
         if self._subscription is None:
             return set()
         if self._subscription.assignment is None:
@@ -135,7 +135,7 @@ class SubscriptionState:
 
     # Consumer callable API:
 
-    def subscribe(self, topics: set[str], listener=None):
+    def subscribe(self, topics: Set[str], listener=None):
         """Subscribe to a list (or tuple) of topics
 
         Caller: Consumer.
@@ -194,7 +194,7 @@ class SubscriptionState:
 
     # Coordinator callable API:
 
-    def subscribe_from_pattern(self, topics: set[str]):
+    def subscribe_from_pattern(self, topics: Set[str]):
         """Change subscription on cluster metadata update if a new topic
         created or one is removed.
 
@@ -204,7 +204,7 @@ class SubscriptionState:
         assert self._subscription_type == SubscriptionType.AUTO_PATTERN
         self._change_subscription(Subscription(topics))
 
-    def assign_from_subscribed(self, assignment: set[TopicPartition]):
+    def assign_from_subscribed(self, assignment: Set[TopicPartition]):
         """Set assignment if automatic assignment is used.
 
         Caller: Coordinator
@@ -275,7 +275,7 @@ class SubscriptionState:
     def pause(self, tp: TopicPartition) -> None:
         self._assigned_state(tp).pause()
 
-    def paused_partitions(self) -> set[TopicPartition]:
+    def paused_partitions(self) -> Set[TopicPartition]:
         res = set()
         for tp in self.assigned_partitions():
             if self._assigned_state(tp).paused:
@@ -365,7 +365,7 @@ class ManualSubscription(Subscription):
         super().__init__(topics, loop=loop)
         self._assignment = Assignment(user_assignment)
 
-    def _assign(self, topic_partitions: set[TopicPartition]):  # pragma: no cover
+    def _assign(self, topic_partitions: Set[TopicPartition]):  # pragma: no cover
         raise AssertionError("Should not be called")
 
     @property
@@ -415,7 +415,7 @@ class Assignment:
     def state_value(self, tp: TopicPartition) -> TopicPartitionState:
         return self._tp_state.get(tp)
 
-    def all_consumed_offsets(self) -> dict[TopicPartition, OffsetAndMetadata]:
+    def all_consumed_offsets(self) -> Dict[TopicPartition, OffsetAndMetadata]:
         """Returns consumed offsets as {TopicPartition: OffsetAndMetadata}"""
         all_consumed = {}
         for tp in self._topic_partitions:

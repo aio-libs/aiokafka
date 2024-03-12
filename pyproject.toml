@@ -145,6 +145,8 @@ ignore = [
     "RUF012",  # Mutable class attributes should be annotated with `typing.ClassVar`
 ]
 
+pyupgrade.keep-runtime-typing = true
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**.py" = [
     "S106", "S107",  # Possible hardcoded password
