@@ -47,9 +47,7 @@ class ResponseHeader_v1(Struct):
     )
 
 
-class Request(Struct):
-    __metaclass__ = abc.ABCMeta
-
+class Request(Struct, metaclass=abc.ABCMeta):
     FLEXIBLE_VERSION = False
 
     @abc.abstractproperty
@@ -90,9 +88,7 @@ class Request(Struct):
         return ResponseHeader_v0.decode(read_buffer)
 
 
-class Response(Struct):
-    __metaclass__ = abc.ABCMeta
-
+class Response(Struct, metaclass=abc.ABCMeta):
     @abc.abstractproperty
     def API_KEY(self):
         """Integer identifier for api request/response"""

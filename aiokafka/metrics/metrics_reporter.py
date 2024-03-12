@@ -1,13 +1,11 @@
 import abc
 
 
-class AbstractMetricsReporter:
+class AbstractMetricsReporter(metaclass=abc.ABCMeta):
     """
     An abstract class to allow things to listen as new metrics
     are created so they can be reported.
     """
-
-    __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
     def init(self, metrics):

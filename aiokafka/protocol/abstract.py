@@ -1,9 +1,7 @@
 import abc
 
 
-class AbstractType:
-    __metaclass__ = abc.ABCMeta
-
+class AbstractType(metaclass=abc.ABCMeta):
     @classmethod
     @abc.abstractmethod
     def encode(cls, value): ...
