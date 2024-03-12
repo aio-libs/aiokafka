@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from ssl import SSLContext
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient
@@ -85,7 +85,7 @@ class AIOKafkaAdminClient:
         self,
         *,
         loop=None,
-        bootstrap_servers: str = "localhost",
+        bootstrap_servers: Union[str, List[str]] = "localhost",
         client_id: str = "aiokafka-" + __version__,
         request_timeout_ms: int = 40000,
         connections_max_idle_ms: int = 540000,
