@@ -60,8 +60,9 @@ class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
             if partitions is None:
                 log.warning("No partition metadata for topic %s", topic)
                 continue
-            for partition in partitions:
-                all_topic_partitions.append(TopicPartition(topic, partition))
+            all_topic_partitions += [
+                TopicPartition(topic, partition) for partition in partitions
+            ]
         all_topic_partitions.sort()
 
         # construct {member_id: {topic: [partition, ...]}}

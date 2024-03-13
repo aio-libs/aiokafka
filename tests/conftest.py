@@ -102,7 +102,6 @@ else:
     @pytest.fixture()
     def kerberos_utils():
         pytest.skip("Only unit tests on windows for now =(")
-        return
 
 
 if sys.platform != "win32":
@@ -112,7 +111,7 @@ if sys.platform != "win32":
         image = request.config.getoption("--docker-image")
         if not image:
             pytest.skip("Skipping functional test as `--docker-image` not provided")
-            return
+            return None
         if not request.config.getoption("--no-pull"):
             docker.images.pull(image)
         return image
@@ -158,7 +157,7 @@ def ssl_folder(docker_ip_address, docker, kafka_image):
             ["client", "ca-cert", "cl_", docker_ip_address],
         ]:
             exit_code, output = container.exec_run(
-                ["bash", "/gen-ssl-certs.sh"] + args,
+                ["bash", "/gen-ssl-certs.sh", *args],
                 user=f"{os.getuid()}:{os.getgid()}",
             )
             if exit_code != 0:
@@ -285,7 +284,6 @@ else:
     @pytest.fixture(scope="session")
     def kafka_server():
         pytest.skip("Only unit tests on windows for now =(")
-        return
 
 
 @pytest.fixture(scope="class")

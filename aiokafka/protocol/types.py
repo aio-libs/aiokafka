@@ -10,19 +10,20 @@ def _pack(f, value):
     except error as e:
         raise ValueError(
             "Error encountered when attempting to convert value: "
-            "{!r} to struct format: '{}', hit error: {}".format(value, f, e)
-        )
+            f"{value!r} to struct format: '{f}', hit error: {e}"
+        ) from e
 
 
 def _unpack(f, data):
     try:
         (value,) = f(data)
-        return value
     except error as e:
         raise ValueError(
             "Error encountered when attempting to convert value: "
-            "{!r} to struct format: '{}', hit error: {}".format(data, f, e)
-        )
+            f"{data!r} to struct format: '{f}', hit error: {e}"
+        ) from e
+    else:
+        return value
 
 
 class Int8(AbstractType):
@@ -171,10 +172,10 @@ class Schema(AbstractType):
     def encode(self, item):
         if len(item) != len(self.fields):
             raise ValueError("Item field count does not match Schema")
-        return b"".join([field.encode(item[i]) for i, field in enumerate(self.fields)])
+        return b"".join(field.encode(item[i]) for i, field in enumerate(self.fields))
 
     def decode(self, data):
-        return tuple([field.decode(data) for field in self.fields])
+        return tuple(field.decode(data) for field in self.fields)
 
     def __len__(self):
         return len(self.fields)
@@ -187,11 +188,9 @@ class Schema(AbstractType):
                     field_val = getattr(value, self.names[i])
                 except AttributeError:
                     field_val = value[i]
-                key_vals.append(
-                    "%s=%s" % (self.names[i], self.fields[i].repr(field_val))
-                )
+                key_vals.append(f"{self.names[i]}={self.fields[i].repr(field_val)}")
             return "(" + ", ".join(key_vals) + ")"
-        except Exception:
+        except Exception:  # noqa: BLE001
             return repr(value)
 
 
@@ -210,8 +209,10 @@ class Array(AbstractType):
     def encode(self, items):
         if items is None:
             return Int32.encode(-1)
-        encoded_items = [self.array_of.encode(item) for item in items]
-        return b"".join([Int32.encode(len(encoded_items))] + encoded_items)
+        encoded_items = (self.array_of.encode(item) for item in items)
+        return b"".join(
+            (Int32.encode(len(items)), *encoded_items),
+        )
 
     def decode(self, data):
         length = Int32.decode(data)
@@ -222,9 +223,7 @@ class Array(AbstractType):
     def repr(self, list_of_items):
         if list_of_items is None:
             return "NULL"
-        return (
-            "[" + ", ".join([self.array_of.repr(item) for item in list_of_items]) + "]"
-        )
+        return "[" + ", ".join(self.array_of.repr(item) for item in list_of_items) + "]"
 
 
 class UnsignedVarInt32(AbstractType):
@@ -238,7 +237,7 @@ class UnsignedVarInt32(AbstractType):
             value |= (b & 0x7F) << i
             i += 7
             if i > 28:
-                raise ValueError("Invalid value {}".format(value))
+                raise ValueError(f"Invalid value {value}")
         value |= b << i
         return value
 
@@ -278,7 +277,7 @@ class VarInt64(AbstractType):
             value |= (b & 0x7F) << i
             i += 7
             if i > 63:
-                raise ValueError("Invalid value {}".format(value))
+                raise ValueError(f"Invalid value {value}")
         value |= b << i
         return (value >> 1) ^ -(value & 1)
 
@@ -321,10 +320,10 @@ class TaggedFields(AbstractType):
         if not num_fields:
             return ret
         prev_tag = -1
-        for i in range(num_fields):
+        for _ in range(num_fields):
             tag = UnsignedVarInt32.decode(data)
             if tag <= prev_tag:
-                raise ValueError("Invalid or out-of-order tag {}".format(tag))
+                raise ValueError(f"Invalid or out-of-order tag {tag}")
             prev_tag = tag
             size = UnsignedVarInt32.decode(data)
             val = data.read(size)
@@ -336,10 +335,8 @@ class TaggedFields(AbstractType):
         ret = UnsignedVarInt32.encode(len(value))
         for k, v in value.items():
             # do we allow for other data types ?? It could get complicated really fast
-            assert isinstance(v, bytes), "Value {} is not a byte array".format(v)
-            assert (
-                isinstance(k, int) and k > 0
-            ), "Key {} is not a positive integer".format(k)
+            assert isinstance(v, bytes), f"Value {v} is not a byte array"
+            assert isinstance(k, int) and k > 0, f"Key {k} is not a positive integer"
             ret += UnsignedVarInt32.encode(k)
             ret += v
         return ret
@@ -368,9 +365,9 @@ class CompactArray(Array):
     def encode(self, items):
         if items is None:
             return UnsignedVarInt32.encode(0)
+        encoded_items = (self.array_of.encode(item) for item in items)
         return b"".join(
-            [UnsignedVarInt32.encode(len(items) + 1)]
-            + [self.array_of.encode(item) for item in items]
+            (UnsignedVarInt32.encode(len(items) + 1), *encoded_items),
         )
 
     def decode(self, data):

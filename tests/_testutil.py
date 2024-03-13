@@ -9,7 +9,6 @@ import shutil
 import string
 import subprocess
 import sys
-import time
 import unittest
 from concurrent import futures
 from contextlib import contextmanager
@@ -159,8 +158,8 @@ class ACLManager:
                 self.cmd,
                 "--force",
                 "--authorizer-properties zookeeper.connect=localhost:2181",
+                *cmd_options,
             ]
-            + list(cmd_options)
         )
         exit_code, output = self._docker.exec_run(cmd)
         if exit_code != 0:
@@ -243,7 +242,7 @@ class KafkaConfig:
         return f"/opt/kafka_{self._tag}/bin/kafka-configs.sh"
 
     def _exec(self, *cmd_options):
-        cmd = " ".join([self.cmd, "--zookeeper", "localhost:2181"] + list(cmd_options))
+        cmd = " ".join([self.cmd, "--zookeeper", "localhost:2181", *cmd_options])
         exit_code, output = self._docker.exec_run(cmd)
         if exit_code != 0:
             for line in output.split(b"\n"):
@@ -258,9 +257,7 @@ class KafkaConfig:
         self._exec(
             "--alter",
             "--add-config",
-            "SCRAM-SHA-256=[password={0}],SCRAM-SHA-512=[password={0}]".format(
-                password
-            ),
+            f"SCRAM-SHA-256=[password={password}],SCRAM-SHA-512=[password={password}]",
             "--entity-type",
             "users",
             "--entity-name",
@@ -304,34 +301,34 @@ class KerberosUtils:
                     password,
                 ],
                 cwd=str(keytab_dir.absolute()),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
+                check=False,
             )
             if res.returncode != 0:
                 print(
                     "Failed to setup keytab for Kerberos.\n"
-                    "stdout: \n{}\nstrerr: \n{}".format(res.stdout, res.stderr),
+                    f"stdout: \n{res.stdout}\nstrerr: \n{res.stderr}",
                     file=sys.stderr,
                 )
                 res.check_returncode()
         elif sys.platform != "win32":
             input_data = (
-                "add_entry -password -p {principal} -k 1 "
+                f"add_entry -password -p {principal} -k 1 "
                 "-e aes256-cts-hmac-sha1-96\n"
-                "{password}\n"
-                "write_kt {keytab_file}\n"
-            ).format(principal=principal, password=password, keytab_file=keytab_file)
+                f"{password}\n"
+                f"write_kt {keytab_file}\n"
+            )
             res = subprocess.run(
                 ["ktutil"],
                 cwd=str(keytab_dir.absolute()),
                 input=input_data.encode(),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
+                check=False,
             )
             if res.returncode != 0:
                 print(
                     "Failed to setup keytab for Kerberos.\n"
-                    "stdout: \n{}\nstrerr: \n{}".format(res.stdout, res.stderr),
+                    f"stdout: \n{res.stdout}\nstrerr: \n{res.stderr}",
                     file=sys.stderr,
                 )
                 res.check_returncode()
@@ -388,7 +385,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 
     async def wait_topic(self, client, topic):
         client.add_topic(topic)
-        for i in range(5):
+        for _ in range(5):
             ok = await client.force_metadata_update()
             if ok:
                 ok = topic in client.cluster.topics()
@@ -488,7 +485,7 @@ async def _wait_kafka(kafka_host, kafka_port, timeout):
             pass
         finally:
             await client.close()
-        time.sleep(0.5)
+        await asyncio.sleep(0.5)
         if loop.time() - start > timeout:
             return False
 

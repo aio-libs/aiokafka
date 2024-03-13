@@ -20,8 +20,9 @@ class Struct(AbstractType):
                 self.__dict__[name] = kwargs.pop(name, None)
             if kwargs:
                 raise ValueError(
-                    "Keyword(s) not in schema %s: %s"
-                    % (list(self.SCHEMA.names), ", ".join(kwargs.keys()))
+                    "Keyword(s) not in schema {}: {}".format(
+                        list(self.SCHEMA.names), ", ".join(kwargs.keys())
+                    )
                 )
 
         # overloading encode() to support both class and instance
@@ -30,7 +31,7 @@ class Struct(AbstractType):
         self.encode = WeakMethod(self._encode_self)
 
     @classmethod
-    def encode(cls, item):  # pylint: disable=E0202
+    def encode(cls, item):
         bits = []
         for i, field in enumerate(cls.SCHEMA.fields):
             bits.append(field.encode(item[i]))
@@ -53,11 +54,8 @@ class Struct(AbstractType):
     def __repr__(self):
         key_vals = []
         for name, field in zip(self.SCHEMA.names, self.SCHEMA.fields):
-            key_vals.append("%s=%s" % (name, field.repr(self.__dict__[name])))
+            key_vals.append(f"{name}={field.repr(self.__dict__[name])}")
         return self.__class__.__name__ + "(" + ", ".join(key_vals) + ")"
-
-    def __hash__(self):
-        return hash(self.encode())
 
     def __eq__(self, other):
         if self.SCHEMA != other.SCHEMA:

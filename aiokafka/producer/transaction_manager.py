@@ -33,19 +33,19 @@ class TransactionState(Enum):
     @classmethod
     def is_transition_valid(cls, source, target):
         if target == cls.READY:
-            return (
-                source == cls.UNINITIALIZED
-                or source == cls.COMMITTING_TRANSACTION
-                or source == cls.ABORTING_TRANSACTION
-            )
+            return source in [
+                cls.UNINITIALIZED,
+                cls.COMMITTING_TRANSACTION,
+                cls.ABORTING_TRANSACTION,
+            ]
         elif target == cls.IN_TRANSACTION:
             return source == cls.READY
         elif target == cls.COMMITTING_TRANSACTION:
             return source == cls.IN_TRANSACTION
         elif target == cls.ABORTING_TRANSACTION:
-            return source == cls.IN_TRANSACTION or source == cls.ABORTABLE_ERROR
-        elif target == cls.ABORTABLE_ERROR or target == cls.FATAL_ERROR:
-            return True
+            return source in [cls.IN_TRANSACTION, cls.ABORTABLE_ERROR]
+        else:
+            return target in [cls.ABORTABLE_ERROR, cls.FATAL_ERROR]
 
 
 class TransactionManager:
@@ -185,15 +185,17 @@ class TransactionManager:
 
     def consumer_group_to_add(self):
         if self._txn_consumer_group is not None:
-            return
+            return None
         for group_id, _, _ in self._pending_txn_offsets:
             return group_id
+        return None
 
     def offsets_to_commit(self):
         if self._txn_consumer_group is None:
-            return
+            return None
         for group_id, offsets, _ in self._pending_txn_offsets:
             return offsets, group_id
+        return None
 
     def partition_added(self, tp: TopicPartition):
         self._pending_txn_partitions.remove(tp)
@@ -222,7 +224,7 @@ class TransactionManager:
         elif self.state == TransactionState.ABORTING_TRANSACTION:
             return TransactionResult.ABORT
         else:
-            return
+            return None
 
     def is_empty_transaction(self):
         # whether we sent either data to a partition or committed offset

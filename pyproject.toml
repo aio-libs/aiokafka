@@ -83,17 +83,80 @@ skip_covered = true
 skip_empty = true
 
 
-[tool.ruff]
+[tool.ruff.lint]
 # For the reference, check https://docs.astral.sh/ruff/rules/
 select = [
     "F",  # pyflakes
     "E", "W",  # pycodestyle
     "I",  # isort
+    "UP",  # pyupgrade
+    "YTT",  # flake8-2020
+    # TODO Uncomment after adding annotations to all modules
+    # All "ANN" rules are covered by mypy, except "ANN204"
+    # "ANN204",  # Missing return type annotation for special method ...
+    "ASYNC",  # flake8-async
+    "S",  # flake8-bandit
+    "BLE",  # flake8-blind-except
+    "B",  # flake8-bugbear
+    "A",  # flake8-builtins
+    "C4",  # flake8-comprehensions
+    "DTZ",  # flake8-datetimez
+    "T10",  # flake8-debugger
+    "EXE",  # flake8-executable
+    "FA",  # flake8-future-annotations
+    # XXX Causes warning https://github.com/astral-sh/ruff/issues/8272
+    "ISC",  # flake8-implicit-str-concat
+    "G",  # flake8-logging-format
+    "INP",  # flake8-no-pep420
+    "PIE",  # flake8-pie
+    "T20",  # flake8-print
+    # TODO Uncomment after completely moving to pytest style
+    # "PT",  # flake8-pytest-style
+    # The rest of RET rules don't improve code and may even worsen readability
+    "RET501", "RET502", "RET503",  # flake8-return
+    "SLOT",  # flake8-slots
+    "SIM",  # flake8-simplify
+    "TID",  # flake8-tidy-imports
+    "PTH",  # flake8-use-pathlib
+    # "FIX",  # flake8-fixme
+    "PGH",  # pygrep-hooks
+    "PL",  # Pylint
+    "TRY",  # tryceratops
+    "PERF",  # Perflint
+    "LOG",  # flake8-logging
+    "RUF",  # Ruff-specific
+]
+
+ignore = [
+    "S101",  # Use of `assert` detected
+    "S311",  # Standard pseudo-random generators are not suitable for cryptographic purposes
+    "B011",  # Do not `assert False`
+    "SIM108",  # Use ternary operator
+    # TODO Remove when we drop support for Python <=3.10
+    "SIM117",  # Use a single `with` statement with multiple contexts
+    "PLR0913",  # Too many arguments in function definition
+    "PLR2004",  # Magic value used in comparison
+    # TODO Reduce complexity
+    "PLR0911", "PLR0912", "PLR0915",  # Too many ...
+    # Too many false positives
+    "PLW2901",  # ... loop variable ... overwritten by assignment target
+    "TRY003",  # Avoid specifying long messages outside the exception class
+    "TRY400",  # Use `logging.exception` instead of `logging.error`
+    "RUF012",  # Mutable class attributes should be annotated with `typing.ClassVar`
+]
+
+pyupgrade.keep-runtime-typing = true
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**.py" = [
+    "S106", "S107",  # Possible hardcoded password
+    "S603",  # `subprocess` call: check for execution of untrusted input
+    "S607",  # Starting a process with a partial executable path
+    "T201",  # `print` found
 ]
 
 [tool.ruff.format]
 docstring-code-format = true
-
 
 [tool.mypy]
 python_version = "3.8"

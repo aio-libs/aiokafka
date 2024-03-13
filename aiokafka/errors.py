@@ -86,9 +86,7 @@ class KafkaError(RuntimeError):
     def __str__(self):
         if not self.args:
             return self.__class__.__name__
-        return "{0}: {1}".format(
-            self.__class__.__name__, super(KafkaError, self).__str__()
-        )
+        return f"{self.__class__.__name__}: {super().__str__()}"
 
 
 class IllegalStateError(KafkaError):
@@ -143,7 +141,7 @@ class IncompatibleBrokerVersion(KafkaError):
 
 class CommitFailedError(KafkaError):
     def __init__(self, *args, **kwargs):
-        super(CommitFailedError, self).__init__(
+        super().__init__(
             """Commit cannot be completed since the group has already
             rebalanced and assigned the partitions to another member.
             This means that the time between subsequent calls to poll()
@@ -239,9 +237,7 @@ class BrokerResponseError(KafkaError):
 
     def __str__(self):
         """Add errno to standard KafkaError str"""
-        return "[Error {0}] {1}".format(
-            self.errno, super(BrokerResponseError, self).__str__()
-        )
+        return f"[Error {self.errno}] {super().__str__()}"
 
 
 class NoError(BrokerResponseError):
@@ -864,7 +860,7 @@ class MemberIdRequired(BrokerResponseError):
 
 
 def _iter_broker_errors():
-    for name, obj in inspect.getmembers(sys.modules[__name__]):
+    for _, obj in inspect.getmembers(sys.modules[__name__]):
         if (
             inspect.isclass(obj)
             and issubclass(obj, BrokerResponseError)

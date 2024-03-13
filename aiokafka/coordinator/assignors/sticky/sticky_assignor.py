@@ -1,3 +1,4 @@
+import contextlib
 import logging
 from collections import defaultdict, namedtuple
 from copy import deepcopy
@@ -32,10 +33,7 @@ def has_identical_list_elements(list_):
     """
     if not list_:
         return True
-    for i in range(1, len(list_)):
-        if list_[i] != list_[i - 1]:
-            return False
-    return True
+    return all(list_[i] == list_[i - 1] for i in range(1, len(list_)))
 
 
 def subscriptions_comparator_key(element):
@@ -47,10 +45,8 @@ def partitions_comparator_key(element):
 
 
 def remove_if_present(collection, element):
-    try:
+    with contextlib.suppress(ValueError, KeyError):
         collection.remove(element)
-    except (ValueError, KeyError):
-        pass
 
 
 StickyAssignorMemberMetadataV1 = namedtuple(
@@ -127,7 +123,7 @@ class StickyAssignmentExecutor:
         # narrow down the reassignment scope to only those partitions that can actually
         # be reassigned
         fixed_partitions = set()
-        for partition in self.partition_to_all_potential_consumers.keys():
+        for partition in self.partition_to_all_potential_consumers:
             if not self._can_partition_participate_in_reassignment(partition):
                 fixed_partitions.add(partition)
         for fixed_partition in fixed_partitions:
@@ -137,7 +133,7 @@ class StickyAssignmentExecutor:
         # narrow down the reassignment scope to only those consumers that are subject to
         # reassignment
         fixed_assignments = {}
-        for consumer in self.consumer_to_all_potential_partitions.keys():
+        for consumer in self.consumer_to_all_potential_partitions:
             if not self._can_consumer_participate_in_reassignment(consumer):
                 self._remove_consumer_from_current_subscriptions_and_maintain_order(
                     consumer
@@ -196,7 +192,7 @@ class StickyAssignmentExecutor:
             self.consumer_to_all_potential_partitions[consumer_id] = []
             for topic in member_metadata.subscription:
                 if cluster.partitions_for_topic(topic) is None:
-                    log.warning("No partition metadata for topic {}".format(topic))
+                    log.warning("No partition metadata for topic %r", topic)
                     continue
                 for p in cluster.partitions_for_topic(topic):
                     partition = TopicPartition(topic=topic, partition=p)
@@ -218,9 +214,9 @@ class StickyAssignmentExecutor:
         # for each partition we create a map of its consumers by generation
         sorted_partition_consumers_by_generation = {}
         for consumer, member_metadata in members.items():
-            for partitions in member_metadata.partitions:
-                if partitions in sorted_partition_consumers_by_generation:
-                    consumers = sorted_partition_consumers_by_generation[partitions]
+            for partition in member_metadata.partitions:
+                if partition in sorted_partition_consumers_by_generation:
+                    consumers = sorted_partition_consumers_by_generation[partition]
                     if (
                         member_metadata.generation
                         and member_metadata.generation in consumers
@@ -228,28 +224,28 @@ class StickyAssignmentExecutor:
                         # same partition is assigned to two consumers during the same
                         # rebalance. log a warning and skip this record
                         log.warning(
-                            "Partition {} is assigned to multiple consumers "
-                            "following sticky assignment generation {}.".format(
-                                partitions, member_metadata.generation
-                            )
+                            "Partition %r is assigned to multiple consumers "
+                            "following sticky assignment generation %d",
+                            partition,
+                            member_metadata.generation,
                         )
                     else:
                         consumers[member_metadata.generation] = consumer
                 else:
                     sorted_consumers = {member_metadata.generation: consumer}
-                    sorted_partition_consumers_by_generation[
-                        partitions
-                    ] = sorted_consumers
+                    sorted_partition_consumers_by_generation[partition] = (
+                        sorted_consumers
+                    )
 
         # previous_assignment holds the prior ConsumerGenerationPair (before current) of
         # each partition current and previous consumers are the last two consumers of
         # each partition in the above sorted map
-        for partitions, consumers in sorted_partition_consumers_by_generation.items():
+        for partition, consumers in sorted_partition_consumers_by_generation.items():
             generations = sorted(consumers.keys(), reverse=True)
-            self.current_assignment[consumers[generations[0]]].append(partitions)
+            self.current_assignment[consumers[generations[0]]].append(partition)
             # now update previous assignment if any
             if len(generations) > 1:
-                self.previous_assignment[partitions] = ConsumerGenerationPair(
+                self.previous_assignment[partition] = ConsumerGenerationPair(
                     consumer=consumers[generations[1]], generation=generations[1]
                 )
 
@@ -275,10 +271,10 @@ class StickyAssignmentExecutor:
 
     def _populate_sorted_partitions(self):
         # set of topic partitions with their respective potential consumers
-        all_partitions = set(
+        all_partitions = {
             (tp, tuple(consumers))
             for tp, consumers in self.partition_to_all_potential_consumers.items()
-        )
+        }
         partitions_sorted_by_num_of_potential_consumers = sorted(
             all_partitions, key=partitions_comparator_key
         )
@@ -291,12 +287,11 @@ class StickyAssignmentExecutor:
             # partitions to those with least)
             assignments = deepcopy(self.current_assignment)
             for partitions in assignments.values():
-                to_remove = []
-                for partition in partitions:
-                    if partition not in self.partition_to_all_potential_consumers:
-                        to_remove.append(partition)
-                for partition in to_remove:
-                    partitions.remove(partition)
+                partitions[:] = [
+                    partition
+                    for partition in partitions
+                    if partition in self.partition_to_all_potential_consumers
+                ]
 
             sorted_consumers = SortedSet(
                 iterable=[
@@ -422,7 +417,7 @@ class StickyAssignmentExecutor:
             for partition in consumer_partitions:
                 if partition in all_assigned_partitions:
                     log.error(
-                        "{} is assigned to more than one consumer.".format(partition)
+                        "Partition %r is assigned to more than one consumer", partition
                     )
                 all_assigned_partitions[partition] = consumer_id
 
@@ -468,8 +463,9 @@ class StickyAssignmentExecutor:
         max_assignment_size = len(self.consumer_to_all_potential_partitions[consumer])
         if current_assignment_size > max_assignment_size:
             log.error(
-                "The consumer {} is assigned more partitions than the maximum "
-                "possible.".format(consumer)
+                "The consumer %r is assigned more partitions than the maximum "
+                "possible",
+                consumer,
             )
         if current_assignment_size < max_assignment_size:
             # if a consumer is not assigned all its potential partitions it is subject
@@ -497,16 +493,14 @@ class StickyAssignmentExecutor:
                 # the partition must have at least two potential consumers
                 if len(self.partition_to_all_potential_consumers[partition]) <= 1:
                     log.error(
-                        "Expected more than one potential consumer for partition "
-                        "{}".format(partition)
+                        "Expected more than one potential consumer for partition %r",
+                        partition,
                     )
                 # the partition must have a current consumer
                 consumer = self.current_partition_consumer.get(partition)
                 if consumer is None:
                     log.error(
-                        "Expected partition {} to be assigned to a consumer".format(
-                            partition
-                        )
+                        "Expected partition %r to be assigned to a consumer", partition
                     )
 
                 if (
@@ -600,7 +594,7 @@ class StickyAssignmentExecutor:
             consumer_to_assignment[consumer_id] = len(partitions)
 
         consumers_to_explore = set(consumer_to_assignment.keys())
-        for consumer_id in consumer_to_assignment.keys():
+        for consumer_id in consumer_to_assignment:
             if consumer_id in consumers_to_explore:
                 consumers_to_explore.remove(consumer_id)
                 for other_consumer_id in consumers_to_explore:
@@ -749,9 +743,9 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
 
         try:
             decoded_user_data = StickyAssignorUserDataV1.decode(user_data)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             # ignore the consumer's previous assignment if it cannot be parsed
-            log.error("Could not parse member data", e)  # pylint: disable=logging-too-many-args
+            log.error("Could not parse member data: %r", e)
             return StickyAssignorMemberMetadataV1(
                 partitions=[],
                 generation=cls.DEFAULT_GENERATION_ID,
@@ -762,12 +756,11 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
         for (
             topic,
             partitions,
-        ) in decoded_user_data.previous_assignment:  # pylint: disable=no-member
+        ) in decoded_user_data.previous_assignment:
             member_partitions.extend(
                 [TopicPartition(topic, partition) for partition in partitions]
             )
         return StickyAssignorMemberMetadataV1(
-            # pylint: disable=no-member
             partitions=member_partitions,
             generation=decoded_user_data.generation,
             subscription=metadata.subscription,
@@ -785,7 +778,8 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
         else:
             log.debug(
                 "Member assignment is available, generating the metadata: "
-                "generation {}".format(cls.generation)
+                "generation %d",
+                cls.generation,
             )
             partitions_by_topic = defaultdict(list)
             for topic_partition in member_assignment_partitions:
@@ -803,7 +797,7 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
         Arguments:
           assignment: MemberAssignment
         """
-        log.debug("On assignment: assignment={}".format(assignment))
+        log.debug("On assignment: assignment=%r", assignment)
         cls.member_assignment = assignment.partitions()
 
     @classmethod
@@ -813,5 +807,5 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
         Arguments:
           generation: generation id
         """
-        log.debug("On generation assignment: generation={}".format(generation))
+        log.debug("On generation assignment: generation=%d", generation)
         cls.generation = generation

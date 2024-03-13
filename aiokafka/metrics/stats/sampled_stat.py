@@ -3,7 +3,7 @@ import abc
 from aiokafka.metrics.measurable_stat import AbstractMeasurableStat
 
 
-class AbstractSampledStat(AbstractMeasurableStat):
+class AbstractSampledStat(AbstractMeasurableStat, metaclass=abc.ABCMeta):
     """
     An AbstractSampledStat records a single scalar value measured over
     one or more samples. Each sample is recorded over a configurable
@@ -19,20 +19,16 @@ class AbstractSampledStat(AbstractMeasurableStat):
     using this basic pattern.
     """
 
-    __metaclass__ = abc.ABCMeta
-
     def __init__(self, initial_value):
         self._initial_value = initial_value
         self._samples = []
         self._current = 0
 
     @abc.abstractmethod
-    def update(self, sample, config, value, time_ms):
-        raise NotImplementedError
+    def update(self, sample, config, value, time_ms): ...
 
     @abc.abstractmethod
-    def combine(self, samples, config, now):
-        raise NotImplementedError
+    def combine(self, samples, config, now): ...
 
     def record(self, config, value, time_ms):
         sample = self.current(time_ms)
@@ -82,7 +78,7 @@ class AbstractSampledStat(AbstractMeasurableStat):
             sample.reset(time_ms)
             return sample
 
-    class Sample(object):
+    class Sample:
         def __init__(self, initial_value, now):
             self.initial_value = initial_value
             self.event_count = 0

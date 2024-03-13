@@ -49,10 +49,11 @@ class BaseCoordinator:
     def _handle_metadata_update(self, cluster):
         subscription = self._subscription
         if subscription.subscribed_pattern:
-            topics = []
-            for topic in cluster.topics(self._exclude_internal_topics):
-                if subscription.subscribed_pattern.match(topic):
-                    topics.append(topic)
+            topics = [
+                topic
+                for topic in cluster.topics(self._exclude_internal_topics)
+                if subscription.subscribed_pattern.match(topic)
+            ]
 
             if (
                 subscription.subscription is None
@@ -122,8 +123,7 @@ class NoGroupCoordinator(BaseCoordinator):
                     # update. No problem, lets wait for the next metadata
                     # update
                     continue
-            for p_id in p_ids:
-                partitions.append(TopicPartition(topic, p_id))
+            partitions += [TopicPartition(topic, p_id) for p_id in p_ids]
 
         # If assignment did not change no need to reset it
         assignment = self._subscription.subscription.assignment
@@ -446,7 +446,7 @@ class GroupCoordinator(BaseCoordinator):
             ):
                 member_id, metadata_bytes = member
             else:
-                raise Exception("unknown protocol returned from assignment")
+                raise RuntimeError("unknown protocol returned from assignment")  # noqa: TRY004
             metadata = ConsumerProtocol.METADATA.decode(metadata_bytes)
             member_metadata[member_id] = metadata
             all_subscribed_topics.update(metadata.subscription)
@@ -571,9 +571,9 @@ class GroupCoordinator(BaseCoordinator):
                     coordinator_id = await self._client.coordinator_lookup(
                         CoordinationType.GROUP, self.group_id
                     )
-                except Errors.GroupAuthorizationFailedError:
-                    err = Errors.GroupAuthorizationFailedError(self.group_id)
-                    raise err
+                except Errors.GroupAuthorizationFailedError as err:
+                    new_err = Errors.GroupAuthorizationFailedError(self.group_id)
+                    raise new_err from err
                 except Errors.KafkaError as err:
                     log.error("Group Coordinator Request failed: %s", err)
                     if err.retriable:
@@ -606,12 +606,12 @@ class GroupCoordinator(BaseCoordinator):
         except asyncio.CancelledError:  # pragma: no cover
             raise
         except Exception as exc:
-            log.error("Unexpected error in coordinator routine", exc_info=True)
+            log.exception("Unexpected error in coordinator routine")
             kafka_exc = Errors.KafkaError(
                 f"Unexpected error during coordination {exc!r}"
             )
             self._subscription.abort_waiters(kafka_exc)
-            raise kafka_exc
+            raise kafka_exc from exc
 
     async def __coordination_routine(self):
         """Main background task, that keeps track of changes in group
@@ -1018,12 +1018,12 @@ class GroupCoordinator(BaseCoordinator):
                 Errors.UnknownMemberIdError,
                 Errors.IllegalGenerationError,
                 Errors.RebalanceInProgressError,
-            ):
+            ) as exc:
                 raise Errors.CommitFailedError(
                     "Commit cannot be completed since the group has already "
                     "rebalanced and may have assigned the partitions "
                     "to another member"
-                )
+                ) from exc
             except Errors.KafkaError as err:
                 if not err.retriable:
                     raise
@@ -1050,7 +1050,7 @@ class GroupCoordinator(BaseCoordinator):
             self.generation,
             self.member_id,
             OffsetCommitRequest.DEFAULT_RETENTION_TIME,
-            [(topic, tp_offsets) for topic, tp_offsets in offset_data.items()],
+            list(offset_data.items()),
         )
 
         log.debug(
@@ -1155,7 +1155,7 @@ class GroupCoordinator(BaseCoordinator):
                     errored[tp] = error_type()
 
         if errored:
-            first_error = list(errored.values())[0]
+            first_error, *_ = errored.values()
             raise first_error
         if unauthorized_topics:
             log.error(
@@ -1474,8 +1474,8 @@ class CoordinatorGroupRebalance:
         """
         try:
             group_assignment = await self._coordinator._perform_assignment(response)
-        except Exception as e:
-            raise Errors.KafkaError(repr(e))
+        except Exception as e:  # noqa: BLE001
+            raise Errors.KafkaError(repr(e)) from e
 
         assignment_req = []
         for member_id, assignment in group_assignment.items():

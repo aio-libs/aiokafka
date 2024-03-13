@@ -21,12 +21,12 @@ class ConsumerProtocolMemberAssignment(Struct):
     def partitions(self):
         return [
             TopicPartition(topic, partition)
-            for topic, partitions in self.assignment  # pylint: disable-msg=no-member
+            for topic, partitions in self.assignment
             for partition in partitions
         ]
 
 
-class ConsumerProtocol(object):
+class ConsumerProtocol:
     PROTOCOL_TYPE = "consumer"
     ASSIGNMENT_STRATEGIES = ("range", "roundrobin")
     METADATA = ConsumerProtocolMemberMetadata

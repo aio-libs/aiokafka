@@ -5,7 +5,7 @@ from aiokafka.errors import QuotaViolationError
 from aiokafka.metrics.kafka_metric import KafkaMetric
 
 
-class Sensor(object):
+class Sensor:
     """
     A sensor applies a continuous sequence of numerical values
     to a set of associated metrics. For example a sensor on
@@ -36,7 +36,7 @@ class Sensor(object):
         """Validate that this sensor doesn't end up referencing itself."""
         if self in sensors:
             raise ValueError(
-                "Circular dependency in sensors: %s is its own parent." % (self.name,)
+                f"Circular dependency in sensors: {self.name} is its own parent."
             )
         sensors.add(self)
         for parent in self._parents:

@@ -1,7 +1,7 @@
 import abc
 
 
-class AbstractMeasurable(object):
+class AbstractMeasurable:
     """A measurable quantity that can be registered as a metric"""
 
     @abc.abstractmethod
@@ -17,7 +17,6 @@ class AbstractMeasurable(object):
         Returns:
             The measured value
         """
-        raise NotImplementedError
 
 
 class AnonMeasurable(AbstractMeasurable):

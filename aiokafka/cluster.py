@@ -128,21 +128,20 @@ class ClusterMetadata:
         """
         if topic not in self._partitions:
             return None
-        return set(
-            [
-                partition
-                for partition, metadata in self._partitions[topic].items()
-                if metadata.leader != -1
-            ]
-        )
+        return {
+            partition
+            for partition, metadata in self._partitions[topic].items()
+            if metadata.leader != -1
+        }
 
     def leader_for_partition(self, partition):
         """Return node_id of leader, -1 unavailable, None if unknown."""
         if partition.topic not in self._partitions:
             return None
-        elif partition.partition not in self._partitions[partition.topic]:
+        partitions = self._partitions[partition.topic]
+        if partition.partition not in partitions:
             return None
-        return self._partitions[partition.topic][partition.partition].leader
+        return partitions[partition.partition].leader
 
     def partitions_for_broker(self, broker_id):
         """Return TopicPartitions for which the broker is a leader.
@@ -222,7 +221,8 @@ class ClusterMetadata:
         """
         if not metadata.brokers:
             log.warning("No broker metadata found in MetadataResponse -- ignoring.")
-            return self.failed_update(Errors.MetadataEmptyBrokerList(metadata))
+            self.failed_update(Errors.MetadataEmptyBrokerList(metadata))
+            return
 
         _new_brokers = {}
         for broker in metadata.brokers:
@@ -342,11 +342,11 @@ class ClusterMetadata:
         if error_type is not Errors.NoError:
             log.error("GroupCoordinatorResponse error: %s", error_type)
             self._groups[group] = -1
-            return
+            return None
 
         # Use a coordinator-specific node id so that group requests
         # get a dedicated connection
-        node_id = "coordinator-{}".format(response.coordinator_id)
+        node_id = f"coordinator-{response.coordinator_id}"
         coordinator = BrokerMetadata(node_id, response.host, response.port, None)
 
         log.info("Group coordinator for %s is %s", group, coordinator)

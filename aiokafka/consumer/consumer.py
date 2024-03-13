@@ -14,10 +14,7 @@ from aiokafka.errors import (
     ConsumerStoppedError,
     IllegalOperation,
     IllegalStateError,
-    NoOffsetForPartitionError,
-    OffsetOutOfRangeError,
     RecordTooLargeError,
-    TopicAuthorizationFailedError,
     UnsupportedVersionError,
 )
 from aiokafka.structs import ConsumerRecord, TopicPartition
@@ -441,12 +438,14 @@ class AIOKafkaConsumer:
                 exclude_internal_topics=self._exclude_internal_topics,
             )
 
-            if self._subscription.subscription is not None:
-                if self._subscription.partitions_auto_assigned():
-                    # Either we passed `topics` to constructor or `subscribe`
-                    # was called before `start`
-                    await self._client.force_metadata_update()
-                    self._coordinator.assign_all_partitions(check_unknown=True)
+            if (
+                self._subscription.subscription is not None
+                and self._subscription.partitions_auto_assigned()
+            ):
+                # Either we passed `topics` to constructor or `subscribe`
+                # was called before `start`
+                await self._client.force_metadata_update()
+                self._coordinator.assign_all_partitions(check_unknown=True)
 
     async def _wait_topics(self):
         if self._subscription.subscription is not None:
@@ -455,7 +454,7 @@ class AIOKafkaConsumer:
 
     def _validate_topics(self, topics):
         if not isinstance(topics, (tuple, set, list)):
-            raise ValueError("Topics should be list of strings")
+            raise TypeError("Topics should be list of strings")
         return set(topics)
 
     def assign(self, partitions):
@@ -484,11 +483,10 @@ class AIOKafkaConsumer:
         self._client.set_topics([tp.topic for tp in partitions])
 
         # If called before `start` we will delegate this to `start` call
-        if self._coordinator is not None:
-            if self._group_id is not None:
-                # refresh commit positions for all assigned partitions
-                assignment = self._subscription.subscription.assignment
-                self._coordinator.start_commit_offsets_refresh_task(assignment)
+        if self._coordinator is not None and self._group_id is not None:
+            # refresh commit positions for all assigned partitions
+            assignment = self._subscription.subscription.assignment
+            self._coordinator.start_commit_offsets_refresh_task(assignment)
 
     def assignment(self):
         """Get the set of partitions currently assigned to this consumer.
@@ -700,7 +698,7 @@ class AIOKafkaConsumer:
         A highwater offset is the offset that will be assigned to the next
         message that is produced. It may be useful for calculating lag, by
         comparing with the reported position. Note that both position and
-        highwater refer to the *next* offset – i.e., highwater offset is one
+        highwater refer to the *next* offset - i.e., highwater offset is one
         greater than the newest available message.
 
         Highwater offsets are returned as part of ``FetchResponse``, so will
@@ -800,7 +798,7 @@ class AIOKafkaConsumer:
         .. versionadded:: 0.3.0
 
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition instances")
 
         if not partitions:
@@ -840,7 +838,7 @@ class AIOKafkaConsumer:
         .. versionadded:: 0.3.0
 
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition instances")
 
         if not partitions:
@@ -884,7 +882,7 @@ class AIOKafkaConsumer:
             :exc:`~aiokafka.errors.IllegalStateError` in case of unassigned
             partition
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition instances")
 
         if not partitions:
@@ -1067,9 +1065,9 @@ class AIOKafkaConsumer:
             TypeError: if listener is not a :class:`.ConsumerRebalanceListener`
         """
         if not (topics or pattern):
-            raise ValueError("You should provide either `topics` or `pattern`")
+            raise TypeError("You should provide either `topics` or `pattern`")
         if topics and pattern:
-            raise ValueError("You can't provide both `topics` and `pattern`")
+            raise TypeError("You can't provide both `topics` and `pattern`")
         if listener is not None and not isinstance(listener, ConsumerRebalanceListener):
             raise TypeError(
                 "listener should be an instance of ConsumerRebalanceListener"
@@ -1078,7 +1076,7 @@ class AIOKafkaConsumer:
             try:
                 pattern = re.compile(pattern)
             except re.error as err:
-                raise ValueError(f"{pattern!r} is not a valid pattern: {err}")
+                raise ValueError(f"{pattern!r} is not a valid pattern: {err}") from err
             self._subscription.subscribe_pattern(pattern=pattern, listener=listener)
             # NOTE: set_topics will trigger a rebalance, so the coordinator
             # will get the initial subscription shortly by ``metadata_changed``
@@ -1149,7 +1147,7 @@ class AIOKafkaConsumer:
                 print(message.offset, message.key, message.value)
 
         """
-        assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
+        assert all(isinstance(k, TopicPartition) for k in partitions)
         if self._closed:
             raise ConsumerStoppedError()
 
@@ -1196,7 +1194,7 @@ class AIOKafkaConsumer:
                     print(message.offset, message.key, message.value)
 
         """
-        assert all(map(lambda k: isinstance(k, TopicPartition), partitions))
+        assert all(isinstance(k, TopicPartition) for k in partitions)
         if self._closed:
             raise ConsumerStoppedError()
 
@@ -1228,7 +1226,7 @@ class AIOKafkaConsumer:
         Arguments:
             *partitions (list[TopicPartition]): Partitions to pause.
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition namedtuples")
 
         for partition in partitions:
@@ -1250,7 +1248,7 @@ class AIOKafkaConsumer:
         Arguments:
             *partitions (list[TopicPartition]): Partitions to resume.
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition namedtuples")
 
         for partition in partitions:
@@ -1273,14 +1271,8 @@ class AIOKafkaConsumer:
         while True:
             try:
                 return await self.getone()
-            except ConsumerStoppedError:
-                raise StopAsyncIteration  # noqa: F821
-            except (
-                TopicAuthorizationFailedError,
-                OffsetOutOfRangeError,
-                NoOffsetForPartitionError,
-            ):
-                raise
+            except ConsumerStoppedError:  # noqa: PERF203
+                raise StopAsyncIteration from None
             except RecordTooLargeError:
                 log.exception("error in consumer iterator: %s")
 

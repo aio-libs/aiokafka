@@ -67,12 +67,12 @@ def test_MetricName():
     assert name1 != name2
 
     # name and group must be non-empty. Everything else is optional.
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         MetricName("", "group")
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         MetricName("name", None)
     # tags must be a dict if supplied
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         MetricName("name", "group", tags=set())
 
     # Because of the implementation of __eq__ and __hash__, the values of
@@ -217,9 +217,9 @@ def test_hierarchical_sensors(metrics):
     gc = grandchild.metrics[0].value()
 
     # each metric should have a count equal to one + its children's count
-    assert 1.0 == gc
+    assert gc == 1.0
     assert 1.0 + gc == c1
-    assert 1.0 == c2
+    assert c2 == 1.0
     assert 1.0 + c1 == p2
     assert 1.0 + c1 + c2 == p1
     assert [child1, child2] == metrics._children_sensors.get(parent1)
@@ -373,9 +373,9 @@ def test_event_windowing(mocker, time_keeper):
     config = MetricConfig(event_window=1, samples=2)
     count.record(config, 1.0, time_keeper.ms())
     count.record(config, 1.0, time_keeper.ms())
-    assert 2.0 == count.measure(config, time_keeper.ms())
+    assert count.measure(config, time_keeper.ms()) == 2.0
     count.record(config, 1.0, time_keeper.ms())  # first event times out
-    assert 2.0 == count.measure(config, time_keeper.ms())
+    assert count.measure(config, time_keeper.ms()) == 2.0
 
 
 def test_time_windowing(mocker, time_keeper):
@@ -386,10 +386,10 @@ def test_time_windowing(mocker, time_keeper):
     count.record(config, 1.0, time_keeper.ms())
     time_keeper.sleep(0.001)
     count.record(config, 1.0, time_keeper.ms())
-    assert 2.0 == count.measure(config, time_keeper.ms())
+    assert count.measure(config, time_keeper.ms()) == 2.0
     time_keeper.sleep(0.001)
     count.record(config, 1.0, time_keeper.ms())  # oldest event times out
-    assert 2.0 == count.measure(config, time_keeper.ms())
+    assert count.measure(config, time_keeper.ms()) == 2.0
 
 
 def test_old_data_has_no_effect(mocker, time_keeper):
@@ -410,8 +410,8 @@ def test_old_data_has_no_effect(mocker, time_keeper):
     time_keeper.sleep(samples * window_ms / 1000.0)
     assert float("-inf") == max_stat.measure(config, time_keeper.ms())
     assert float(sys.maxsize) == min_stat.measure(config, time_keeper.ms())
-    assert 0.0 == avg_stat.measure(config, time_keeper.ms())
-    assert 0 == count_stat.measure(config, time_keeper.ms())
+    assert avg_stat.measure(config, time_keeper.ms()) == 0.0
+    assert count_stat.measure(config, time_keeper.ms()) == 0
 
 
 def test_duplicate_MetricName(metrics):
@@ -483,7 +483,7 @@ def test_Percentiles(metrics):
     assert abs(p50.value() - 50) < 1.0
     assert abs(p75.value() - 75) < 1.0
 
-    for i in range(buckets):
+    for _ in range(buckets):
         sensor.record(0.0)
 
     assert p25.value() < 1.0
@@ -502,7 +502,7 @@ def test_rate_windowing(mocker, time_keeper, metrics):
     sum_val = 0
     count = config.samples - 1
     # Advance 1 window after every record
-    for i in range(count):
+    for _ in range(count):
         sensor.record(100)
         sum_val += 100
         time_keeper.sleep(config.time_window_ms / 1000.0)
@@ -554,7 +554,7 @@ def test_reporter(metrics):
 
     for key in list(expected.keys()):
         metrics = expected.pop(key)
-        expected["foo.%s" % (key,)] = metrics
+        expected[f"foo.{key}"] = metrics
     assert expected == foo_reporter.snapshot()
 
 
@@ -565,7 +565,7 @@ class ConstantMeasurable(AbstractMeasurable):
         return self._value
 
 
-class TimeKeeper(object):
+class TimeKeeper:
     """
     A clock that you can manually advance by calling sleep
     """

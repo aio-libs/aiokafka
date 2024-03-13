@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import unittest
 from unittest import mock
 
@@ -89,10 +90,8 @@ class TestFetcher(unittest.TestCase):
         self.add_cleanup(fetcher.close)
         # Disable background task
         fetcher._fetch_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await fetcher._fetch_task
-        except asyncio.CancelledError:
-            pass
         fetcher._fetch_task = create_task(asyncio.sleep(1000000))
 
         partition = TopicPartition("test", 0)

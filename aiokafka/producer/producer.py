@@ -31,6 +31,9 @@ log = logging.getLogger(__name__)
 _missing = object()
 
 
+_DEFAULT_PARTITIONER = DefaultPartitioner()
+
+
 class AIOKafkaProducer:
     """A Kafka client that publishes records to the Kafka cluster.
 
@@ -205,10 +208,9 @@ class AIOKafkaProducer:
         value_serializer=None,
         compression_type=None,
         max_batch_size=16384,
-        partitioner=DefaultPartitioner(),
+        partitioner=_DEFAULT_PARTITIONER,
         max_request_size=1048576,
         linger_ms=0,
-        send_backoff_ms=100,
         retry_backoff_ms=100,
         security_protocol="PLAINTEXT",
         ssl_context=None,
@@ -244,7 +246,7 @@ class AIOKafkaProducer:
             checker, compression_attrs = self._COMPRESSORS[compression_type]
             if not checker():
                 raise RuntimeError(
-                    "Compression library for {} not found".format(compression_type)
+                    f"Compression library for {compression_type} not found"
                 )
         else:
             compression_attrs = 0
@@ -259,7 +261,7 @@ class AIOKafkaProducer:
                 acks = -1
             elif acks not in ("all", -1):
                 raise ValueError(
-                    "acks={} not supported if enable_idempotence=True".format(acks)
+                    f"acks={acks} not supported if enable_idempotence=True"
                 )
             self._txn_manager = TransactionManager(
                 transactional_id, transaction_timeout_ms

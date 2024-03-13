@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import random
 import time
@@ -188,16 +189,14 @@ class AIOKafkaClient:
     async def close(self):
         if self._sync_task:
             self._sync_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._sync_task
-            except asyncio.CancelledError:
-                pass
             self._sync_task = None
         # Be careful to wait for graceful closure of all connections, so we
         # process all pending buffers.
-        futs = []
-        for conn in self._conns.values():
-            futs.append(conn.close(reason=CloseReason.SHUTDOWN))
+        futs = [
+            conn.close(reason=CloseReason.SHUTDOWN) for conn in self._conns.values()
+        ]
         if futs:
             await asyncio.gather(*futs)
 
@@ -231,7 +230,7 @@ class AIOKafkaClient:
                     sasl_mechanism=self._sasl_mechanism,
                     sasl_plain_username=self._sasl_plain_username,
                     sasl_plain_password=self._sasl_plain_password,
-                    sasl_kerberos_service_name=self._sasl_kerberos_service_name,  # noqa: E501
+                    sasl_kerberos_service_name=self._sasl_kerberos_service_name,
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     sasl_oauth_token_provider=self._sasl_oauth_token_provider,
                     version_hint=version_hint,
@@ -370,7 +369,7 @@ class AIOKafkaClient:
             if not self._md_update_waiter.done():
                 self._md_update_waiter.set_result(None)
             self._md_update_fut = self._loop.create_future()
-        # Metadata will be updated in the background by syncronizer
+        # Metadata will be updated in the background by synchronizer
         return asyncio.shield(self._md_update_fut)
 
     async def fetch_all_metadata(self):
@@ -413,10 +412,7 @@ class AIOKafkaClient:
         """Callback called when connection is closed"""
         # Connection failures imply that our metadata is stale, so let's
         # refresh
-        if (
-            reason == CloseReason.CONNECTION_BROKEN
-            or reason == CloseReason.CONNECTION_TIMEOUT
-        ):
+        if reason in [CloseReason.CONNECTION_BROKEN, CloseReason.CONNECTION_TIMEOUT]:
             self.force_metadata_update()
 
     async def _get_conn(self, node_id, *, group=ConnectionGroup.DEFAULT, no_hint=False):
@@ -471,7 +467,7 @@ class AIOKafkaClient:
                     sasl_mechanism=self._sasl_mechanism,
                     sasl_plain_username=self._sasl_plain_username,
                     sasl_plain_password=self._sasl_plain_password,
-                    sasl_kerberos_service_name=self._sasl_kerberos_service_name,  # noqa: E501
+                    sasl_kerberos_service_name=self._sasl_kerberos_service_name,
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     sasl_oauth_token_provider=self._sasl_oauth_token_provider,
                     version_hint=version_hint,
@@ -511,7 +507,7 @@ class AIOKafkaClient:
         if not (await self.ready(node_id, group=group)):
             raise NodeNotReadyError(
                 "Attempt to send a request to node"
-                " which is not ready (node id {}).".format(node_id)
+                f" which is not ready (node id {node_id})."
             )
 
         # Every request gets a response, except one special case:
@@ -524,10 +520,10 @@ class AIOKafkaClient:
         )
         try:
             result = await future
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as exc:
             # close connection so it is renewed in next request
             self._conns[(node_id, group)].close(reason=CloseReason.CONNECTION_TIMEOUT)
-            raise RequestTimedOutError()
+            raise RequestTimedOutError() from exc
         else:
             return result
 
@@ -536,14 +532,14 @@ class AIOKafkaClient:
         if node_id is None:
             default_group_conns = [
                 n_id
-                for (n_id, group) in self._conns.keys()
+                for (n_id, group) in self._conns
                 if group == ConnectionGroup.DEFAULT
             ]
             if default_group_conns:
                 node_id = default_group_conns[0]
             else:
                 assert self.cluster.brokers(), "no brokers in metadata"
-                node_id = list(self.cluster.brokers())[0].nodeId
+                node_id = next(iter(self.cluster.brokers())).nodeId
 
         from aiokafka.protocol.admin import ApiVersionRequest_v0, ListGroupsRequest_v0
         from aiokafka.protocol.commit import (
@@ -577,14 +573,12 @@ class AIOKafkaClient:
                 # so we send metadata request and wait response
                 task = create_task(conn.send(request))
                 await asyncio.wait([task], timeout=0.1)
-                try:
+                # metadata request can be cancelled in case
+                # of invalid correlationIds order
+                with contextlib.suppress(KafkaError):
                     await conn.send(MetadataRequest_v0([]))
-                except KafkaError:
-                    # metadata request can be cancelled in case
-                    # of invalid correlationIds order
-                    pass
                 response = await task
-            except KafkaError:
+            except KafkaError:  # noqa: PERF203
                 continue
             else:
                 # To avoid having a connection in undefined state
@@ -593,7 +587,7 @@ class AIOKafkaClient:
                 if isinstance(request, ApiVersionRequest_v0):
                     # Starting from 0.10 kafka broker we determine version
                     # by looking at ApiVersionResponse
-                    version = self._check_api_version_response(response)
+                    return self._check_api_version_response(response)
                 return version
 
         raise UnrecognizedBrokerVersion()

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import os
 import weakref
@@ -32,12 +34,12 @@ __all__ = [
 T = TypeVar("T")
 
 
-def create_task(coro: Coroutine[Any, Any, T]) -> "asyncio.Task[T]":
+def create_task(coro: Coroutine[Any, Any, T]) -> asyncio.Task[T]:
     loop = get_running_loop()
     return loop.create_task(coro)
 
 
-def create_future(loop: Optional[AbstractEventLoop] = None) -> "asyncio.Future[T]":
+def create_future(loop: Optional[AbstractEventLoop] = None) -> asyncio.Future[T]:
     if loop is None:
         loop = get_running_loop()
     return loop.create_future()
@@ -54,7 +56,7 @@ def parse_kafka_version(api_version: str) -> Tuple[int, int, int]:
     parsed = Version(api_version).release
     if not 2 <= len(parsed) <= 3:
         raise ValueError(api_version)
-    version = cast(Tuple[int, int, int], (parsed + (0,))[:3])
+    version = cast(Tuple[int, int, int], (*parsed, 0)[:3])
 
     if not (0, 9) <= version < (3, 0):
         raise ValueError(api_version)
@@ -71,18 +73,18 @@ def commit_structure_validate(
     formatted_offsets = {}
     for tp, offset_and_metadata in offsets.items():
         if not isinstance(tp, TopicPartition):
-            raise ValueError("Key should be TopicPartition instance")
+            raise TypeError("Key should be TopicPartition instance")
 
         if isinstance(offset_and_metadata, int):
             offset, metadata = offset_and_metadata, ""
         else:
             try:
                 offset, metadata = offset_and_metadata
-            except Exception:
-                raise ValueError(offsets)
+            except Exception as exc:  # noqa: BLE001
+                raise ValueError(offsets) from exc
 
             if not isinstance(metadata, str):
-                raise ValueError("Metadata should be a string")
+                raise TypeError("Metadata should be a string")
 
         formatted_offsets[tp] = OffsetAndMetadata(offset, metadata)
     return formatted_offsets
@@ -104,7 +106,7 @@ INTEGER_MAX_VALUE = 2**31 - 1
 INTEGER_MIN_VALUE = -(2**31)
 
 
-class WeakMethod(object):
+class WeakMethod:
     """
     Callable that weakly references a method and the object it is bound to. It
     is based on https://stackoverflow.com/a/24287465.

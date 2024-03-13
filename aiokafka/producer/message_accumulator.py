@@ -2,6 +2,7 @@ import asyncio
 import collections
 import copy
 import time
+from collections.abc import Sequence
 
 from aiokafka.errors import (
     KafkaTimeoutError,
@@ -59,7 +60,7 @@ class BatchBuilder:
 
         return serialized_key, serialized_value
 
-    def append(self, *, timestamp, key, value, headers=[]):
+    def append(self, *, timestamp, key, value, headers: Sequence = []):
         """Add a message to the batch.
 
         Arguments:
@@ -76,6 +77,8 @@ class BatchBuilder:
             with crc, offset, size, and timestamp fields. If the batch is full
             or closed, returns None.
         """
+        if headers is None:
+            headers = []
         if self._closed:
             return None
 
@@ -165,7 +168,7 @@ class MessageBatch:
         value,
         timestamp_ms,
         _create_future=create_future,
-        headers=[],
+        headers: Sequence = [],
     ):
         """Append message (key and value) to batch
 
@@ -339,12 +342,10 @@ class MessageAccumulator:
         self._api_version = api_version
 
     async def flush(self):
-        waiters = []
-        for batches in self._batches.values():
-            for batch in list(batches):
-                waiters.append(batch.future)
-        for batch in list(self._pending_batches):
-            waiters.append(batch.future)
+        waiters = [
+            batch.future for batches in self._batches.values() for batch in batches
+        ]
+        waiters += [batch.future for batch in self._pending_batches]
         if waiters:
             await asyncio.wait(waiters)
 
@@ -352,12 +353,11 @@ class MessageAccumulator:
         waiters = []
         for batches in self._batches.values():
             for batch in batches:
-                # We force all buffers to close to finalyze the transaction
+                # We force all buffers to close to finalize the transaction
                 # scope. We should not add anything to this transaction.
                 batch._builder.close()
                 waiters.append(batch.future)
-        for batch in self._pending_batches:
-            waiters.append(batch.future)
+        waiters += [batch.future for batch in self._pending_batches]
         # Wait for all waiters to finish. We only wait for the scope we defined
         # above, other batches should not be delivered as part of this
         # transaction
@@ -384,7 +384,7 @@ class MessageAccumulator:
         value,
         timeout,
         timestamp_ms=None,
-        headers=[],
+        headers: Sequence = [],
     ):
         """Add message to batch by topic-partition
         If batch is already full this method waits (`timeout` seconds maximum)
@@ -455,7 +455,7 @@ class MessageAccumulator:
         self._pending_batches.remove(batch)
         batch.reset_drain()
 
-    def drain_by_nodes(self, ignore_nodes, muted_partitions=set()):
+    def drain_by_nodes(self, ignore_nodes, muted_partitions=frozenset()):
         """Group batches by leader to partition nodes."""
         nodes = collections.defaultdict(dict)
         unknown_leaders_exist = False

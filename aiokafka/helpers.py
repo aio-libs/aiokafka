@@ -74,7 +74,7 @@ def create_ssl_context(
                 log.info("Loading SSL Key from %s without password", keyfile)
         # NOTE: From docs:
         # If the password argument is not specified and a password is required,
-        # OpenSSL’s built-in password prompting mechanism will be used to
+        # OpenSSL's built-in password prompting mechanism will be used to
         # interactively prompt the user for a password.
         context.load_cert_chain(certfile, keyfile, password)
     return context

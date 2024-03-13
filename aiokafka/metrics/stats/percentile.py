@@ -1,4 +1,4 @@
-class Percentile(object):
+class Percentile:
     def __init__(self, metric_name, percentile):
         self._metric_name = metric_name
         self._percentile = float(percentile)

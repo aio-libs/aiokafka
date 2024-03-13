@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-#
 # Taken from https://cloud.google.com/appengine/docs/standard/python/refdocs/\
 # modules/google/appengine/api/files/crc32c?hl=ru
 #
@@ -137,10 +135,3 @@ def crc(data):
         32-bit CRC-32C checksum of data as long.
     """
     return crc_finalize(crc_update(CRC_INIT, data))
-
-
-if __name__ == "__main__":
-    import sys
-
-    data = sys.stdin.read()
-    print(hex(crc(data)))

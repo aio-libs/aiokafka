@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import (
@@ -23,7 +24,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             transactional_id="sobaka_producer",
         )
-        producer
         with self.assertRaises(UnsupportedVersionError):
             await producer.start()
         await producer.stop()
@@ -183,7 +183,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # This will update commit point in Consumer too.
 
         # Setup some messages in INPUT topic
-        await self.send_messages(0, list(range(0, 100)))
+        await self.send_messages(0, list(range(100)))
         await self.send_messages(1, list(range(100, 200)))
         in_topic = self.topic
         out_topic = self.topic + "-out"
@@ -244,7 +244,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # reset
 
         # Setup some messages in INPUT topic
-        await self.send_messages(0, list(range(0, 100)))
+        await self.send_messages(0, list(range(100)))
         await self.send_messages(1, list(range(100, 200)))
         in_topic = self.topic
         out_topic = self.topic + "-out"
@@ -294,10 +294,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                     if raise_error:
                         raise ValueError()
 
-        try:
+        with contextlib.suppress(ValueError):
             await transform(raise_error=True)
-        except ValueError:
-            pass
 
         for tp in assignment:
             offset = await consumer.committed(tp)
@@ -346,7 +344,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         await producer.begin_transaction()
         futs = []
-        for i in range(10):
+        for _ in range(10):
             fut = await producer.send(self.topic, b"Super msg")
             futs.append(fut)
 
@@ -405,10 +403,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             # Coroutines will not be started until we yield at least 1ce
             await asyncio.sleep(0)
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         # test cancel begin_transaction.
         task = create_task(producer.begin_transaction())

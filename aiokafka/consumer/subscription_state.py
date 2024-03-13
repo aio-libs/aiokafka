@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import contextlib
 import copy
 import logging
@@ -51,7 +53,7 @@ class SubscriptionState:
         self._last_fetch_ended = time.monotonic()
 
     @property
-    def subscription(self) -> "Subscription":
+    def subscription(self) -> Subscription:
         return self._subscription
 
     @property
@@ -82,10 +84,10 @@ class SubscriptionState:
         return self._subscription._reassignment_in_progress
 
     def partitions_auto_assigned(self) -> bool:
-        return (
-            self._subscription_type == SubscriptionType.AUTO_TOPICS
-            or self._subscription_type == SubscriptionType.AUTO_PATTERN
-        )
+        return self._subscription_type in [
+            SubscriptionType.AUTO_TOPICS,
+            SubscriptionType.AUTO_PATTERN,
+        ]
 
     def is_assigned(self, tp: TopicPartition) -> bool:
         if self._subscription is None:
@@ -95,10 +97,7 @@ class SubscriptionState:
         return tp in self._subscription.assignment.tps
 
     def _set_subscription_type(self, subscription_type: SubscriptionType):
-        if (
-            self._subscription_type == SubscriptionType.NONE
-            or self._subscription_type == subscription_type
-        ):
+        if self._subscription_type in [SubscriptionType.NONE, subscription_type]:
             self._subscription_type = subscription_type
         else:
             raise IllegalStateError(
@@ -106,7 +105,7 @@ class SubscriptionState:
                 "exclusive"
             )
 
-    def _change_subscription(self, subscription: "Subscription"):
+    def _change_subscription(self, subscription: Subscription):
         log.info("Updating subscribed topics to: %s", subscription.topics)
         # Set old subscription as inactive
         if self._subscription is not None:
@@ -114,7 +113,7 @@ class SubscriptionState:
         self._subscription = subscription
         self._notify_subscription_waiters()
 
-    def _assigned_state(self, tp: TopicPartition) -> "TopicPartitionState":
+    def _assigned_state(self, tp: TopicPartition) -> TopicPartitionState:
         assert self._subscription is not None
         assert self._subscription.assignment is not None
         tp_state = self._subscription.assignment.state_value(tp)
@@ -367,7 +366,7 @@ class ManualSubscription(Subscription):
         self._assignment = Assignment(user_assignment)
 
     def _assign(self, topic_partitions: Set[TopicPartition]):  # pragma: no cover
-        assert False, "Should not be called"
+        raise AssertionError("Should not be called")
 
     @property
     def _reassignment_in_progress(self):
@@ -378,7 +377,7 @@ class ManualSubscription(Subscription):
         pass
 
     def _begin_reassignment(self):  # pragma: no cover
-        assert False, "Should not be called"
+        raise AssertionError("Should not be called")
 
 
 class Assignment:
@@ -413,7 +412,7 @@ class Assignment:
     def _unassign(self):
         self.unassign_future.set_result(None)
 
-    def state_value(self, tp: TopicPartition) -> "TopicPartitionState":
+    def state_value(self, tp: TopicPartition) -> TopicPartitionState:
         return self._tp_state.get(tp)
 
     def all_consumed_offsets(self) -> Dict[TopicPartition, OffsetAndMetadata]:

@@ -60,18 +60,17 @@ class VersionInfo:
 
     def pick_best(self, request_versions):
         api_key = request_versions[0].API_KEY
-        supported_versions = self._versions.get(api_key)
-        if supported_versions is None:
+        if api_key not in self._versions:
             return request_versions[0]
-        else:
-            for req_klass in reversed(request_versions):
-                if (
-                    supported_versions[0] <= req_klass.API_VERSION
-                    and req_klass.API_VERSION <= supported_versions[1]
-                ):
-                    return req_klass
+
+        min_version, max_version = self._versions[api_key]
+        for req_klass in reversed(request_versions):
+            if min_version <= req_klass.API_VERSION <= max_version:
+                return req_klass
+
         raise Errors.KafkaError(
-            f"Could not pick a version for API_KEY={api_key} from {supported_versions}."
+            f"Could not pick a version for API_KEY={api_key} from "
+            f"[{min_version}, {max_version}]."
         )
 
 
@@ -263,7 +262,7 @@ class AIOKafkaConnection:
 
             if self._security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
                 await self._do_sasl_handshake()
-        except:  # noqa: E722
+        except:
             self.close()
             raise
 
@@ -410,7 +409,7 @@ class AIOKafkaConnection:
 
         try:
             read_task.result()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             if not isinstance(exc, (OSError, EOFError, ConnectionError)):
                 log.exception("Unexpected exception in AIOKafkaConnection")
 
@@ -470,7 +469,7 @@ class AIOKafkaConnection:
             self.close(reason=CloseReason.CONNECTION_BROKEN)
             raise Errors.KafkaConnectionError(
                 f"Connection at {self._host}:{self._port} broken: {err}"
-            )
+            ) from err
 
         log.debug("%s Request %d: %s", self, correlation_id, request)
 
@@ -494,7 +493,7 @@ class AIOKafkaConnection:
             self.close(reason=CloseReason.CONNECTION_BROKEN)
             raise Errors.KafkaConnectionError(
                 f"Connection at {self._host}:{self._port} broken: {err}"
-            )
+            ) from err
 
         if not expect_response:
             return self._writer.drain()
@@ -630,7 +629,7 @@ class BaseSaslAuthenticator:
         try:
             data = self._authenticator.send(payload)
         except StopIteration:
-            return
+            return None
         else:
             return data
 
@@ -787,7 +786,7 @@ class OAuthAuthenticator(BaseSaslAuthenticator):
 
     async def step(self, payload):
         if self._token_sent:
-            return
+            return None
         token = await self._sasl_oauth_token_provider.token()
         token_extensions = self._token_extensions()
         self._token_sent = True
@@ -828,9 +827,10 @@ def _address_family(address):
     for af in (socket.AF_INET, socket.AF_INET6):
         try:
             socket.inet_pton(af, address)
-            return af
-        except (ValueError, AttributeError, socket.error):
+        except (OSError, ValueError, AttributeError):  # noqa: PERF203
             continue
+        else:
+            return af
     return socket.AF_UNSPEC
 
 
@@ -859,32 +859,31 @@ def get_ip_port_afi(host_and_port_str):
         else:
             port = DEFAULT_KAFKA_PORT
         return host, port, af
+    elif ":" not in host_and_port_str:
+        af = _address_family(host_and_port_str)
+        return host_and_port_str, DEFAULT_KAFKA_PORT, af
     else:
-        if ":" not in host_and_port_str:
-            af = _address_family(host_and_port_str)
-            return host_and_port_str, DEFAULT_KAFKA_PORT, af
+        # now we have something with a colon in it and no square brackets. It could
+        # be either an IPv6 address literal (e.g., "::1") or an IP:port pair or a
+        # host:port pair
+        try:
+            # if it decodes as an IPv6 address, use that
+            socket.inet_pton(socket.AF_INET6, host_and_port_str)
+        except AttributeError:
+            log.warning(
+                "socket.inet_pton not available on this platform."
+                " consider `pip install win_inet_pton`"
+            )
+        except (OSError, ValueError):
+            # it's a host:port pair
+            pass
         else:
-            # now we have something with a colon in it and no square brackets. It could
-            # be either an IPv6 address literal (e.g., "::1") or an IP:port pair or a
-            # host:port pair
-            try:
-                # if it decodes as an IPv6 address, use that
-                socket.inet_pton(socket.AF_INET6, host_and_port_str)
-                return host_and_port_str, DEFAULT_KAFKA_PORT, socket.AF_INET6
-            except AttributeError:
-                log.warning(
-                    "socket.inet_pton not available on this platform."
-                    " consider `pip install win_inet_pton`"
-                )
-                pass
-            except (ValueError, socket.error):
-                # it's a host:port pair
-                pass
-            host, port = host_and_port_str.rsplit(":", 1)
-            port = int(port)
+            return host_and_port_str, DEFAULT_KAFKA_PORT, socket.AF_INET6
+        host, port = host_and_port_str.rsplit(":", 1)
+        port = int(port)
 
-            af = _address_family(host)
-            return host, port, af
+        af = _address_family(host)
+        return host, port, af
 
 
 def collect_hosts(hosts, randomize=True):

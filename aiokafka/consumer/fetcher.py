@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import contextlib
 import logging
 import random
 import time
@@ -111,19 +112,14 @@ class FetchResult:
     def getone(self):
         tp = self._topic_partition
         if not self.check_assignment(tp) or not self.has_more():
-            return
+            return None
 
-        while True:
-            try:
-                msg = next(self._partition_records)
-            except StopIteration:
-                # We should update position in any case
-                self._update_position()
-                self._partition_records = None
-                return
-            else:
-                self._update_position()
-                return msg
+        msg = next(self._partition_records, None)
+        # We should update position in any case
+        self._update_position()
+        if msg is None:
+            self._partition_records = None
+        return msg
 
     def getall(self, max_records=None):
         tp = self._topic_partition
@@ -228,12 +224,14 @@ class PartitionRecords:
             ):
                 self._consume_aborted_up_to(next_batch.base_offset)
 
-                if next_batch.is_control_batch:
-                    if self._contains_abort_marker(next_batch):
-                        # Using `discard` instead of `remove`, because Kafka
-                        # may return an abort marker for an otherwise empty
-                        # topic-partition.
-                        self._aborted_producers.discard(next_batch.producer_id)
+                if (
+                    next_batch.is_control_batch  # fmt: skip
+                    and self._contains_abort_marker(next_batch)
+                ):
+                    # Using `discard` instead of `remove`, because Kafka
+                    # may return an abort marker for an otherwise empty
+                    # topic-partition.
+                    self._aborted_producers.discard(next_batch.producer_id)
 
                 if (
                     next_batch.is_transactional
@@ -292,7 +290,9 @@ class PartitionRecords:
         try:
             control_record = next(next_batch)
         except StopIteration:  # pragma: no cover
-            raise Errors.KafkaError("Control batch did not contain any records")
+            raise Errors.KafkaError(
+                "Control batch did not contain any records"
+            ) from None
         return ControlRecord.parse(control_record.key) == ABORT_MARKER
 
     def _consumer_record(self, tp, record):
@@ -445,10 +445,8 @@ class Fetcher:
         self._closed = True
 
         self._fetch_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await self._fetch_task
-        except asyncio.CancelledError:
-            pass
 
         # Fail all pending fetchone/fetchall calls
         for waiter in self._fetch_waiters:
@@ -578,9 +576,9 @@ class Fetcher:
                     self._pending_tasks -= done_pending
         except asyncio.CancelledError:
             pass
-        except Exception:  # pragma: no cover
-            log.error("Unexpected error in fetcher routine", exc_info=True)
-            raise Errors.KafkaError("Unexpected error during data retrieval")
+        except Exception as exc:  # pragma: no cover
+            log.exception("Unexpected error in fetcher routine")
+            raise Errors.KafkaError("Unexpected error during data retrieval") from exc
 
     def _get_actions_per_node(self, assignment):
         """For each assigned partition determine the action needed to be
@@ -928,18 +926,18 @@ class Fetcher:
                 while True:
                     try:
                         offsets = await self._proc_offset_requests(timestamps)
-                    except Errors.KafkaError as error:
+                    except Errors.KafkaError as error:  # noqa: PERF203
                         if not error.retriable:
-                            raise error
+                            raise
                         if error.invalid_metadata:
                             self._client.force_metadata_update()
                         await asyncio.sleep(self._retry_backoff)
                     else:
                         return offsets
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as exc:
             raise KafkaTimeoutError(
-                "Failed to get offsets by times in %s ms" % timeout_ms
-            )
+                f"Failed to get offsets by times in {timeout_ms} ms"
+            ) from exc
 
     async def _proc_offset_requests(self, timestamps):
         """Fetch offsets for each partition in timestamps dict. This may send
@@ -1149,16 +1147,15 @@ class Fetcher:
                         assert max_records >= 0  # Just in case
                         if max_records == 0:
                             break
-                else:
+                elif drained:
                     # We already got some messages from another partition -
                     # return them. We will raise this error on next call
-                    if drained:
-                        return drained
-                    else:
-                        # Remove error, so we can fetch on partition again
-                        del self._records[tp]
-                        self._notify(self._wait_consume_future)
-                        res_or_error.check_raise()
+                    return drained
+                else:
+                    # Remove error, so we can fetch on partition again
+                    del self._records[tp]
+                    self._notify(self._wait_consume_future)
+                    res_or_error.check_raise()
 
             if drained or not timeout:
                 return drained

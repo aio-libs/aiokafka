@@ -601,7 +601,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts, enable_idempotence=True
         )
-        producer
         with self.assertRaises(UnsupportedVersionError):
             await producer.start()
         await producer.stop()

@@ -1,7 +1,7 @@
 import math
 
 
-class Histogram(object):
+class Histogram:
     def __init__(self, bin_scheme):
         self._hist = [0.0] * bin_scheme.bins
         self._count = 0.0
@@ -33,13 +33,13 @@ class Histogram(object):
 
     def __str__(self):
         values = [
-            "%.10f:%.0f" % (self._bin_scheme.from_bin(i), value)
+            f"{self._bin_scheme.from_bin(i):.10f}:{value:.0f}"
             for i, value in enumerate(self._hist[:-1])
         ]
-        values.append("%s:%s" % (float("inf"), self._hist[-1]))
+        values.append("{}:{}".format(float("inf"), self._hist[-1]))
         return "{%s}" % ",".join(values)
 
-    class ConstantBinScheme(object):
+    class ConstantBinScheme:
         def __init__(self, bins, min_val, max_val):
             if bins < 2:
                 raise ValueError("Must have at least 2 bins.")
@@ -68,7 +68,7 @@ class Histogram(object):
             else:
                 return int(((x - self._min) / self._bucket_width) + 1)
 
-    class LinearBinScheme(object):
+    class LinearBinScheme:
         def __init__(self, num_bins, max_val):
             self._bins = num_bins
             self._max = max_val

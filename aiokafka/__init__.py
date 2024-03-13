@@ -1,4 +1,4 @@
-__version__ = "0.10.0"  # noqa
+__version__ = "0.10.0"
 
 from .abc import ConsumerRebalanceListener
 from .client import AIOKafkaClient
@@ -16,6 +16,7 @@ __all__ = [
     # Clients API
     "AIOKafkaProducer",
     "AIOKafkaConsumer",
+    "AIOKafkaClient",
     # ABC's
     "ConsumerRebalanceListener",
     # Errors
@@ -27,5 +28,3 @@ __all__ = [
     "OffsetAndTimestamp",
     "OffsetAndMetadata",
 ]
-
-AIOKafkaClient

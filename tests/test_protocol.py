@@ -291,11 +291,9 @@ def test_decode_fetch_response_partial():
 
 
 def test_struct_unrecognized_kwargs():
-    try:
+    # Structs should not allow unrecognized kwargs
+    with pytest.raises(ValueError):
         MetadataRequest[0](topicz="foo")
-        assert False, "Structs should not allow unrecognized kwargs"
-    except ValueError:
-        pass
 
 
 def test_struct_missing_kwargs():
@@ -330,8 +328,8 @@ def test_compact_data_structs():
     assert encoded == struct.pack("B", 0)
     decoded = cs.decode(io.BytesIO(encoded))
     assert decoded is None
-    assert b"\x01" == cs.encode("")
-    assert "" == cs.decode(io.BytesIO(b"\x01"))
+    assert cs.encode("") == b"\x01"
+    assert cs.decode(io.BytesIO(b"\x01")) == ""
     encoded = cs.encode("foobarbaz")
     assert cs.decode(io.BytesIO(encoded)) == "foobarbaz"
 

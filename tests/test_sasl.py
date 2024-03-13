@@ -56,11 +56,11 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         return producer
 
     async def consumer_factory(self, user="test", **kw):
-        kwargs = dict(
-            enable_auto_commit=True,
-            auto_offset_reset="earliest",
-            group_id=self.group_id,
-        )
+        kwargs = {
+            "enable_auto_commit": True,
+            "auto_offset_reset": "earliest",
+            "group_id": self.group_id,
+        }
         kwargs.update(kw)
         consumer = AIOKafkaConsumer(
             self.topic,
@@ -107,11 +107,11 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         if self.kafka_version == "0.9.0.1":
             kw["api_version"] = "0.9"
 
-        kwargs = dict(
-            enable_auto_commit=True,
-            auto_offset_reset="earliest",
-            group_id=self.group_id,
-        )
+        kwargs = {
+            "enable_auto_commit": True,
+            "auto_offset_reset": "earliest",
+            "group_id": self.group_id,
+        }
         kwargs.update(kw)
         consumer = AIOKafkaConsumer(
             self.topic,
@@ -154,11 +154,11 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         return producer
 
     async def scram_consumer_factory(self, user="test", **kw):
-        kwargs = dict(
-            enable_auto_commit=True,
-            auto_offset_reset="earliest",
-            group_id=self.group_id,
-        )
+        kwargs = {
+            "enable_auto_commit": True,
+            "auto_offset_reset": "earliest",
+            "group_id": self.group_id,
+        }
         kwargs.update(kw)
         consumer = AIOKafkaConsumer(
             self.topic,

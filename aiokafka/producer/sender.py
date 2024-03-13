@@ -94,10 +94,9 @@ class Sender:
         return self._sender_task
 
     async def close(self):
-        if self._sender_task is not None:
-            if not self._sender_task.done():
-                self._sender_task.cancel()
-                await self._sender_task
+        if self._sender_task is not None and not self._sender_task.done():
+            self._sender_task.cancel()
+            await self._sender_task
 
     async def _sender_routine(self):
         """Background task, that sends pending batches to leader nodes for
@@ -146,10 +145,10 @@ class Sender:
                 )
 
                 # create produce task for every batch
-                for node_id, batches in batches.items():
-                    task = create_task(self._send_produce_req(node_id, batches))
+                for node_id, node_batches in batches.items():
+                    task = create_task(self._send_produce_req(node_id, node_batches))
                     self._in_flight.add(node_id)
-                    for tp in batches:
+                    for tp in node_batches:
                         self._muted_partitions.add(tp)
                     tasks.add(task)
 
@@ -188,9 +187,9 @@ class Sender:
             TransactionalIdAuthorizationFailed,
         ):
             raise
-        except Exception:  # pragma: no cover
-            log.error("Unexpected error in sender routine", exc_info=True)
-            raise KafkaError("Unexpected error during batch delivery")
+        except Exception as exc:  # pragma: no cover
+            log.exception("Unexpected error in sender routine")
+            raise KafkaError("Unexpected error during batch delivery") from exc
 
     async def _maybe_wait_for_pid(self):
         if self._txn_manager is None or self._txn_manager.has_pid():
@@ -223,21 +222,21 @@ class Sender:
                 coordinator_id = await self.client.coordinator_lookup(
                     coordinator_type, coordinator_key
                 )
-            except Errors.TransactionalIdAuthorizationFailed:
-                err = Errors.TransactionalIdAuthorizationFailed(
+            except Errors.TransactionalIdAuthorizationFailed as err:
+                new_err = Errors.TransactionalIdAuthorizationFailed(
                     self._txn_manager.transactional_id
                 )
-                raise err
-            except Errors.GroupAuthorizationFailedError:
-                err = Errors.GroupAuthorizationFailedError(coordinator_key)
-                raise err
+                raise new_err from err
+            except Errors.GroupAuthorizationFailedError as err:
+                new_err = Errors.GroupAuthorizationFailedError(coordinator_key)
+                raise new_err from err
             except Errors.CoordinatorNotAvailableError:
                 await self.client.force_metadata_update()
                 await asyncio.sleep(self._retry_backoff)
                 continue
             except Errors.KafkaError as err:
                 log.error("FindCoordinator Request failed: %s", err)
-                raise KafkaError(repr(err))
+                raise KafkaError(repr(err)) from err
 
             # Try to connect to confirm that the connection can be
             # established.
@@ -325,6 +324,8 @@ class Sender:
         if commit_result is not None:
             return create_task(self._do_txn_commit(commit_result))
 
+        return None
+
     async def _do_add_partitions_to_txn(self, tps):
         # First assert we have a valid coordinator to send the request to
         node_id = await self._find_coordinator(
@@ -358,7 +359,7 @@ class Sender:
             node_id,
         )
         handler = TxnOffsetCommitHandler(self, offsets, group_id)
-        return await handler.do(node_id)
+        await handler.do(node_id)
 
     async def _do_txn_commit(self, commit_result):
         """Committing transaction should be done with care.
@@ -385,7 +386,7 @@ class Sender:
         )
 
         handler = EndTxnHandler(self, commit_result)
-        return await handler.do(node_id)
+        await handler.do(node_id)
 
 
 class BaseHandler:
@@ -439,7 +440,7 @@ class InitPIDHandler(BaseHandler):
             self._sender._txn_manager.set_pid_and_epoch(
                 resp.producer_id, resp.producer_epoch
             )
-            return
+            return None
         elif (
             error_type is CoordinatorNotAvailableError
             or error_type is NotCoordinatorError
@@ -537,7 +538,7 @@ class AddPartitionsToTxnHandler(BaseHandler):
             txn_manager.error_transaction(
                 TopicAuthorizationFailedError(unauthorized_topics)
             )
-        return
+        return None
 
 
 class AddOffsetsToTxnHandler(BaseHandler):
@@ -566,7 +567,7 @@ class AddOffsetsToTxnHandler(BaseHandler):
         if error_type is Errors.NoError:
             log.debug("Successfully added consumer group %s to transaction", group_id)
             txn_manager.consumer_group_added(group_id)
-            return
+            return None
         elif (
             error_type is CoordinatorNotAvailableError
             or error_type is NotCoordinatorError
@@ -586,7 +587,7 @@ class AddOffsetsToTxnHandler(BaseHandler):
             raise error_type(txn_manager.transactional_id)
         elif error_type is GroupAuthorizationFailedError:
             txn_manager.error_transaction(error_type(self._group_id))
-            return
+            return None
         else:
             log.error(
                 "Could not add consumer group due to unexpected error: %s", error_type
@@ -661,7 +662,7 @@ class TxnOffsetCommitHandler(BaseHandler):
                 elif error_type is GroupAuthorizationFailedError:
                     exc = error_type(self._group_id)
                     txn_manager.error_transaction(exc)
-                    return
+                    return None
                 else:
                     log.error(
                         "Could not commit offset for partition %s due to "
@@ -670,6 +671,8 @@ class TxnOffsetCommitHandler(BaseHandler):
                         error_type,
                     )
                     raise error_type()
+
+        return None
 
 
 class EndTxnHandler(BaseHandler):
@@ -695,7 +698,7 @@ class EndTxnHandler(BaseHandler):
 
         if error_type is Errors.NoError:
             txn_manager.complete_transaction()
-            return
+            return None
         elif (
             error_type is CoordinatorNotAvailableError
             or error_type is NotCoordinatorError

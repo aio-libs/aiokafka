@@ -5,7 +5,7 @@ from .histogram import Histogram
 from .sampled_stat import AbstractSampledStat
 
 
-class BucketSizing(object):
+class BucketSizing:
     CONSTANT = 0
     LINEAR = 1
 
@@ -16,7 +16,7 @@ class Percentiles(AbstractSampledStat, AbstractCompoundStat):
     def __init__(
         self, size_in_bytes, bucketing, max_val, min_val=0.0, percentiles=None
     ):
-        super(Percentiles, self).__init__(0.0)
+        super().__init__(0.0)
         self._percentiles = percentiles or []
         self._buckets = int(size_in_bytes / 4)
         if bucketing == BucketSizing.CONSTANT:
@@ -28,7 +28,7 @@ class Percentiles(AbstractSampledStat, AbstractCompoundStat):
                 raise ValueError("Linear bucket sizing requires min_val to be 0.0.")
             self.bin_scheme = Histogram.LinearBinScheme(self._buckets, max_val)
         else:
-            ValueError("Unknown bucket type: %s" % (bucketing,))
+            raise ValueError(f"Unknown bucket type: {bucketing}")
 
     def stats(self):
         measurables = []

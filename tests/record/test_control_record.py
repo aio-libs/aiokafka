@@ -19,11 +19,11 @@ def test_control_record_parse():
     assert record.version == 1
     assert record.type_ == 1
 
-    record = ControlRecord.parse(b"\xFF\xFF\xFF\xFF")
+    record = ControlRecord.parse(b"\xff\xff\xff\xff")
     assert record.version == 65535
     assert record.type_ == 65535
 
-    record = ControlRecord.parse(b"\x00\xFF\x00\x00")
+    record = ControlRecord.parse(b"\x00\xff\x00\x00")
     assert record.version == 255
     assert record.type_ == 0
 

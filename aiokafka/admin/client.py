@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from ssl import SSLContext
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient
@@ -85,7 +85,7 @@ class AIOKafkaAdminClient:
         self,
         *,
         loop=None,
-        bootstrap_servers: str = "localhost",
+        bootstrap_servers: Union[str, List[str]] = "localhost",
         client_id: str = "aiokafka-" + __version__,
         request_timeout_ms: int = 40000,
         connections_max_idle_ms: int = 540000,
@@ -171,16 +171,15 @@ class AIOKafkaAdminClient:
         api_key = operation[0].API_KEY
         if not self._version_info or api_key not in self._version_info:
             raise IncompatibleBrokerVersion(
-                "Kafka broker does not support the '{}' Kafka protocol.".format(
-                    operation[0].__name__
-                )
+                f"Kafka broker does not support the '{operation[0].__name__}' "
+                "Kafka protocol."
             )
         min_version, max_version = self._version_info[api_key]
         version = min(len(operation) - 1, max_version)
         if version < min_version:
             raise IncompatibleBrokerVersion(
-                "No version of the '{}' Kafka protocol is supported by "
-                "both the client and broker.".format(operation[0].__name__)
+                f"No version of the '{operation[0].__name__}' Kafka protocol "
+                "is supported by both the client and broker."
             )
         return version
 
@@ -190,14 +189,8 @@ class AIOKafkaAdminClient:
             new_topic.name,
             new_topic.num_partitions,
             new_topic.replication_factor,
-            [
-                (partition_id, replicas)
-                for partition_id, replicas in new_topic.replica_assignments.items()
-            ],
-            [
-                (config_key, config_value)
-                for config_key, config_value in new_topic.topic_configs.items()
-            ],
+            list(new_topic.replica_assignments.items()),
+            list(new_topic.topic_configs.items()),
         )
 
     async def create_topics(
@@ -223,9 +216,7 @@ class AIOKafkaAdminClient:
             if validate_only:
                 raise IncompatibleBrokerVersion(
                     "validate_only requires CreateTopicsRequest >= v1, "
-                    "which is not supported by Kafka {}.".format(
-                        self._client.api_version
-                    )
+                    f"which is not supported by Kafka {self._client.api_version}."
                 )
             request = CreateTopicsRequest[version](
                 create_topic_requests=topics,
@@ -239,8 +230,8 @@ class AIOKafkaAdminClient:
             )
         else:
             raise NotImplementedError(
-                "Support for CreateTopics v{} has not yet been added "
-                "to AIOKafkaAdminClient.".format(version)
+                f"Support for CreateTopics v{version} has not yet been added "
+                "to AIOKafkaAdminClient."
             )
         response = await self._client.send(self._client.get_random_node(), request)
         return response
@@ -317,7 +308,7 @@ class AIOKafkaAdminClient:
         if version == 0 and include_synonyms:
             raise IncompatibleBrokerVersion(
                 "include_synonyms requires DescribeConfigsRequest >= v1,"
-                " which is not supported by Kafka {}.".format(self._client.api_version)
+                f" which is not supported by Kafka {self._client.api_version}."
             )
         broker_res, topic_res = self._convert_config_resources(
             config_resources,
@@ -462,7 +453,7 @@ class AIOKafkaAdminClient:
             raise IncompatibleBrokerVersion(
                 "include_authorized_operations requests "
                 "DescribeGroupsRequest >= v3, which is not "
-                "supported by Kafka {}".format(version)
+                f"supported by Kafka {version}"
             )
         req_class = DescribeGroupsRequest[version]
         futures = []

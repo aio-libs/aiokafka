@@ -10,7 +10,7 @@ from ._testutil import KafkaIntegrationTestCase, random_string, run_until_comple
 class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_aiter(self):
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
         await self.send_messages(1, list(range(10, 20)))
 
         consumer = AIOKafkaConsumer(
@@ -25,10 +25,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         async for m in consumer:
             messages.append(m)
             if len(messages) == 20:
-                # Flake8==3.0.3 gives
-                #   F999 'break' outside loop
-                # for `async` syntax
-                break  # noqa
+                break
 
         self.assert_message_count(messages, 20)
 
@@ -57,10 +54,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
             async for m in consumer:
                 messages.append(m)
                 if len(messages) == 2:
-                    # Flake8==3.0.3 gives
-                    #   F999 'break' outside loop
-                    # for `async` syntax
-                    break  # noqa
+                    break
 
             self.assertEqual(len(cm.output), 1)
             self.assertTrue(
@@ -83,8 +77,8 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(consumer.stop)
 
         with self.assertRaises(NoOffsetForPartitionError):
-            async for m in consumer:
-                m  # pragma: no cover
+            async for _m in consumer:
+                pass  # pragma: no cover
 
     @run_until_complete
     async def test_consumer_stops_iter(self):
@@ -98,7 +92,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
 
         async def iterator():
             async for msg in consumer:  # pragma: no cover
-                assert False, f"No items should be here, got {msg}"
+                raise AssertionError(f"No items should be here, got {msg}")
 
         task = create_task(iterator())
         await asyncio.sleep(0.1)

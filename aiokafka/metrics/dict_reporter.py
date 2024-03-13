@@ -28,13 +28,10 @@ class DictReporter(AbstractMetricsReporter):
             }
         }
         """
-        return dict(
-            (
-                category,
-                dict((name, metric.value()) for name, metric in list(metrics.items())),
-            )
+        return {
+            category: {name: metric.value() for name, metric in list(metrics.items())}
             for category, metrics in list(self._store.items())
-        )
+        }
 
     def init(self, metrics):
         for metric in metrics:
@@ -73,9 +70,7 @@ class DictReporter(AbstractMetricsReporter):
             prefix = None, group = 'bar', tags = None
             returns: 'bar'
         """
-        tags = ",".join(
-            "%s=%s" % (k, v) for k, v in sorted(metric.metric_name.tags.items())
-        )
+        tags = ",".join(f"{k}={v}" for k, v in sorted(metric.metric_name.tags.items()))
         return ".".join(x for x in [self._prefix, metric.metric_name.group, tags] if x)
 
     def configure(self, configs):

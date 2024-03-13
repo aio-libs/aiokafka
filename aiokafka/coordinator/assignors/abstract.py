@@ -4,7 +4,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class AbstractPartitionAssignor(object):
+class AbstractPartitionAssignor:
     """Abstract assignor implementation which does some common grunt work (in particular
     collecting partition counts which are always needed in assignors).
     """
@@ -12,7 +12,6 @@ class AbstractPartitionAssignor(object):
     @abc.abstractproperty
     def name(self):
         """.name should be a string identifying the assignor"""
-        pass
 
     @abc.abstractmethod
     def assign(self, cluster, members):
@@ -26,7 +25,6 @@ class AbstractPartitionAssignor(object):
         Returns:
             dict: {member_id: MemberAssignment}
         """
-        pass
 
     @abc.abstractmethod
     def metadata(self, topics):
@@ -38,7 +36,6 @@ class AbstractPartitionAssignor(object):
         Returns:
             MemberMetadata struct
         """
-        pass
 
     @abc.abstractmethod
     def on_assignment(self, assignment):
@@ -50,4 +47,3 @@ class AbstractPartitionAssignor(object):
         Arguments:
             assignment (MemberAssignment): the member's assignment
         """
-        pass

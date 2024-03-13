@@ -84,10 +84,11 @@ class PartitionMovements:
             movement_pairs = set(movements.keys())
             if self._has_cycles(movement_pairs):
                 log.error(
-                    "Stickiness is violated for topic {}\n"
+                    "Stickiness is violated for topic %r\n"
                     "Partition movements for this topic occurred among the following "
-                    "consumer pairs:\n"
-                    "{}".format(topic, movement_pairs)
+                    "consumer pairs:\n%r",
+                    topic,
+                    movement_pairs,
                 )
                 return False
         return True
@@ -118,19 +119,17 @@ class PartitionMovements:
                 pair.dst_member_id, pair.src_member_id, reduced_pairs, path
             ) and not self._is_subcycle(path, cycles):
                 cycles.add(tuple(path))
-                log.error(
-                    "A cycle of length {} was found: {}".format(len(path) - 1, path)
-                )
+                log.error("A cycle of length %d was found: %r", len(path) - 1, path)
 
         # for now we want to make sure there is no partition movements of the same topic
         # between a pair of consumers.  the odds of finding a cycle among more than two
         # consumers seem to be very low (according to various randomized tests with the
         # given sticky algorithm) that it should not worth the added complexity of
         # handling those cases.
-        for cycle in cycles:
-            if len(cycle) == 3:  # indicates a cycle of length 2
-                return True
-        return False
+        return any(
+            len(cycle) == 3  # indicates a cycle of length 2
+            for cycle in cycles
+        )
 
     @staticmethod
     def _is_subcycle(cycle, cycles):

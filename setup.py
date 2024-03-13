@@ -71,17 +71,17 @@ class ve_build_ext(build_ext):
     def run(self):
         try:
             build_ext.run(self)
-        except (PlatformError, FileNotFoundError):
-            raise BuildFailed()
+        except (PlatformError, FileNotFoundError) as exc:
+            raise BuildFailed() from exc
 
     def build_extension(self, ext):
         try:
             build_ext.build_extension(self, ext)
-        except (CCompilerError, ExecError, PlatformError, ValueError):
-            raise BuildFailed()
+        except (CCompilerError, ExecError, PlatformError, ValueError) as exc:
+            raise BuildFailed() from exc
 
 
 setup(
     ext_modules=cythonize(extensions),
-    cmdclass=dict(build_ext=ve_build_ext, bdist_rpm=bdist_rpm),
+    cmdclass={"build_ext": ve_build_ext, "bdist_rpm": bdist_rpm},
 )

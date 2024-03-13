@@ -7,7 +7,7 @@ class Avg(AbstractSampledStat):
     """
 
     def __init__(self):
-        super(Avg, self).__init__(0.0)
+        super().__init__(0.0)
 
     def update(self, sample, config, value, now):
         sample.value += value

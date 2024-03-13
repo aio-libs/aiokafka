@@ -1,16 +1,14 @@
 import abc
 
 
-class AbstractType(object):
-    __metaclass__ = abc.ABCMeta
-
+class AbstractType(metaclass=abc.ABCMeta):
+    @classmethod
     @abc.abstractmethod
-    def encode(cls, value):  # pylint: disable=no-self-argument
-        pass
+    def encode(cls, value): ...
 
+    @classmethod
     @abc.abstractmethod
-    def decode(cls, data):  # pylint: disable=no-self-argument
-        pass
+    def decode(cls, data): ...
 
     @classmethod
     def repr(cls, value):
