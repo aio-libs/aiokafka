@@ -57,9 +57,6 @@ class Struct(AbstractType):
             key_vals.append(f"{name}={field.repr(self.__dict__[name])}")
         return self.__class__.__name__ + "(" + ", ".join(key_vals) + ")"
 
-    def __hash__(self):
-        return hash(self.encode())
-
     def __eq__(self, other):
         if self.SCHEMA != other.SCHEMA:
             return False
