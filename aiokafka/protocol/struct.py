@@ -1,7 +1,5 @@
 from io import BytesIO
 
-from aiokafka.util import WeakMethod
-
 from .abstract import AbstractType
 from .types import Schema
 
@@ -25,19 +23,7 @@ class Struct(AbstractType):
                     )
                 )
 
-        # overloading encode() to support both class and instance
-        # Without WeakMethod() this creates circular ref, which
-        # causes instances to "leak" to garbage
-        self.encode = WeakMethod(self._encode_self)
-
-    @classmethod
-    def encode(cls, item):
-        bits = []
-        for i, field in enumerate(cls.SCHEMA.fields):
-            bits.append(field.encode(item[i]))
-        return b"".join(bits)
-
-    def _encode_self(self):
+    def encode(self):
         return self.SCHEMA.encode([self.__dict__[name] for name in self.SCHEMA.names])
 
     @classmethod

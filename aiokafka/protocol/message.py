@@ -13,7 +13,6 @@ from aiokafka.codec import (
     zstd_decode,
 )
 from aiokafka.errors import UnsupportedCodecError
-from aiokafka.util import WeakMethod
 
 from .struct import Struct
 from .types import AbstractType, Bytes, Int8, Int32, Int64, Schema, UInt32
@@ -63,7 +62,6 @@ class Message(Struct):
         self.attributes = attributes
         self.key = key
         self.value = value
-        self.encode = WeakMethod(self._encode_self)
 
     @property
     def timestamp_type(self):
@@ -79,7 +77,7 @@ class Message(Struct):
         else:
             return 0
 
-    def _encode_self(self, recalc_crc=True):
+    def encode(self, recalc_crc=True):
         version = self.magic
         if version == 1:
             fields = (
@@ -129,7 +127,7 @@ class Message(Struct):
 
     def validate_crc(self):
         if self._validated_crc is None:
-            raw_msg = self._encode_self(recalc_crc=False)
+            raw_msg = self.encode(recalc_crc=False)
             self._validated_crc = crc32(raw_msg[4:])
         if self.crc == self._validated_crc:
             return True
@@ -170,7 +168,7 @@ class Message(Struct):
         return MessageSet.decode(raw_bytes, bytes_to_read=len(raw_bytes))
 
     def __hash__(self):
-        return hash(self._encode_self(recalc_crc=False))
+        return hash(self.encode(recalc_crc=False))
 
 
 class PartialMessage(bytes):
