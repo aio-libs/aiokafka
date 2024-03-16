@@ -8,6 +8,7 @@ DIFF_BRANCH=origin/master
 FORMATTED_AREAS=\
 	aiokafka/codec.py \
 	aiokafka/errors.py \
+	aiokafka/helpers.py \
 	aiokafka/structs.py \
 	aiokafka/util.py \
 	tests/test_codec.py

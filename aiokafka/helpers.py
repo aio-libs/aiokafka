@@ -1,23 +1,24 @@
-"""
-.. _kafka-python: https://github.com/dpkp/kafka-python
-"""
-
 import logging
-from ssl import Purpose, create_default_context
+from os import PathLike
+from ssl import Purpose, SSLContext, create_default_context
+from typing import Callable, Union
+
+from typing_extensions import Buffer
 
 log = logging.getLogger(__name__)
 
 
 def create_ssl_context(
     *,
-    cafile=None,
-    capath=None,
-    cadata=None,
-    certfile=None,
-    keyfile=None,
-    password=None,
-    crlfile=None,
-):
+    cafile: Union[str, bytes, PathLike[str], PathLike[bytes], None] = None,
+    capath: Union[str, bytes, PathLike[str], PathLike[bytes], None] = None,
+    cadata: Union[str, Buffer, None] = None,
+    certfile: Union[str, bytes, PathLike[str], PathLike[bytes], None] = None,
+    keyfile: Union[str, bytes, PathLike[str], PathLike[bytes], None] = None,
+    password: Union[
+        Callable[[], Union[str, bytes, bytearray]], str, bytes, bytearray, None
+    ] = None,
+) -> SSLContext:
     """
     Simple helper, that creates an :class:`~ssl.SSLContext` based on params similar to
     those in `kafka-python`_, but with some restrictions like:
