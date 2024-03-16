@@ -573,6 +573,8 @@ class AIOKafkaConsumer:
             Will now raise :exc:`~aiokafka.errors.CommitFailedError` in case
             membership changed, as (possibly) this partition is handled by
             another consumer.
+
+        .. _kafka-python: https://github.com/dpkp/kafka-python
         """
         if self._group_id is None:
             raise IllegalOperation("Requires group_id")

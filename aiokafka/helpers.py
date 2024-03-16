@@ -55,6 +55,7 @@ def create_ssl_context(
             :meth:`~ssl.SSLContext.load_cert_chain`.
             Default: :data:`None`.
 
+    .. _kafka-python: https://github.com/dpkp/kafka-python
     """
     if cafile or capath:
         log.info("Loading SSL CA from %s", cafile or capath)
