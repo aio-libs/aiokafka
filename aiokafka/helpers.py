@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from os import PathLike
 from ssl import Purpose, SSLContext, create_default_context
