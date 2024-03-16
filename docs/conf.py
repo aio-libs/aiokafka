@@ -86,7 +86,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'aiokafka'
-copyright = '2015-2017, Aio-libs contributors'
+copyright = '2015-2024, Aio-libs contributors'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -119,6 +119,7 @@ nitpick_ignore = [
     ("py:class", "KT"),
     ("py:class", "Optional[~ VT]"),
     ("py:class", "VT"),
+    ("py:class", "typing_extensions.Buffer"),
 ]
 
 # If true, '()' will be appended to :func: etc. cross-reference text.
