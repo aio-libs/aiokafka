@@ -5,7 +5,12 @@ SCALA_VERSION?=2.13
 KAFKA_VERSION?=2.8.1
 DOCKER_IMAGE=aiolibs/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
 DIFF_BRANCH=origin/master
-FORMATTED_AREAS=aiokafka/util.py aiokafka/structs.py aiokafka/codec.py tests/test_codec.py
+FORMATTED_AREAS=\
+	aiokafka/codec.py \
+	aiokafka/errors.py \
+	aiokafka/structs.py \
+	aiokafka/util.py \
+	tests/test_codec.py
 
 .PHONY: setup
 setup:

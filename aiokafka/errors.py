@@ -1,5 +1,4 @@
-import inspect
-import sys
+from typing import Any, Iterable, Type, TypeVar
 
 __all__ = [
     # aiokafka custom errors
@@ -83,7 +82,7 @@ class KafkaError(RuntimeError):
     # whether metadata should be refreshed on error
     invalid_metadata = False
 
-    def __str__(self):
+    def __str__(self) -> str:
         if not self.args:
             return self.__class__.__name__
         return f"{self.__class__.__name__}: {super().__str__()}"
@@ -140,7 +139,7 @@ class IncompatibleBrokerVersion(KafkaError):
 
 
 class CommitFailedError(KafkaError):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(
             """Commit cannot be completed since the group has already
             rebalanced and assigned the partitions to another member.
@@ -223,19 +222,21 @@ class ProducerFenced(KafkaError):
 
     def __init__(
         self,
-        msg="There is a newer producer using the same transactional_id or"
-        "transaction timeout occurred (check that processing time is "
-        "below transaction_timeout_ms)",
-    ):
+        msg: str = (
+            "There is a newer producer using the same transactional_id or"
+            "transaction timeout occurred (check that processing time is "
+            "below transaction_timeout_ms)"
+        ),
+    ) -> None:
         super().__init__(msg)
 
 
 class BrokerResponseError(KafkaError):
-    errno = None
-    message = None
-    description = None
+    errno: int
+    message: str
+    description: str = ""
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Add errno to standard KafkaError str"""
         return f"[Error {self.errno}] {super().__str__()}"
 
@@ -859,18 +860,17 @@ class MemberIdRequired(BrokerResponseError):
     )
 
 
-def _iter_broker_errors():
-    for _, obj in inspect.getmembers(sys.modules[__name__]):
-        if (
-            inspect.isclass(obj)
-            and issubclass(obj, BrokerResponseError)
-            and obj != BrokerResponseError
-        ):
-            yield obj
+_T = TypeVar("_T", bound=type)
 
 
-kafka_errors = {x.errno: x for x in _iter_broker_errors()}
+def _iter_subclasses(cls: _T) -> Iterable[_T]:
+    for subclass in cls.__subclasses__():
+        yield subclass
+        yield from _iter_subclasses(subclass)
 
 
-def for_code(error_code):
+kafka_errors = {x.errno: x for x in _iter_subclasses(BrokerResponseError)}
+
+
+def for_code(error_code: int) -> Type[BrokerResponseError]:
     return kafka_errors.get(error_code, UnknownError)
