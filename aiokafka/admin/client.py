@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from ssl import SSLContext
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union
 
 from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient
@@ -156,7 +156,7 @@ class AIOKafkaAdminClient:
         log.debug("AIOKafkaAdminClient started")
         self._started = True
 
-    def _matching_api_version(self, operation: List[Request]) -> int:
+    def _matching_api_version(self, operation: Sequence[Type[Request]]) -> int:
         """Find the latest version of the protocol operation
         supported by both this library and the broker.
 
@@ -332,7 +332,9 @@ class AIOKafkaAdminClient:
             futures.append(self._send_request(req))
         return await asyncio.gather(*futures)
 
-    async def alter_configs(self, config_resources: List[ConfigResource]) -> Response:
+    async def alter_configs(
+        self, config_resources: List[ConfigResource]
+    ) -> List[Response]:
         """Alter configuration parameters of one or more Kafka resources.
         :param config_resources: A list of ConfigResource objects.
         :return: Appropriate version of AlterConfigsResponse class.

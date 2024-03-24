@@ -123,7 +123,7 @@ select = [
     "PL",  # Pylint
     "TRY",  # tryceratops
     "PERF",  # Perflint
-    "LOG",  # flake8-logging
+    # "LOG",  # flake8-logging
     "RUF",  # Ruff-specific
 ]
 
@@ -168,3 +168,4 @@ strict_equality = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 follow_imports = "silent"  # FIXME Remove after adding annotations
+local_partial_types = true  # TODO Remove when it becomes default
