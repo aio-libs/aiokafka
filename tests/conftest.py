@@ -310,9 +310,8 @@ def collect_garbage():
 
 
 @pytest.fixture(scope="class")
-def setup_test_class_serverless(request, loop, ssl_folder):
+def setup_test_class_serverless(request, loop):
     request.cls.loop = loop
-    request.cls.ssl_folder = ssl_folder
 
 
 @pytest.fixture(scope="class")

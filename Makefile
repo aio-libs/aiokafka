@@ -11,7 +11,8 @@ FORMATTED_AREAS=\
 	aiokafka/helpers.py \
 	aiokafka/structs.py \
 	aiokafka/util.py \
-	tests/test_codec.py
+	tests/test_codec.py \
+	tests/test_helpers.py
 
 .PHONY: setup
 setup:
