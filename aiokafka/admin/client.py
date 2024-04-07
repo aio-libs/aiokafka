@@ -4,11 +4,14 @@ from collections import defaultdict
 from ssl import SSLContext
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union
 
+import async_timeout
+
 from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
     IncompatibleBrokerVersion,
     LeaderNotAvailableError,
+    NotControllerError,
     NotLeaderForPartitionError,
     for_code,
 )
@@ -183,6 +186,33 @@ class AIOKafkaAdminClient:
             )
         return version
 
+    async def _send_request_to_node(self, node_id: int, request: Request) -> Response:
+        async with async_timeout.timeout(self._client._request_timeout_ms / 1000):
+            while True:
+                ready = await self._client.ready(node_id)
+                if ready:
+                    break
+                await asyncio.sleep(self._client._retry_backoff)
+
+        return await self._client.send(node_id, request)
+
+    async def _send_to_controller(self, request: Request) -> Response:
+        # With "auto" api_version the first request is sent with minimal
+        # version, so the controller is not returned in metadata.
+        if self._client.cluster.controller is None:
+            await self._client.force_metadata_update()
+
+        # 2 attempts in case cluster metadata is outdated
+        try:
+            return await self._send_request_to_node(
+                self._client.cluster.controller.nodeId, request
+            )
+        except NotControllerError:
+            await self._client.force_metadata_update()
+            return await self._send_request_to_node(
+                self._client.cluster.controller.nodeId, request
+            )
+
     @staticmethod
     def _convert_new_topic_request(new_topic):
         return (
@@ -233,7 +263,7 @@ class AIOKafkaAdminClient:
                 f"Support for CreateTopics v{version} has not yet been added "
                 "to AIOKafkaAdminClient."
             )
-        response = await self._client.send(self._client.get_random_node(), request)
+        response = await self._send_to_controller(request)
         return response
 
     async def delete_topics(
@@ -251,7 +281,7 @@ class AIOKafkaAdminClient:
         version = self._matching_api_version(DeleteTopicsRequest)
         req_cls = DeleteTopicsRequest[version]
         request = req_cls(topics, timeout_ms or self._request_timeout_ms)
-        response = await self._send_request(request)
+        response = await self._send_to_controller(request)
         return response
 
     async def _get_cluster_metadata(
