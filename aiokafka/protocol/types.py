@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import struct
 from struct import error
-from typing import Callable, Iterable, Optional, Tuple, TypeVar, Union
+from typing import Callable, Optional, TypeVar
 
 from _typeshed import ReadableBuffer
 
-from .abstract import AbstractType, RawData
+from .abstract import AbstractType, BytesIO
 
 T = TypeVar("T")
 
@@ -42,7 +42,7 @@ class Int8(AbstractType[int]):
         return _pack(cls._pack, value)
 
     @classmethod
-    def decode(cls, data: RawData) -> int:
+    def decode(cls, data: BytesIO) -> int:
         return _unpack(cls._unpack, data.read(1))
 
 
@@ -55,7 +55,7 @@ class Int16(AbstractType[int]):
         return _pack(cls._pack, value)
 
     @classmethod
-    def decode(cls, data: RawData) -> int:
+    def decode(cls, data: BytesIO) -> int:
         return _unpack(cls._unpack, data.read(2))
 
 
@@ -68,7 +68,7 @@ class Int32(AbstractType[int]):
         return _pack(cls._pack, value)
 
     @classmethod
-    def decode(cls, data: RawData) -> int:
+    def decode(cls, data: BytesIO) -> int:
         return _unpack(cls._unpack, data.read(4))
 
 
@@ -81,7 +81,7 @@ class UInt32(AbstractType[int]):
         return _pack(cls._pack, value)
 
     @classmethod
-    def decode(cls, data: RawData) -> int:
+    def decode(cls, data: BytesIO) -> int:
         return _unpack(cls._unpack, data.read(4))
 
 
@@ -94,7 +94,7 @@ class Int64(AbstractType[int]):
         return _pack(cls._pack, value)
 
     @classmethod
-    def decode(cls, data: RawData) -> int:
+    def decode(cls, data: BytesIO) -> int:
         return _unpack(cls._unpack, data.read(8))
 
 
@@ -107,7 +107,7 @@ class Float64(AbstractType[float]):
         return _pack(cls._pack, value)
 
     @classmethod
-    def decode(cls, data: RawData) -> float:
+    def decode(cls, data: BytesIO) -> float:
         return _unpack(cls._unpack, data.read(8))
 
 
@@ -121,7 +121,7 @@ class String(AbstractType[str]):
         value = str(value).encode(self.encoding)
         return Int16.encode(len(value)) + value
 
-    def decode(self, data: RawData) -> str:
+    def decode(self, data: BytesIO) -> Optional[str]:
         length = Int16.decode(data)
         if length < 0:
             return None
@@ -140,7 +140,7 @@ class Bytes(AbstractType[bytes]):
             return Int32.encode(len(value)) + value
 
     @classmethod
-    def decode(cls, data: RawData) -> Optional[bytes]:
+    def decode(cls, data: BytesIO) -> Optional[bytes]:
         length = Int32.decode(data)
         if length < 0:
             return None
@@ -165,15 +165,13 @@ class Boolean(AbstractType[bool]):
         return _pack(cls._pack, value)
 
     @classmethod
-    def decode(cls, data: RawData) -> bool:
+    def decode(cls, data: BytesIO) -> bool:
         return _unpack(cls._unpack, data.read(1))
 
 
 class Schema(AbstractType):
-    names: Tuple[str]
-    fields: Tuple[AbstractType]
 
-    def __init__(self, *fields: Tuple[str, AbstractType]):
+    def __init__(self, *fields):
         if fields:
             self.names, self.fields = zip(*fields)
         else:
@@ -205,9 +203,8 @@ class Schema(AbstractType):
 
 
 class Array(AbstractType):
-    array_of: Union[Schema, AbstractType]
 
-    def __init__(self, *array_of: Tuple[str, AbstractType]):
+    def __init__(self, *array_of):
         if len(array_of) > 1:
             self.array_of = Schema(*array_of)
         elif len(array_of) == 1 and (
@@ -218,7 +215,7 @@ class Array(AbstractType):
         else:
             raise ValueError("Array instantiated with no array_of type")
 
-    def encode(self, items: Optional[Iterable[Tuple[str, AbstractType]]]) -> bytes:
+    def encode(self, items) -> bytes:
         if items is None:
             return Int32.encode(-1)
         encoded_items = (self.array_of.encode(item) for item in items)
@@ -226,7 +223,7 @@ class Array(AbstractType):
             (Int32.encode(len(items)), *encoded_items),
         )
 
-    def decode(self, data: RawData) -> Optional[list[AbstractType]]:
+    def decode(self, data: BytesIO) -> Optional[list[AbstractType]]:
         length = Int32.decode(data)
         if length == -1:
             return None
@@ -308,7 +305,7 @@ class VarInt64(AbstractType):
 
 
 class CompactString(String):
-    def decode(self, data: RawData) -> Optional[bytes]:
+    def decode(self, data: BytesIO) -> Optional[bytes]:
         length = UnsignedVarInt32.decode(data) - 1
         if length < 0:
             return None
@@ -326,7 +323,7 @@ class CompactString(String):
 
 class TaggedFields(AbstractType):
     @classmethod
-    def decode(cls, data):
+    def decode(cls, data: bytes):
         num_fields = UnsignedVarInt32.decode(data)
         ret = {}
         if not num_fields:
@@ -356,7 +353,7 @@ class TaggedFields(AbstractType):
 
 class CompactBytes(AbstractType):
     @classmethod
-    def decode(cls, data: RawData) -> Optional[bytes]:
+    def decode(cls, data: BytesIO) -> Optional[bytes]:
         length = UnsignedVarInt32.decode(data) - 1
         if length < 0:
             return None
@@ -374,7 +371,7 @@ class CompactBytes(AbstractType):
 
 
 class CompactArray(Array):
-    def encode(self, items: Optional[list[AbstractType]]) -> bytes:
+    def encode(self, items) -> bytes:
         if items is None:
             return UnsignedVarInt32.encode(0)
         encoded_items = (self.array_of.encode(item) for item in items)
@@ -382,7 +379,7 @@ class CompactArray(Array):
             (UnsignedVarInt32.encode(len(items) + 1), *encoded_items),
         )
 
-    def decode(self, data: RawData) -> Optional[list[Optional[AbstractType]]]:
+    def decode(self, data: BytesIO):
         length = UnsignedVarInt32.decode(data) - 1
         if length == -1:
             return None
