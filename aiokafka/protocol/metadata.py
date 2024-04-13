@@ -1,3 +1,5 @@
+from typing import Optional
+
 from .api import Request, Response
 from .types import Array, Boolean, Int16, Int32, Schema, String
 
@@ -187,7 +189,9 @@ class MetadataRequest_v0(Request):
     API_VERSION = 0
     RESPONSE_TYPE = MetadataResponse_v0
     SCHEMA = Schema(("topics", Array(String("utf-8"))))
-    ALL_TOPICS = None  # Empty Array (len 0) for topics returns all topics
+    ALL_TOPICS: Optional[int] = (
+        None  # Empty Array (len 0) for topics returns all topics
+    )
 
 
 class MetadataRequest_v1(Request):
@@ -195,8 +199,8 @@ class MetadataRequest_v1(Request):
     API_VERSION = 1
     RESPONSE_TYPE = MetadataResponse_v1
     SCHEMA = MetadataRequest_v0.SCHEMA
-    ALL_TOPICS = -1  # Null Array (len -1) for topics returns all topics
-    NO_TOPICS = None  # Empty array (len 0) for topics returns no topics
+    ALL_TOPICS: Optional[int] = -1  # Null Array (len -1) for topics returns all topics
+    NO_TOPICS: None = None  # Empty array (len 0) for topics returns no topics
 
 
 class MetadataRequest_v2(Request):
@@ -204,8 +208,8 @@ class MetadataRequest_v2(Request):
     API_VERSION = 2
     RESPONSE_TYPE = MetadataResponse_v2
     SCHEMA = MetadataRequest_v1.SCHEMA
-    ALL_TOPICS = -1  # Null Array (len -1) for topics returns all topics
-    NO_TOPICS = None  # Empty array (len 0) for topics returns no topics
+    ALL_TOPICS: Optional[int] = -1  # Null Array (len -1) for topics returns all topics
+    NO_TOPICS: None = None  # Empty array (len 0) for topics returns no topics
 
 
 class MetadataRequest_v3(Request):
@@ -213,8 +217,8 @@ class MetadataRequest_v3(Request):
     API_VERSION = 3
     RESPONSE_TYPE = MetadataResponse_v3
     SCHEMA = MetadataRequest_v1.SCHEMA
-    ALL_TOPICS = -1  # Null Array (len -1) for topics returns all topics
-    NO_TOPICS = None  # Empty array (len 0) for topics returns no topics
+    ALL_TOPICS: Optional[int] = -1  # Null Array (len -1) for topics returns all topics
+    NO_TOPICS: None = None  # Empty array (len 0) for topics returns no topics
 
 
 class MetadataRequest_v4(Request):
@@ -224,8 +228,8 @@ class MetadataRequest_v4(Request):
     SCHEMA = Schema(
         ("topics", Array(String("utf-8"))), ("allow_auto_topic_creation", Boolean)
     )
-    ALL_TOPICS = -1  # Null Array (len -1) for topics returns all topics
-    NO_TOPICS = None  # Empty array (len 0) for topics returns no topics
+    ALL_TOPICS: Optional[int] = -1  # Null Array (len -1) for topics returns all topics
+    NO_TOPICS: None = None  # Empty array (len 0) for topics returns no topics
 
 
 class MetadataRequest_v5(Request):
@@ -238,23 +242,23 @@ class MetadataRequest_v5(Request):
     API_VERSION = 5
     RESPONSE_TYPE = MetadataResponse_v5
     SCHEMA = MetadataRequest_v4.SCHEMA
-    ALL_TOPICS = -1  # Null Array (len -1) for topics returns all topics
-    NO_TOPICS = None  # Empty array (len 0) for topics returns no topics
+    ALL_TOPICS: Optional[int] = -1  # Null Array (len -1) for topics returns all topics
+    NO_TOPICS: None = None  # Empty array (len 0) for topics returns no topics
 
 
-MetadataRequest = [
+MetadataRequest = (
     MetadataRequest_v0,
     MetadataRequest_v1,
     MetadataRequest_v2,
     MetadataRequest_v3,
     MetadataRequest_v4,
     MetadataRequest_v5,
-]
-MetadataResponse = [
+)
+MetadataResponse = (
     MetadataResponse_v0,
     MetadataResponse_v1,
     MetadataResponse_v2,
     MetadataResponse_v3,
     MetadataResponse_v4,
     MetadataResponse_v5,
-]
+)

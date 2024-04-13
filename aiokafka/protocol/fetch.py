@@ -376,7 +376,7 @@ class FetchRequest_v7(Request):
         ),
         (
             "forgotten_topics_data",
-            Array(("topic", String), ("partitions", Array(Int32))),
+            Array(("topic", String("utf-8")), ("partitions", Array(Int32))),
         ),
     )
 
@@ -428,7 +428,7 @@ class FetchRequest_v9(Request):
         (
             "forgotten_topics_data",
             Array(
-                ("topic", String),
+                ("topic", String("utf-8")),
                 ("partitions", Array(Int32)),
             ),
         ),
@@ -480,13 +480,13 @@ class FetchRequest_v11(Request):
         ),
         (
             "forgotten_topics_data",
-            Array(("topic", String), ("partitions", Array(Int32))),
+            Array(("topic", String("utf-8")), ("partitions", Array(Int32))),
         ),
         ("rack_id", String("utf-8")),
     )
 
 
-FetchRequest = [
+FetchRequest = (
     FetchRequest_v0,
     FetchRequest_v1,
     FetchRequest_v2,
@@ -499,8 +499,8 @@ FetchRequest = [
     FetchRequest_v9,
     FetchRequest_v10,
     FetchRequest_v11,
-]
-FetchResponse = [
+)
+FetchResponse = (
     FetchResponse_v0,
     FetchResponse_v1,
     FetchResponse_v2,
@@ -513,4 +513,4 @@ FetchResponse = [
     FetchResponse_v9,
     FetchResponse_v10,
     FetchResponse_v11,
-]
+)

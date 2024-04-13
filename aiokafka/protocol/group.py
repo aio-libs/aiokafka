@@ -119,18 +119,18 @@ class JoinGroupRequest_v5(Request):
     UNKNOWN_MEMBER_ID = ""
 
 
-JoinGroupRequest = [
+JoinGroupRequest = (
     JoinGroupRequest_v0,
     JoinGroupRequest_v1,
     JoinGroupRequest_v2,
     JoinGroupRequest_v5,
-]
-JoinGroupResponse = [
+)
+JoinGroupResponse = (
     JoinGroupResponse_v0,
     JoinGroupResponse_v1,
     JoinGroupResponse_v2,
     JoinGroupResponse_v5,
-]
+)
 
 
 class ProtocolMetadata(Struct):
@@ -199,8 +199,8 @@ class SyncGroupRequest_v3(Request):
     )
 
 
-SyncGroupRequest = [SyncGroupRequest_v0, SyncGroupRequest_v1, SyncGroupRequest_v3]
-SyncGroupResponse = [SyncGroupResponse_v0, SyncGroupResponse_v1, SyncGroupResponse_v3]
+SyncGroupRequest = (SyncGroupRequest_v0, SyncGroupRequest_v1, SyncGroupRequest_v3)
+SyncGroupResponse = (SyncGroupResponse_v0, SyncGroupResponse_v1, SyncGroupResponse_v3)
 
 
 class MemberAssignment(Struct):
@@ -241,8 +241,8 @@ class HeartbeatRequest_v1(Request):
     SCHEMA = HeartbeatRequest_v0.SCHEMA
 
 
-HeartbeatRequest = [HeartbeatRequest_v0, HeartbeatRequest_v1]
-HeartbeatResponse = [HeartbeatResponse_v0, HeartbeatResponse_v1]
+HeartbeatRequest = (HeartbeatRequest_v0, HeartbeatRequest_v1)
+HeartbeatResponse = (HeartbeatResponse_v0, HeartbeatResponse_v1)
 
 
 class LeaveGroupResponse_v0(Response):
@@ -271,5 +271,5 @@ class LeaveGroupRequest_v1(Request):
     SCHEMA = LeaveGroupRequest_v0.SCHEMA
 
 
-LeaveGroupRequest = [LeaveGroupRequest_v0, LeaveGroupRequest_v1]
-LeaveGroupResponse = [LeaveGroupResponse_v0, LeaveGroupResponse_v1]
+LeaveGroupRequest = (LeaveGroupRequest_v0, LeaveGroupRequest_v1)
+LeaveGroupResponse = (LeaveGroupResponse_v0, LeaveGroupResponse_v1)

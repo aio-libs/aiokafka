@@ -132,19 +132,19 @@ class TxnOffsetCommitRequest_v0(Request):
     )
 
 
-InitProducerIdRequest = [InitProducerIdRequest_v0]
-InitProducerIdResponse = [InitProducerIdResponse_v0]
+InitProducerIdRequest = (InitProducerIdRequest_v0,)
+InitProducerIdResponse = (InitProducerIdResponse_v0,)
 
-AddPartitionsToTxnRequest = [AddPartitionsToTxnRequest_v0]
-AddPartitionsToTxnResponse = [AddPartitionsToTxnResponse_v0]
+AddPartitionsToTxnRequest = (AddPartitionsToTxnRequest_v0,)
+AddPartitionsToTxnResponse = (AddPartitionsToTxnResponse_v0,)
 
-AddOffsetsToTxnRequest = [AddOffsetsToTxnRequest_v0]
-AddOffsetsToTxnResponse = [AddOffsetsToTxnResponse_v0]
+AddOffsetsToTxnRequest = (AddOffsetsToTxnRequest_v0,)
+AddOffsetsToTxnResponse = (AddOffsetsToTxnResponse_v0,)
 
-EndTxnRequest = [EndTxnRequest_v0]
+EndTxnRequest = (EndTxnRequest_v0,)
 
-EndTxnResponse = [EndTxnResponse_v0]
+EndTxnResponse = (EndTxnResponse_v0,)
 
-TxnOffsetCommitResponse = [TxnOffsetCommitResponse_v0]
+TxnOffsetCommitResponse = (TxnOffsetCommitResponse_v0,)
 
-TxnOffsetCommitRequest = [TxnOffsetCommitRequest_v0]
+TxnOffsetCommitRequest = (TxnOffsetCommitRequest_v0,)

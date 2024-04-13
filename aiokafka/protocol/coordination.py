@@ -40,5 +40,5 @@ class FindCoordinatorRequest_v1(Request):
     SCHEMA = Schema(("coordinator_key", String("utf-8")), ("coordinator_type", Int8))
 
 
-FindCoordinatorRequest = [FindCoordinatorRequest_v0, FindCoordinatorRequest_v1]
-FindCoordinatorResponse = [FindCoordinatorResponse_v0, FindCoordinatorResponse_v1]
+FindCoordinatorRequest = (FindCoordinatorRequest_v0, FindCoordinatorRequest_v1)
+FindCoordinatorResponse = (FindCoordinatorResponse_v0, FindCoordinatorResponse_v1)

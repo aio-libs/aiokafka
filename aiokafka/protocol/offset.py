@@ -228,19 +228,19 @@ class OffsetRequest_v5(Request):
     DEFAULTS = {"replica_id": -1}
 
 
-OffsetRequest = [
+OffsetRequest = (
     OffsetRequest_v0,
     OffsetRequest_v1,
     OffsetRequest_v2,
     OffsetRequest_v3,
     OffsetRequest_v4,
     OffsetRequest_v5,
-]
-OffsetResponse = [
+)
+OffsetResponse = (
     OffsetResponse_v0,
     OffsetResponse_v1,
     OffsetResponse_v2,
     OffsetResponse_v3,
     OffsetResponse_v4,
     OffsetResponse_v5,
-]
+)
