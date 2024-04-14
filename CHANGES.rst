@@ -5,10 +5,20 @@ Changelog
 Unreleased
 ==========
 
+New features:
+
+* Implement DeleteRecords API (`KIP-204`_) (pr #969 by @vmaurin)
+
+.. _KIP-204: https://cwiki.apache.org/confluence/display/KAFKA/KIP-204+%3A+Adding+records+deletion+operation+to+the+new+Admin+Client+API
+
+
 Bugfixes:
 
 * Fix serialization for batch (issue #886, pr #887 by @ydjin0602)
-* Fix type annotation for `AIOKafkaAdminClient.create_partitions` (pr #978 by @alm0ra)
+* Fix type annotation for `AIOKafkaAdminClient.create_partitions`
+  (pr #978 by @alm0ra)
+* Fix `NotControllerError` in `AIOKafkaAdminClient.create_topics` and other
+  methods (issue #995)
 
 
 0.10.0 (2023-12-15)
