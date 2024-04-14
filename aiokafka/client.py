@@ -433,9 +433,7 @@ class AIOKafkaClient:
                 # metadata.
                 # I think requiring metadata should solve this problem
                 if broker is None:
-                    raise StaleMetadata(
-                        "Broker id %s not in current metadata" % node_id
-                    )
+                    raise StaleMetadata(f"Broker id {node_id} not in current metadata")
             else:
                 broker = self.cluster.coordinator_metadata(node_id)
                 assert broker is not None
