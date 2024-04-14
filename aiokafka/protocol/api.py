@@ -62,31 +62,23 @@ class Request(Struct, metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def API_KEY(self) -> int:  # pyright:ignore[reportRedeclaration]
+    def API_KEY(self) -> int:
         """Integer identifier for api request"""
 
-    API_KEY: ClassVar[int]  # type: ignore[no-redef]
-
     @property
     @abc.abstractmethod
-    def API_VERSION(self) -> int:  # pyright:ignore[reportRedeclaration]
+    def API_VERSION(self) -> int:
         """Integer of api request version"""
 
-    API_VERSION: ClassVar[int]  # type: ignore[no-redef]
-
     @property
     @abc.abstractmethod
-    def RESPONSE_TYPE(self) -> Type["Response"]:  # pyright:ignore[reportRedeclaration]
+    def RESPONSE_TYPE(self) -> Type["Response"]:
         """The Response class associated with the api request"""
 
-    RESPONSE_TYPE: ClassVar[Type["Response"]]  # type: ignore[no-redef]
-
     @property
     @abc.abstractmethod
-    def SCHEMA(self) -> Schema:  # pyright:ignore[reportRedeclaration]
+    def SCHEMA(self) -> Schema:
         """An instance of Schema() representing the request structure"""
-
-    SCHEMA: ClassVar[Schema]  # type: ignore[no-redef]
 
     def expect_response(self) -> bool:
         """Override this method if an api request does not always generate a response"""
@@ -117,24 +109,18 @@ class Request(Struct, metaclass=abc.ABCMeta):
 class Response(Struct, metaclass=abc.ABCMeta):
     @property
     @abc.abstractmethod
-    def API_KEY(self) -> int:  # pyright:ignore[reportRedeclaration]
+    def API_KEY(self) -> int:
         """Integer identifier for api request/response"""
 
-    API_KEY: ClassVar[int]  # type: ignore[no-redef]
-
     @property
     @abc.abstractmethod
-    def API_VERSION(self) -> int:  # pyright:ignore[reportRedeclaration]
+    def API_VERSION(self) -> int:
         """Integer of api request/response version"""
 
-    API_VERSION: ClassVar[int]  # type: ignore[no-redef]
-
     @property
     @abc.abstractmethod
-    def SCHEMA(self) -> Schema:  # pyright:ignore[reportRedeclaration]
+    def SCHEMA(self) -> Schema:
         """An instance of Schema() representing the response structure"""
-
-    SCHEMA: ClassVar[Schema]  # type: ignore[no-redef]
 
     def to_object(self) -> Dict[str, Any]:
         return _to_object(self.SCHEMA, self)

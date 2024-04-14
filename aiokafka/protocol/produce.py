@@ -167,6 +167,13 @@ class ProduceResponse_v8(Response):
 class ProduceRequestBase(Request):
     API_KEY = 0
 
+    required_acks: int
+
+    def expect_response(self) -> bool:
+        if self.required_acks == 0:
+            return False
+        return True
+
 
 class ProduceRequest_v0(ProduceRequestBase):
     API_VERSION = 0
@@ -182,13 +189,6 @@ class ProduceRequest_v0(ProduceRequestBase):
             ),
         ),
     )
-
-    required_acks: int
-
-    def expect_response(self) -> bool:
-        if self.required_acks == 0:
-            return False
-        return True
 
 
 class ProduceRequest_v1(ProduceRequestBase):
@@ -218,13 +218,6 @@ class ProduceRequest_v3(ProduceRequestBase):
             ),
         ),
     )
-
-    required_acks: int
-
-    def expect_response(self) -> bool:
-        if self.required_acks == 0:
-            return False
-        return True
 
 
 class ProduceRequest_v4(ProduceRequestBase):
