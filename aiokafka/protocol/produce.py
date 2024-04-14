@@ -275,7 +275,7 @@ class ProduceRequest_v8(ProduceRequestBase):
     SCHEMA = ProduceRequest_v7.SCHEMA
 
 
-ProduceRequest = (
+ProduceRequest = [
     ProduceRequest_v0,
     ProduceRequest_v1,
     ProduceRequest_v2,
@@ -285,8 +285,8 @@ ProduceRequest = (
     ProduceRequest_v6,
     ProduceRequest_v7,
     ProduceRequest_v8,
-)
-ProduceResponse = (
+]
+ProduceResponse = [
     ProduceResponse_v0,
     ProduceResponse_v1,
     ProduceResponse_v2,
@@ -296,4 +296,4 @@ ProduceResponse = (
     ProduceResponse_v6,
     ProduceResponse_v7,
     ProduceResponse_v8,
-)
+]

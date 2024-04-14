@@ -127,18 +127,18 @@ class OffsetCommitRequest_v3(Request):
     SCHEMA = OffsetCommitRequest_v2.SCHEMA
 
 
-OffsetCommitRequest = (
+OffsetCommitRequest = [
     OffsetCommitRequest_v0,
     OffsetCommitRequest_v1,
     OffsetCommitRequest_v2,
     OffsetCommitRequest_v3,
-)
-OffsetCommitResponse = (
+]
+OffsetCommitResponse = [
     OffsetCommitResponse_v0,
     OffsetCommitResponse_v1,
     OffsetCommitResponse_v2,
     OffsetCommitResponse_v3,
-)
+]
 
 
 class OffsetFetchResponse_v0(Response):
@@ -251,18 +251,18 @@ class OffsetFetchRequest_v3(Request):
     SCHEMA = OffsetFetchRequest_v2.SCHEMA
 
 
-OffsetFetchRequest = (
+OffsetFetchRequest = [
     OffsetFetchRequest_v0,
     OffsetFetchRequest_v1,
     OffsetFetchRequest_v2,
     OffsetFetchRequest_v3,
-)
-OffsetFetchResponse = (
+]
+OffsetFetchResponse = [
     OffsetFetchResponse_v0,
     OffsetFetchResponse_v1,
     OffsetFetchResponse_v2,
     OffsetFetchResponse_v3,
-)
+]
 
 
 class GroupCoordinatorResponse_v0(Response):
@@ -308,5 +308,5 @@ class GroupCoordinatorRequest_v1(Request):
     )
 
 
-GroupCoordinatorRequest = (GroupCoordinatorRequest_v0, GroupCoordinatorRequest_v1)
-GroupCoordinatorResponse = (GroupCoordinatorResponse_v0, GroupCoordinatorResponse_v1)
+GroupCoordinatorRequest = [GroupCoordinatorRequest_v0, GroupCoordinatorRequest_v1]
+GroupCoordinatorResponse = [GroupCoordinatorResponse_v0, GroupCoordinatorResponse_v1]

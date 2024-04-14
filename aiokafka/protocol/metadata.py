@@ -246,19 +246,19 @@ class MetadataRequest_v5(Request):
     NO_TOPICS: None = None  # Empty array (len 0) for topics returns no topics
 
 
-MetadataRequest = (
+MetadataRequest = [
     MetadataRequest_v0,
     MetadataRequest_v1,
     MetadataRequest_v2,
     MetadataRequest_v3,
     MetadataRequest_v4,
     MetadataRequest_v5,
-)
-MetadataResponse = (
+]
+MetadataResponse = [
     MetadataResponse_v0,
     MetadataResponse_v1,
     MetadataResponse_v2,
     MetadataResponse_v3,
     MetadataResponse_v4,
     MetadataResponse_v5,
-)
+]

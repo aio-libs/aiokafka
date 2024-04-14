@@ -71,16 +71,16 @@ class ApiVersionRequest_v2(Request):
     SCHEMA = ApiVersionRequest_v0.SCHEMA
 
 
-ApiVersionRequest = (
+ApiVersionRequest = [
     ApiVersionRequest_v0,
     ApiVersionRequest_v1,
     ApiVersionRequest_v2,
-)
-ApiVersionResponse = (
+]
+ApiVersionResponse = [
     ApiVersionResponse_v0,
     ApiVersionResponse_v1,
     ApiVersionResponse_v2,
-)
+]
 
 
 class CreateTopicsResponse_v0(Response):
@@ -199,18 +199,18 @@ class CreateTopicsRequest_v3(Request):
     SCHEMA = CreateTopicsRequest_v1.SCHEMA
 
 
-CreateTopicsRequest = (
+CreateTopicsRequest = [
     CreateTopicsRequest_v0,
     CreateTopicsRequest_v1,
     CreateTopicsRequest_v2,
     CreateTopicsRequest_v3,
-)
-CreateTopicsResponse = (
+]
+CreateTopicsResponse = [
     CreateTopicsResponse_v0,
     CreateTopicsResponse_v1,
     CreateTopicsResponse_v2,
     CreateTopicsResponse_v3,
-)
+]
 
 
 class DeleteTopicsResponse_v0(Response):
@@ -270,18 +270,18 @@ class DeleteTopicsRequest_v3(Request):
     SCHEMA = DeleteTopicsRequest_v0.SCHEMA
 
 
-DeleteTopicsRequest = (
+DeleteTopicsRequest = [
     DeleteTopicsRequest_v0,
     DeleteTopicsRequest_v1,
     DeleteTopicsRequest_v2,
     DeleteTopicsRequest_v3,
-)
-DeleteTopicsResponse = (
+]
+DeleteTopicsResponse = [
     DeleteTopicsResponse_v0,
     DeleteTopicsResponse_v1,
     DeleteTopicsResponse_v2,
     DeleteTopicsResponse_v3,
-)
+]
 
 
 class ListGroupsResponse_v0(Response):
@@ -336,16 +336,16 @@ class ListGroupsRequest_v2(Request):
     SCHEMA = ListGroupsRequest_v0.SCHEMA
 
 
-ListGroupsRequest = (
+ListGroupsRequest = [
     ListGroupsRequest_v0,
     ListGroupsRequest_v1,
     ListGroupsRequest_v2,
-)
-ListGroupsResponse = (
+]
+ListGroupsResponse = [
     ListGroupsResponse_v0,
     ListGroupsResponse_v1,
     ListGroupsResponse_v2,
-)
+]
 
 
 class DescribeGroupsResponse_v0(Response):
@@ -468,18 +468,18 @@ class DescribeGroupsRequest_v3(Request):
     )
 
 
-DescribeGroupsRequest = (
+DescribeGroupsRequest = [
     DescribeGroupsRequest_v0,
     DescribeGroupsRequest_v1,
     DescribeGroupsRequest_v2,
     DescribeGroupsRequest_v3,
-)
-DescribeGroupsResponse = (
+]
+DescribeGroupsResponse = [
     DescribeGroupsResponse_v0,
     DescribeGroupsResponse_v1,
     DescribeGroupsResponse_v2,
     DescribeGroupsResponse_v3,
-)
+]
 
 
 class SaslHandShakeResponse_v0(Response):
@@ -510,8 +510,8 @@ class SaslHandShakeRequest_v1(Request):
     SCHEMA = SaslHandShakeRequest_v0.SCHEMA
 
 
-SaslHandShakeRequest = (SaslHandShakeRequest_v0, SaslHandShakeRequest_v1)
-SaslHandShakeResponse = (SaslHandShakeResponse_v0, SaslHandShakeResponse_v1)
+SaslHandShakeRequest = [SaslHandShakeRequest_v0, SaslHandShakeRequest_v1]
+SaslHandShakeResponse = [SaslHandShakeResponse_v0, SaslHandShakeResponse_v1]
 
 
 class DescribeAclsResponse_v0(Response):
@@ -613,8 +613,8 @@ class DescribeAclsRequest_v2(Request):
     SCHEMA = DescribeAclsRequest_v1.SCHEMA
 
 
-DescribeAclsRequest = (DescribeAclsRequest_v0, DescribeAclsRequest_v1)
-DescribeAclsResponse = (DescribeAclsResponse_v0, DescribeAclsResponse_v1)
+DescribeAclsRequest = [DescribeAclsRequest_v0, DescribeAclsRequest_v1]
+DescribeAclsResponse = [DescribeAclsResponse_v0, DescribeAclsResponse_v1]
 
 
 class CreateAclsResponse_v0(Response):
@@ -674,8 +674,8 @@ class CreateAclsRequest_v1(Request):
     )
 
 
-CreateAclsRequest = (CreateAclsRequest_v0, CreateAclsRequest_v1)
-CreateAclsResponse = (CreateAclsResponse_v0, CreateAclsResponse_v1)
+CreateAclsRequest = [CreateAclsRequest_v0, CreateAclsRequest_v1]
+CreateAclsResponse = [CreateAclsResponse_v0, CreateAclsResponse_v1]
 
 
 class DeleteAclsResponse_v0(Response):
@@ -774,8 +774,8 @@ class DeleteAclsRequest_v1(Request):
     )
 
 
-DeleteAclsRequest = (DeleteAclsRequest_v0, DeleteAclsRequest_v1)
-DeleteAclsResponse = (DeleteAclsResponse_v0, DeleteAclsResponse_v1)
+DeleteAclsRequest = [DeleteAclsRequest_v0, DeleteAclsRequest_v1]
+DeleteAclsResponse = [DeleteAclsResponse_v0, DeleteAclsResponse_v1]
 
 
 class AlterConfigsResponse_v0(Response):
@@ -831,8 +831,8 @@ class AlterConfigsRequest_v1(Request):
     SCHEMA = AlterConfigsRequest_v0.SCHEMA
 
 
-AlterConfigsRequest = (AlterConfigsRequest_v0, AlterConfigsRequest_v1)
-AlterConfigsResponse = (AlterConfigsResponse_v0, AlterConfigsRequest_v1)
+AlterConfigsRequest = [AlterConfigsRequest_v0, AlterConfigsRequest_v1]
+AlterConfigsResponse = [AlterConfigsResponse_v0, AlterConfigsRequest_v1]
 
 
 class DescribeConfigsResponse_v0(Response):
@@ -972,16 +972,16 @@ class DescribeConfigsRequest_v2(Request):
     SCHEMA = DescribeConfigsRequest_v1.SCHEMA
 
 
-DescribeConfigsRequest = (
+DescribeConfigsRequest = [
     DescribeConfigsRequest_v0,
     DescribeConfigsRequest_v1,
     DescribeConfigsRequest_v2,
-)
-DescribeConfigsResponse = (
+]
+DescribeConfigsResponse = [
     DescribeConfigsResponse_v0,
     DescribeConfigsResponse_v1,
     DescribeConfigsResponse_v2,
-)
+]
 
 
 class SaslAuthenticateResponse_v0(Response):
@@ -1019,14 +1019,14 @@ class SaslAuthenticateRequest_v1(Request):
     SCHEMA = SaslAuthenticateRequest_v0.SCHEMA
 
 
-SaslAuthenticateRequest = (
+SaslAuthenticateRequest = [
     SaslAuthenticateRequest_v0,
     SaslAuthenticateRequest_v1,
-)
-SaslAuthenticateResponse = (
+]
+SaslAuthenticateResponse = [
     SaslAuthenticateResponse_v0,
     SaslAuthenticateResponse_v1,
-)
+]
 
 
 class CreatePartitionsResponse_v0(Response):
@@ -1078,14 +1078,14 @@ class CreatePartitionsRequest_v1(Request):
     RESPONSE_TYPE = CreatePartitionsResponse_v1
 
 
-CreatePartitionsRequest = (
+CreatePartitionsRequest = [
     CreatePartitionsRequest_v0,
     CreatePartitionsRequest_v1,
-)
-CreatePartitionsResponse = (
+]
+CreatePartitionsResponse = [
     CreatePartitionsResponse_v0,
     CreatePartitionsResponse_v1,
-)
+]
 
 
 class DeleteGroupsResponse_v0(Response):
@@ -1117,9 +1117,9 @@ class DeleteGroupsRequest_v1(Request):
     SCHEMA = DeleteGroupsRequest_v0.SCHEMA
 
 
-DeleteGroupsRequest = (DeleteGroupsRequest_v0, DeleteGroupsRequest_v1)
+DeleteGroupsRequest = [DeleteGroupsRequest_v0, DeleteGroupsRequest_v1]
 
-DeleteGroupsResponse = (DeleteGroupsResponse_v0, DeleteGroupsResponse_v1)
+DeleteGroupsResponse = [DeleteGroupsResponse_v0, DeleteGroupsResponse_v1]
 
 
 class DescribeClientQuotasResponse_v0(Response):
@@ -1162,9 +1162,13 @@ class DescribeClientQuotasRequest_v0(Request):
     )
 
 
-DescribeClientQuotasRequest = (DescribeClientQuotasRequest_v0,)
+DescribeClientQuotasRequest = [
+    DescribeClientQuotasRequest_v0,
+]
 
-DescribeClientQuotasResponse = (DescribeClientQuotasResponse_v0,)
+DescribeClientQuotasResponse = [
+    DescribeClientQuotasResponse_v0,
+]
 
 
 class AlterPartitionReassignmentsResponse_v0(Response):
@@ -1220,9 +1224,9 @@ class AlterPartitionReassignmentsRequest_v0(Request):
     )
 
 
-AlterPartitionReassignmentsRequest = (AlterPartitionReassignmentsRequest_v0,)
+AlterPartitionReassignmentsRequest = [AlterPartitionReassignmentsRequest_v0]
 
-AlterPartitionReassignmentsResponse = (AlterPartitionReassignmentsResponse_v0,)
+AlterPartitionReassignmentsResponse = [AlterPartitionReassignmentsResponse_v0]
 
 
 class ListPartitionReassignmentsResponse_v0(Response):
@@ -1272,9 +1276,9 @@ class ListPartitionReassignmentsRequest_v0(Request):
     )
 
 
-ListPartitionReassignmentsRequest = (ListPartitionReassignmentsRequest_v0,)
+ListPartitionReassignmentsRequest = [ListPartitionReassignmentsRequest_v0]
 
-ListPartitionReassignmentsResponse = (ListPartitionReassignmentsResponse_v0,)
+ListPartitionReassignmentsResponse = [ListPartitionReassignmentsResponse_v0]
 
 
 class DeleteRecordsResponse_v0(Response):
@@ -1407,14 +1411,14 @@ class DeleteRecordsRequest_v2(Request):
         )
 
 
-DeleteRecordsRequest = (
+DeleteRecordsRequest = [
     DeleteRecordsRequest_v0,
     DeleteRecordsRequest_v1,
     DeleteRecordsRequest_v2,
-)
+]
 
-DeleteRecordsResponse = (
+DeleteRecordsResponse = [
     DeleteRecordsResponse_v0,
     DeleteRecordsResponse_v1,
     DeleteRecordsResponse_v2,
-)
+]
