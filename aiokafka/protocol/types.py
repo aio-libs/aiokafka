@@ -317,15 +317,16 @@ class VarInt64(AbstractType[int]):
     @classmethod
     def decode(cls, data: BytesIO) -> int:
         value, i = 0, 0
+        b: int
         while True:
-            b = data.read(1)
-            if not (b & 0x80):  # type: ignore[operator]
+            (b,) = struct.unpack("B", data.read(1))
+            if not (b & 0x80):
                 break
-            value |= (b & 0x7F) << i  # type: ignore[operator]
+            value |= (b & 0x7F) << i
             i += 7
             if i > 63:
                 raise ValueError(f"Invalid value {value}")
-        value |= b << i  # type: ignore[operator]
+        value |= b << i
         return (value >> 1) ^ -(value & 1)
 
     @classmethod
