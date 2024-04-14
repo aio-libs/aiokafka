@@ -263,8 +263,7 @@ class AIOKafkaAdminClient:
                 f"Support for CreateTopics v{version} has not yet been added "
                 "to AIOKafkaAdminClient."
             )
-        response = await self._send_to_controller(request)
-        return response
+        return await self._send_to_controller(request)
 
     async def delete_topics(
         self,
@@ -281,8 +280,7 @@ class AIOKafkaAdminClient:
         version = self._matching_api_version(DeleteTopicsRequest)
         req_cls = DeleteTopicsRequest[version]
         request = req_cls(topics, timeout_ms or self._request_timeout_ms)
-        response = await self._send_to_controller(request)
-        return response
+        return await self._send_to_controller(request)
 
     async def _get_cluster_metadata(
         self,
@@ -295,8 +293,7 @@ class AIOKafkaAdminClient:
         """
         req_cls = MetadataRequest[self._matching_api_version(MetadataRequest)]
         request = req_cls(topics=topics)
-        response = await self._send_request(request)
-        return response
+        return await self._send_request(request)
 
     async def list_topics(self) -> List[str]:
         metadata = await self._get_cluster_metadata(topics=None)
@@ -449,7 +446,7 @@ class AIOKafkaAdminClient:
             timeout=timeout_ms or self._request_timeout_ms,
             validate_only=validate_only,
         )
-        resp = await self._send_request(req)
+        resp = await self._send_to_controller(req)
         for topic, code, message in resp.topic_errors:
             if code:
                 err_cls = for_code(code)
