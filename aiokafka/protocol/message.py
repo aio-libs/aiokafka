@@ -152,8 +152,8 @@ class Message(Struct):
         crc, magic, attributes = (field.decode(data) for field in base_fields)
         remaining = cls.SCHEMAS[magic].fields[3:]
         fields = tuple(field.decode(data) for field in remaining)
-        magic = cast(Literal[0, 1], magic)
         if magic == 1:
+            magic = cast(Literal[1], magic)
             fields = cast(Tuple[int, Optional[bytes], Optional[bytes]], fields)
             msg = cls(
                 value=fields[-1],
@@ -164,6 +164,7 @@ class Message(Struct):
                 timestamp=fields[0],
             )
         elif magic == 0:
+            magic = cast(Literal[0], magic)
             fields = cast(Tuple[Optional[bytes], Optional[bytes]], fields)
             msg = cls(
                 value=fields[-1],
