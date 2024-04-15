@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import abc
 from io import BytesIO
 from typing import Any, ClassVar, Dict, Optional, Type, Union
@@ -15,7 +17,7 @@ class RequestHeader_v0(Struct):
     )
 
     def __init__(
-        self, request: "Request", correlation_id: int = 0, client_id: str = "aiokafka"
+        self, request: Request, correlation_id: int = 0, client_id: str = "aiokafka"
     ) -> None:
         super().__init__(
             request.API_KEY, request.API_VERSION, correlation_id, client_id
@@ -34,7 +36,7 @@ class RequestHeader_v1(Struct):
 
     def __init__(
         self,
-        request: "Request",
+        request: Request,
         correlation_id: int = 0,
         client_id: str = "aiokafka",
         tags: Optional[Dict[int, bytes]] = None,
@@ -72,7 +74,7 @@ class Request(Struct, metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def RESPONSE_TYPE(self) -> Type["Response"]:
+    def RESPONSE_TYPE(self) -> Type[Response]:
         """The Response class associated with the api request"""
 
     @property
