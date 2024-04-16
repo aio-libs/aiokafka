@@ -1,6 +1,7 @@
 import io
 import time
 from binascii import crc32
+from typing import Optional
 
 from aiokafka.codec import (
     gzip_decode,
@@ -47,7 +48,15 @@ class Message(Struct):
         22  # crc(4), magic(1), attributes(1), timestamp(8), key+value size(4*2)
     )
 
-    def __init__(self, value, key=None, magic=0, attributes=0, crc=0, timestamp=None):
+    def __init__(
+        self,
+        value: Optional[bytes],
+        key: Optional[bytes] = None,
+        magic: int = 0,
+        attributes: int = 0,
+        crc: int = 0,
+        timestamp: Optional[int] = None,
+    ):
         assert value is None or isinstance(value, bytes), "value must be bytes"
         assert key is None or isinstance(key, bytes), "key must be bytes"
         assert magic > 0 or timestamp is None, "timestamp not supported in v0"
@@ -64,7 +73,7 @@ class Message(Struct):
         self.value = value
 
     @property
-    def timestamp_type(self):
+    def timestamp_type(self) -> Optional[int]:
         """0 for CreateTime; 1 for LogAppendTime; None if unsupported.
 
         Value is determined by broker; produced messages should always set to 0
@@ -77,7 +86,7 @@ class Message(Struct):
         else:
             return 0
 
-    def encode(self, recalc_crc=True):
+    def encode(self, recalc_crc: bool = True):
         version = self.magic
         if version == 1:
             fields = (
@@ -125,7 +134,7 @@ class Message(Struct):
         msg._validated_crc = _validated_crc
         return msg
 
-    def validate_crc(self):
+    def validate_crc(self) -> bool:
         if self._validated_crc is None:
             raw_msg = self.encode(recalc_crc=False)
             self._validated_crc = crc32(raw_msg[4:])
@@ -133,7 +142,7 @@ class Message(Struct):
             return True
         return False
 
-    def is_compressed(self):
+    def is_compressed(self) -> bool:
         return self.attributes & self.CODEC_MASK != 0
 
     def decompress(self):
