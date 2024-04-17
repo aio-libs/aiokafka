@@ -1,4 +1,3 @@
-import abc
 import io
 import struct
 
@@ -358,7 +357,10 @@ def test_compact_data_structs():
 
 
 attr_names = [
-    n for n in dir(Request) if isinstance(getattr(Request, n), abc.abstractproperty)
+    n
+    for n in dir(Request)
+    if isinstance(getattr(Request, n), property)
+    and getattr(Request, n).__isabstractmethod__ is True
 ]
 
 
@@ -369,7 +371,10 @@ def test_request_type_conformance(klass, attr_name):
 
 
 attr_names = [
-    n for n in dir(Response) if isinstance(getattr(Response, n), abc.abstractproperty)
+    n
+    for n in dir(Response)
+    if isinstance(getattr(Response, n), property)
+    and getattr(Response, n).__isabstractmethod__ is True
 ]
 
 
