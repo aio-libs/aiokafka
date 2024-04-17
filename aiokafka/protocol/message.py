@@ -56,11 +56,10 @@ class Message(Struct):
         self,
         *,
         value: Optional[bytes],
-        key: Optional[bytes] = None,
+        key: Optional[bytes],
         magic: Literal[0],
-        attributes: int = 0,
-        crc: int = 0,
-        timestamp: None = None,
+        attributes: int,
+        crc: int,
     ) -> None: ...
 
     @overload
@@ -68,21 +67,21 @@ class Message(Struct):
         self,
         *,
         value: Optional[bytes],
-        key: Optional[bytes] = None,
+        key: Optional[bytes],
         magic: Literal[1],
-        attributes: int = 0,
-        crc: int = 0,
-        timestamp: Optional[int] = None,
+        attributes: int,
+        crc: int,
+        timestamp: int,
     ) -> None: ...
 
     def __init__(
         self,
         *,
         value: Optional[bytes],
-        key: Optional[bytes] = None,
-        magic: Literal[0, 1] = 0,
-        attributes: int = 0,
-        crc: int = 0,
+        key: Optional[bytes],
+        magic: Literal[0, 1],
+        attributes: int,
+        crc: int,
         timestamp: Optional[int] = None,
     ) -> None:
         assert value is None or isinstance(value, bytes), "value must be bytes"
