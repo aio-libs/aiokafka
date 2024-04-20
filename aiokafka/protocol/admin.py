@@ -1,5 +1,4 @@
-from collections.abc import Iterable
-from typing import Dict, Optional, Tuple
+from typing import Dict, Iterable, Optional, Tuple
 
 from .api import Request, Response
 from .types import (
