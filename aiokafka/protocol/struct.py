@@ -47,7 +47,7 @@ class Struct:
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Struct):
-            return False
+            return NotImplemented
         if self.SCHEMA != other.SCHEMA:
             return False
         for attr in self.SCHEMA.names:
