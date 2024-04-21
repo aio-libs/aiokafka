@@ -1,1 +1,1 @@
-Fixed CancelledError being raised from various .close() methods
+Fix CancelledError being raised from various .close() methods
