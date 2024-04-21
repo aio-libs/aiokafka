@@ -18,7 +18,7 @@ from aiokafka.codec import (
 from aiokafka.errors import UnsupportedCodecError
 
 from .struct import Struct
-from .types import Bytes, Int8, Int32, Int64, Schema, Type, UInt32
+from .types import Bytes, Int8, Int32, Int64, Schema, UInt32
 
 
 class Message(Struct):
@@ -143,7 +143,7 @@ class Message(Struct):
         if not recalc_crc:
             return message
         self.crc = crc32(message[4:])
-        crc_field = cast(Type[UInt32], self.SCHEMAS[version].fields[0])
+        crc_field = self.BASE_FIELDS[0][1]
         return crc_field.encode(self.crc) + message[4:]
 
     @classmethod
