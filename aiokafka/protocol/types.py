@@ -1,5 +1,4 @@
 import struct
-from collections.abc import Sequence
 from io import BytesIO
 from struct import error
 from typing import (
@@ -8,6 +7,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Sequence,
     Tuple,
     Type,
     TypeVar,
