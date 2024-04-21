@@ -22,6 +22,8 @@ from .types import Bytes, Int8, Int32, Int64, Schema, Type, UInt32
 
 
 class Message(Struct):
+    # FIXME: override __eq__/__repr__ methods from Struct
+
     BASE_FIELDS = (
         ("crc", UInt32),
         ("magic", Int8),
