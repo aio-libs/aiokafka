@@ -376,7 +376,7 @@ class FetchRequest_v7(Request):
         ),
         (
             "forgotten_topics_data",
-            Array(("topic", String), ("partitions", Array(Int32))),
+            Array(("topic", String("utf-8")), ("partitions", Array(Int32))),
         ),
     )
 
@@ -428,7 +428,7 @@ class FetchRequest_v9(Request):
         (
             "forgotten_topics_data",
             Array(
-                ("topic", String),
+                ("topic", String("utf-8")),
                 ("partitions", Array(Int32)),
             ),
         ),
@@ -480,7 +480,7 @@ class FetchRequest_v11(Request):
         ),
         (
             "forgotten_topics_data",
-            Array(("topic", String), ("partitions", Array(Int32))),
+            Array(("topic", String("utf-8")), ("partitions", Array(Int32))),
         ),
         ("rack_id", String("utf-8")),
     )

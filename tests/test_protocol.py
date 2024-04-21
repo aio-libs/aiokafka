@@ -1,4 +1,3 @@
-import abc
 import io
 import struct
 
@@ -24,7 +23,7 @@ from aiokafka.protocol.types import (
 def test_create_message():
     payload = b"test"
     key = b"key"
-    msg = Message(payload, key=key)
+    msg = Message(value=payload, key=key, magic=0, attributes=0, crc=0)
     assert msg.magic == 0
     assert msg.attributes == 0
     assert msg.key == key
@@ -32,7 +31,7 @@ def test_create_message():
 
 
 def test_encode_message_v0():
-    message = Message(b"test", key=b"key")
+    message = Message(value=b"test", key=b"key", magic=0, attributes=0, crc=0)
     encoded = message.encode()
     expect = b"".join(
         [
@@ -48,7 +47,9 @@ def test_encode_message_v0():
 
 
 def test_encode_message_v1():
-    message = Message(b"test", key=b"key", magic=1, timestamp=1234)
+    message = Message(
+        value=b"test", key=b"key", magic=1, attributes=0, crc=0, timestamp=1234
+    )
     encoded = message.encode()
     expect = b"".join(
         [
@@ -76,7 +77,7 @@ def test_decode_message():
         ]
     )
     decoded_message = Message.decode(encoded)
-    msg = Message(b"test", key=b"key")
+    msg = Message(value=b"test", key=b"key", magic=0, attributes=0, crc=0)
     msg.encode()  # crc is recalculated during encoding
     assert decoded_message == msg
 
@@ -110,7 +111,10 @@ def test_decode_message_validate_crc():
 
 
 def test_encode_message_set():
-    messages = [Message(b"v1", key=b"k1"), Message(b"v2", key=b"k2")]
+    messages = [
+        Message(value=b"v1", key=b"k1", magic=0, attributes=0, crc=0),
+        Message(value=b"v2", key=b"k2", magic=0, attributes=0, crc=0),
+    ]
     encoded = MessageSet.encode([(0, msg.encode()) for msg in messages])
     expect = b"".join(
         [
@@ -166,12 +170,12 @@ def test_decode_message_set():
     returned_offset2, message2_size, decoded_message2 = msg2
 
     assert returned_offset1 == 0
-    message1 = Message(b"v1", key=b"k1")
+    message1 = Message(value=b"v1", key=b"k1", magic=0, attributes=0, crc=0)
     message1.encode()
     assert decoded_message1 == message1
 
     assert returned_offset2 == 1
-    message2 = Message(b"v2", key=b"k2")
+    message2 = Message(value=b"v2", key=b"k2", magic=0, attributes=0, crc=0)
     message2.encode()
     assert decoded_message2 == message2
 
@@ -222,7 +226,7 @@ def test_decode_message_set_partial():
     returned_offset2, message2_size, decoded_message2 = msg2
 
     assert returned_offset1 == 0
-    message1 = Message(b"v1", key=b"k1")
+    message1 = Message(value=b"v1", key=b"k1", magic=0, attributes=0, crc=0)
     message1.encode()
     assert decoded_message1 == message1
 
@@ -353,7 +357,10 @@ def test_compact_data_structs():
 
 
 attr_names = [
-    n for n in dir(Request) if isinstance(getattr(Request, n), abc.abstractproperty)
+    n
+    for n in dir(Request)
+    if isinstance(getattr(Request, n), property)
+    and getattr(Request, n).__isabstractmethod__ is True
 ]
 
 
@@ -364,7 +371,10 @@ def test_request_type_conformance(klass, attr_name):
 
 
 attr_names = [
-    n for n in dir(Response) if isinstance(getattr(Response, n), abc.abstractproperty)
+    n
+    for n in dir(Response)
+    if isinstance(getattr(Response, n), property)
+    and getattr(Response, n).__isabstractmethod__ is True
 ]
 
 

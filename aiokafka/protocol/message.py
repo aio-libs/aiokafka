@@ -1,6 +1,9 @@
 import io
 import time
 from binascii import crc32
+from typing import Iterable, List, Literal, Optional, Tuple, Union, cast, overload
+
+from typing_extensions import Self
 
 from aiokafka.codec import (
     gzip_decode,
@@ -15,25 +18,34 @@ from aiokafka.codec import (
 from aiokafka.errors import UnsupportedCodecError
 
 from .struct import Struct
-from .types import AbstractType, Bytes, Int8, Int32, Int64, Schema, UInt32
+from .types import Bytes, Int8, Int32, Int64, Schema, UInt32
 
 
 class Message(Struct):
+    # FIXME: override __eq__/__repr__ methods from Struct
+
+    BASE_FIELDS = (
+        ("crc", UInt32),
+        ("magic", Int8),
+        ("attributes", Int8),
+    )
+    MAGIC0_FIELDS = (
+        ("key", Bytes),
+        ("value", Bytes),
+    )
+    MAGIC1_FIELDS = (
+        ("timestamp", Int64),
+        ("key", Bytes),
+        ("value", Bytes),
+    )
     SCHEMAS = [
         Schema(
-            ("crc", UInt32),
-            ("magic", Int8),
-            ("attributes", Int8),
-            ("key", Bytes),
-            ("value", Bytes),
+            *BASE_FIELDS,
+            *MAGIC0_FIELDS,
         ),
         Schema(
-            ("crc", UInt32),
-            ("magic", Int8),
-            ("attributes", Int8),
-            ("timestamp", Int64),
-            ("key", Bytes),
-            ("value", Bytes),
+            *BASE_FIELDS,
+            *MAGIC1_FIELDS,
         ),
     ]
     SCHEMA = SCHEMAS[1]
@@ -47,7 +59,39 @@ class Message(Struct):
         22  # crc(4), magic(1), attributes(1), timestamp(8), key+value size(4*2)
     )
 
-    def __init__(self, value, key=None, magic=0, attributes=0, crc=0, timestamp=None):
+    @overload
+    def __init__(
+        self,
+        *,
+        value: Optional[bytes],
+        key: Optional[bytes],
+        magic: Literal[0],
+        attributes: int,
+        crc: int,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self,
+        *,
+        value: Optional[bytes],
+        key: Optional[bytes],
+        magic: Literal[1],
+        attributes: int,
+        crc: int,
+        timestamp: int,
+    ) -> None: ...
+
+    def __init__(
+        self,
+        *,
+        value: Optional[bytes],
+        key: Optional[bytes],
+        magic: Literal[0, 1],
+        attributes: int,
+        crc: int,
+        timestamp: Optional[int] = None,
+    ) -> None:
         assert value is None or isinstance(value, bytes), "value must be bytes"
         assert key is None or isinstance(key, bytes), "key must be bytes"
         assert magic > 0 or timestamp is None, "timestamp not supported in v0"
@@ -57,14 +101,14 @@ class Message(Struct):
             timestamp = int(time.time() * 1000)
         self.timestamp = timestamp
         self.crc = crc
-        self._validated_crc = None
+        self._validated_crc: Optional[int] = None
         self.magic = magic
         self.attributes = attributes
         self.key = key
         self.value = value
 
     @property
-    def timestamp_type(self):
+    def timestamp_type(self) -> Optional[Literal[0, 1]]:
         """0 for CreateTime; 1 for LogAppendTime; None if unsupported.
 
         Value is determined by broker; produced messages should always set to 0
@@ -77,55 +121,78 @@ class Message(Struct):
         else:
             return 0
 
-    def encode(self, recalc_crc=True):
+    def encode(self, recalc_crc: bool = True) -> bytes:
         version = self.magic
         if version == 1:
-            fields = (
-                self.crc,
-                self.magic,
-                self.attributes,
-                self.timestamp,
-                self.key,
-                self.value,
+            message = Message.SCHEMAS[version].encode(
+                (
+                    self.crc,
+                    self.magic,
+                    self.attributes,
+                    self.timestamp,
+                    self.key,
+                    self.value,
+                )
             )
         elif version == 0:
-            fields = (self.crc, self.magic, self.attributes, self.key, self.value)
+            message = Message.SCHEMAS[version].encode(
+                (self.crc, self.magic, self.attributes, self.key, self.value)
+            )
         else:
             raise ValueError(f"Unrecognized message version: {version}")
-        message = Message.SCHEMAS[version].encode(fields)
         if not recalc_crc:
             return message
         self.crc = crc32(message[4:])
-        crc_field = self.SCHEMAS[version].fields[0]
+        crc_field = self.BASE_FIELDS[0][1]
         return crc_field.encode(self.crc) + message[4:]
 
     @classmethod
-    def decode(cls, data):
-        _validated_crc = None
+    def decode(cls, data: Union[io.BytesIO, bytes]) -> Self:
+        _validated_crc: Optional[int] = None
         if isinstance(data, bytes):
             _validated_crc = crc32(data[4:])
             data = io.BytesIO(data)
         # Partial decode required to determine message version
-        base_fields = cls.SCHEMAS[0].fields[0:3]
-        crc, magic, attributes = (field.decode(data) for field in base_fields)
-        remaining = cls.SCHEMAS[magic].fields[3:]
-        fields = [field.decode(data) for field in remaining]
-        if magic == 1:
-            timestamp = fields[0]
-        else:
-            timestamp = None
-        msg = cls(
-            fields[-1],
-            key=fields[-2],
-            magic=magic,
-            attributes=attributes,
-            crc=crc,
-            timestamp=timestamp,
+        crc, magic, attributes = (
+            cls.BASE_FIELDS[0][1].decode(data),
+            cls.BASE_FIELDS[1][1].decode(data),
+            cls.BASE_FIELDS[2][1].decode(data),
         )
+        if magic == 1:
+            magic = cast(Literal[1], magic)
+            timestamp, key, value = (
+                cls.MAGIC1_FIELDS[0][1].decode(data),
+                cls.MAGIC1_FIELDS[1][1].decode(data),
+                cls.MAGIC1_FIELDS[2][1].decode(data),
+            )
+            msg = cls(
+                value=value,
+                key=key,
+                magic=magic,
+                attributes=attributes,
+                crc=crc,
+                timestamp=timestamp,
+            )
+        elif magic == 0:
+            magic = cast(Literal[0], magic)
+            key, value = (
+                cls.MAGIC0_FIELDS[0][1].decode(data),
+                cls.MAGIC0_FIELDS[1][1].decode(data),
+            )
+            msg = cls(
+                value=value,
+                key=key,
+                magic=magic,
+                attributes=attributes,
+                crc=crc,
+            )
+        else:
+            raise ValueError(f"Unrecognized message version: {magic}")
+
         msg._validated_crc = _validated_crc
         return msg
 
-    def validate_crc(self):
+    def validate_crc(self) -> bool:
         if self._validated_crc is None:
             raw_msg = self.encode(recalc_crc=False)
             self._validated_crc = crc32(raw_msg[4:])
@@ -133,10 +200,13 @@ class Message(Struct):
             return True
         return False
 
-    def is_compressed(self):
+    def is_compressed(self) -> bool:
         return self.attributes & self.CODEC_MASK != 0
 
-    def decompress(self):
+    def decompress(
+        self,
+    ) -> List[Union[Tuple[int, int, "Message"], Tuple[None, None, "PartialMessage"]]]:
+        assert self.value is not None
         codec = self.attributes & self.CODEC_MASK
         assert codec in (
             self.CODEC_GZIP,
@@ -167,21 +237,25 @@ class Message(Struct):
 
         return MessageSet.decode(raw_bytes, bytes_to_read=len(raw_bytes))
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.encode(recalc_crc=False))
 
 
 class PartialMessage(bytes):
-    def __repr__(self):
-        return f"PartialMessage({self})"
+    def __repr__(self) -> str:
+        return f"PartialMessage({self!r})"
 
 
-class MessageSet(AbstractType):
+class MessageSet:
     ITEM = Schema(("offset", Int64), ("message", Bytes))
     HEADER_SIZE = 12  # offset + message_size
 
     @classmethod
-    def encode(cls, items, prepend_size=True):
+    def encode(
+        cls,
+        items: Union[io.BytesIO, Iterable[Tuple[int, bytes]]],
+        prepend_size: bool = True,
+    ) -> bytes:
         # RecordAccumulator encodes messagesets internally
         if isinstance(items, io.BytesIO):
             size = Int32.decode(items)
@@ -191,7 +265,7 @@ class MessageSet(AbstractType):
                 size += 4
             return items.read(size)
 
-        encoded_values = []
+        encoded_values: List[bytes] = []
         for offset, message in items:
             encoded_values.append(Int64.encode(offset))
             encoded_values.append(Bytes.encode(message))
@@ -202,7 +276,9 @@ class MessageSet(AbstractType):
             return encoded
 
     @classmethod
-    def decode(cls, data, bytes_to_read=None):
+    def decode(
+        cls, data: Union[io.BytesIO, bytes], bytes_to_read: Optional[int] = None
+    ) -> List[Union[Tuple[int, int, Message], Tuple[None, None, PartialMessage]]]:
         """Compressed messages should pass in bytes_to_read (via message size)
         otherwise, we decode from data as Int32
         """
@@ -216,11 +292,14 @@ class MessageSet(AbstractType):
         # So create an internal buffer to avoid over-reading
         raw = io.BytesIO(data.read(bytes_to_read))
 
-        items = []
+        items: List[
+            Union[Tuple[int, int, Message], Tuple[None, None, PartialMessage]]
+        ] = []
         try:
             while bytes_to_read:
                 offset = Int64.decode(raw)
                 msg_bytes = Bytes.decode(raw)
+                assert msg_bytes is not None
                 bytes_to_read -= 8 + 4 + len(msg_bytes)
                 items.append(
                     (offset, len(msg_bytes), Message.decode(msg_bytes)),
@@ -233,10 +312,18 @@ class MessageSet(AbstractType):
         return items
 
     @classmethod
-    def repr(cls, messages):
+    def repr(
+        cls,
+        messages: Union[
+            io.BytesIO,
+            List[Union[Tuple[int, int, Message], Tuple[None, None, PartialMessage]]],
+        ],
+    ) -> str:
         if isinstance(messages, io.BytesIO):
             offset = messages.tell()
             decoded = cls.decode(messages)
             messages.seek(offset)
-            messages = decoded
-        return str([cls.ITEM.repr(m) for m in messages])
+            decoded_messages = decoded
+        else:
+            decoded_messages = messages
+        return str([cls.ITEM.repr(m) for m in decoded_messages])

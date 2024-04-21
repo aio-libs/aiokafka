@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 import abc
+from io import BytesIO
+from typing import Any, ClassVar, Dict, Optional, Type, Union
 
 from .struct import Struct
 from .types import Array, Int16, Int32, Schema, String, TaggedFields
@@ -12,7 +16,9 @@ class RequestHeader_v0(Struct):
         ("client_id", String("utf-8")),
     )
 
-    def __init__(self, request, correlation_id=0, client_id="aiokafka"):
+    def __init__(
+        self, request: Request, correlation_id: int = 0, client_id: str = "aiokafka"
+    ) -> None:
         super().__init__(
             request.API_KEY, request.API_VERSION, correlation_id, client_id
         )
@@ -28,7 +34,13 @@ class RequestHeader_v1(Struct):
         ("tags", TaggedFields),
     )
 
-    def __init__(self, request, correlation_id=0, client_id="aiokafka", tags=None):
+    def __init__(
+        self,
+        request: Request,
+        correlation_id: int = 0,
+        client_id: str = "aiokafka",
+        tags: Optional[Dict[int, bytes]] = None,
+    ):
         super().__init__(
             request.API_KEY, request.API_VERSION, correlation_id, client_id, tags or {}
         )
@@ -48,32 +60,38 @@ class ResponseHeader_v1(Struct):
 
 
 class Request(Struct, metaclass=abc.ABCMeta):
-    FLEXIBLE_VERSION = False
+    FLEXIBLE_VERSION: ClassVar[bool] = False
 
-    @abc.abstractproperty
-    def API_KEY(self):
+    @property
+    @abc.abstractmethod
+    def API_KEY(self) -> int:
         """Integer identifier for api request"""
 
-    @abc.abstractproperty
-    def API_VERSION(self):
+    @property
+    @abc.abstractmethod
+    def API_VERSION(self) -> int:
         """Integer of api request version"""
 
-    @abc.abstractproperty
-    def SCHEMA(self):
-        """An instance of Schema() representing the request structure"""
-
-    @abc.abstractproperty
-    def RESPONSE_TYPE(self):
+    @property
+    @abc.abstractmethod
+    def RESPONSE_TYPE(self) -> Type[Response]:
         """The Response class associated with the api request"""
 
-    def expect_response(self):
+    @property
+    @abc.abstractmethod
+    def SCHEMA(self) -> Schema:
+        """An instance of Schema() representing the request structure"""
+
+    def expect_response(self) -> bool:
         """Override this method if an api request does not always generate a response"""
         return True
 
-    def to_object(self):
+    def to_object(self) -> Dict[str, Any]:
         return _to_object(self.SCHEMA, self)
 
-    def build_request_header(self, correlation_id, client_id):
+    def build_request_header(
+        self, correlation_id: int, client_id: str
+    ) -> Union[RequestHeader_v0, RequestHeader_v1]:
         if self.FLEXIBLE_VERSION:
             return RequestHeader_v1(
                 self, correlation_id=correlation_id, client_id=client_id
@@ -82,31 +100,36 @@ class Request(Struct, metaclass=abc.ABCMeta):
             self, correlation_id=correlation_id, client_id=client_id
         )
 
-    def parse_response_header(self, read_buffer):
+    def parse_response_header(
+        self, read_buffer: Union[BytesIO, bytes]
+    ) -> Union[ResponseHeader_v0, ResponseHeader_v1]:
         if self.FLEXIBLE_VERSION:
             return ResponseHeader_v1.decode(read_buffer)
         return ResponseHeader_v0.decode(read_buffer)
 
 
 class Response(Struct, metaclass=abc.ABCMeta):
-    @abc.abstractproperty
-    def API_KEY(self):
+    @property
+    @abc.abstractmethod
+    def API_KEY(self) -> int:
         """Integer identifier for api request/response"""
 
-    @abc.abstractproperty
-    def API_VERSION(self):
+    @property
+    @abc.abstractmethod
+    def API_VERSION(self) -> int:
         """Integer of api request/response version"""
 
-    @abc.abstractproperty
-    def SCHEMA(self):
+    @property
+    @abc.abstractmethod
+    def SCHEMA(self) -> Schema:
         """An instance of Schema() representing the response structure"""
 
-    def to_object(self):
+    def to_object(self) -> Dict[str, Any]:
         return _to_object(self.SCHEMA, self)
 
 
-def _to_object(schema, data):
-    obj = {}
+def _to_object(schema: Schema, data: Union[Struct, Dict[int, Any]]) -> Dict[str, Any]:
+    obj: Dict[str, Any] = {}
     for idx, (name, _type) in enumerate(zip(schema.names, schema.fields)):
         if isinstance(data, Struct):
             val = data.get_item(name)
@@ -116,7 +139,7 @@ def _to_object(schema, data):
         if isinstance(_type, Schema):
             obj[name] = _to_object(_type, val)
         elif isinstance(_type, Array):
-            if isinstance(_type.array_of, (Array, Schema)):
+            if isinstance(_type.array_of, Schema):
                 obj[name] = [_to_object(_type.array_of, x) for x in val]
             else:
                 obj[name] = val

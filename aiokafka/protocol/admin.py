@@ -1,3 +1,5 @@
+from typing import Dict, Iterable, Optional, Tuple
+
 from .api import Request, Response
 from .types import (
     Array,
@@ -429,8 +431,8 @@ class DescribeGroupsResponse_v3(Response):
                         ("member_assignment", Bytes),
                     ),
                 ),
+                ("authorized_operations", Int32),
             ),
-            ("authorized_operations", Int32),
         ),
     )
 
@@ -1119,7 +1121,7 @@ DeleteGroupsRequest = [DeleteGroupsRequest_v0, DeleteGroupsRequest_v1]
 DeleteGroupsResponse = [DeleteGroupsResponse_v0, DeleteGroupsResponse_v1]
 
 
-class DescribeClientQuotasResponse_v0(Request):
+class DescribeClientQuotasResponse_v0(Response):
     API_KEY = 48
     API_VERSION = 0
     SCHEMA = Schema(
@@ -1385,7 +1387,12 @@ class DeleteRecordsRequest_v2(Request):
         ("tags", TaggedFields),
     )
 
-    def __init__(self, topics, timeout_ms, tags=None):
+    def __init__(
+        self,
+        topics: Iterable[Tuple[str, Iterable[Tuple[int, int]]]],
+        timeout_ms: int,
+        tags: Optional[Dict[int, bytes]] = None,
+    ) -> None:
         super().__init__(
             [
                 (

@@ -1,13 +1,15 @@
 from io import BytesIO
+from typing import Any, ClassVar, List, Union
 
-from .abstract import AbstractType
+from typing_extensions import Self
+
 from .types import Schema
 
 
-class Struct(AbstractType):
-    SCHEMA = Schema()
+class Struct:
+    SCHEMA: ClassVar = Schema()
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         if len(args) == len(self.SCHEMA.fields):
             for i, name in enumerate(self.SCHEMA.names):
                 self.__dict__[name] = args[i]
@@ -23,27 +25,29 @@ class Struct(AbstractType):
                     )
                 )
 
-    def encode(self):
+    def encode(self) -> bytes:
         return self.SCHEMA.encode([self.__dict__[name] for name in self.SCHEMA.names])
 
     @classmethod
-    def decode(cls, data):
+    def decode(cls, data: Union[BytesIO, bytes]) -> Self:
         if isinstance(data, bytes):
             data = BytesIO(data)
         return cls(*[field.decode(data) for field in cls.SCHEMA.fields])
 
-    def get_item(self, name):
+    def get_item(self, name: str) -> Any:
         if name not in self.SCHEMA.names:
             raise KeyError("%s is not in the schema" % name)
         return self.__dict__[name]
 
-    def __repr__(self):
-        key_vals = []
+    def __repr__(self) -> str:
+        key_vals: List[str] = []
         for name, field in zip(self.SCHEMA.names, self.SCHEMA.fields):
             key_vals.append(f"{name}={field.repr(self.__dict__[name])}")
         return self.__class__.__name__ + "(" + ", ".join(key_vals) + ")"
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Struct):
+            return NotImplemented
         if self.SCHEMA != other.SCHEMA:
             return False
         for attr in self.SCHEMA.names:

@@ -148,17 +148,15 @@ class ProduceResponse_v8(Response):
                         ("offset", Int64),
                         ("timestamp", Int64),
                         ("log_start_offset", Int64),
-                    ),
-                    (
-                        "record_errors",
                         (
+                            "record_errors",
                             Array(
                                 ("batch_index", Int32),
                                 ("batch_index_error_message", String("utf-8")),
-                            )
+                            ),
                         ),
+                        ("error_message", String("utf-8")),
                     ),
-                    ("error_message", String("utf-8")),
                 ),
             ),
         ),
@@ -166,16 +164,18 @@ class ProduceResponse_v8(Response):
     )
 
 
-class ProduceRequest(Request):
+class ProduceRequestBase(Request):
     API_KEY = 0
 
-    def expect_response(self):
+    required_acks: int
+
+    def expect_response(self) -> bool:
         if self.required_acks == 0:
             return False
         return True
 
 
-class ProduceRequest_v0(ProduceRequest):
+class ProduceRequest_v0(ProduceRequestBase):
     API_VERSION = 0
     RESPONSE_TYPE = ProduceResponse_v0
     SCHEMA = Schema(
@@ -191,19 +191,19 @@ class ProduceRequest_v0(ProduceRequest):
     )
 
 
-class ProduceRequest_v1(ProduceRequest):
+class ProduceRequest_v1(ProduceRequestBase):
     API_VERSION = 1
     RESPONSE_TYPE = ProduceResponse_v1
     SCHEMA = ProduceRequest_v0.SCHEMA
 
 
-class ProduceRequest_v2(ProduceRequest):
+class ProduceRequest_v2(ProduceRequestBase):
     API_VERSION = 2
     RESPONSE_TYPE = ProduceResponse_v2
     SCHEMA = ProduceRequest_v1.SCHEMA
 
 
-class ProduceRequest_v3(ProduceRequest):
+class ProduceRequest_v3(ProduceRequestBase):
     API_VERSION = 3
     RESPONSE_TYPE = ProduceResponse_v3
     SCHEMA = Schema(
@@ -220,7 +220,7 @@ class ProduceRequest_v3(ProduceRequest):
     )
 
 
-class ProduceRequest_v4(ProduceRequest):
+class ProduceRequest_v4(ProduceRequestBase):
     """
     The version number is bumped up to indicate that the client supports
     KafkaStorageException. The KafkaStorageException will be translated to
@@ -232,7 +232,7 @@ class ProduceRequest_v4(ProduceRequest):
     SCHEMA = ProduceRequest_v3.SCHEMA
 
 
-class ProduceRequest_v5(ProduceRequest):
+class ProduceRequest_v5(ProduceRequestBase):
     """
     Same as v4. The version number is bumped since the v5 response includes an
     additional partition level field: the log_start_offset.
@@ -243,7 +243,7 @@ class ProduceRequest_v5(ProduceRequest):
     SCHEMA = ProduceRequest_v4.SCHEMA
 
 
-class ProduceRequest_v6(ProduceRequest):
+class ProduceRequest_v6(ProduceRequestBase):
     """
     The version number is bumped to indicate that on quota violation brokers send out
     responses before throttling.
@@ -254,7 +254,7 @@ class ProduceRequest_v6(ProduceRequest):
     SCHEMA = ProduceRequest_v5.SCHEMA
 
 
-class ProduceRequest_v7(ProduceRequest):
+class ProduceRequest_v7(ProduceRequestBase):
     """
     V7 bumped up to indicate ZStandard capability. (see KIP-110)
     """
@@ -264,7 +264,7 @@ class ProduceRequest_v7(ProduceRequest):
     SCHEMA = ProduceRequest_v6.SCHEMA
 
 
-class ProduceRequest_v8(ProduceRequest):
+class ProduceRequest_v8(ProduceRequestBase):
     """
     V8 bumped up to add two new fields record_errors offset list and error_message to
     PartitionResponse (See KIP-467)
