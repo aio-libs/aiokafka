@@ -454,7 +454,8 @@ class Fetcher:
 
         for x in self._pending_tasks:
             x.cancel()
-            await x
+            with contextlib.suppress(asyncio.CancelledError):
+                await x
 
     def _notify(self, future):
         if future is not None and not future.done():
@@ -512,7 +513,7 @@ class Fetcher:
                         # cancellation
                         if not task.done():
                             task.cancel()
-                        await task
+                            await task
                     self._pending_tasks.clear()
                     self._records.clear()
 

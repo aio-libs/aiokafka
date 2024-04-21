@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import contextlib
 import logging
 import time
 
@@ -96,7 +97,8 @@ class Sender:
     async def close(self):
         if self._sender_task is not None and not self._sender_task.done():
             self._sender_task.cancel()
-            await self._sender_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._sender_task
 
     async def _sender_routine(self):
         """Background task, that sends pending batches to leader nodes for
