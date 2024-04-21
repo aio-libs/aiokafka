@@ -1,9 +1,12 @@
+import array
+from typing import Callable, Iterable, Tuple, Union
+
 from aiokafka.util import NO_EXTENSIONS
 
 from ._crc32c import crc as crc32c_py
 
 
-def encode_varint_py(value, write):
+def encode_varint_py(value: int, write: Callable[[int], None]) -> int:
     """Encode an integer to a varint presentation. See
     https://developers.google.com/protocol-buffers/docs/encoding?csw=1#varints
     on how those can be produced.
@@ -56,7 +59,7 @@ def encode_varint_py(value, write):
     return i
 
 
-def size_of_varint_py(value):
+def size_of_varint_py(value: int) -> int:
     """Number of bytes needed to encode an integer in variable-length format."""
     value = (value << 1) ^ (value >> 63)
     if value <= 0x7F:
@@ -80,7 +83,7 @@ def size_of_varint_py(value):
     return 10
 
 
-def decode_varint_py(buffer, pos=0):
+def decode_varint_py(buffer: bytearray, pos: int = 0) -> Tuple[int, int]:
     """Decode an integer from a varint presentation. See
     https://developers.google.com/protocol-buffers/docs/encoding?csw=1#varints
     on how those can be produced.
@@ -112,11 +115,18 @@ def decode_varint_py(buffer, pos=0):
             raise ValueError("Out of int64 range")
 
 
-def calc_crc32c_py(memview):
+def calc_crc32c_py(
+    memview: Union["array.array[int]", bytes, bytearray, Iterable[int]],
+) -> int:
     """Calculate CRC-32C (Castagnoli) checksum over a memoryview of data"""
     crc = crc32c_py(memview)
     return crc
 
+
+calc_crc32c: Callable[[Union["array.array[int]", bytes, bytearray, Iterable[int]]], int]
+decode_varint: Callable[[bytearray, int], Tuple[int, int]]
+size_of_varint: Callable[[int], int]
+encode_varint: Callable[[int, Callable[[int], None]], int]
 
 if NO_EXTENSIONS:
     calc_crc32c = calc_crc32c_py

@@ -56,6 +56,9 @@
 
 import struct
 import time
+from typing import Any, Callable, List, Optional, Sized, Tuple, Type, Union
+
+from typing_extensions import Self
 
 import aiokafka.codec as codecs
 from aiokafka.codec import (
@@ -71,6 +74,12 @@ from aiokafka.codec import (
 from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from aiokafka.util import NO_EXTENSIONS
 
+from ._protocols import (
+    DefaultRecordBatchBuilderProtocol,
+    DefaultRecordBatchProtocol,
+    DefaultRecordMetadataProtocol,
+    DefaultRecordProtocol,
+)
 from .util import calc_crc32c, decode_varint, encode_varint, size_of_varint
 
 
@@ -112,7 +121,7 @@ class DefaultRecordBase:
 
     NO_PARTITION_LEADER_EPOCH = -1
 
-    def _assert_has_codec(self, compression_type):
+    def _assert_has_codec(self, compression_type: int) -> None:
         if compression_type == self.CODEC_GZIP:
             checker, name = codecs.has_gzip, "gzip"
         elif compression_type == self.CODEC_SNAPPY:
@@ -131,76 +140,78 @@ class DefaultRecordBase:
             )
 
 
-class _DefaultRecordBatchPy(DefaultRecordBase):
-    def __init__(self, buffer):
+class _DefaultRecordBatchPy(DefaultRecordBatchProtocol, DefaultRecordBase):
+    def __init__(self, buffer: Union[bytes, bytearray, memoryview]) -> None:
         self._buffer = bytearray(buffer)
-        self._header_data = self.HEADER_STRUCT.unpack_from(self._buffer)
+        self._header_data: Tuple[
+            int, int, int, int, int, int, int, int, int, int, int, int, int
+        ] = self.HEADER_STRUCT.unpack_from(self._buffer)
         self._pos = self.HEADER_STRUCT.size
         self._num_records = self._header_data[12]
         self._next_record_index = 0
         self._decompressed = False
 
     @property
-    def base_offset(self):
+    def base_offset(self) -> int:
         return self._header_data[0]
 
     @property
-    def magic(self):
+    def magic(self) -> int:
         return self._header_data[3]
 
     @property
-    def crc(self):
+    def crc(self) -> int:
         return self._header_data[4]
 
     @property
-    def attributes(self):
+    def attributes(self) -> int:
         return self._header_data[5]
 
     @property
-    def compression_type(self):
+    def compression_type(self) -> int:
         return self.attributes & self.CODEC_MASK
 
     @property
-    def timestamp_type(self):
+    def timestamp_type(self) -> int:
         return int(bool(self.attributes & self.TIMESTAMP_TYPE_MASK))
 
     @property
-    def is_transactional(self):
+    def is_transactional(self) -> bool:
         return bool(self.attributes & self.TRANSACTIONAL_MASK)
 
     @property
-    def is_control_batch(self):
+    def is_control_batch(self) -> bool:
         return bool(self.attributes & self.CONTROL_MASK)
 
     @property
-    def last_offset_delta(self):
+    def last_offset_delta(self) -> int:
         return self._header_data[6]
 
     @property
-    def first_timestamp(self):
+    def first_timestamp(self) -> int:
         return self._header_data[7]
 
     @property
-    def max_timestamp(self):
+    def max_timestamp(self) -> int:
         return self._header_data[8]
 
     @property
-    def producer_id(self):
+    def producer_id(self) -> int:
         return self._header_data[9]
 
     @property
-    def producer_epoch(self):
+    def producer_epoch(self) -> int:
         return self._header_data[10]
 
     @property
-    def base_sequence(self):
+    def base_sequence(self) -> int:
         return self._header_data[11]
 
     @property
-    def next_offset(self):
+    def next_offset(self) -> int:
         return self.base_offset + self.last_offset_delta + 1
 
-    def _maybe_uncompress(self):
+    def _maybe_uncompress(self) -> None:
         if not self._decompressed:
             compression_type = self.compression_type
             if compression_type != self.CODEC_NONE:
@@ -218,7 +229,9 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
                 self._pos = 0
         self._decompressed = True
 
-    def _read_msg(self, decode_varint=decode_varint):
+    def _read_msg(
+        self, decode_varint: Callable[[bytearray, int], Tuple[int, int]] = decode_varint
+    ) -> "_DefaultRecordPy":
         # Record =>
         #   Length => Varint
         #   Attributes => Int8
@@ -264,7 +277,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
             raise CorruptRecordException(
                 f"Found invalid number of record headers {header_count}"
             )
-        headers = []
+        headers: List[Tuple[str, Optional[bytes]]] = []
         while header_count:
             # Header key is of type String, that can't be None
             h_key_len, pos = decode_varint(buffer, pos)
@@ -294,15 +307,15 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
             )
         self._pos = pos
 
-        return DefaultRecord(
+        return _DefaultRecordPy(
             offset, timestamp, self.timestamp_type, key, value, headers
         )
 
-    def __iter__(self):
+    def __iter__(self) -> Self:
         self._maybe_uncompress()
         return self
 
-    def __next__(self):
+    def __next__(self) -> "_DefaultRecordPy":
         if self._next_record_index >= self._num_records:
             if self._pos != len(self._buffer):
                 raise CorruptRecordException(
@@ -322,7 +335,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
 
     next = __next__
 
-    def validate_crc(self):
+    def validate_crc(self) -> bool:
         assert self._decompressed is False, "Validate should be called before iteration"
 
         crc = self.crc
@@ -331,7 +344,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase):
         return crc == verify_crc
 
 
-class _DefaultRecordPy:
+class _DefaultRecordPy(DefaultRecordProtocol):
     __slots__ = (
         "_offset",
         "_timestamp",
@@ -341,7 +354,15 @@ class _DefaultRecordPy:
         "_headers",
     )
 
-    def __init__(self, offset, timestamp, timestamp_type, key, value, headers):
+    def __init__(
+        self,
+        offset: int,
+        timestamp: int,
+        timestamp_type: int,
+        key: Optional[bytes],
+        value: Optional[bytes],
+        headers: List[Tuple[str, Optional[bytes]]],
+    ) -> None:
         self._offset = offset
         self._timestamp = timestamp
         self._timestamp_type = timestamp_type
@@ -350,38 +371,38 @@ class _DefaultRecordPy:
         self._headers = headers
 
     @property
-    def offset(self):
+    def offset(self) -> int:
         return self._offset
 
     @property
-    def timestamp(self):
+    def timestamp(self) -> int:
         """Epoch milliseconds"""
         return self._timestamp
 
     @property
-    def timestamp_type(self):
+    def timestamp_type(self) -> int:
         """CREATE_TIME(0) or APPEND_TIME(1)"""
         return self._timestamp_type
 
     @property
-    def key(self):
+    def key(self) -> Optional[bytes]:
         """Bytes key or None"""
         return self._key
 
     @property
-    def value(self):
+    def value(self) -> Optional[bytes]:
         """Bytes value or None"""
         return self._value
 
     @property
-    def headers(self):
+    def headers(self) -> List[Tuple[str, Optional[bytes]]]:
         return self._headers
 
     @property
-    def checksum(self):
+    def checksum(self) -> None:
         return None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"DefaultRecord(offset={self._offset!r}, timestamp={self._timestamp!r},"
             f" timestamp_type={self._timestamp_type!r}, key={self._key!r},"
@@ -389,20 +410,22 @@ class _DefaultRecordPy:
         )
 
 
-class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
+class _DefaultRecordBatchBuilderPy(
+    DefaultRecordBatchBuilderProtocol, DefaultRecordBase
+):
     # excluding key, value and headers:
     # 5 bytes length + 10 bytes timestamp + 5 bytes offset + 1 byte attributes
     MAX_RECORD_OVERHEAD = 21
 
     def __init__(
         self,
-        magic,
-        compression_type,
-        is_transactional,
-        producer_id,
-        producer_epoch,
-        base_sequence,
-        batch_size,
+        magic: int,
+        compression_type: int,
+        is_transactional: bool,
+        producer_id: int,
+        producer_epoch: int,
+        base_sequence: int,
+        batch_size: int,
     ):
         assert magic >= 2
         self._magic = magic
@@ -414,14 +437,14 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
         self._producer_epoch = producer_epoch
         self._base_sequence = base_sequence
 
-        self._first_timestamp = None
-        self._max_timestamp = None
+        self._first_timestamp: Optional[int] = None
+        self._max_timestamp: Optional[int] = None
         self._last_offset = 0
         self._num_records = 0
 
         self._buffer = bytearray(self.HEADER_STRUCT.size)
 
-    def _get_attributes(self, include_compression_type=True):
+    def _get_attributes(self, include_compression_type: bool = True) -> int:
         attrs = 0
         if include_compression_type:
             attrs |= self._compression_type
@@ -433,22 +456,26 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
 
     def append(
         self,
-        offset,
-        timestamp,
-        key,
-        value,
-        headers,
+        offset: int,
+        timestamp: int,
+        key: Optional[bytes],
+        value: Optional[bytes],
+        headers: List[Tuple[str, Optional[bytes]]],
         # Cache for LOAD_FAST opcodes
-        encode_varint=encode_varint,
-        size_of_varint=size_of_varint,
-        get_type=type,
-        type_int=int,
-        time_time=time.time,
-        byte_like=(bytes, bytearray, memoryview),
-        bytearray_type=bytearray,
-        len_func=len,
-        zero_len_varint=1,
-    ):
+        encode_varint: Callable[[int, Callable[[int], None]], int] = encode_varint,
+        size_of_varint: Callable[[int], int] = size_of_varint,
+        get_type: Callable[[Any], type] = type,
+        type_int: Type[int] = int,
+        time_time: Callable[[], float] = time.time,
+        byte_like: Tuple[Type[bytes], Type[bytearray], Type[memoryview]] = (
+            bytes,
+            bytearray,
+            memoryview,
+        ),
+        bytearray_type: Type[bytearray] = bytearray,
+        len_func: Callable[[Sized], int] = len,
+        zero_len_varint: int = 1,
+    ) -> Optional["_DefaultRecordMetadataPy"]:
         """Write message to messageset buffer with MsgVersion 2"""
         # Check types
         if get_type(offset) != type_int:
@@ -497,9 +524,9 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
         encode_varint(len_func(headers), write_byte)
 
         for h_key, h_value in headers:
-            h_key = h_key.encode("utf-8")
-            encode_varint(len_func(h_key), write_byte)
-            write(h_key)
+            h_key_bytes = h_key.encode("utf-8")
+            encode_varint(len_func(h_key_bytes), write_byte)
+            write(h_key_bytes)
             if h_value is not None:
                 encode_varint(len_func(h_value), write_byte)
                 write(h_value)
@@ -528,7 +555,7 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
 
         return _DefaultRecordMetadataPy(offset, required_size, timestamp)
 
-    def write_header(self, use_compression_type=True):
+    def write_header(self, use_compression_type: bool = True) -> None:
         batch_len = len(self._buffer)
         self.HEADER_STRUCT.pack_into(
             self._buffer,
@@ -550,7 +577,7 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
         crc = calc_crc32c(self._buffer[self.ATTRIBUTES_OFFSET :])
         struct.pack_into(">I", self._buffer, self.CRC_OFFSET, crc)
 
-    def _maybe_compress(self):
+    def _maybe_compress(self) -> bool:
         if self._compression_type != self.CODEC_NONE:
             self._assert_has_codec(self._compression_type)
             header_size = self.HEADER_STRUCT.size
@@ -576,16 +603,23 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
                 return True
         return False
 
-    def build(self):
+    def build(self) -> bytearray:
         send_compressed = self._maybe_compress()
         self.write_header(send_compressed)
         return self._buffer
 
-    def size(self):
+    def size(self) -> int:
         """Return current size of data written to buffer"""
         return len(self._buffer)
 
-    def size_in_bytes(self, offset, timestamp, key, value, headers):
+    def size_in_bytes(
+        self,
+        offset: int,
+        timestamp: int,
+        key: Optional[bytes],
+        value: Optional[bytes],
+        headers: List[Tuple[str, Optional[bytes]]],
+    ) -> int:
         if self._first_timestamp is not None:
             timestamp_delta = timestamp - self._first_timestamp
         else:
@@ -599,7 +633,12 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
         return size_of_body + size_of_varint(size_of_body)
 
     @classmethod
-    def size_of(cls, key, value, headers):
+    def size_of(
+        cls,
+        key: Optional[bytes],
+        value: Optional[bytes],
+        headers: List[Tuple[str, Optional[bytes]]],
+    ) -> int:
         size = 0
         # Key size
         if key is None:
@@ -627,7 +666,12 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
         return size
 
     @classmethod
-    def estimate_size_in_bytes(cls, key, value, headers):
+    def estimate_size_in_bytes(
+        cls,
+        key: Optional[bytes],
+        value: Optional[bytes],
+        headers: List[Tuple[str, Optional[bytes]]],
+    ) -> int:
         """Get the upper bound estimate on the size of record"""
         return (
             cls.HEADER_STRUCT.size
@@ -635,54 +679,61 @@ class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
             + cls.size_of(key, value, headers)
         )
 
-    def set_producer_state(self, producer_id, producer_epoch, base_sequence):
+    def set_producer_state(
+        self, producer_id: int, producer_epoch: int, base_sequence: int
+    ) -> None:
         self._producer_id = producer_id
         self._producer_epoch = producer_epoch
         self._base_sequence = base_sequence
 
     @property
-    def producer_id(self):
+    def producer_id(self) -> int:
         return self._producer_id
 
     @property
-    def producer_epoch(self):
+    def producer_epoch(self) -> int:
         return self._producer_epoch
 
     @property
-    def base_sequence(self):
+    def base_sequence(self) -> int:
         return self._base_sequence
 
 
 class _DefaultRecordMetadataPy:
     __slots__ = ("_size", "_timestamp", "_offset")
 
-    def __init__(self, offset, size, timestamp):
+    def __init__(self, offset: int, size: int, timestamp: int) -> None:
         self._offset = offset
         self._size = size
         self._timestamp = timestamp
 
     @property
-    def offset(self):
+    def offset(self) -> int:
         return self._offset
 
     @property
-    def crc(self):
+    def crc(self) -> None:
         return None
 
     @property
-    def size(self):
+    def size(self) -> int:
         return self._size
 
     @property
-    def timestamp(self):
+    def timestamp(self) -> int:
         return self._timestamp
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"DefaultRecordMetadata(offset={self._offset!r},"
             f" size={self._size!r}, timestamp={self._timestamp!r})"
         )
 
+
+DefaultRecordBatchBuilder: Type[DefaultRecordBatchBuilderProtocol]
+DefaultRecordMetadata: Type[DefaultRecordMetadataProtocol]
+DefaultRecordBatch: Type[DefaultRecordBatchProtocol]
+DefaultRecord: Type[DefaultRecordProtocol]
 
 if NO_EXTENSIONS:
     DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderPy
