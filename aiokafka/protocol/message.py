@@ -22,21 +22,28 @@ from .types import Bytes, Int8, Int32, Int64, Schema, Type, UInt32
 
 
 class Message(Struct):
+    BASE_FIELDS = (
+        ("crc", UInt32),
+        ("magic", Int8),
+        ("attributes", Int8),
+    )
+    MAGIC0_FIELDS = (
+        ("key", Bytes),
+        ("value", Bytes),
+    )
+    MAGIC1_FIELDS = (
+        ("timestamp", Int64),
+        ("key", Bytes),
+        ("value", Bytes),
+    )
     SCHEMAS = [
         Schema(
-            ("crc", UInt32),
-            ("magic", Int8),
-            ("attributes", Int8),
-            ("key", Bytes),
-            ("value", Bytes),
+            *BASE_FIELDS,
+            *MAGIC0_FIELDS,
         ),
         Schema(
-            ("crc", UInt32),
-            ("magic", Int8),
-            ("attributes", Int8),
-            ("timestamp", Int64),
-            ("key", Bytes),
-            ("value", Bytes),
+            *BASE_FIELDS,
+            *MAGIC1_FIELDS,
         ),
     ]
     SCHEMA = SCHEMAS[1]
@@ -144,29 +151,35 @@ class Message(Struct):
             _validated_crc = crc32(data[4:])
             data = io.BytesIO(data)
         # Partial decode required to determine message version
-        base_fields = cast(
-            Tuple[Type[UInt32], Type[Int8], Type[Int8]], cls.SCHEMAS[0].fields[0:3]
+        crc, magic, attributes = (
+            cls.BASE_FIELDS[0][1].decode(data),
+            cls.BASE_FIELDS[1][1].decode(data),
+            cls.BASE_FIELDS[2][1].decode(data),
         )
-        crc, magic, attributes = (field.decode(data) for field in base_fields)
-        remaining = cls.SCHEMAS[magic].fields[3:]
-        fields = tuple(field.decode(data) for field in remaining)
         if magic == 1:
             magic = cast(Literal[1], magic)
-            fields = cast(Tuple[int, Optional[bytes], Optional[bytes]], fields)
+            timestamp, key, value = (
+                cls.MAGIC1_FIELDS[0][1].decode(data),
+                cls.MAGIC1_FIELDS[1][1].decode(data),
+                cls.MAGIC1_FIELDS[2][1].decode(data),
+            )
             msg = cls(
-                value=fields[-1],
-                key=fields[-2],
+                value=value,
+                key=key,
                 magic=magic,
                 attributes=attributes,
                 crc=crc,
-                timestamp=fields[0],
+                timestamp=timestamp,
             )
         elif magic == 0:
             magic = cast(Literal[0], magic)
-            fields = cast(Tuple[Optional[bytes], Optional[bytes]], fields)
+            key, value = (
+                cls.MAGIC0_FIELDS[0][1].decode(data),
+                cls.MAGIC0_FIELDS[1][1].decode(data),
+            )
             msg = cls(
-                value=fields[-1],
-                key=fields[-2],
+                value=value,
+                key=key,
                 magic=magic,
                 attributes=attributes,
                 crc=crc,
