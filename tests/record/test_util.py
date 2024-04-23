@@ -1,10 +1,11 @@
 import struct
+from typing import List, Tuple
 
 import pytest
 
 from aiokafka.record import util
 
-varint_data = [
+varint_data: List[Tuple[bytes, int]] = [
     (b"\x00", 0),
     (b"\x01", -1),
     (b"\x02", 1),
@@ -48,14 +49,14 @@ varint_data = [
 
 
 @pytest.mark.parametrize("encoded, decoded", varint_data)
-def test_encode_varint(encoded, decoded):
+def test_encode_varint(encoded: bytes, decoded: int) -> None:
     res = bytearray()
     util.encode_varint(decoded, res.append)
     assert res == encoded
 
 
 @pytest.mark.parametrize("encoded, decoded", varint_data)
-def test_decode_varint(encoded, decoded):
+def test_decode_varint(encoded: bytes, decoded: int) -> None:
     # We add a bit of bytes around just to check position is calculated
     # correctly
     value, pos = util.decode_varint(bytearray(b"\x01\xf0" + encoded + b"\xff\x01"), 2)
@@ -64,12 +65,12 @@ def test_decode_varint(encoded, decoded):
 
 
 @pytest.mark.parametrize("encoded, decoded", varint_data)
-def test_size_of_varint(encoded, decoded):
+def test_size_of_varint(encoded: bytes, decoded: int) -> None:
     assert util.size_of_varint(decoded) == len(encoded)
 
 
-def test_crc32c():
-    def make_crc(data):
+def test_crc32c() -> None:
+    def make_crc(data: bytes) -> bytes:
         crc = util.calc_crc32c(data)
         return struct.pack(">I", crc)
 

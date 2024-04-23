@@ -421,7 +421,7 @@ class _DefaultRecordBatchBuilderPy(
         self,
         magic: int,
         compression_type: int,
-        is_transactional: bool,
+        is_transactional: int,
         producer_id: int,
         producer_epoch: int,
         base_sequence: int,
@@ -457,7 +457,7 @@ class _DefaultRecordBatchBuilderPy(
     def append(
         self,
         offset: int,
-        timestamp: int,
+        timestamp: Optional[int],
         key: Optional[bytes],
         value: Optional[bytes],
         headers: List[Tuple[str, Optional[bytes]]],

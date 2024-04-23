@@ -14,7 +14,8 @@ FORMATTED_AREAS=\
 	aiokafka/protocol/ \
 	aiokafka/record/ \
 	tests/test_codec.py \
-	tests/test_helpers.py
+	tests/test_helpers.py \
+	tests/record
 
 .PHONY: setup
 setup:

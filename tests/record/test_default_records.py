@@ -24,7 +24,7 @@ from aiokafka.record.default_records import (
         pytest.param(DefaultRecordBatch.CODEC_ZSTD, 1714138923, id="zstd"),
     ],
 )
-def test_read_write_serde_v2(compression_type, crc):
+def test_read_write_serde_v2(compression_type: int, crc: int) -> None:
     builder = DefaultRecordBatchBuilder(
         magic=2,
         compression_type=compression_type,
@@ -68,7 +68,7 @@ def test_read_write_serde_v2(compression_type, crc):
         assert msg.headers == headers
 
 
-def test_written_bytes_equals_size_in_bytes_v2():
+def test_written_bytes_equals_size_in_bytes_v2() -> None:
     key = b"test"
     value = b"Super"
     headers = [("header1", b"aaa"), ("header2", b"bbb"), ("xx", None)]
@@ -90,10 +90,11 @@ def test_written_bytes_equals_size_in_bytes_v2():
     meta = builder.append(0, timestamp=9999999, key=key, value=value, headers=headers)
 
     assert builder.size() - pos == size_in_bytes
+    assert meta is not None
     assert meta.size == size_in_bytes
 
 
-def test_estimate_size_in_bytes_bigger_than_batch_v2():
+def test_estimate_size_in_bytes_bigger_than_batch_v2() -> None:
     key = b"Super Key"
     value = b"1" * 100
     headers = [("header1", b"aaa"), ("header2", b"bbb")]
@@ -115,7 +116,7 @@ def test_estimate_size_in_bytes_bigger_than_batch_v2():
     assert len(buf) <= estimate_size, "Estimate should always be upper bound"
 
 
-def test_default_batch_builder_validates_arguments():
+def test_default_batch_builder_validates_arguments() -> None:
     builder = DefaultRecordBatchBuilder(
         magic=2,
         compression_type=0,
@@ -128,22 +129,30 @@ def test_default_batch_builder_validates_arguments():
 
     # Key should not be str
     with pytest.raises(TypeError):
-        builder.append(0, timestamp=9999999, key="some string", value=None, headers=[])
+        builder.append(0, timestamp=9999999, key="some string", value=None, headers=[])  # type: ignore[arg-type]
 
     # Value should not be str
     with pytest.raises(TypeError):
-        builder.append(0, timestamp=9999999, key=None, value="some string", headers=[])
+        builder.append(0, timestamp=9999999, key=None, value="some string", headers=[])  # type: ignore[arg-type]
 
     # Timestamp should be of proper type
     with pytest.raises(TypeError):
         builder.append(
-            0, timestamp="1243812793", key=None, value=b"some string", headers=[]
+            0,
+            timestamp="1243812793",  # type: ignore[arg-type]
+            key=None,
+            value=b"some string",
+            headers=[],
         )
 
     # Offset of invalid type
     with pytest.raises(TypeError):
         builder.append(
-            "0", timestamp=9999999, key=None, value=b"some string", headers=[]
+            "0",  # type: ignore[arg-type]
+            timestamp=9999999,
+            key=None,
+            value=b"some string",
+            headers=[],
         )
 
     # Ok to pass value as None
@@ -159,7 +168,7 @@ def test_default_batch_builder_validates_arguments():
     assert len(builder.build()) == 104
 
 
-def test_default_correct_metadata_response():
+def test_default_correct_metadata_response() -> None:
     builder = DefaultRecordBatchBuilder(
         magic=2,
         compression_type=0,
@@ -171,6 +180,7 @@ def test_default_correct_metadata_response():
     )
     meta = builder.append(0, timestamp=9999999, key=b"test", value=b"Super", headers=[])
 
+    assert meta is not None
     assert meta.offset == 0
     assert meta.timestamp == 9999999
     assert meta.crc is None
@@ -180,7 +190,7 @@ def test_default_correct_metadata_response():
     )
 
 
-def test_default_batch_size_limit():
+def test_default_batch_size_limit() -> None:
     # First message can be added even if it's too big
     builder = DefaultRecordBatchBuilder(
         magic=2,
@@ -193,6 +203,7 @@ def test_default_batch_size_limit():
     )
 
     meta = builder.append(0, timestamp=None, key=None, value=b"M" * 2000, headers=[])
+    assert meta is not None
     assert meta.size > 0
     assert meta.crc is None
     assert meta.offset == 0
@@ -226,7 +237,7 @@ def test_default_batch_size_limit():
         (DefaultRecordBatch.CODEC_ZSTD, "zstd", "has_zstd"),
     ],
 )
-def test_unavailable_codec(compression_type, name, checker_name):
+def test_unavailable_codec(compression_type: int, name: str, checker_name: str) -> None:
     builder = DefaultRecordBatchBuilder(
         magic=2,
         compression_type=compression_type,
@@ -261,8 +272,8 @@ def test_unavailable_codec(compression_type, name, checker_name):
             list(batch)
 
 
-def test_unsupported_yet_codec():
-    compression_type = DefaultRecordBatch.CODEC_MASK  # It doesn't exist
+def test_unsupported_yet_codec() -> None:
+    compression_type = DefaultRecordBatch.CODEC_MASK  # type: ignore[attr-defined] # It doesn't exist
     builder = DefaultRecordBatchBuilder(
         magic=2,
         compression_type=compression_type,
@@ -277,7 +288,7 @@ def test_unsupported_yet_codec():
         builder.build()
 
 
-def test_build_without_append():
+def test_build_without_append() -> None:
     builder = DefaultRecordBatchBuilder(
         magic=2,
         compression_type=0,
@@ -294,7 +305,7 @@ def test_build_without_append():
     assert not msgs
 
 
-def test_set_producer_state():
+def test_set_producer_state() -> None:
     builder = DefaultRecordBatchBuilder(
         magic=2,
         compression_type=0,
