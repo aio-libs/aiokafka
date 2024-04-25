@@ -1,16 +1,8 @@
-from typing import Any, ClassVar, Generator, final
+from typing import Any, ClassVar, Generator
 
 from typing_extensions import Buffer, Literal, Never
 
-from aiokafka.record._protocols import (
-    LegacyRecordBatchBuilderProtocol,
-    LegacyRecordBatchProtocol,
-    LegacyRecordMetadataProtocol,
-    LegacyRecordProtocol,
-)
-
-@final
-class LegacyRecord(LegacyRecordProtocol):
+class LegacyRecord:
     offset: int
     attributes: int
     key: bytes | None
@@ -34,8 +26,7 @@ class LegacyRecord(LegacyRecordProtocol):
     @property
     def checksum(self) -> int: ...
 
-@final
-class LegacyRecordBatch(LegacyRecordBatchProtocol):
+class LegacyRecordBatch:
     RECORD_OVERHEAD_V0: ClassVar[int]
     RECORD_OVERHEAD_V1: ClassVar[int]
     CODEC_MASK: ClassVar[int]
@@ -52,8 +43,7 @@ class LegacyRecordBatch(LegacyRecordBatchProtocol):
     def validate_crc(self) -> bool: ...
     def __iter__(self) -> Generator[LegacyRecord, None, None]: ...
 
-@final
-class LegacyRecordBatchBuilder(LegacyRecordBatchBuilderProtocol):
+class LegacyRecordBatchBuilder:
     CODEC_MASK: ClassVar[int]
     CODEC_GZIP: ClassVar[int]
     CODEC_SNAPPY: ClassVar[int]
@@ -76,8 +66,7 @@ class LegacyRecordBatchBuilder(LegacyRecordBatchBuilderProtocol):
     def record_overhead(magic: int) -> int: ...
     def build(self) -> bytearray: ...
 
-@final
-class LegacyRecordMetadata(LegacyRecordMetadataProtocol):
+class LegacyRecordMetadata:
     offset: int
     crc: int
     size: int

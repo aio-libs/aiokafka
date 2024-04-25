@@ -18,24 +18,22 @@
 #
 # So we can iterate over batches just by knowing offsets of Length. Magic is
 # used to construct the correct class for Batch itself.
+from __future__ import annotations
 
 import struct
-from typing import Optional, Type, Union, final
+from typing import TYPE_CHECKING, Optional, Type, Union
 
 from aiokafka.errors import CorruptRecordException
 from aiokafka.util import NO_EXTENSIONS
 
-from ._protocols import (
-    DefaultRecordBatchProtocol,
-    LegacyRecordBatchProtocol,
-    MemoryRecordsProtocol,
-)
-from .default_records import DefaultRecordBatch
-from .legacy_records import LegacyRecordBatch, _LegacyRecordBatchPy
+from .default_records import _DefaultRecordBatchPy
+from .legacy_records import _LegacyRecordBatchPy
+
+if TYPE_CHECKING:
+    MemoryRecords: Union[Type[_MemoryRecordsPy], Type[_MemoryRecordsCython]]
 
 
-@final
-class _MemoryRecordsPy(MemoryRecordsProtocol):
+class _MemoryRecordsPy:
     LENGTH_OFFSET = struct.calcsize(">q")
     LOG_OVERHEAD = struct.calcsize(">qi")
     MAGIC_OFFSET = struct.calcsize(">qii")
@@ -87,7 +85,7 @@ class _MemoryRecordsPy(MemoryRecordsProtocol):
     # NOTE: same cache for LOAD_FAST as above
     def next_batch(
         self, _min_slice: int = MIN_SLICE, _magic_offset: int = MAGIC_OFFSET
-    ) -> Optional[Union[DefaultRecordBatchProtocol, LegacyRecordBatchProtocol]]:
+    ) -> Optional[Union[_DefaultRecordBatchPy, _LegacyRecordBatchPy]]:
         next_slice = self._next_slice
         if next_slice is None:
             return None
@@ -99,12 +97,10 @@ class _MemoryRecordsPy(MemoryRecordsProtocol):
         self._cache_next()
         magic = next_slice[_magic_offset]
         if magic >= 2:  # pragma: no cover
-            return DefaultRecordBatch(next_slice)
+            return _DefaultRecordBatchPy(next_slice)
         else:
-            return LegacyRecordBatch(next_slice, magic)
+            return _LegacyRecordBatchPy(next_slice, magic)
 
-
-MemoryRecords: Type[MemoryRecordsProtocol]
 
 if NO_EXTENSIONS:
     MemoryRecords = _MemoryRecordsPy

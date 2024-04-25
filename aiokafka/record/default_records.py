@@ -53,10 +53,21 @@
 # * Transactional (4)
 # * Timestamp Type (3)
 # * Compression Type (0-2)
+from __future__ import annotations
 
 import struct
 import time
-from typing import Any, Callable, List, Optional, Sized, Tuple, Type, Union, final
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    List,
+    Optional,
+    Sized,
+    Tuple,
+    Type,
+    Union,
+)
 
 from typing_extensions import Self
 
@@ -74,13 +85,19 @@ from aiokafka.codec import (
 from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from aiokafka.util import NO_EXTENSIONS
 
-from ._protocols import (
-    DefaultRecordBatchBuilderProtocol,
-    DefaultRecordBatchProtocol,
-    DefaultRecordMetadataProtocol,
-    DefaultRecordProtocol,
-)
 from .util import calc_crc32c, decode_varint, encode_varint, size_of_varint
+
+if TYPE_CHECKING:
+    DefaultRecordBatchBuilder: Union[
+        Type[_DefaultRecordBatchBuilderPy], Type[_DefaultRecordBatchBuilderCython]
+    ]
+    DefaultRecordMetadata: Union[
+        Type[_DefaultRecordMetadataPy], Type[_DefaultRecordMetadataCython]
+    ]
+    DefaultRecordBatch: Union[
+        Type[_DefaultRecordBatchPy], Type[_DefaultRecordBatchCython]
+    ]
+    DefaultRecord: Union[Type[_DefaultRecordPy], Type[_DefaultRecordCython]]
 
 
 class DefaultRecordBase:
@@ -140,8 +157,7 @@ class DefaultRecordBase:
             )
 
 
-@final
-class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
+class _DefaultRecordBatchPy(DefaultRecordBase):
     def __init__(self, buffer: Union[bytes, bytearray, memoryview]) -> None:
         self._buffer = bytearray(buffer)
         self._header_data: Tuple[
@@ -232,7 +248,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
 
     def _read_msg(
         self, decode_varint: Callable[[bytearray, int], Tuple[int, int]] = decode_varint
-    ) -> "_DefaultRecordPy":
+    ) -> _DefaultRecordPy:
         # Record =>
         #   Length => Varint
         #   Attributes => Int8
@@ -316,7 +332,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
         self._maybe_uncompress()
         return self
 
-    def __next__(self) -> "_DefaultRecordPy":
+    def __next__(self) -> _DefaultRecordPy:
         if self._next_record_index >= self._num_records:
             if self._pos != len(self._buffer):
                 raise CorruptRecordException(
@@ -343,8 +359,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
         return crc == verify_crc
 
 
-@final
-class _DefaultRecordPy(DefaultRecordProtocol):
+class _DefaultRecordPy:
     __slots__ = (
         "_offset",
         "_timestamp",
@@ -410,10 +425,7 @@ class _DefaultRecordPy(DefaultRecordProtocol):
         )
 
 
-@final
-class _DefaultRecordBatchBuilderPy(
-    DefaultRecordBase, DefaultRecordBatchBuilderProtocol
-):
+class _DefaultRecordBatchBuilderPy(DefaultRecordBase):
     # excluding key, value and headers:
     # 5 bytes length + 10 bytes timestamp + 5 bytes offset + 1 byte attributes
     MAX_RECORD_OVERHEAD = 21
@@ -476,7 +488,7 @@ class _DefaultRecordBatchBuilderPy(
         bytearray_type: Type[bytearray] = bytearray,
         len_func: Callable[[Sized], int] = len,
         zero_len_varint: int = 1,
-    ) -> Optional["_DefaultRecordMetadataPy"]:
+    ) -> Optional[_DefaultRecordMetadataPy]:
         """Write message to messageset buffer with MsgVersion 2"""
         # Check types
         if get_type(offset) != type_int:
@@ -701,8 +713,7 @@ class _DefaultRecordBatchBuilderPy(
         return self._base_sequence
 
 
-@final
-class _DefaultRecordMetadataPy(DefaultRecordMetadataProtocol):
+class _DefaultRecordMetadataPy:
     __slots__ = ("_size", "_timestamp", "_offset")
 
     def __init__(self, offset: int, size: int, timestamp: int) -> None:
@@ -732,11 +743,6 @@ class _DefaultRecordMetadataPy(DefaultRecordMetadataProtocol):
             f" size={self._size!r}, timestamp={self._timestamp!r})"
         )
 
-
-DefaultRecordBatchBuilder: Type[DefaultRecordBatchBuilderProtocol]
-DefaultRecordMetadata: Type[DefaultRecordMetadataProtocol]
-DefaultRecordBatch: Type[DefaultRecordBatchProtocol]
-DefaultRecord: Type[DefaultRecordProtocol]
 
 if NO_EXTENSIONS:
     DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderPy

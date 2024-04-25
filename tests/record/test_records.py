@@ -2,7 +2,6 @@ import pytest
 
 from aiokafka.errors import CorruptRecordException
 from aiokafka.record import MemoryRecords
-from aiokafka.record._protocols import DefaultRecordProtocol, LegacyRecordProtocol
 
 # This is real live data from Kafka 11 broker
 record_batch_data_v2 = [
@@ -68,7 +67,6 @@ def test_memory_records_v2() -> None:
     assert batch is not None
     recs = tuple(batch)
     assert len(recs) == 1
-    assert isinstance(recs[0], DefaultRecordProtocol)
     assert recs[0].value == b"123"
     assert recs[0].key is None
     assert recs[0].timestamp == 1503229838908
@@ -95,7 +93,6 @@ def test_memory_records_v1() -> None:
     assert batch is not None
     recs = tuple(batch)
     assert len(recs) == 1
-    assert isinstance(recs[0], LegacyRecordProtocol)
     assert recs[0].value == b"123"
     assert recs[0].key is None
     assert recs[0].timestamp == 1503648000942
@@ -124,7 +121,6 @@ def test_memory_records_v0() -> None:
     assert batch is not None
     recs = tuple(batch)
     assert len(recs) == 1
-    assert isinstance(recs[0], LegacyRecordProtocol)
     assert recs[0].value == b"123"
     assert recs[0].key is None
     assert recs[0].timestamp is None
