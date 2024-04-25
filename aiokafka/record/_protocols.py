@@ -15,12 +15,23 @@ from typing import (
 
 from typing_extensions import Literal, Never
 
+from ._types import (
+    CodecGzipT,
+    CodecLz4T,
+    CodecMaskT,
+    CodecNoneT,
+    CodecSnappyT,
+    CodecZstdT,
+    DefaultCompressionTypeT,
+    LegacyCompressionTypeT,
+)
+
 
 class DefaultRecordBatchBuilderProtocol(Protocol):
     def __init__(
         self,
         magic: int,
-        compression_type: int,
+        compression_type: DefaultCompressionTypeT,
         is_transactional: int,
         producer_id: int,
         producer_epoch: int,
@@ -83,12 +94,12 @@ class DefaultRecordMetadataProtocol(Protocol):
 
 
 class DefaultRecordBatchProtocol(Iterator["DefaultRecordProtocol"], Protocol):
-    CODEC_MASK: ClassVar[int]
-    CODEC_NONE: ClassVar[int]
-    CODEC_GZIP: ClassVar[int]
-    CODEC_SNAPPY: ClassVar[int]
-    CODEC_LZ4: ClassVar[int]
-    CODEC_ZSTD: ClassVar[int]
+    CODEC_MASK: ClassVar[CodecMaskT]
+    CODEC_NONE: ClassVar[CodecNoneT]
+    CODEC_GZIP: ClassVar[CodecGzipT]
+    CODEC_SNAPPY: ClassVar[CodecSnappyT]
+    CODEC_LZ4: ClassVar[CodecLz4T]
+    CODEC_ZSTD: ClassVar[CodecZstdT]
 
     def __init__(self, buffer: Union[bytes, bytearray, memoryview]) -> None: ...
     @property
@@ -161,7 +172,10 @@ class DefaultRecordProtocol(Protocol):
 
 class LegacyRecordBatchBuilderProtocol(Protocol):
     def __init__(
-        self, magic: Literal[0, 1], compression_type: int, batch_size: int
+        self,
+        magic: Literal[0, 1],
+        compression_type: LegacyCompressionTypeT,
+        batch_size: int,
     ) -> None: ...
     def append(
         self,
@@ -203,10 +217,10 @@ class LegacyRecordMetadataProtocol(Protocol):
 
 
 class LegacyRecordBatchProtocol(Iterable["LegacyRecordProtocol"], Protocol):
-    CODEC_MASK: ClassVar[int]
-    CODEC_GZIP: ClassVar[int]
-    CODEC_SNAPPY: ClassVar[int]
-    CODEC_LZ4: ClassVar[int]
+    CODEC_MASK: ClassVar[CodecMaskT]
+    CODEC_GZIP: ClassVar[CodecGzipT]
+    CODEC_SNAPPY: ClassVar[CodecSnappyT]
+    CODEC_LZ4: ClassVar[CodecLz4T]
 
     is_control_batch: bool
     is_transactional: bool

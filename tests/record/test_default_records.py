@@ -2,6 +2,7 @@ from typing import List, Optional, Tuple
 from unittest import mock
 
 import pytest
+from typing_extensions import Literal
 
 import aiokafka.codec
 from aiokafka.errors import UnsupportedCodecError
@@ -27,7 +28,9 @@ HeadersT = List[Tuple[str, Optional[bytes]]]
         pytest.param(DefaultRecordBatch.CODEC_ZSTD, 1714138923, id="zstd"),
     ],
 )
-def test_read_write_serde_v2(compression_type: int, crc: int) -> None:
+def test_read_write_serde_v2(
+    compression_type: Literal[0x00, 0x01, 0x02, 0x03, 0x04], crc: int
+) -> None:
     builder = DefaultRecordBatchBuilder(
         magic=2,
         compression_type=compression_type,
@@ -240,7 +243,9 @@ def test_default_batch_size_limit() -> None:
         (DefaultRecordBatch.CODEC_ZSTD, "zstd", "has_zstd"),
     ],
 )
-def test_unavailable_codec(compression_type: int, name: str, checker_name: str) -> None:
+def test_unavailable_codec(
+    compression_type: Literal[0x01, 0x02, 0x03, 0x04], name: str, checker_name: str
+) -> None:
     builder = DefaultRecordBatchBuilder(
         magic=2,
         compression_type=compression_type,
@@ -279,7 +284,7 @@ def test_unsupported_yet_codec() -> None:
     compression_type = DefaultRecordBatch.CODEC_MASK  # It doesn't exist
     builder = DefaultRecordBatchBuilder(
         magic=2,
-        compression_type=compression_type,
+        compression_type=compression_type,  # type: ignore[arg-type]
         is_transactional=0,
         producer_id=-1,
         producer_epoch=-1,

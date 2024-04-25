@@ -65,7 +65,7 @@ def test_read_write_serde_v0_v1_no_compression(
     ],
 )
 def test_read_write_serde_v0_v1_with_compression(
-    compression_type: int, magic: Literal[0, 1]
+    compression_type: Literal[0x01, 0x02, 0x03], magic: Literal[0, 1]
 ) -> None:
     builder = LegacyRecordBatchBuilder(
         magic=magic, compression_type=compression_type, batch_size=1024 * 1024
@@ -226,7 +226,9 @@ def test_legacy_batch_size_limit(magic: Literal[0, 1]) -> None:
         (LegacyRecordBatch.CODEC_SNAPPY, "snappy", "has_snappy"),
     ],
 )
-def test_unavailable_codec(compression_type: int, name: str, checker_name: str) -> None:
+def test_unavailable_codec(
+    compression_type: Literal[0x01, 0x02], name: str, checker_name: str
+) -> None:
     builder = LegacyRecordBatchBuilder(
         magic=0, compression_type=compression_type, batch_size=1024
     )
@@ -253,7 +255,9 @@ def test_unavailable_codec(compression_type: int, name: str, checker_name: str) 
 def test_unsupported_yet_codec() -> None:
     compression_type = LegacyRecordBatch.CODEC_MASK  # It doesn't exist
     builder = LegacyRecordBatchBuilder(
-        magic=0, compression_type=compression_type, batch_size=1024
+        magic=0,
+        compression_type=compression_type,  # type: ignore[arg-type]
+        batch_size=1024,
     )
     with pytest.raises(UnsupportedCodecError):
         builder.append(0, timestamp=None, key=None, value=b"M")

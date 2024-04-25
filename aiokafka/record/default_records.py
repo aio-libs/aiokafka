@@ -58,7 +58,7 @@ import struct
 import time
 from typing import Any, Callable, List, Optional, Sized, Tuple, Type, Union, final
 
-from typing_extensions import Self
+from typing_extensions import Self, TypeIs, assert_never
 
 import aiokafka.codec as codecs
 from aiokafka.codec import (
@@ -79,6 +79,14 @@ from ._protocols import (
     DefaultRecordBatchProtocol,
     DefaultRecordMetadataProtocol,
     DefaultRecordProtocol,
+)
+from ._types import (
+    CodecGzipT,
+    CodecLz4T,
+    CodecMaskT,
+    CodecNoneT,
+    CodecSnappyT,
+    CodecZstdT,
 )
 from .util import calc_crc32c, decode_varint, encode_varint, size_of_varint
 
@@ -106,12 +114,12 @@ class DefaultRecordBase:
     CRC_OFFSET = struct.calcsize(">qiib")
     AFTER_LEN_OFFSET = struct.calcsize(">qi")
 
-    CODEC_MASK = 0x07
-    CODEC_NONE = 0x00
-    CODEC_GZIP = 0x01
-    CODEC_SNAPPY = 0x02
-    CODEC_LZ4 = 0x03
-    CODEC_ZSTD = 0x04
+    CODEC_MASK: CodecMaskT = 0x07
+    CODEC_NONE: CodecNoneT = 0x00
+    CODEC_GZIP: CodecGzipT = 0x01
+    CODEC_SNAPPY: CodecSnappyT = 0x02
+    CODEC_LZ4: CodecLz4T = 0x03
+    CODEC_ZSTD: CodecZstdT = 0x04
     TIMESTAMP_TYPE_MASK = 0x08
     TRANSACTIONAL_MASK = 0x10
     CONTROL_MASK = 0x20
@@ -121,7 +129,9 @@ class DefaultRecordBase:
 
     NO_PARTITION_LEADER_EPOCH = -1
 
-    def _assert_has_codec(self, compression_type: int) -> None:
+    def _assert_has_codec(
+        self, compression_type: int
+    ) -> TypeIs[Union[CodecGzipT, CodecSnappyT, CodecLz4T, CodecZstdT]]:
         if compression_type == self.CODEC_GZIP:
             checker, name = codecs.has_gzip, "gzip"
         elif compression_type == self.CODEC_SNAPPY:
@@ -138,6 +148,7 @@ class DefaultRecordBase:
             raise UnsupportedCodecError(
                 f"Libraries for {name} compression codec not found"
             )
+        return True
 
 
 @final
@@ -216,7 +227,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
         if not self._decompressed:
             compression_type = self.compression_type
             if compression_type != self.CODEC_NONE:
-                self._assert_has_codec(compression_type)
+                assert self._assert_has_codec(compression_type)
                 data = memoryview(self._buffer)[self._pos :]
                 if compression_type == self.CODEC_GZIP:
                     uncompressed = gzip_decode(data)
@@ -224,8 +235,10 @@ class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
                     uncompressed = snappy_decode(data.tobytes())
                 elif compression_type == self.CODEC_LZ4:
                     uncompressed = lz4_decode(data.tobytes())
-                if compression_type == self.CODEC_ZSTD:
+                elif compression_type == self.CODEC_ZSTD:
                     uncompressed = zstd_decode(data.tobytes())
+                else:
+                    assert_never(compression_type)
                 self._buffer = bytearray(uncompressed)
                 self._pos = 0
         self._decompressed = True
@@ -581,7 +594,7 @@ class _DefaultRecordBatchBuilderPy(
 
     def _maybe_compress(self) -> bool:
         if self._compression_type != self.CODEC_NONE:
-            self._assert_has_codec(self._compression_type)
+            assert self._assert_has_codec(self._compression_type)
             header_size = self.HEADER_STRUCT.size
             data = bytes(self._buffer[header_size:])
             if self._compression_type == self.CODEC_GZIP:
@@ -592,6 +605,8 @@ class _DefaultRecordBatchBuilderPy(
                 compressed = lz4_encode(data)
             elif self._compression_type == self.CODEC_ZSTD:
                 compressed = zstd_encode(data)
+            else:
+                assert_never(self._compression_type)
             compressed_size = len(compressed)
             if len(data) <= compressed_size:
                 # We did not get any benefit from compression, lets send

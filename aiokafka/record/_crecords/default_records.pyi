@@ -8,6 +8,15 @@ from aiokafka.record._protocols import (
     DefaultRecordMetadataProtocol,
     DefaultRecordProtocol,
 )
+from aiokafka.record._types import (
+    CodecGzipT,
+    CodecLz4T,
+    CodecMaskT,
+    CodecNoneT,
+    CodecSnappyT,
+    CodecZstdT,
+    DefaultCompressionTypeT,
+)
 
 @final
 class DefaultRecord(DefaultRecordProtocol):
@@ -33,12 +42,12 @@ class DefaultRecord(DefaultRecordProtocol):
 
 @final
 class DefaultRecordBatch(DefaultRecordBatchProtocol):
-    CODEC_NONE: ClassVar[int]
-    CODEC_MASK: ClassVar[int]
-    CODEC_GZIP: ClassVar[int]
-    CODEC_SNAPPY: ClassVar[int]
-    CODEC_LZ4: ClassVar[int]
-    CODEC_ZSTD: ClassVar[int]
+    CODEC_MASK: ClassVar[CodecMaskT]
+    CODEC_NONE: ClassVar[CodecNoneT]
+    CODEC_GZIP: ClassVar[CodecGzipT]
+    CODEC_SNAPPY: ClassVar[CodecSnappyT]
+    CODEC_LZ4: ClassVar[CodecLz4T]
+    CODEC_ZSTD: ClassVar[CodecZstdT]
 
     base_offset: int
     length: int
@@ -75,7 +84,7 @@ class DefaultRecordBatchBuilder(DefaultRecordBatchBuilderProtocol):
     def __init__(
         self,
         magic: int,
-        compression_type: int,
+        compression_type: DefaultCompressionTypeT,
         is_transactional: int,
         producer_id: int,
         producer_epoch: int,
