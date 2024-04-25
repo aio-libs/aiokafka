@@ -18,11 +18,6 @@ from aiokafka.record._types import (
 
 @final
 class LegacyRecord(LegacyRecordProtocol):
-    offset: int
-    attributes: int
-    key: bytes | None
-    value: bytes | None
-    crc: int
     def __init__(
         self,
         offset: int,
@@ -32,6 +27,12 @@ class LegacyRecord(LegacyRecordProtocol):
         value: bytes | None,
         crc: int,
     ) -> None: ...
+    @property
+    def offset(self) -> int: ...
+    @property
+    def key(self) -> bytes | None: ...
+    @property
+    def value(self) -> bytes | None: ...
     @property
     def headers(self) -> list[Never]: ...
     @property

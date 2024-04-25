@@ -20,14 +20,6 @@ from aiokafka.record._types import (
 
 @final
 class DefaultRecord(DefaultRecordProtocol):
-    offset: int
-    timestamp: int
-    timestamp_type: int
-    key: bytes | None
-    value: bytes | None
-    headers: list[tuple[str, bytes | None]]
-    checksum: None
-
     def __init__(
         self,
         offset: int,
@@ -37,6 +29,20 @@ class DefaultRecord(DefaultRecordProtocol):
         value: bytes | None,
         headers: list[tuple[str, bytes | None]],
     ) -> None: ...
+    @property
+    def offset(self) -> int: ...
+    @property
+    def timestamp(self) -> int: ...
+    @property
+    def timestamp_type(self) -> int: ...
+    @property
+    def key(self) -> bytes | None: ...
+    @property
+    def value(self) -> bytes | None: ...
+    @property
+    def headers(self) -> list[tuple[str, bytes | None]]: ...
+    @property
+    def checksum(self) -> None: ...
 
 @final
 class DefaultRecordBatch(DefaultRecordBatchProtocol):
@@ -46,20 +52,6 @@ class DefaultRecordBatch(DefaultRecordBatchProtocol):
     CODEC_SNAPPY: ClassVar[CodecSnappyT]
     CODEC_LZ4: ClassVar[CodecLz4T]
     CODEC_ZSTD: ClassVar[CodecZstdT]
-
-    base_offset: int
-    length: int
-    magic: int
-    crc: int
-    attributes: int
-    last_offset_delta: int
-    first_timestamp: int
-    max_timestamp: int
-    num_records: int
-    producer_id: int
-    producer_epoch: int
-    base_sequence: int
-    timestamp_type: Literal[0, 1]
 
     def __init__(self, buffer: bytes): ...
     @property
@@ -73,6 +65,28 @@ class DefaultRecordBatch(DefaultRecordBatchProtocol):
     def __iter__(self) -> Self: ...
     def __next__(self) -> DefaultRecord: ...
     def validate_crc(self) -> bool: ...
+    @property
+    def base_offset(self) -> int: ...
+    @property
+    def magic(self) -> int: ...
+    @property
+    def crc(self) -> int: ...
+    @property
+    def attributes(self) -> int: ...
+    @property
+    def last_offset_delta(self) -> int: ...
+    @property
+    def first_timestamp(self) -> int: ...
+    @property
+    def max_timestamp(self) -> int: ...
+    @property
+    def producer_id(self) -> int: ...
+    @property
+    def producer_epoch(self) -> int: ...
+    @property
+    def base_sequence(self) -> int: ...
+    @property
+    def timestamp_type(self) -> Literal[0, 1]: ...
 
 @final
 class DefaultRecordBatchBuilder(DefaultRecordBatchBuilderProtocol):
