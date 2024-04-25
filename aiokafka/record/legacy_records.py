@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 import time
 from binascii import crc32
+from dataclasses import dataclass
 from typing import Any, Generator, List, Optional, Tuple, Type, Union, final
 
 from typing_extensions import Literal, Never, TypeIs, assert_never
@@ -289,48 +290,16 @@ class _LegacyRecordBatchPy(LegacyRecordBase, LegacyRecordBatchProtocol):
 
 
 @final
+@dataclass(frozen=True)
 class _LegacyRecordPy(LegacyRecordProtocol):
-    __slots__ = ("_offset", "_timestamp", "_timestamp_type", "_key", "_value", "_crc")
+    __slots__ = ("offset", "timestamp", "timestamp_type", "key", "value", "crc")
 
-    def __init__(
-        self,
-        offset: int,
-        timestamp: Optional[int],
-        timestamp_type: Optional[Literal[0, 1]],
-        key: Optional[bytes],
-        value: Optional[bytes],
-        crc: int,
-    ) -> None:
-        self._offset = offset
-        self._timestamp = timestamp
-        self._timestamp_type = timestamp_type
-        self._key = key
-        self._value = value
-        self._crc = crc
-
-    @property
-    def offset(self) -> int:
-        return self._offset
-
-    @property
-    def timestamp(self) -> Optional[int]:
-        """Epoch milliseconds"""
-        return self._timestamp
-
-    @property
-    def timestamp_type(self) -> Optional[Literal[0, 1]]:
-        """CREATE_TIME(0) or APPEND_TIME(1)"""
-        return self._timestamp_type
-
-    @property
-    def key(self) -> Optional[bytes]:
-        """Bytes key or None"""
-        return self._key
-
-    @property
-    def value(self) -> Optional[bytes]:
-        """Bytes value or None"""
-        return self._value
+    offset: int
+    timestamp: Optional[int]
+    timestamp_type: Optional[Literal[0, 1]]
+    key: Optional[bytes]
+    value: Optional[bytes]
+    crc: int
 
     @property
     def headers(self) -> List[Never]:
@@ -338,13 +307,13 @@ class _LegacyRecordPy(LegacyRecordProtocol):
 
     @property
     def checksum(self) -> int:
-        return self._crc
+        return self.crc
 
     def __repr__(self) -> str:
         return (
-            f"LegacyRecord(offset={self._offset!r}, timestamp={self._timestamp!r},"
-            f" timestamp_type={self._timestamp_type!r},"
-            f" key={self._key!r}, value={self._value!r}, crc={self._crc!r})"
+            f"LegacyRecord(offset={self.offset!r}, timestamp={self.timestamp!r},"
+            f" timestamp_type={self.timestamp_type!r},"
+            f" key={self.key!r}, value={self.value!r}, crc={self.crc!r})"
         )
 
 

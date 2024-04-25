@@ -56,6 +56,7 @@
 
 import struct
 import time
+from dataclasses import dataclass
 from typing import Any, Callable, List, Optional, Sized, Tuple, Type, Union, final
 
 from typing_extensions import Self, TypeIs, assert_never
@@ -357,59 +358,16 @@ class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
 
 
 @final
+@dataclass(frozen=True)
 class _DefaultRecordPy(DefaultRecordProtocol):
-    __slots__ = (
-        "_offset",
-        "_timestamp",
-        "_timestamp_type",
-        "_key",
-        "_value",
-        "_headers",
-    )
+    __slots__ = ("offset", "timestamp", "timestamp_type", "key", "value", "headers")
 
-    def __init__(
-        self,
-        offset: int,
-        timestamp: int,
-        timestamp_type: int,
-        key: Optional[bytes],
-        value: Optional[bytes],
-        headers: List[Tuple[str, Optional[bytes]]],
-    ) -> None:
-        self._offset = offset
-        self._timestamp = timestamp
-        self._timestamp_type = timestamp_type
-        self._key = key
-        self._value = value
-        self._headers = headers
-
-    @property
-    def offset(self) -> int:
-        return self._offset
-
-    @property
-    def timestamp(self) -> int:
-        """Epoch milliseconds"""
-        return self._timestamp
-
-    @property
-    def timestamp_type(self) -> int:
-        """CREATE_TIME(0) or APPEND_TIME(1)"""
-        return self._timestamp_type
-
-    @property
-    def key(self) -> Optional[bytes]:
-        """Bytes key or None"""
-        return self._key
-
-    @property
-    def value(self) -> Optional[bytes]:
-        """Bytes value or None"""
-        return self._value
-
-    @property
-    def headers(self) -> List[Tuple[str, Optional[bytes]]]:
-        return self._headers
+    offset: int
+    timestamp: int
+    timestamp_type: int
+    key: Optional[bytes]
+    value: Optional[bytes]
+    headers: List[Tuple[str, Optional[bytes]]]
 
     @property
     def checksum(self) -> None:
@@ -417,9 +375,9 @@ class _DefaultRecordPy(DefaultRecordProtocol):
 
     def __repr__(self) -> str:
         return (
-            f"DefaultRecord(offset={self._offset!r}, timestamp={self._timestamp!r},"
-            f" timestamp_type={self._timestamp_type!r}, key={self._key!r},"
-            f" value={self._value!r}, headers={self._headers!r})"
+            f"DefaultRecord(offset={self.offset!r}, timestamp={self.timestamp!r},"
+            f" timestamp_type={self.timestamp_type!r}, key={self.key!r},"
+            f" value={self.value!r}, headers={self.headers!r})"
         )
 
 
@@ -717,34 +675,22 @@ class _DefaultRecordBatchBuilderPy(
 
 
 @final
+@dataclass(frozen=True)
 class _DefaultRecordMetadataPy(DefaultRecordMetadataProtocol):
-    __slots__ = ("_size", "_timestamp", "_offset")
+    __slots__ = ("size", "timestamp", "offset")
 
-    def __init__(self, offset: int, size: int, timestamp: int) -> None:
-        self._offset = offset
-        self._size = size
-        self._timestamp = timestamp
-
-    @property
-    def offset(self) -> int:
-        return self._offset
+    offset: int
+    size: int
+    timestamp: int
 
     @property
     def crc(self) -> None:
         return None
 
-    @property
-    def size(self) -> int:
-        return self._size
-
-    @property
-    def timestamp(self) -> int:
-        return self._timestamp
-
     def __repr__(self) -> str:
         return (
-            f"DefaultRecordMetadata(offset={self._offset!r},"
-            f" size={self._size!r}, timestamp={self._timestamp!r})"
+            f"DefaultRecordMetadata(offset={self.offset!r},"
+            f" size={self.size!r}, timestamp={self.timestamp!r})"
         )
 
 
