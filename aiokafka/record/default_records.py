@@ -56,7 +56,7 @@
 
 import struct
 import time
-from typing import Any, Callable, List, Optional, Sized, Tuple, Type, Union
+from typing import Any, Callable, List, Optional, Sized, Tuple, Type, Union, final
 
 from typing_extensions import Self
 
@@ -140,7 +140,8 @@ class DefaultRecordBase:
             )
 
 
-class _DefaultRecordBatchPy(DefaultRecordBatchProtocol, DefaultRecordBase):
+@final
+class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
     def __init__(self, buffer: Union[bytes, bytearray, memoryview]) -> None:
         self._buffer = bytearray(buffer)
         self._header_data: Tuple[
@@ -333,8 +334,6 @@ class _DefaultRecordBatchPy(DefaultRecordBatchProtocol, DefaultRecordBase):
             self._next_record_index += 1
         return msg
 
-    next = __next__
-
     def validate_crc(self) -> bool:
         assert self._decompressed is False, "Validate should be called before iteration"
 
@@ -344,6 +343,7 @@ class _DefaultRecordBatchPy(DefaultRecordBatchProtocol, DefaultRecordBase):
         return crc == verify_crc
 
 
+@final
 class _DefaultRecordPy(DefaultRecordProtocol):
     __slots__ = (
         "_offset",
@@ -410,8 +410,9 @@ class _DefaultRecordPy(DefaultRecordProtocol):
         )
 
 
+@final
 class _DefaultRecordBatchBuilderPy(
-    DefaultRecordBatchBuilderProtocol, DefaultRecordBase
+    DefaultRecordBase, DefaultRecordBatchBuilderProtocol
 ):
     # excluding key, value and headers:
     # 5 bytes length + 10 bytes timestamp + 5 bytes offset + 1 byte attributes
@@ -545,6 +546,7 @@ class _DefaultRecordBatchBuilderPy(
             return None
 
         # Those should be updated after the length check
+        assert self._max_timestamp is not None
         if self._max_timestamp < timestamp:
             self._max_timestamp = timestamp
         self._num_records += 1
@@ -555,7 +557,7 @@ class _DefaultRecordBatchBuilderPy(
 
         return _DefaultRecordMetadataPy(offset, required_size, timestamp)
 
-    def write_header(self, use_compression_type: bool = True) -> None:
+    def _write_header(self, use_compression_type: bool = True) -> None:
         batch_len = len(self._buffer)
         self.HEADER_STRUCT.pack_into(
             self._buffer,
@@ -605,7 +607,7 @@ class _DefaultRecordBatchBuilderPy(
 
     def build(self) -> bytearray:
         send_compressed = self._maybe_compress()
-        self.write_header(send_compressed)
+        self._write_header(send_compressed)
         return self._buffer
 
     def size(self) -> int:
@@ -699,7 +701,8 @@ class _DefaultRecordBatchBuilderPy(
         return self._base_sequence
 
 
-class _DefaultRecordMetadataPy:
+@final
+class _DefaultRecordMetadataPy(DefaultRecordMetadataProtocol):
     __slots__ = ("_size", "_timestamp", "_offset")
 
     def __init__(self, offset: int, size: int, timestamp: int) -> None:

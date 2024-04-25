@@ -20,7 +20,7 @@
 # used to construct the correct class for Batch itself.
 
 import struct
-from typing import Optional, Type, Union
+from typing import Optional, Type, Union, final
 
 from aiokafka.errors import CorruptRecordException
 from aiokafka.util import NO_EXTENSIONS
@@ -34,6 +34,7 @@ from .default_records import DefaultRecordBatch
 from .legacy_records import LegacyRecordBatch, _LegacyRecordBatchPy
 
 
+@final
 class _MemoryRecordsPy(MemoryRecordsProtocol):
     LENGTH_OFFSET = struct.calcsize(">q")
     LOG_OVERHEAD = struct.calcsize(">qi")

@@ -1,6 +1,19 @@
-from typing import Any, Generator, List, Optional, Protocol, Tuple, Union
+from __future__ import annotations
 
-from typing_extensions import Literal, Never, Self
+from typing import (
+    Any,
+    ClassVar,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Protocol,
+    Tuple,
+    Union,
+    runtime_checkable,
+)
+
+from typing_extensions import Literal, Never
 
 
 class DefaultRecordBatchBuilderProtocol(Protocol):
@@ -21,8 +34,7 @@ class DefaultRecordBatchBuilderProtocol(Protocol):
         key: Optional[bytes],
         value: Optional[bytes],
         headers: List[Tuple[str, Optional[bytes]]],
-    ) -> Optional["DefaultRecordMetadataProtocol"]: ...
-    def write_header(self, use_compression_type: bool = True) -> None: ...
+    ) -> Optional[DefaultRecordMetadataProtocol]: ...
     def build(self) -> bytearray: ...
     def size(self) -> int: ...
     def size_in_bytes(
@@ -70,7 +82,14 @@ class DefaultRecordMetadataProtocol(Protocol):
     def timestamp(self) -> int: ...
 
 
-class DefaultRecordBatchProtocol(Protocol):
+class DefaultRecordBatchProtocol(Iterator["DefaultRecordProtocol"], Protocol):
+    CODEC_MASK: ClassVar[int]
+    CODEC_NONE: ClassVar[int]
+    CODEC_GZIP: ClassVar[int]
+    CODEC_SNAPPY: ClassVar[int]
+    CODEC_LZ4: ClassVar[int]
+    CODEC_ZSTD: ClassVar[int]
+
     def __init__(self, buffer: Union[bytes, bytearray, memoryview]) -> None: ...
     @property
     def base_offset(self) -> int: ...
@@ -102,12 +121,10 @@ class DefaultRecordBatchProtocol(Protocol):
     def base_sequence(self) -> int: ...
     @property
     def next_offset(self) -> int: ...
-    def __iter__(self) -> Self: ...
-    def __next__(self) -> "DefaultRecordProtocol": ...
-    def next(self) -> "DefaultRecordProtocol": ...
     def validate_crc(self) -> bool: ...
 
 
+@runtime_checkable
 class DefaultRecordProtocol(Protocol):
     def __init__(
         self,
@@ -153,7 +170,7 @@ class LegacyRecordBatchBuilderProtocol(Protocol):
         key: Optional[bytes],
         value: Optional[bytes],
         headers: Any = None,
-    ) -> Optional["LegacyRecordMetadataProtocol"]: ...
+    ) -> Optional[LegacyRecordMetadataProtocol]: ...
     def build(self) -> bytearray:
         """Compress batch to be ready for send"""
 
@@ -166,7 +183,6 @@ class LegacyRecordBatchBuilderProtocol(Protocol):
         timestamp: int,
         key: Optional[bytes],
         value: Optional[bytes],
-        headers: Optional[List[Any]] = None,
     ) -> int:
         """Actual size of message to add"""
 
@@ -186,22 +202,23 @@ class LegacyRecordMetadataProtocol(Protocol):
     def timestamp(self) -> int: ...
 
 
-class LegacyRecordBatchProtocol(Protocol):
+class LegacyRecordBatchProtocol(Iterable["LegacyRecordProtocol"], Protocol):
+    CODEC_MASK: ClassVar[int]
+    CODEC_GZIP: ClassVar[int]
+    CODEC_SNAPPY: ClassVar[int]
+    CODEC_LZ4: ClassVar[int]
+
     is_control_batch: bool
     is_transactional: bool
     producer_id: Optional[int]
 
     def __init__(self, buffer: Union[bytes, bytearray, memoryview], magic: int): ...
     @property
-    def timestamp_type(self) -> Optional[Literal[0, 1]]: ...
-    @property
-    def compression_type(self) -> int: ...
-    @property
     def next_offset(self) -> int: ...
     def validate_crc(self) -> bool: ...
-    def __iter__(self) -> Generator["LegacyRecordProtocol", None, None]: ...
 
 
+@runtime_checkable
 class LegacyRecordProtocol(Protocol):
     def __init__(
         self,

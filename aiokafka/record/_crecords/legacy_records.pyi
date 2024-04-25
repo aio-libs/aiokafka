@@ -1,6 +1,6 @@
-from typing import Any, Generator, final
+from typing import Any, ClassVar, Generator, final
 
-from typing_extensions import Literal, Never
+from typing_extensions import Buffer, Literal, Never
 
 from aiokafka.record._protocols import (
     LegacyRecordBatchBuilderProtocol,
@@ -36,10 +36,17 @@ class LegacyRecord(LegacyRecordProtocol):
 
 @final
 class LegacyRecordBatch(LegacyRecordBatchProtocol):
+    RECORD_OVERHEAD_V0: ClassVar[int]
+    RECORD_OVERHEAD_V1: ClassVar[int]
+    CODEC_MASK: ClassVar[int]
+    CODEC_GZIP: ClassVar[int]
+    CODEC_SNAPPY: ClassVar[int]
+    CODEC_LZ4: ClassVar[int]
+
     is_control_batch: bool
     is_transactional: bool
     producer_id: int | None
-    def __init__(self, buffer, magic: int) -> None: ...
+    def __init__(self, buffer: Buffer, magic: int) -> None: ...
     @property
     def next_offset(self) -> int: ...
     def validate_crc(self) -> bool: ...
@@ -47,6 +54,11 @@ class LegacyRecordBatch(LegacyRecordBatchProtocol):
 
 @final
 class LegacyRecordBatchBuilder(LegacyRecordBatchBuilderProtocol):
+    CODEC_MASK: ClassVar[int]
+    CODEC_GZIP: ClassVar[int]
+    CODEC_SNAPPY: ClassVar[int]
+    CODEC_LZ4: ClassVar[int]
+
     def __init__(self, magic: int, compression_type: int, batch_size: int) -> None: ...
     def append(
         self,
@@ -57,6 +69,9 @@ class LegacyRecordBatchBuilder(LegacyRecordBatchBuilderProtocol):
         headers: Any = None,
     ) -> LegacyRecordMetadata: ...
     def size(self) -> int: ...
+    def size_in_bytes(
+        self, offset: Any, timestamp: Any, key: Buffer | None, value: Buffer | None
+    ) -> int: ...
     @staticmethod
     def record_overhead(magic: int) -> int: ...
     def build(self) -> bytearray: ...

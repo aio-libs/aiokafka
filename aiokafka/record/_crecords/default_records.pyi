@@ -1,6 +1,6 @@
-from typing import Sequence, final
+from typing import ClassVar, final
 
-from typing_extensions import Self
+from typing_extensions import Literal, Self
 
 from aiokafka.record._protocols import (
     DefaultRecordBatchBuilderProtocol,
@@ -14,7 +14,7 @@ class DefaultRecord(DefaultRecordProtocol):
     offset: int
     key: bytes | None
     value: bytes | None
-    headers: Sequence[tuple[str, bytes | None]]
+    headers: list[tuple[str, bytes | None]]
     checksum: None
 
     def __init__(
@@ -24,7 +24,7 @@ class DefaultRecord(DefaultRecordProtocol):
         timestamp_type: int,
         key: bytes | None,
         value: bytes | None,
-        headers: Sequence[tuple[str, bytes | None]],
+        headers: list[tuple[str, bytes | None]],
     ) -> None: ...
     @property
     def timestamp(self) -> int | None: ...
@@ -33,6 +33,27 @@ class DefaultRecord(DefaultRecordProtocol):
 
 @final
 class DefaultRecordBatch(DefaultRecordBatchProtocol):
+    CODEC_NONE: ClassVar[int]
+    CODEC_MASK: ClassVar[int]
+    CODEC_GZIP: ClassVar[int]
+    CODEC_SNAPPY: ClassVar[int]
+    CODEC_LZ4: ClassVar[int]
+    CODEC_ZSTD: ClassVar[int]
+
+    base_offset: int
+    length: int
+    magic: int
+    crc: int
+    attributes: int
+    last_offset_delta: int
+    first_timestamp: int
+    max_timestamp: int
+    num_records: int
+    producer_id: int
+    producer_epoch: int
+    base_sequence: int
+    timestamp_type: Literal[0, 1]
+
     def __init__(self, buffer: bytes): ...
     @property
     def compression_type(self) -> int: ...
@@ -102,4 +123,5 @@ class DefaultRecordMetadata(DefaultRecordMetadataProtocol):
     offset: int
     size: int
     timestamp: int
+    crc: None
     def __init__(self, offset: int, size: int, timestamp: int): ...

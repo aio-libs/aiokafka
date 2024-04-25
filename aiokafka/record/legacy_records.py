@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import struct
 import time
 from binascii import crc32
-from typing import Any, Generator, List, Optional, Tuple, Type, Union
+from typing import Any, Generator, List, Optional, Tuple, Type, Union, final
 
 from typing_extensions import Literal, Never
 
@@ -102,7 +104,8 @@ class LegacyRecordBase:
             )
 
 
-class _LegacyRecordBatchPy(LegacyRecordBatchProtocol, LegacyRecordBase):
+@final
+class _LegacyRecordBatchPy(LegacyRecordBase, LegacyRecordBatchProtocol):
     is_control_batch: bool = False
     is_transactional: bool = False
     producer_id: Optional[int] = None
@@ -122,7 +125,7 @@ class _LegacyRecordBatchPy(LegacyRecordBatchProtocol, LegacyRecordBase):
         self._decompressed = False
 
     @property
-    def timestamp_type(self) -> Optional[Literal[0, 1]]:
+    def _timestamp_type(self) -> Optional[Literal[0, 1]]:
         """0 for CreateTime; 1 for LogAppendTime; None if unsupported.
 
         Value is determined by broker; produced messages should always set to 0
@@ -136,7 +139,7 @@ class _LegacyRecordBatchPy(LegacyRecordBatchProtocol, LegacyRecordBase):
             return 0
 
     @property
-    def compression_type(self) -> int:
+    def _compression_type(self) -> int:
         return self._attributes & self.CODEC_MASK
 
     @property
@@ -161,7 +164,7 @@ class _LegacyRecordBatchPy(LegacyRecordBatchProtocol, LegacyRecordBase):
         else:
             data = self._buffer[pos : pos + value_size]
 
-        compression_type = self.compression_type
+        compression_type = self._compression_type
         self._assert_has_codec(compression_type)
         if compression_type == self.CODEC_GZIP:
             uncompressed = gzip_decode(data)
@@ -223,14 +226,14 @@ class _LegacyRecordBatchPy(LegacyRecordBatchProtocol, LegacyRecordBase):
             value = self._buffer[pos : pos + value_size].tobytes()
         return key, value
 
-    def __iter__(self) -> Generator["_LegacyRecordPy", None, None]:
+    def __iter__(self) -> Generator[_LegacyRecordPy, None, None]:
         if self._magic == 1:
             key_offset = self.KEY_OFFSET_V1
         else:
             key_offset = self.KEY_OFFSET_V0
-        timestamp_type = self.timestamp_type
+        timestamp_type = self._timestamp_type
 
-        if self.compression_type:
+        if self._compression_type:
             # In case we will call iter again
             if not self._decompressed:
                 self._buffer = memoryview(self._decompress(key_offset))
@@ -273,6 +276,7 @@ class _LegacyRecordBatchPy(LegacyRecordBatchProtocol, LegacyRecordBase):
             )
 
 
+@final
 class _LegacyRecordPy(LegacyRecordProtocol):
     __slots__ = ("_offset", "_timestamp", "_timestamp_type", "_key", "_value", "_crc")
 
@@ -332,7 +336,10 @@ class _LegacyRecordPy(LegacyRecordProtocol):
         )
 
 
-class _LegacyRecordBatchBuilderPy(LegacyRecordBatchBuilderProtocol, LegacyRecordBase):
+@final
+class _LegacyRecordBatchBuilderPy(LegacyRecordBase, LegacyRecordBatchBuilderProtocol):
+    _buffer: Optional[bytearray] = None
+
     def __init__(
         self, magic: Literal[0, 1], compression_type: int, batch_size: int
     ) -> None:
@@ -350,7 +357,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBatchBuilderProtocol, LegacyRecord
         key: Optional[bytes],
         value: Optional[bytes],
         headers: Any = None,
-    ) -> Optional["_LegacyRecordMetadataPy"]:
+    ) -> Optional[_LegacyRecordMetadataPy]:
         """Append message to batch."""
         if self._magic == 0:
             timestamp = -1
@@ -470,6 +477,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBatchBuilderProtocol, LegacyRecord
 
     def _maybe_compress(self) -> bool:
         if self._compression_type:
+            assert self._buffer is not None
             self._assert_has_codec(self._compression_type)
             buf = self._buffer
             if self._compression_type == self.CODEC_GZIP:
@@ -516,14 +524,12 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBatchBuilderProtocol, LegacyRecord
 
     def size_in_bytes(
         self,
-        offset: int,
-        timestamp: int,
+        offset: Any,
+        timestamp: Any,
         key: Optional[bytes],
         value: Optional[bytes],
-        headers: Optional[List[Any]] = None,
     ) -> int:
         """Actual size of message to add"""
-        assert not headers, "Headers not supported in v0/v1"
         key_size = len(key) if key is not None else 0
         value_size = len(value) if value is not None else 0
         return self._size_in_bytes(key_size, value_size)
@@ -544,6 +550,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBatchBuilderProtocol, LegacyRecord
             raise ValueError(f"Unsupported magic: {magic}") from None
 
 
+@final
 class _LegacyRecordMetadataPy(LegacyRecordMetadataProtocol):
     __slots__ = ("_crc", "_size", "_timestamp", "_offset")
 

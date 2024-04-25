@@ -1,3 +1,4 @@
+from typing import List, Optional, Tuple
 from unittest import mock
 
 import pytest
@@ -8,6 +9,8 @@ from aiokafka.record.default_records import (
     DefaultRecordBatch,
     DefaultRecordBatchBuilder,
 )
+
+HeadersT = List[Tuple[str, Optional[bytes]]]
 
 
 @pytest.mark.parametrize(
@@ -34,7 +37,7 @@ def test_read_write_serde_v2(compression_type: int, crc: int) -> None:
         base_sequence=9999,
         batch_size=999999,
     )
-    headers = [("header1", b"aaa"), ("header2", b"bbb")]
+    headers: HeadersT = [("header1", b"aaa"), ("header2", b"bbb")]
     for offset in range(10):
         builder.append(
             offset,
@@ -71,7 +74,7 @@ def test_read_write_serde_v2(compression_type: int, crc: int) -> None:
 def test_written_bytes_equals_size_in_bytes_v2() -> None:
     key = b"test"
     value = b"Super"
-    headers = [("header1", b"aaa"), ("header2", b"bbb"), ("xx", None)]
+    headers: HeadersT = [("header1", b"aaa"), ("header2", b"bbb"), ("xx", None)]
     builder = DefaultRecordBatchBuilder(
         magic=2,
         compression_type=0,
@@ -97,7 +100,7 @@ def test_written_bytes_equals_size_in_bytes_v2() -> None:
 def test_estimate_size_in_bytes_bigger_than_batch_v2() -> None:
     key = b"Super Key"
     value = b"1" * 100
-    headers = [("header1", b"aaa"), ("header2", b"bbb")]
+    headers: HeadersT = [("header1", b"aaa"), ("header2", b"bbb")]
     estimate_size = DefaultRecordBatchBuilder.estimate_size_in_bytes(
         key, value, headers
     )
@@ -273,7 +276,7 @@ def test_unavailable_codec(compression_type: int, name: str, checker_name: str) 
 
 
 def test_unsupported_yet_codec() -> None:
-    compression_type = DefaultRecordBatch.CODEC_MASK  # type: ignore[attr-defined] # It doesn't exist
+    compression_type = DefaultRecordBatch.CODEC_MASK  # It doesn't exist
     builder = DefaultRecordBatchBuilder(
         magic=2,
         compression_type=compression_type,

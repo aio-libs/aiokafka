@@ -123,7 +123,7 @@ def calc_crc32c_py(
     return crc
 
 
-calc_crc32c: Callable[[Union["array.array[int]", bytes, bytearray, Iterable[int]]], int]
+calc_crc32c: Callable[[Union[bytes, bytearray]], int]
 decode_varint: Callable[[bytearray, int], Tuple[int, int]]
 size_of_varint: Callable[[int], int]
 encode_varint: Callable[[int, Callable[[int], None]], int]
