@@ -1,8 +1,16 @@
-from typing import ClassVar
+from typing import ClassVar, final
 
 from typing_extensions import Literal, Self
 
-class DefaultRecord:
+from aiokafka.record._protocols import (
+    DefaultRecordBatchBuilderProtocol,
+    DefaultRecordBatchProtocol,
+    DefaultRecordMetadataProtocol,
+    DefaultRecordProtocol,
+)
+
+@final
+class DefaultRecord(DefaultRecordProtocol):
     offset: int
     key: bytes | None
     value: bytes | None
@@ -23,7 +31,8 @@ class DefaultRecord:
     @property
     def timestamp_type(self) -> int | None: ...
 
-class DefaultRecordBatch:
+@final
+class DefaultRecordBatch(DefaultRecordBatchProtocol):
     CODEC_NONE: ClassVar[int]
     CODEC_MASK: ClassVar[int]
     CODEC_GZIP: ClassVar[int]
@@ -58,7 +67,8 @@ class DefaultRecordBatch:
     def __next__(self) -> DefaultRecord: ...
     def validate_crc(self) -> bool: ...
 
-class DefaultRecordBatchBuilder:
+@final
+class DefaultRecordBatchBuilder(DefaultRecordBatchBuilderProtocol):
     producer_id: int
     producer_epoch: int
     base_sequence: int
@@ -108,7 +118,8 @@ class DefaultRecordBatchBuilder:
         headers: list[tuple[str, bytes | None]],
     ) -> int: ...
 
-class DefaultRecordMetadata:
+@final
+class DefaultRecordMetadata(DefaultRecordMetadataProtocol):
     offset: int
     size: int
     timestamp: int

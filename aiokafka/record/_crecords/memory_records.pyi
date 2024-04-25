@@ -1,7 +1,12 @@
+from typing import final
+
+from aiokafka.record._protocols import MemoryRecordsProtocol
+
 from .default_records import DefaultRecordBatch
 from .legacy_records import LegacyRecordBatch
 
-class MemoryRecords:
+@final
+class MemoryRecords(MemoryRecordsProtocol):
     def __init__(self, bytes_data: bytes) -> None: ...
     def size_in_bytes(self) -> int: ...
     def has_next(self) -> bool: ...

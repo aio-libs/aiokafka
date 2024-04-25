@@ -3,17 +3,7 @@ from __future__ import annotations
 import struct
 import time
 from binascii import crc32
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Generator,
-    List,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-    final,
-)
+from typing import Any, Generator, List, Optional, Tuple, Type, Union, final
 
 from typing_extensions import Literal, Never
 
@@ -29,15 +19,12 @@ from aiokafka.codec import (
 from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from aiokafka.util import NO_EXTENSIONS
 
-if TYPE_CHECKING:
-    LegacyRecordBatchBuilder: Union[
-        Type[_LegacyRecordBatchBuilderPy], Type[_LegacyRecordBatchBuilderCython]
-    ]
-    LegacyRecordMetadata: Union[
-        Type[_LegacyRecordMetadataPy], Type[_LegacyRecordMetadataCython]
-    ]
-    LegacyRecordBatch: Union[Type[_LegacyRecordBatchPy], Type[_LegacyRecordBatchCython]]
-    LegacyRecord: Union[Type[_LegacyRecordPy], Type[_LegacyRecordCython]]
+from ._protocols import (
+    LegacyRecordBatchBuilderProtocol,
+    LegacyRecordBatchProtocol,
+    LegacyRecordMetadataProtocol,
+    LegacyRecordProtocol,
+)
 
 NoneType = type(None)
 
@@ -118,7 +105,7 @@ class LegacyRecordBase:
 
 
 @final
-class _LegacyRecordBatchPy(LegacyRecordBase):
+class _LegacyRecordBatchPy(LegacyRecordBase, LegacyRecordBatchProtocol):
     is_control_batch: bool = False
     is_transactional: bool = False
     producer_id: Optional[int] = None
@@ -290,7 +277,7 @@ class _LegacyRecordBatchPy(LegacyRecordBase):
 
 
 @final
-class _LegacyRecordPy:
+class _LegacyRecordPy(LegacyRecordProtocol):
     __slots__ = ("_offset", "_timestamp", "_timestamp_type", "_key", "_value", "_crc")
 
     def __init__(
@@ -350,7 +337,7 @@ class _LegacyRecordPy:
 
 
 @final
-class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
+class _LegacyRecordBatchBuilderPy(LegacyRecordBase, LegacyRecordBatchBuilderProtocol):
     _buffer: Optional[bytearray] = None
 
     def __init__(
@@ -564,7 +551,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase):
 
 
 @final
-class _LegacyRecordMetadataPy:
+class _LegacyRecordMetadataPy(LegacyRecordMetadataProtocol):
     __slots__ = ("_crc", "_size", "_timestamp", "_offset")
 
     def __init__(self, offset: int, crc: int, size: int, timestamp: int) -> None:
@@ -596,6 +583,11 @@ class _LegacyRecordMetadataPy:
             f" timestamp={self._timestamp!r})"
         )
 
+
+LegacyRecordBatchBuilder: Type[LegacyRecordBatchBuilderProtocol]
+LegacyRecordMetadata: Type[LegacyRecordMetadataProtocol]
+LegacyRecordBatch: Type[LegacyRecordBatchProtocol]
+LegacyRecord: Type[LegacyRecordProtocol]
 
 if NO_EXTENSIONS:
     LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy
