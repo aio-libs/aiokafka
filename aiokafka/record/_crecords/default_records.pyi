@@ -21,6 +21,8 @@ from aiokafka.record._types import (
 @final
 class DefaultRecord(DefaultRecordProtocol):
     offset: int
+    timestamp: int
+    timestamp_type: int
     key: bytes | None
     value: bytes | None
     headers: list[tuple[str, bytes | None]]
@@ -35,10 +37,6 @@ class DefaultRecord(DefaultRecordProtocol):
         value: bytes | None,
         headers: list[tuple[str, bytes | None]],
     ) -> None: ...
-    @property
-    def timestamp(self) -> int | None: ...
-    @property
-    def timestamp_type(self) -> int | None: ...
 
 @final
 class DefaultRecordBatch(DefaultRecordBatchProtocol):

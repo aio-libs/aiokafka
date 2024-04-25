@@ -448,20 +448,6 @@ cdef class DefaultRecord:
         record.headers = headers
         return record
 
-    @property
-    def timestamp(self):
-        if self.timestamp != -1:
-            return self.timestamp
-        else:
-            return None
-
-    @property
-    def timestamp_type(self):
-        if self.timestamp != -1:
-            return self.timestamp_type
-        else:
-            return None
-
     def __repr__(self):
         return (
             "DefaultRecord(offset={!r}, timestamp={!r}, timestamp_type={!r},"
