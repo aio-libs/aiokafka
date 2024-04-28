@@ -1,4 +1,3 @@
-import array
 from typing import Callable, Iterable, Tuple, Union
 
 from aiokafka.util import NO_EXTENSIONS
@@ -115,9 +114,7 @@ def decode_varint_py(buffer: bytearray, pos: int = 0) -> Tuple[int, int]:
             raise ValueError("Out of int64 range")
 
 
-def calc_crc32c_py(
-    memview: Union["array.array[int]", bytes, bytearray, Iterable[int]],
-) -> int:
+def calc_crc32c_py(memview: Iterable[int]) -> int:
     """Calculate CRC-32C (Castagnoli) checksum over a memoryview of data"""
     crc = crc32c_py(memview)
     return crc

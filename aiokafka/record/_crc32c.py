@@ -23,7 +23,7 @@ pycrc 0.7.1 (http://www.tty1.net/pycrc/). Command line used:
 """
 
 import array
-from typing import Iterable, Union
+from typing import Iterable
 
 # fmt: off
 CRC_TABLE = (
@@ -98,9 +98,7 @@ CRC_INIT = 0
 _MASK = 0xFFFFFFFF
 
 
-def crc_update(
-    crc: int, data: Union["array.array[int]", bytes, bytearray, Iterable[int]]
-) -> int:
+def crc_update(crc: int, data: Iterable[int]) -> int:
     """Update CRC-32C checksum with data.
     Args:
         crc: 32-bit checksum to update as long.
@@ -130,7 +128,7 @@ def crc_finalize(crc: int) -> int:
     return crc & _MASK
 
 
-def crc(data: Union["array.array[int]", bytes, bytearray, Iterable[int]]) -> int:
+def crc(data: Iterable[int]) -> int:
     """Compute CRC-32C checksum of the data.
     Args:
         data: byte array, string or iterable over bytes.
