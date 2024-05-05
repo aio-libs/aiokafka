@@ -10,11 +10,11 @@ from aiokafka.record.control_record import ABORT_MARKER, COMMIT_MARKER, ControlR
         (b"\x00\x00\x00\x01", COMMIT_MARKER),
     ],
 )
-def test_control_record_serde(data, marker):
+def test_control_record_serde(data: bytes, marker: ControlRecord) -> None:
     assert ControlRecord.parse(data) == marker
 
 
-def test_control_record_parse():
+def test_control_record_parse() -> None:
     record = ControlRecord.parse(b"\x00\x01\x00\x01")
     assert record.version == 1
     assert record.type_ == 1
@@ -28,7 +28,7 @@ def test_control_record_parse():
     assert record.type_ == 0
 
 
-def test_control_record_other():
+def test_control_record_other() -> None:
     record = ControlRecord.parse(b"\x00\x00\x00\x01")
     assert record != 1
     assert record != object()
