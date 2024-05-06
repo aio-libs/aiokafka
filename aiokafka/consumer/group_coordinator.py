@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import contextlib
 import copy
 import logging
 import time
@@ -180,7 +181,9 @@ class NoGroupCoordinator(BaseCoordinator):
 
     async def close(self):
         self._reset_committed_task.cancel()
-        await self._reset_committed_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await self._reset_committed_task
+
         self._reset_committed_task = None
 
     def check_errors(self):
@@ -759,7 +762,8 @@ class GroupCoordinator(BaseCoordinator):
         if self._heartbeat_task is not None:
             if not self._heartbeat_task.done():
                 self._heartbeat_task.cancel()
-                await self._heartbeat_task
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._heartbeat_task
             self._heartbeat_task = None
 
     async def _heartbeat_routine(self):

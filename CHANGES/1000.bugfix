@@ -1,0 +1,1 @@
+Fix CancelledError being raised from various .close() methods
