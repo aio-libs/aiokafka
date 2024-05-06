@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 from concurrent.futures import Future
+from typing import Optional, Set
 
 from aiokafka import errors as Errors
 from aiokafka.conn import collect_hosts
@@ -103,7 +104,7 @@ class ClusterMetadata:
             or self._coordinator_brokers.get(broker_id)
         )
 
-    def partitions_for_topic(self, topic):
+    def partitions_for_topic(self, topic: str) -> Optional[Set[int]]:
         """Return set of all partitions for topic (whether available or not)
 
         Arguments:

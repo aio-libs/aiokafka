@@ -2,12 +2,12 @@ from aiokafka.coordinator.assignors.sticky.partition_movements import PartitionM
 from aiokafka.structs import TopicPartition
 
 
-def test_empty_movements_are_sticky():
+def test_empty_movements_are_sticky() -> None:
     partition_movements = PartitionMovements()
     assert partition_movements.are_sticky()
 
 
-def test_sticky_movements():
+def test_sticky_movements() -> None:
     partition_movements = PartitionMovements()
     partition_movements.move_partition(TopicPartition("t", 1), "C1", "C2")
     partition_movements.move_partition(TopicPartition("t", 1), "C2", "C3")
@@ -15,7 +15,7 @@ def test_sticky_movements():
     assert partition_movements.are_sticky()
 
 
-def test_should_detect_non_sticky_assignment():
+def test_should_detect_non_sticky_assignment() -> None:
     partition_movements = PartitionMovements()
     partition_movements.move_partition(TopicPartition("t", 1), "C1", "C2")
     partition_movements.move_partition(TopicPartition("t", 2), "C2", "C1")
