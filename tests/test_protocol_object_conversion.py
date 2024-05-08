@@ -1,27 +1,36 @@
-from typing import Type, Union
+from typing import Type, TypeVar, Union
 
 import pytest
 
 from aiokafka.protocol.admin import Request, Response
 from aiokafka.protocol.types import Array, Int16, Schema, String
 
+C = TypeVar("C", bound=Type[Union[Request, Response]])
+
+
+def _make_test_class(klass: C, schema: Schema) -> C:
+    if issubclass(klass, Request):
+
+        class TestClass(Request):
+            API_KEY = 0
+            API_VERSION = 0
+            RESPONSE_TYPE = Response
+            SCHEMA = schema
+
+    else:
+
+        class TestClass(Response):  # type: ignore[no-redef]
+            API_KEY = 0
+            API_VERSION = 0
+            SCHEMA = schema
+
+    return TestClass  # type: ignore[return-value]
+
 
 @pytest.mark.parametrize("superclass", (Request, Response))
 class TestObjectConversion:
     def test_get_item(self, superclass: Type[Union[Request, Response]]) -> None:
-        if issubclass(superclass, Request):
-
-            class TestClass(Request):
-                API_KEY = 0
-                API_VERSION = 0
-                RESPONSE_TYPE = Response
-                SCHEMA = Schema(("myobject", Int16))
-        else:
-
-            class TestClass(Response):  # type: ignore[no-redef]
-                API_KEY = 0
-                API_VERSION = 0
-                SCHEMA = Schema(("myobject", Int16))
+        TestClass = _make_test_class(superclass, Schema(("myobject", Int16)))
 
         tc = TestClass(myobject=0)
         assert tc.get_item("myobject") == 0
@@ -31,19 +40,7 @@ class TestObjectConversion:
     def test_with_empty_schema(
         self, superclass: Type[Union[Request, Response]]
     ) -> None:
-        if issubclass(superclass, Request):
-
-            class TestClass(Request):
-                API_KEY = 0
-                API_VERSION = 0
-                RESPONSE_TYPE = Response
-                SCHEMA = Schema()
-        else:
-
-            class TestClass(Response):  # type: ignore[no-redef]
-                API_KEY = 0
-                API_VERSION = 0
-                SCHEMA = Schema()
+        TestClass = _make_test_class(superclass, Schema())
 
         tc = TestClass()
         tc.encode()
@@ -52,19 +49,7 @@ class TestObjectConversion:
     def test_with_basic_schema(
         self, superclass: Type[Union[Request, Response]]
     ) -> None:
-        if issubclass(superclass, Request):
-
-            class TestClass(Request):
-                API_KEY = 0
-                API_VERSION = 0
-                RESPONSE_TYPE = Response  # To satisfy the Request ABC
-                SCHEMA = Schema(("myobject", Int16))
-        else:
-
-            class TestClass(Response):  # type: ignore[no-redef]
-                API_KEY = 0
-                API_VERSION = 0
-                SCHEMA = Schema(("myobject", Int16))
+        TestClass = _make_test_class(superclass, Schema(("myobject", Int16)))
 
         tc = TestClass(myobject=0)
         tc.encode()
@@ -73,19 +58,7 @@ class TestObjectConversion:
     def test_with_basic_array_schema(
         self, superclass: Type[Union[Request, Response]]
     ) -> None:
-        if issubclass(superclass, Request):
-
-            class TestClass(Request):
-                API_KEY = 0
-                API_VERSION = 0
-                RESPONSE_TYPE = Response  # To satisfy the Request ABC
-                SCHEMA = Schema(("myarray", Array(Int16)))
-        else:
-
-            class TestClass(Response):  # type: ignore[no-redef]
-                API_KEY = 0
-                API_VERSION = 0
-                SCHEMA = Schema(("myarray", Array(Int16)))
+        TestClass = _make_test_class(superclass, Schema(("myarray", Array(Int16))))
 
         tc = TestClass(myarray=[1, 2, 3])
         tc.encode()
@@ -94,33 +67,15 @@ class TestObjectConversion:
     def test_with_complex_array_schema(
         self, superclass: Type[Union[Request, Response]]
     ) -> None:
-        if issubclass(superclass, Request):
-
-            class TestClass(Request):
-                API_KEY = 0
-                API_VERSION = 0
-                RESPONSE_TYPE = Response  # To satisfy the Request ABC
-                SCHEMA = Schema(
-                    (
-                        "myarray",
-                        Array(
-                            ("subobject", Int16), ("othersubobject", String("utf-8"))
-                        ),
-                    )
+        TestClass = _make_test_class(
+            superclass,
+            Schema(
+                (
+                    "myarray",
+                    Array(("subobject", Int16), ("othersubobject", String("utf-8"))),
                 )
-        else:
-
-            class TestClass(Response):  # type: ignore[no-redef]
-                API_KEY = 0
-                API_VERSION = 0
-                SCHEMA = Schema(
-                    (
-                        "myarray",
-                        Array(
-                            ("subobject", Int16), ("othersubobject", String("utf-8"))
-                        ),
-                    )
-                )
+            ),
+        )
 
         tc = TestClass(myarray=[[10, "hello"]])
         tc.encode()
@@ -132,35 +87,16 @@ class TestObjectConversion:
     def test_with_array_and_other(
         self, superclass: Type[Union[Request, Response]]
     ) -> None:
-        if issubclass(superclass, Request):
-
-            class TestClass(Request):
-                API_KEY = 0
-                API_VERSION = 0
-                RESPONSE_TYPE = Response  # To satisfy the Request ABC
-                SCHEMA = Schema(
-                    (
-                        "myarray",
-                        Array(
-                            ("subobject", Int16), ("othersubobject", String("utf-8"))
-                        ),
-                    ),
-                    ("notarray", Int16),
-                )
-        else:
-
-            class TestClass(Response):  # type: ignore[no-redef]
-                API_KEY = 0
-                API_VERSION = 0
-                SCHEMA = Schema(
-                    (
-                        "myarray",
-                        Array(
-                            ("subobject", Int16), ("othersubobject", String("utf-8"))
-                        ),
-                    ),
-                    ("notarray", Int16),
-                )
+        TestClass = _make_test_class(
+            superclass,
+            Schema(
+                (
+                    "myarray",
+                    Array(("subobject", Int16), ("othersubobject", String("utf-8"))),
+                ),
+                ("notarray", Int16),
+            ),
+        )
 
         tc = TestClass(myarray=[[10, "hello"]], notarray=42)
 
@@ -173,29 +109,15 @@ class TestObjectConversion:
     def test_with_nested_array(
         self, superclass: Type[Union[Request, Response]]
     ) -> None:
-        if issubclass(superclass, Request):
-
-            class TestClass(Request):
-                API_KEY = 0
-                API_VERSION = 0
-                RESPONSE_TYPE = Response  # To satisfy the Request ABC
-                SCHEMA = Schema(
-                    (
-                        "myarray",
-                        Array(("subarray", Array(Int16)), ("otherobject", Int16)),
-                    )
+        TestClass = _make_test_class(
+            superclass,
+            Schema(
+                (
+                    "myarray",
+                    Array(("subarray", Array(Int16)), ("otherobject", Int16)),
                 )
-        else:
-
-            class TestClass(Response):  # type: ignore[no-redef]
-                API_KEY = 0
-                API_VERSION = 0
-                SCHEMA = Schema(
-                    (
-                        "myarray",
-                        Array(("subarray", Array(Int16)), ("otherobject", Int16)),
-                    )
-                )
+            ),
+        )
 
         tc = TestClass(
             myarray=[
@@ -215,49 +137,25 @@ class TestObjectConversion:
     def test_with_complex_nested_array(
         self, superclass: Type[Union[Request, Response]]
     ) -> None:
-        if issubclass(superclass, Request):
-
-            class TestClass(Request):
-                API_KEY = 0
-                API_VERSION = 0
-                RESPONSE_TYPE = Response  # To satisfy the Request ABC
-                SCHEMA = Schema(
-                    (
-                        "myarray",
-                        Array(
-                            (
-                                "subarray",
-                                Array(
-                                    ("innertest", String("utf-8")),
-                                    ("otherinnertest", String("utf-8")),
-                                ),
+        TestClass = _make_test_class(
+            superclass,
+            Schema(
+                (
+                    "myarray",
+                    Array(
+                        (
+                            "subarray",
+                            Array(
+                                ("innertest", String("utf-8")),
+                                ("otherinnertest", String("utf-8")),
                             ),
-                            ("othersubarray", Array(Int16)),
                         ),
+                        ("othersubarray", Array(Int16)),
                     ),
-                    ("notarray", String("utf-8")),
-                )
-        else:
-
-            class TestClass(Response):  # type: ignore[no-redef]
-                API_KEY = 0
-                API_VERSION = 0
-                SCHEMA = Schema(
-                    (
-                        "myarray",
-                        Array(
-                            (
-                                "subarray",
-                                Array(
-                                    ("innertest", String("utf-8")),
-                                    ("otherinnertest", String("utf-8")),
-                                ),
-                            ),
-                            ("othersubarray", Array(Int16)),
-                        ),
-                    ),
-                    ("notarray", String("utf-8")),
-                )
+                ),
+                ("notarray", String("utf-8")),
+            ),
+        )
 
         tc = TestClass(
             myarray=[
