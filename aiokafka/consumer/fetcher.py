@@ -512,7 +512,10 @@ class Fetcher:
                         # cancellation
                         if not task.done():
                             task.cancel()
-                        await task
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            pass
                     self._pending_tasks.clear()
                     self._records.clear()
 
