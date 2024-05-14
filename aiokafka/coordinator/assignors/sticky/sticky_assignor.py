@@ -4,6 +4,7 @@ from collections import defaultdict
 from copy import deepcopy
 from typing import (
     Any,
+    Collection,
     Dict,
     List,
     MutableSequence,
@@ -200,12 +201,12 @@ class StickyAssignmentExecutor:
             self.current_assignment[consumer] = partitions
             self._add_consumer_to_current_subscriptions_and_maintain_order(consumer)
 
-    def get_final_assignment(self, member_id: str) -> Dict[str, List[int]]:
+    def get_final_assignment(self, member_id: str) -> Collection[Tuple[str, List[int]]]:
         assignment: Dict[str, List[int]] = defaultdict(list)
         for topic_partition in self.current_assignment[member_id]:
             assignment[topic_partition.topic].append(topic_partition.partition)
         assignment = {k: sorted(v) for k, v in assignment.items()}
-        return assignment
+        return assignment.items()
 
     def _initialize(self, cluster: ClusterMetadata) -> None:
         self._init_current_assignments(self.members)
@@ -338,10 +339,10 @@ class StickyAssignmentExecutor:
             # at this point, sorted_consumers contains an ascending-sorted list of
             # consumers based on how many valid partitions are currently assigned to
             # them
-            while item := sorted_consumers.last():
-                sorted_consumers.pop_last()
+
+            while sorted_consumers:
                 # take the consumer with the most partitions
-                consumer, _ = item
+                consumer, _ = sorted_consumers.pop_last()
                 # currently assigned partitions to this consumer
                 remaining_partitions = assignments[consumer]
                 # from partitions that had a different consumer before,
@@ -765,7 +766,7 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
         for member_id in members:
             assignment[member_id] = ConsumerProtocolMemberAssignment(
                 cls.version,
-                sorted(executor.get_final_assignment(member_id).items()),
+                sorted(executor.get_final_assignment(member_id)),
                 b"",
             )
         return assignment

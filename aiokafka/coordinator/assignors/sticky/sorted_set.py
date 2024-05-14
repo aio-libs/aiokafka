@@ -49,7 +49,7 @@ class SortedSet(Generic[T], Collection[T]):
         self._cached_last = last
         return last
 
-    def pop_last(self) -> Optional[T]:
+    def pop_last(self) -> T:
         value = self.last()
 
         if value is None:
