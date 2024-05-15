@@ -285,8 +285,9 @@ def test_decode_fetch_response_partial() -> None:
         ]
     )
     resp = FetchResponse_v0.decode(io.BytesIO(encoded))
-    assert len(resp.topics) == 1  # type: ignore[attr-defined]
-    topic, partitions = resp.topics[0]  # type: ignore[attr-defined]
+    assert resp.topics is not None
+    assert len(resp.topics) == 1
+    topic, partitions = resp.topics[0]
     assert topic == "foobar"
     assert len(partitions) == 2
 
@@ -303,7 +304,7 @@ def test_struct_unrecognized_kwargs() -> None:
 
 def test_struct_missing_kwargs() -> None:
     fr = FetchRequest_v0(max_wait_time=100)
-    assert fr.min_bytes is None  # type: ignore[attr-defined]
+    assert fr.min_bytes is None
 
 
 def test_unsigned_varint_serde() -> None:
