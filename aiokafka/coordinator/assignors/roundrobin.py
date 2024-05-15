@@ -1,7 +1,7 @@
 import collections
 import itertools
 import logging
-from typing import Dict, List, Set
+from typing import Dict, Iterable, List, Mapping
 
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor
@@ -54,7 +54,7 @@ class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
     def assign(
         cls,
         cluster: ClusterMetadata,
-        members: Dict[str, ConsumerProtocolMemberMetadata],
+        members: Mapping[str, ConsumerProtocolMemberMetadata],
     ) -> Dict[str, ConsumerProtocolMemberAssignment]:
         all_topics = set()
         for metadata in members.values():
@@ -94,7 +94,7 @@ class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
         return protocol_assignment
 
     @classmethod
-    def metadata(cls, topics: Set[str]) -> ConsumerProtocolMemberMetadata:
+    def metadata(cls, topics: Iterable[str]) -> ConsumerProtocolMemberMetadata:
         return ConsumerProtocolMemberMetadata(cls.version, list(topics), b"")
 
     @classmethod

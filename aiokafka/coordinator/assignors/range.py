@@ -1,6 +1,6 @@
 import collections
 import logging
-from typing import Dict, List, Set
+from typing import Dict, Iterable, List, Mapping
 
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor
@@ -37,7 +37,7 @@ class RangePartitionAssignor(AbstractPartitionAssignor):
     def assign(
         cls,
         cluster: ClusterMetadata,
-        members: Dict[str, ConsumerProtocolMemberMetadata],
+        members: Mapping[str, ConsumerProtocolMemberMetadata],
     ) -> Dict[str, ConsumerProtocolMemberAssignment]:
         consumers_per_topic: Dict[str, List[str]] = collections.defaultdict(list)
         for member, metadata in members.items():
@@ -74,7 +74,7 @@ class RangePartitionAssignor(AbstractPartitionAssignor):
         return protocol_assignment
 
     @classmethod
-    def metadata(cls, topics: Set[str]) -> ConsumerProtocolMemberMetadata:
+    def metadata(cls, topics: Iterable[str]) -> ConsumerProtocolMemberMetadata:
         return ConsumerProtocolMemberMetadata(cls.version, list(topics), b"")
 
     @classmethod

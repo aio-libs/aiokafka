@@ -1,6 +1,6 @@
 import abc
 import logging
-from typing import Dict, Set
+from typing import Dict, Iterable, Mapping
 
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.coordinator.protocol import (
@@ -26,7 +26,7 @@ class AbstractPartitionAssignor(abc.ABC):
     def assign(
         cls,
         cluster: ClusterMetadata,
-        members: Dict[str, ConsumerProtocolMemberMetadata],
+        members: Mapping[str, ConsumerProtocolMemberMetadata],
     ) -> Dict[str, ConsumerProtocolMemberAssignment]:
         """Perform group assignment given cluster metadata and member subscriptions
 
@@ -41,7 +41,7 @@ class AbstractPartitionAssignor(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def metadata(cls, topics: Set[str]) -> ConsumerProtocolMemberMetadata:
+    def metadata(cls, topics: Iterable[str]) -> ConsumerProtocolMemberMetadata:
         """Generate ProtocolMetadata to be submitted via JoinGroupRequest.
 
         Arguments:

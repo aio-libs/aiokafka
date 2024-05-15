@@ -6,12 +6,13 @@ from typing import (
     Any,
     Collection,
     Dict,
+    Iterable,
     List,
+    Mapping,
     MutableSequence,
     NamedTuple,
     Optional,
     Sequence,
-    Set,
     Sized,
     Tuple,
 )
@@ -738,7 +739,7 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
     def assign(
         cls,
         cluster: ClusterMetadata,
-        members: Dict[str, ConsumerProtocolMemberMetadata],
+        members: Mapping[str, ConsumerProtocolMemberMetadata],
     ) -> Dict[str, ConsumerProtocolMemberAssignment]:
         """Performs group assignment given cluster metadata and member subscriptions
 
@@ -820,13 +821,13 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
         )
 
     @classmethod
-    def metadata(cls, topics: Set[str]) -> ConsumerProtocolMemberMetadata:
+    def metadata(cls, topics: Iterable[str]) -> ConsumerProtocolMemberMetadata:
         return cls._metadata(topics, cls.member_assignment, cls.generation)
 
     @classmethod
     def _metadata(
         cls,
-        topics: Set[str],
+        topics: Iterable[str],
         member_assignment_partitions: Optional[List[TopicPartition]],
         generation: int = -1,
     ) -> ConsumerProtocolMemberMetadata:
