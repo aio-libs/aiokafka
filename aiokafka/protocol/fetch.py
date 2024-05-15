@@ -1,3 +1,5 @@
+from typing import List, Optional, Tuple
+
 from .api import Request, Response
 from .types import Array, Bytes, Int8, Int16, Int32, Int64, Schema, String
 
@@ -22,6 +24,8 @@ class FetchResponse_v0(Response):
             ),
         )
     )
+
+    topics: Optional[List[Tuple[str, List[Tuple[int, int, int, bytes]]]]]
 
 
 class FetchResponse_v1(Response):
@@ -234,6 +238,8 @@ class FetchRequest_v0(Request):
             ),
         ),
     )
+
+    min_bytes: Optional[int]
 
 
 class FetchRequest_v1(Request):
