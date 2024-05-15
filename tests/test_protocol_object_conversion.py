@@ -8,23 +8,26 @@ from aiokafka.protocol.types import Array, Int16, Schema, String
 C = TypeVar("C", bound=Type[Union[Request, Response]])
 
 
-def _make_test_class(klass: C, schema: Schema) -> C:
-    if issubclass(klass, Request):
+def _make_test_class(
+    klass: Type[Union[Request, Response]], schema: Schema
+) -> Type[Union[Request, Response]]:
+    if klass is Request:
 
-        class TestClass(Request):
+        class RequestTestClass(Request):
             API_KEY = 0
             API_VERSION = 0
             RESPONSE_TYPE = Response
             SCHEMA = schema
 
+        return RequestTestClass
     else:
 
-        class TestClass(Response):  # type: ignore[no-redef]
+        class ResponseTestClass(Response):
             API_KEY = 0
             API_VERSION = 0
             SCHEMA = schema
 
-    return TestClass  # type: ignore[return-value]
+        return ResponseTestClass
 
 
 @pytest.mark.parametrize("superclass", (Request, Response))
