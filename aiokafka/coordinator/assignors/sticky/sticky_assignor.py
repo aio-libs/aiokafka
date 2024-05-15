@@ -118,9 +118,7 @@ class StickyAssignmentExecutor:
         self.consumer_to_all_potential_partitions: Dict[str, List[TopicPartition]] = {}
         # an ascending sorted set of consumers based on how many topic partitions are
         # already assigned to them
-        self.sorted_current_subscriptions: SortedSet[
-            Tuple[str, Tuple[TopicPartition, ...]]
-        ] = SortedSet()
+        self.sorted_current_subscriptions: SortedSet[Tuple[str, Tuple[TopicPartition, ...]]] = SortedSet()  # fmt: skip # noqa: E501
         # an ascending sorted list of topic partitions based on how many consumers can
         # potentially use them
         self.sorted_partitions: List[TopicPartition] = []

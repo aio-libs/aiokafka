@@ -955,9 +955,7 @@ class Fetcher:
         await self._client._maybe_wait_metadata()
 
         # Group it in hierarhy `node` -> `topic` -> `[(partition, offset)]`
-        timestamps_by_node = collections.defaultdict(
-            lambda: collections.defaultdict(list)
-        )
+        timestamps_by_node = collections.defaultdict(lambda: collections.defaultdict(list))  # fmt: skip # noqa: E501
 
         for partition, timestamp in timestamps.items():
             node_id = self._client.cluster.leader_for_partition(partition)

@@ -72,9 +72,7 @@ class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
         all_topic_partitions.sort()
 
         # construct {member_id: {topic: [partition, ...]}}
-        assignment: Dict[str, Dict[str, List[int]]] = collections.defaultdict(
-            lambda: collections.defaultdict(list)
-        )
+        assignment: Dict[str, Dict[str, List[int]]] = collections.defaultdict(lambda: collections.defaultdict(list))  # fmt: skip # noqa: E501
 
         member_iter = itertools.cycle(sorted(members.keys()))
         for partition in all_topic_partitions:

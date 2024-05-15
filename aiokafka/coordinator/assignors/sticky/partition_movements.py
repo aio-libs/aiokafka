@@ -48,9 +48,7 @@ class PartitionMovements:
     """
 
     def __init__(self) -> None:
-        self.partition_movements_by_topic: Dict[
-            str, Dict[ConsumerPair, Set[TopicPartition]]
-        ] = defaultdict(lambda: defaultdict(set))
+        self.partition_movements_by_topic: Dict[str, Dict[ConsumerPair, Set[TopicPartition]]] = defaultdict(lambda: defaultdict(set))  # fmt: skip # noqa: E501
         self.partition_movements: Dict[TopicPartition, ConsumerPair] = {}
 
     def move_partition(
