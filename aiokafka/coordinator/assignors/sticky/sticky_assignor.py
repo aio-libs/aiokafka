@@ -419,10 +419,14 @@ class StickyAssignmentExecutor:
         )
 
     def _get_consumer_with_least_subscriptions(self) -> str:
-        return self.sorted_current_subscriptions.first()[0]
+        if current_subscription := self.sorted_current_subscriptions.first():
+            return current_subscription[0]
+        raise ValueError("sorted_current_subscriptions is empty")
 
     def _get_consumer_with_most_subscriptions(self) -> str:
-        return self.sorted_current_subscriptions.last()[0]
+        if current_subscription := self.sorted_current_subscriptions.last():
+            return current_subscription[0]
+        raise ValueError("sorted_current_subscriptions is empty")
 
     def _remove_consumer_from_current_subscriptions_and_maintain_order(
         self, consumer: str
@@ -548,7 +552,8 @@ class StickyAssignmentExecutor:
                     )
 
                 if (
-                    partition in self.previous_assignment
+                    consumer is not None
+                    and partition in self.previous_assignment
                     and len(self.current_assignment[consumer])
                     > len(
                         self.current_assignment[
@@ -571,7 +576,8 @@ class StickyAssignmentExecutor:
                     partition
                 ]:
                     if (
-                        len(self.current_assignment[consumer])
+                        consumer is not None
+                        and len(self.current_assignment[consumer])
                         > len(self.current_assignment[other_consumer]) + 1
                     ):
                         self._reassign_partition(partition)
