@@ -38,6 +38,11 @@ class ConsumerGenerationPair(NamedTuple):
     generation: int
 
 
+class ConsumerSubscription(NamedTuple):
+    consumer: str
+    partitions: Sequence[TopicPartition]
+
+
 def has_identical_list_elements(list_: Sequence[List[Any]]) -> bool:
     """Checks if all lists in the collection have the same members
 
@@ -119,7 +124,7 @@ class StickyAssignmentExecutor:
         self.consumer_to_all_potential_partitions: Dict[str, List[TopicPartition]] = {}
         # an ascending sorted set of consumers based on how many topic partitions are
         # already assigned to them
-        self.sorted_current_subscriptions: SortedSet[Tuple[str, Tuple[TopicPartition, ...]]] = SortedSet()  # fmt: skip # noqa: E501
+        self.sorted_current_subscriptions: SortedSet[ConsumerSubscription] = SortedSet()
         # an ascending sorted list of topic partitions based on how many consumers can
         # potentially use them
         self.sorted_partitions: List[TopicPartition] = []
@@ -412,7 +417,7 @@ class StickyAssignmentExecutor:
     def _initialize_current_subscriptions(self) -> None:
         self.sorted_current_subscriptions = SortedSet(
             iterable=[
-                (consumer, tuple(partitions))
+                ConsumerSubscription(consumer=consumer, partitions=tuple(partitions))
                 for consumer, partitions in self.current_assignment.items()
             ],
             key=subscriptions_comparator_key,
@@ -432,14 +437,20 @@ class StickyAssignmentExecutor:
         self, consumer: str
     ) -> None:
         self.sorted_current_subscriptions.remove(
-            (consumer, tuple(self.current_assignment[consumer]))
+            ConsumerSubscription(
+                consumer=consumer,
+                partitions=tuple(self.current_assignment[consumer]),
+            )
         )
 
     def _add_consumer_to_current_subscriptions_and_maintain_order(
         self, consumer: str
     ) -> None:
         self.sorted_current_subscriptions.add(
-            (consumer, tuple(self.current_assignment[consumer]))
+            ConsumerSubscription(
+                consumer=consumer,
+                partitions=tuple(self.current_assignment[consumer]),
+            )
         )
 
     def _is_balanced(self) -> bool:
