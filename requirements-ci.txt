@@ -8,7 +8,7 @@ pytest-mock==3.12.0
 docker==7.0.0
 # TODO Remove this pi after update of `docker`
 # https://github.com/docker/docker-py/pull/3257
-requests==2.31.0
+requests==2.32.2
 docutils==0.20.1
 Pygments==2.15.0
 gssapi==1.8.3
