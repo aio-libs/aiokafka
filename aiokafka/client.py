@@ -332,7 +332,7 @@ class AIOKafkaClient:
             try:
                 metadata = await conn.send(metadata_request)
             except (KafkaError, asyncio.TimeoutError) as err:
-                log.error(
+                log.warning(
                     "Unable to request metadata from node with id %s: %r", node_id, err
                 )
                 continue
