@@ -557,9 +557,11 @@ class StickyAssignmentExecutor:
                     )
                 # the partition must have a current consumer
                 consumer = self.current_partition_consumer.get(partition)
-                assert (
-                    consumer is not None
-                ), f"Expected partition {partition!r} to be assigned to a consumer"
+                if consumer is None:
+                    log.error(
+                        "Expected partition %r to be assigned to a consumer", partition
+                    )
+                    continue
 
                 if (
                     partition in self.previous_assignment
