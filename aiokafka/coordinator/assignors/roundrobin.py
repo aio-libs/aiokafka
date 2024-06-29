@@ -1,7 +1,9 @@
 import collections
 import itertools
 import logging
+from typing import Dict, Iterable, List, Mapping
 
+from aiokafka.cluster import ClusterMetadata
 from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor
 from aiokafka.coordinator.protocol import (
     ConsumerProtocolMemberAssignment,
@@ -49,12 +51,16 @@ class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
     version = 0
 
     @classmethod
-    def assign(cls, cluster, member_metadata):
+    def assign(
+        cls,
+        cluster: ClusterMetadata,
+        members: Mapping[str, ConsumerProtocolMemberMetadata],
+    ) -> Dict[str, ConsumerProtocolMemberAssignment]:
         all_topics = set()
-        for metadata in member_metadata.values():
+        for metadata in members.values():
             all_topics.update(metadata.subscription)
 
-        all_topic_partitions = []
+        all_topic_partitions: List[TopicPartition] = []
         for topic in all_topics:
             partitions = cluster.partitions_for_topic(topic)
             if partitions is None:
@@ -66,9 +72,11 @@ class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
         all_topic_partitions.sort()
 
         # construct {member_id: {topic: [partition, ...]}}
-        assignment = collections.defaultdict(lambda: collections.defaultdict(list))
+        assignment: Dict[str, Dict[str, List[int]]] = collections.defaultdict(
+            lambda: collections.defaultdict(list)
+        )
 
-        member_iter = itertools.cycle(sorted(member_metadata.keys()))
+        member_iter = itertools.cycle(sorted(members.keys()))
         for partition in all_topic_partitions:
             member_id = next(member_iter)
 
@@ -76,21 +84,21 @@ class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
             # member subscribed topics, we should be safe assuming that
             # each topic in all_topic_partitions is in at least one member
             # subscription; otherwise this could yield an infinite loop
-            while partition.topic not in member_metadata[member_id].subscription:
+            while partition.topic not in members[member_id].subscription:
                 member_id = next(member_iter)
             assignment[member_id][partition.topic].append(partition.partition)
 
         protocol_assignment = {}
-        for member_id in member_metadata:
+        for member_id in members:
             protocol_assignment[member_id] = ConsumerProtocolMemberAssignment(
                 cls.version, sorted(assignment[member_id].items()), b""
             )
         return protocol_assignment
 
     @classmethod
-    def metadata(cls, topics):
+    def metadata(cls, topics: Iterable[str]) -> ConsumerProtocolMemberMetadata:
         return ConsumerProtocolMemberMetadata(cls.version, list(topics), b"")
 
     @classmethod
-    def on_assignment(cls, assignment):
+    def on_assignment(cls, assignment: ConsumerProtocolMemberAssignment) -> None:
         pass

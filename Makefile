@@ -7,6 +7,7 @@ DOCKER_IMAGE=aiolibs/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
 DIFF_BRANCH=origin/master
 FORMATTED_AREAS=\
 	aiokafka/codec.py \
+	aiokafka/coordinator/ \
 	aiokafka/errors.py \
 	aiokafka/helpers.py \
 	aiokafka/structs.py \
@@ -17,6 +18,7 @@ FORMATTED_AREAS=\
 	tests/test_helpers.py \
 	tests/test_protocol.py \
 	tests/test_protocol_object_conversion.py \
+	tests/coordinator/ \
 	tests/record/
 
 .PHONY: setup
