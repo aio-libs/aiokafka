@@ -2,8 +2,8 @@
 Changelog
 =========
 
-Unreleased
-==========
+0.11.0 (2024-06-29)
+===================
 
 New features:
 
@@ -19,6 +19,7 @@ Bugfixes:
   (pr #978 by @alm0ra)
 * Fix `NotControllerError` in `AIOKafkaAdminClient.create_topics` and other
   methods (issue #995)
+* Fix unintended cancellation of fetcher task (issue #983, pr #1007 by @apmorton)
 
 
 0.10.0 (2023-12-15)
