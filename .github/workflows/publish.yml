@@ -122,15 +122,15 @@ jobs:
         python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         include:
           - python: "3.8"
-            aiokafka_whl: dist/aiokafka-*-cp38-cp38-macosx_10_9_x86_64.whl
+            aiokafka_whl: dist/aiokafka-*-cp38-cp38-macosx_*_x86_64.whl
           - python: "3.9"
-            aiokafka_whl: dist/aiokafka-*-cp39-cp39-macosx_10_9_x86_64.whl
+            aiokafka_whl: dist/aiokafka-*-cp39-cp39-macosx_*_x86_64.whl
           - python: "3.10"
-            aiokafka_whl: dist/aiokafka-*-cp310-cp310-macosx_10_9_x86_64.whl
+            aiokafka_whl: dist/aiokafka-*-cp310-cp310-macosx_*_x86_64.whl
           - python: "3.11"
-            aiokafka_whl: dist/aiokafka-*-cp311-cp311-macosx_10_9_x86_64.whl
+            aiokafka_whl: dist/aiokafka-*-cp311-cp311-macosx_*_x86_64.whl
           - python: "3.12"
-            aiokafka_whl: dist/aiokafka-*-cp312-cp312-macosx_10_9_x86_64.whl
+            aiokafka_whl: dist/aiokafka-*-cp312-cp312-macosx_*_x86_64.whl
 
     steps:
       - uses: actions/checkout@v2
