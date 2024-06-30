@@ -1,4 +1,4 @@
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, Iterable, Optional, Sequence, Tuple
 
 from .api import Request, Response
 from .types import (
@@ -29,6 +29,9 @@ class ApiVersionResponse_v0(Response):
         ),
     )
 
+    error_code: int
+    api_versions: Sequence[Tuple[int, int, int]]
+
 
 class ApiVersionResponse_v1(Response):
     API_KEY = 18
@@ -42,39 +45,47 @@ class ApiVersionResponse_v1(Response):
         ("throttle_time_ms", Int32),
     )
 
+    error_code: int
+    api_versions: Sequence[Tuple[int, int, int]]
+    throttle_time_ms: int
+
 
 class ApiVersionResponse_v2(Response):
     API_KEY = 18
     API_VERSION = 2
     SCHEMA = ApiVersionResponse_v1.SCHEMA
 
+    error_code: int
+    api_versions: Sequence[Tuple[int, int, int]]
+    throttle_time_ms: int
 
-class ApiVersionRequest_v0(Request):
+
+class ApiVersionRequest_v0(Request[ApiVersionResponse_v0]):
     API_KEY = 18
     API_VERSION = 0
     RESPONSE_TYPE = ApiVersionResponse_v0
     SCHEMA = Schema()
 
 
-class ApiVersionRequest_v1(Request):
+class ApiVersionRequest_v1(Request[ApiVersionResponse_v1]):
     API_KEY = 18
     API_VERSION = 1
     RESPONSE_TYPE = ApiVersionResponse_v1
     SCHEMA = ApiVersionRequest_v0.SCHEMA
 
 
-class ApiVersionRequest_v2(Request):
+class ApiVersionRequest_v2(Request[ApiVersionResponse_v1]):
     API_KEY = 18
     API_VERSION = 2
-    RESPONSE_TYPE = ApiVersionResponse_v1
+    RESPONSE_TYPE = ApiVersionResponse_v1  # TODO: Why v1?
     SCHEMA = ApiVersionRequest_v0.SCHEMA
 
 
-ApiVersionRequest = [
+ApiVersionRequest = (
     ApiVersionRequest_v0,
     ApiVersionRequest_v1,
     ApiVersionRequest_v2,
-]
+)
 ApiVersionResponse = [
     ApiVersionResponse_v0,
     ApiVersionResponse_v1,
@@ -488,28 +499,34 @@ class SaslHandShakeResponse_v0(Response):
         ("error_code", Int16), ("enabled_mechanisms", Array(String("utf-8")))
     )
 
+    error_code: int
+    enabled_mechanisms: Sequence[str]
+
 
 class SaslHandShakeResponse_v1(Response):
     API_KEY = 17
     API_VERSION = 1
     SCHEMA = SaslHandShakeResponse_v0.SCHEMA
 
+    error_code: int
+    enabled_mechanisms: Sequence[str]
 
-class SaslHandShakeRequest_v0(Request):
+
+class SaslHandShakeRequest_v0(Request[SaslHandShakeResponse_v0]):
     API_KEY = 17
     API_VERSION = 0
     RESPONSE_TYPE = SaslHandShakeResponse_v0
     SCHEMA = Schema(("mechanism", String("utf-8")))
 
 
-class SaslHandShakeRequest_v1(Request):
+class SaslHandShakeRequest_v1(Request[SaslHandShakeResponse_v1]):
     API_KEY = 17
     API_VERSION = 1
     RESPONSE_TYPE = SaslHandShakeResponse_v1
     SCHEMA = SaslHandShakeRequest_v0.SCHEMA
 
 
-SaslHandShakeRequest = [SaslHandShakeRequest_v0, SaslHandShakeRequest_v1]
+SaslHandShakeRequest = (SaslHandShakeRequest_v0, SaslHandShakeRequest_v1)
 SaslHandShakeResponse = [SaslHandShakeResponse_v0, SaslHandShakeResponse_v1]
 
 
@@ -992,6 +1009,10 @@ class SaslAuthenticateResponse_v0(Response):
         ("sasl_auth_bytes", Bytes),
     )
 
+    error_code: int
+    error_message: str
+    sasl_auth_bytes: bytes
+
 
 class SaslAuthenticateResponse_v1(Response):
     API_KEY = 36
@@ -1003,25 +1024,30 @@ class SaslAuthenticateResponse_v1(Response):
         ("session_lifetime_ms", Int64),
     )
 
+    error_code: int
+    error_message: str
+    sasl_auth_bytes: bytes
+    session_lifetime_ms: int
 
-class SaslAuthenticateRequest_v0(Request):
+
+class SaslAuthenticateRequest_v0(Request[SaslAuthenticateResponse_v0]):
     API_KEY = 36
     API_VERSION = 0
     RESPONSE_TYPE = SaslAuthenticateResponse_v0
     SCHEMA = Schema(("sasl_auth_bytes", Bytes))
 
 
-class SaslAuthenticateRequest_v1(Request):
+class SaslAuthenticateRequest_v1(Request[SaslAuthenticateResponse_v1]):
     API_KEY = 36
     API_VERSION = 1
     RESPONSE_TYPE = SaslAuthenticateResponse_v1
     SCHEMA = SaslAuthenticateRequest_v0.SCHEMA
 
 
-SaslAuthenticateRequest = [
+SaslAuthenticateRequest = (
     SaslAuthenticateRequest_v0,
     SaslAuthenticateRequest_v1,
-]
+)
 SaslAuthenticateResponse = [
     SaslAuthenticateResponse_v0,
     SaslAuthenticateResponse_v1,
