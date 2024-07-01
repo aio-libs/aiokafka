@@ -275,6 +275,11 @@ class GroupCoordinatorResponse_v0(Response):
         ("port", Int32),
     )
 
+    error_code: int
+    coordinator_id: int
+    host: str
+    port: int
+
 
 class GroupCoordinatorResponse_v1(Response):
     API_KEY = 10
@@ -288,8 +293,15 @@ class GroupCoordinatorResponse_v1(Response):
         ("port", Int32),
     )
 
+    throttle_time_ms: int
+    error_code: int
+    error_message: str
+    coordinator_id: int
+    host: str
+    port: int
 
-class GroupCoordinatorRequest_v0(Request):
+
+class GroupCoordinatorRequest_v0(Request[GroupCoordinatorResponse_v0]):
     API_KEY = 10
     API_VERSION = 0
     RESPONSE_TYPE = GroupCoordinatorResponse_v0
@@ -298,7 +310,7 @@ class GroupCoordinatorRequest_v0(Request):
     )
 
 
-class GroupCoordinatorRequest_v1(Request):
+class GroupCoordinatorRequest_v1(Request[GroupCoordinatorResponse_v1]):
     API_KEY = 10
     API_VERSION = 1
     RESPONSE_TYPE = GroupCoordinatorResponse_v1

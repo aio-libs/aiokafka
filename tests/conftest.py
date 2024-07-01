@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import gc
 import logging
@@ -7,6 +9,7 @@ import socket
 import sys
 import uuid
 from dataclasses import dataclass
+from typing import Generator
 
 import pytest
 
@@ -21,7 +24,7 @@ from aiokafka.record.legacy_records import (
 )
 from aiokafka.util import NO_EXTENSIONS
 
-from ._testutil import wait_kafka
+from ._testutil import ACLManager, KafkaConfig, KerberosUtils, wait_kafka
 
 if not NO_EXTENSIONS:
     assert (
@@ -67,22 +70,22 @@ def docker(request):
 
 
 @pytest.fixture(scope="class")
-def acl_manager(kafka_server, request):
+def acl_manager(
+    kafka_server: KafkaServer, request: pytest.FixtureRequest
+) -> ACLManager:
     image = request.config.getoption("--docker-image")
     tag = image.split(":")[-1].replace("_", "-")
-
-    from ._testutil import ACLManager
 
     manager = ACLManager(kafka_server.container, tag)
     return manager
 
 
 @pytest.fixture(scope="class")
-def kafka_config(kafka_server, request):
+def kafka_config(
+    kafka_server: KafkaServer, request: pytest.FixtureRequest
+) -> KafkaConfig:
     image = request.config.getoption("--docker-image")
     tag = image.split(":")[-1].replace("_", "-")
-
-    from ._testutil import KafkaConfig
 
     manager = KafkaConfig(kafka_server.container, tag)
     return manager
@@ -91,9 +94,7 @@ def kafka_config(kafka_server, request):
 if sys.platform != "win32":
 
     @pytest.fixture(scope="class")
-    def kerberos_utils(kafka_server):
-        from ._testutil import KerberosUtils
-
+    def kerberos_utils(kafka_server: KafkaServer) -> KerberosUtils:
         utils = KerberosUtils(kafka_server.container)
         utils.create_keytab()
         return utils
@@ -124,7 +125,9 @@ else:
 
 
 @pytest.fixture(scope="session")
-def ssl_folder(docker_ip_address, docker, kafka_image):
+def ssl_folder(
+    docker_ip_address: str, docker: libdocker.DockerClient, kafka_image: str
+) -> pathlib.Path:
     ssl_dir = pathlib.Path("tests/ssl_cert")
     if ssl_dir.is_dir():
         # Skip generating certificates when they already exist. Remove
@@ -171,7 +174,7 @@ def ssl_folder(docker_ip_address, docker, kafka_image):
 
 
 @pytest.fixture(scope="session")
-def docker_ip_address():
+def docker_ip_address() -> str:
     """Returns IP address of the docker daemon service."""
     return "127.0.0.1"
 
@@ -210,7 +213,7 @@ if sys.platform != "win32":
     @pytest.fixture(scope="session")
     def kafka_server(
         kafka_image, docker, docker_ip_address, unused_port, session_id, ssl_folder
-    ):
+    ) -> Generator[KafkaServer, None, None]:
         kafka_host = docker_ip_address
         kafka_port = unused_port()
         kafka_ssl_port = unused_port()
@@ -316,8 +319,14 @@ def setup_test_class_serverless(request, loop):
 
 @pytest.fixture(scope="class")
 def setup_test_class(
-    request, loop, kafka_server, ssl_folder, acl_manager, kerberos_utils, kafka_config
-):
+    request: pytest.FixtureRequest,
+    loop: asyncio.AbstractEventLoop,
+    kafka_server: KafkaServer,
+    ssl_folder: pathlib.Path,
+    acl_manager: ACLManager,
+    kerberos_utils: KerberosUtils,
+    kafka_config: KafkaConfig,
+) -> None:
     request.cls.loop = loop
     request.cls.kafka_host = kafka_server.host
     request.cls.kafka_port = kafka_server.port

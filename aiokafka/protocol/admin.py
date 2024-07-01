@@ -527,7 +527,7 @@ class SaslHandShakeRequest_v1(Request[SaslHandShakeResponse_v1]):
 
 
 SaslHandShakeRequest = (SaslHandShakeRequest_v0, SaslHandShakeRequest_v1)
-SaslHandShakeResponse = [SaslHandShakeResponse_v0, SaslHandShakeResponse_v1]
+SaslHandShakeResponse = (SaslHandShakeResponse_v0, SaslHandShakeResponse_v1)
 
 
 class DescribeAclsResponse_v0(Response):
@@ -1048,10 +1048,10 @@ SaslAuthenticateRequest = (
     SaslAuthenticateRequest_v0,
     SaslAuthenticateRequest_v1,
 )
-SaslAuthenticateResponse = [
+SaslAuthenticateResponse = (
     SaslAuthenticateResponse_v0,
     SaslAuthenticateResponse_v1,
-]
+)
 
 
 class CreatePartitionsResponse_v0(Response):

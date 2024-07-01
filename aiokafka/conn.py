@@ -48,7 +48,11 @@ from aiokafka.abc import AbstractTokenProvider
 from aiokafka.protocol.admin import (
     ApiVersionRequest,
     SaslAuthenticateRequest,
+    SaslAuthenticateResponse_v0,
+    SaslAuthenticateResponse_v1,
     SaslHandShakeRequest,
+    SaslHandShakeResponse_v0,
+    SaslHandShakeResponse_v1,
 )
 from aiokafka.protocol.api import Request, Response
 from aiokafka.protocol.commit import (
@@ -100,7 +104,6 @@ class VersionInfo:
         self._versions = versions
 
     def pick_best(self, request_versions: Sequence[Type[RequestT]]) -> Type[RequestT]:
-        api_key = request_versions[0].API_KEY
         api_key = cast(int, request_versions[0].API_KEY)
         if api_key not in self._versions:
             return request_versions[0]
@@ -173,7 +176,7 @@ class AIOKafkaProtocol(asyncio.StreamReaderProtocol):
         **kw: Any,
     ) -> None:
         self._closed_fut = closed_fut
-        super().__init__(*args, loop=loop, **kw)
+        super().__init__(*args, loop=loop, **kw)  # type: ignore[misc]
 
     def connection_lost(self, exc: Optional[Exception]) -> None:
         super().connection_lost(exc)
@@ -359,6 +362,9 @@ class AIOKafkaConnection:
 
             sasl_handshake = handshake_klass(self._sasl_mechanism)
             response = await self.send(sasl_handshake)
+            response = cast(
+                Union[SaslHandShakeResponse_v0, SaslHandShakeResponse_v1], response
+            )
             error_type = Errors.for_code(response.error_code)
             if error_type is not Errors.NoError:
                 error = error_type(self)
@@ -419,6 +425,10 @@ class AIOKafkaConnection:
             else:
                 req = auth_klass(payload)
                 resp = await self.send(req)
+                resp = cast(
+                    Union[SaslAuthenticateResponse_v0, SaslAuthenticateResponse_v1],
+                    resp,
+                )
                 error_type = Errors.for_code(resp.error_code)
                 if error_type is not Errors.NoError:
                     exc = error_type(resp.error_message)
@@ -583,6 +593,8 @@ class AIOKafkaConnection:
         self, payload: bytes, expect_response: Literal[True]
     ) -> Coroutine[None, None, bytes]: ...
     @overload
+    def _send_sasl_token(self, payload: bytes) -> Coroutine[None, None, bytes]: ...
+    @overload
     def _send_sasl_token(
         self, payload: bytes, expect_response: bool
     ) -> Union[Coroutine[None, None, None], Coroutine[None, None, bytes]]: ...
@@ -682,7 +694,7 @@ class AIOKafkaConnection:
     def _handle_frame(self, resp: bytes) -> None:
         packet = self._requests[0]
 
-        if packet.correlation_id is None:  # Is a SASL packet, just pass it though
+        if isinstance(packet, SaslPacket):  # Is a SASL packet, just pass it though
             if not packet.fut.done():
                 packet.fut.set_result(resp)
         else:
