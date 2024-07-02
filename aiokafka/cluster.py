@@ -7,6 +7,7 @@ import threading
 import time
 from concurrent.futures import Future
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -22,7 +23,6 @@ from typing import (
 from typing_extensions import TypeAlias, TypedDict
 
 from aiokafka import errors as Errors
-from aiokafka.client import CoordinationType
 from aiokafka.conn import collect_hosts
 from aiokafka.protocol.commit import (
     GroupCoordinatorResponse_v0,
@@ -37,6 +37,9 @@ from aiokafka.protocol.metadata import (
     MetadataResponse_v5,
 )
 from aiokafka.structs import BrokerMetadata, PartitionMetadata, TopicPartition
+
+if TYPE_CHECKING:
+    from aiokafka.client import CoordinationType
 
 ListenerCallable: TypeAlias = Callable[["ClusterMetadata"], None]
 NodeId: TypeAlias = Union[str, int]
