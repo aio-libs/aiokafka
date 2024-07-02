@@ -1,4 +1,4 @@
-from typing import Sequence, Tuple
+from typing import List, Tuple
 
 from .api import Request, Response
 from .types import Array, Boolean, Int16, Int32, Schema, String
@@ -31,10 +31,8 @@ class MetadataResponse_v0(Response):
         ),
     )
 
-    brokers: Sequence[Tuple[int, str, int]]
-    topics: Sequence[
-        Tuple[int, str, Sequence[Tuple[int, int, int, Sequence[int], Sequence[int]]]]
-    ]
+    brokers: List[Tuple[int, str, int]]
+    topics: List[Tuple[int, str, List[Tuple[int, int, int, List[int], List[int]]]]]
 
 
 class MetadataResponse_v1(Response):
@@ -71,12 +69,10 @@ class MetadataResponse_v1(Response):
         ),
     )
 
-    brokers: Sequence[Tuple[int, str, int, str]]
+    brokers: List[Tuple[int, str, int, str]]
     controller_id: int
-    topics: Sequence[
-        Tuple[
-            int, str, bool, Sequence[Tuple[int, int, int, Sequence[int], Sequence[int]]]
-        ]
+    topics: List[
+        Tuple[int, str, bool, List[Tuple[int, int, int, List[int], List[int]]]]
     ]
 
 
@@ -115,13 +111,11 @@ class MetadataResponse_v2(Response):
         ),
     )
 
-    brokers: Sequence[Tuple[int, str, int, str]]
+    brokers: List[Tuple[int, str, int, str]]
     cluster_id: str
     controller_id: int
-    topics: Sequence[
-        Tuple[
-            int, str, bool, Sequence[Tuple[int, int, int, Sequence[int], Sequence[int]]]
-        ]
+    topics: List[
+        Tuple[int, str, bool, List[Tuple[int, int, int, List[int], List[int]]]]
     ]
 
 
@@ -162,13 +156,11 @@ class MetadataResponse_v3(Response):
     )
 
     throttle_time_ms: int
-    brokers: Sequence[Tuple[int, str, int, str]]
+    brokers: List[Tuple[int, str, int, str]]
     cluster_id: str
     controller_id: int
-    topics: Sequence[
-        Tuple[
-            int, str, bool, Sequence[Tuple[int, int, int, Sequence[int], Sequence[int]]]
-        ]
+    topics: List[
+        Tuple[int, str, bool, List[Tuple[int, int, int, List[int], List[int]]]]
     ]
 
 
@@ -178,13 +170,11 @@ class MetadataResponse_v4(Response):
     SCHEMA = MetadataResponse_v3.SCHEMA
 
     throttle_time_ms: int
-    brokers: Sequence[Tuple[int, str, int, str]]
+    brokers: List[Tuple[int, str, int, str]]
     cluster_id: str
     controller_id: int
-    topics: Sequence[
-        Tuple[
-            int, str, bool, Sequence[Tuple[int, int, int, Sequence[int], Sequence[int]]]
-        ]
+    topics: List[
+        Tuple[int, str, bool, List[Tuple[int, int, int, List[int], List[int]]]]
     ]
 
 
@@ -226,15 +216,12 @@ class MetadataResponse_v5(Response):
     )
 
     throttle_time_ms: int
-    brokers: Sequence[Tuple[int, str, int, str]]
+    brokers: List[Tuple[int, str, int, str]]
     cluster_id: str
     controller_id: int
-    topics: Sequence[
+    topics: List[
         Tuple[
-            int,
-            str,
-            bool,
-            Sequence[Tuple[int, int, int, Sequence[int], Sequence[int], Sequence[int]]],
+            int, str, bool, List[Tuple[int, int, int, List[int], List[int], List[int]]]
         ]
     ]
 

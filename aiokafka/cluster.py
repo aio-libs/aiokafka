@@ -6,7 +6,18 @@ import logging
 import threading
 import time
 from concurrent.futures import Future
-from typing import Any, Callable, Dict, Iterable, Optional, Set, Tuple, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 
 from typing_extensions import TypeAlias, TypedDict
 
@@ -290,10 +301,18 @@ class ClusterMetadata:
 
         for topic_data in metadata.topics:
             if isinstance(metadata, MetadataResponse_v0):
-                error_code, topic, partitions = topic_data
+                error_code, topic, partitions = cast(
+                    Tuple[int, str, List[Tuple[int, int, int, List[int], List[int]]]],
+                    topic_data,
+                )
                 is_internal = False
             else:
-                error_code, topic, is_internal, partitions = topic_data
+                error_code, topic, is_internal, partitions = cast(
+                    Tuple[
+                        int, str, bool, List[Tuple[int, int, int, List[int], List[int]]]
+                    ],
+                    topic_data,
+                )
             if is_internal:
                 _new_internal_topics.add(topic)
             error_type = Errors.for_code(error_code)
