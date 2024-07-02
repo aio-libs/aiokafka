@@ -13,6 +13,7 @@ import unittest
 from concurrent import futures
 from contextlib import contextmanager
 from functools import wraps
+from typing import List
 from unittest.mock import Mock
 
 import pytest
@@ -351,6 +352,20 @@ class KerberosUtils:
 @pytest.mark.usefixtures("setup_test_class")
 class KafkaIntegrationTestCase(unittest.TestCase):
     topic = None
+
+    # from setup_test_class fixture
+    loop: asyncio.AbstractEventLoop
+    kafka_host: str
+    kafka_port: int
+    kafka_ssl_port: int
+    kafka_sasl_plain_port: int
+    kafka_sasl_ssl_port: int
+    ssl_folder: pathlib.Path
+    acl_manager: ACLManager
+    kerberos_utils: KerberosUtils
+    kafka_config: KafkaConfig
+    hosts: List[str]
+    kafka_version: str
 
     @contextmanager
     def silence_loop_exception_handler(self):

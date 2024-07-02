@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import enum
 import logging
 import random
 import time
@@ -45,7 +46,7 @@ class ConnectionGroup:
     COORDINATION = 1
 
 
-class CoordinationType:
+class CoordinationType(enum.IntEnum):
     GROUP = 0
     TRANSACTION = 1
 
