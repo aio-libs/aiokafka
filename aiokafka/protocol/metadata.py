@@ -1,3 +1,5 @@
+from typing import Sequence, Tuple
+
 from .api import Request, Response
 from .types import Array, Boolean, Int16, Int32, Schema, String
 
@@ -28,6 +30,11 @@ class MetadataResponse_v0(Response):
             ),
         ),
     )
+
+    brokers: Sequence[Tuple[int, str, int]]
+    topics: Sequence[
+        Tuple[int, str, Sequence[Tuple[int, int, int, Sequence[int], Sequence[int]]]]
+    ]
 
 
 class MetadataResponse_v1(Response):
@@ -64,6 +71,14 @@ class MetadataResponse_v1(Response):
         ),
     )
 
+    brokers: Sequence[Tuple[int, str, int, str]]
+    controller_id: int
+    topics: Sequence[
+        Tuple[
+            int, str, bool, Sequence[Tuple[int, int, int, Sequence[int], Sequence[int]]]
+        ]
+    ]
+
 
 class MetadataResponse_v2(Response):
     API_KEY = 3
@@ -99,6 +114,15 @@ class MetadataResponse_v2(Response):
             ),
         ),
     )
+
+    brokers: Sequence[Tuple[int, str, int, str]]
+    cluster_id: str
+    controller_id: int
+    topics: Sequence[
+        Tuple[
+            int, str, bool, Sequence[Tuple[int, int, int, Sequence[int], Sequence[int]]]
+        ]
+    ]
 
 
 class MetadataResponse_v3(Response):
@@ -137,11 +161,31 @@ class MetadataResponse_v3(Response):
         ),
     )
 
+    throttle_time_ms: int
+    brokers: Sequence[Tuple[int, str, int, str]]
+    cluster_id: str
+    controller_id: int
+    topics: Sequence[
+        Tuple[
+            int, str, bool, Sequence[Tuple[int, int, int, Sequence[int], Sequence[int]]]
+        ]
+    ]
+
 
 class MetadataResponse_v4(Response):
     API_KEY = 3
     API_VERSION = 4
     SCHEMA = MetadataResponse_v3.SCHEMA
+
+    throttle_time_ms: int
+    brokers: Sequence[Tuple[int, str, int, str]]
+    cluster_id: str
+    controller_id: int
+    topics: Sequence[
+        Tuple[
+            int, str, bool, Sequence[Tuple[int, int, int, Sequence[int], Sequence[int]]]
+        ]
+    ]
 
 
 class MetadataResponse_v5(Response):
@@ -181,8 +225,21 @@ class MetadataResponse_v5(Response):
         ),
     )
 
+    throttle_time_ms: int
+    brokers: Sequence[Tuple[int, str, int, str]]
+    cluster_id: str
+    controller_id: int
+    topics: Sequence[
+        Tuple[
+            int,
+            str,
+            bool,
+            Sequence[Tuple[int, int, int, Sequence[int], Sequence[int], Sequence[int]]],
+        ]
+    ]
 
-class MetadataRequest_v0(Request):
+
+class MetadataRequest_v0(Request[MetadataResponse_v0]):
     # topics:
     #     None: Empty Array (len 0) for topics returns all topics
 
@@ -192,7 +249,7 @@ class MetadataRequest_v0(Request):
     SCHEMA = Schema(("topics", Array(String("utf-8"))))
 
 
-class MetadataRequest_v1(Request):
+class MetadataRequest_v1(Request[MetadataResponse_v1]):
     # topics:
     #    -1: Null Array (len -1) for topics returns all topics
     #    None: Empty array (len 0) for topics returns no topics
@@ -203,7 +260,7 @@ class MetadataRequest_v1(Request):
     SCHEMA = MetadataRequest_v0.SCHEMA
 
 
-class MetadataRequest_v2(Request):
+class MetadataRequest_v2(Request[MetadataResponse_v2]):
     # topics:
     #    -1: Null Array (len -1) for topics returns all topics
     #    None: Empty array (len 0) for topics returns no topics
@@ -214,7 +271,7 @@ class MetadataRequest_v2(Request):
     SCHEMA = MetadataRequest_v1.SCHEMA
 
 
-class MetadataRequest_v3(Request):
+class MetadataRequest_v3(Request[MetadataResponse_v3]):
     # topics:
     #    -1: Null Array (len -1) for topics returns all topics
     #    None: Empty array (len 0) for topics returns no topics
@@ -225,7 +282,7 @@ class MetadataRequest_v3(Request):
     SCHEMA = MetadataRequest_v1.SCHEMA
 
 
-class MetadataRequest_v4(Request):
+class MetadataRequest_v4(Request[MetadataResponse_v4]):
     # topics:
     #    -1: Null Array (len -1) for topics returns all topics
     #    None: Empty array (len 0) for topics returns no topics
@@ -238,7 +295,7 @@ class MetadataRequest_v4(Request):
     )
 
 
-class MetadataRequest_v5(Request):
+class MetadataRequest_v5(Request[MetadataResponse_v5]):
     """
     The v5 metadata request is the same as v4.
     An additional field for offline_replicas has been added to the v5 metadata response
@@ -254,14 +311,14 @@ class MetadataRequest_v5(Request):
     SCHEMA = MetadataRequest_v4.SCHEMA
 
 
-MetadataRequest = [
+MetadataRequest = (
     MetadataRequest_v0,
     MetadataRequest_v1,
     MetadataRequest_v2,
     MetadataRequest_v3,
     MetadataRequest_v4,
     MetadataRequest_v5,
-]
+)
 MetadataResponse = [
     MetadataResponse_v0,
     MetadataResponse_v1,

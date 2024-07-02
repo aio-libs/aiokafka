@@ -6,6 +6,7 @@ KAFKA_VERSION?=2.8.1
 DOCKER_IMAGE=aiolibs/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
 DIFF_BRANCH=origin/master
 FORMATTED_AREAS=\
+	aiokafka/cluster.py \
 	aiokafka/codec.py \
 	aiokafka/conn.py \
 	aiokafka/coordinator/ \
@@ -15,6 +16,7 @@ FORMATTED_AREAS=\
 	aiokafka/util.py \
 	aiokafka/protocol/ \
 	aiokafka/record/ \
+	tests/test_cluster.py \
 	tests/test_codec.py \
 	tests/test_conn.py \
 	tests/test_helpers.py \

@@ -1,16 +1,42 @@
+from __future__ import annotations
+
 import collections
 import copy
 import logging
 import threading
 import time
 from concurrent.futures import Future
-from typing import Optional, Set
+from typing import Any, Callable, Dict, Iterable, Optional, Set, Tuple, Union, cast
+
+from typing_extensions import TypeAlias, TypedDict
 
 from aiokafka import errors as Errors
+from aiokafka.client import CoordinationType
 from aiokafka.conn import collect_hosts
+from aiokafka.protocol.commit import (
+    GroupCoordinatorResponse_v0,
+    GroupCoordinatorResponse_v1,
+)
+from aiokafka.protocol.metadata import (
+    MetadataResponse_v0,
+    MetadataResponse_v1,
+    MetadataResponse_v2,
+    MetadataResponse_v3,
+    MetadataResponse_v4,
+    MetadataResponse_v5,
+)
 from aiokafka.structs import BrokerMetadata, PartitionMetadata, TopicPartition
 
+ListenerCallable: TypeAlias = Callable[["ClusterMetadata"], None]
+NodeId: TypeAlias = Union[str, int]
+
 log = logging.getLogger(__name__)
+
+
+class Config(TypedDict):
+    retry_backoff_ms: float
+    metadata_max_age_ms: float
+    bootstrap_servers: Union[str, Iterable[str]]
 
 
 class ClusterMetadata:
@@ -35,53 +61,59 @@ class ClusterMetadata:
             specified, will default to localhost:9092.
     """
 
-    DEFAULT_CONFIG = {
+    DEFAULT_CONFIG: Config = {
         "retry_backoff_ms": 100,
         "metadata_max_age_ms": 300000,
         "bootstrap_servers": [],
     }
 
-    def __init__(self, **configs):
-        self._brokers = {}  # node_id -> BrokerMetadata
-        self._partitions = {}  # topic -> partition -> PartitionMetadata
+    def __init__(self, **configs: Any) -> None:
+        self._brokers: Dict[NodeId, BrokerMetadata] = {}  # node_id -> BrokerMetadata
+        self._partitions: Dict[
+            str, Dict[int, PartitionMetadata]
+        ] = {}  # topic -> partition -> PartitionMetadata
         # node_id -> {TopicPartition...}
-        self._broker_partitions = collections.defaultdict(set)
-        self._groups = {}  # group_name -> node_id
-        self._last_refresh_ms = 0
-        self._last_successful_refresh_ms = 0
+        self._broker_partitions: Dict[NodeId, Set[TopicPartition]] = (
+            collections.defaultdict(set)
+        )
+        self._groups: Dict[str, NodeId] = {}  # group_name -> node_id
+        self._last_refresh_ms: float = 0
+        self._last_successful_refresh_ms: float = 0
         self._need_update = True
-        self._future = None
-        self._listeners = set()
+        self._future: Optional[Future[ClusterMetadata]] = None
+        self._listeners: Set[ListenerCallable] = set()
         self._lock = threading.Lock()
         self.need_all_topic_metadata = False
-        self.unauthorized_topics = set()
-        self.internal_topics = set()
-        self.controller = None
+        self.unauthorized_topics: Set[str] = set()
+        self.internal_topics: Set[str] = set()
+        self.controller: Optional[BrokerMetadata] = None
 
-        self.config = copy.copy(self.DEFAULT_CONFIG)
+        self.config: Config = copy.copy(self.DEFAULT_CONFIG)
         for key in self.config:
             if key in configs:
-                self.config[key] = configs[key]
+                self.config[key] = configs[key]  # type: ignore[literal-required]
 
-        self._bootstrap_brokers = self._generate_bootstrap_brokers()
-        self._coordinator_brokers = {}
-        self._coordinators = {}
-        self._coordinator_by_key = {}
+        self._bootstrap_brokers: Dict[NodeId, BrokerMetadata] = (
+            self._generate_bootstrap_brokers()
+        )
+        self._coordinator_brokers: Dict[NodeId, BrokerMetadata] = {}
+        self._coordinators: Dict[NodeId, BrokerMetadata] = {}
+        self._coordinator_by_key: Dict[Tuple[CoordinationType, str], NodeId] = {}
 
-    def _generate_bootstrap_brokers(self):
+    def _generate_bootstrap_brokers(self) -> Dict[NodeId, BrokerMetadata]:
         # collect_hosts does not perform DNS, so we should be fine to re-use
         bootstrap_hosts = collect_hosts(self.config["bootstrap_servers"])
 
-        brokers = {}
+        brokers: Dict[NodeId, BrokerMetadata] = {}
         for i, (host, port, _) in enumerate(bootstrap_hosts):
             node_id = "bootstrap-%s" % i
             brokers[node_id] = BrokerMetadata(node_id, host, port, None)
         return brokers
 
-    def is_bootstrap(self, node_id):
+    def is_bootstrap(self, node_id: NodeId) -> bool:
         return node_id in self._bootstrap_brokers
 
-    def brokers(self):
+    def brokers(self) -> Set[BrokerMetadata]:
         """Get all BrokerMetadata
 
         Returns:
@@ -89,7 +121,7 @@ class ClusterMetadata:
         """
         return set(self._brokers.values()) or set(self._bootstrap_brokers.values())
 
-    def broker_metadata(self, broker_id):
+    def broker_metadata(self, broker_id: NodeId) -> Optional[BrokerMetadata]:
         """Get BrokerMetadata
 
         Arguments:
@@ -117,7 +149,7 @@ class ClusterMetadata:
             return None
         return set(self._partitions[topic].keys())
 
-    def available_partitions_for_topic(self, topic):
+    def available_partitions_for_topic(self, topic: str) -> Optional[Set[int]]:
         """Return set of partitions with known leaders
 
         Arguments:
@@ -135,7 +167,7 @@ class ClusterMetadata:
             if metadata.leader != -1
         }
 
-    def leader_for_partition(self, partition):
+    def leader_for_partition(self, partition: PartitionMetadata) -> Optional[int]:
         """Return node_id of leader, -1 unavailable, None if unknown."""
         if partition.topic not in self._partitions:
             return None
@@ -144,7 +176,7 @@ class ClusterMetadata:
             return None
         return partitions[partition.partition].leader
 
-    def partitions_for_broker(self, broker_id):
+    def partitions_for_broker(self, broker_id: NodeId) -> Optional[Set[TopicPartition]]:
         """Return TopicPartitions for which the broker is a leader.
 
         Arguments:
@@ -156,7 +188,7 @@ class ClusterMetadata:
         """
         return self._broker_partitions.get(broker_id)
 
-    def coordinator_for_group(self, group):
+    def coordinator_for_group(self, group: str) -> Optional[NodeId]:
         """Return node_id of group coordinator.
 
         Arguments:
@@ -168,7 +200,7 @@ class ClusterMetadata:
         """
         return self._groups.get(group)
 
-    def request_update(self):
+    def request_update(self) -> Future[ClusterMetadata]:
         """Flags metadata for update, return Future()
 
         Actual update must be handled separately. This method will only
@@ -179,11 +211,11 @@ class ClusterMetadata:
         """
         with self._lock:
             self._need_update = True
-            if not self._future or self._future.is_done:
+            if not self._future or self._future.done():
                 self._future = Future()
             return self._future
 
-    def topics(self, exclude_internal_topics=True):
+    def topics(self, exclude_internal_topics: bool = True) -> Set[str]:
         """Get set of known topics.
 
         Arguments:
@@ -201,7 +233,7 @@ class ClusterMetadata:
         else:
             return topics
 
-    def failed_update(self, exception):
+    def failed_update(self, exception: Exception) -> None:
         """Update cluster state given a failed MetadataRequest."""
         f = None
         with self._lock:
@@ -209,10 +241,20 @@ class ClusterMetadata:
                 f = self._future
                 self._future = None
         if f:
-            f.failure(exception)
+            f.set_exception(exception)
         self._last_refresh_ms = time.time() * 1000
 
-    def update_metadata(self, metadata):
+    def update_metadata(
+        self,
+        metadata: Union[
+            MetadataResponse_v0,
+            MetadataResponse_v1,
+            MetadataResponse_v2,
+            MetadataResponse_v3,
+            MetadataResponse_v4,
+            MetadataResponse_v5,
+        ],
+    ) -> None:
         """Update cluster state given a MetadataResponse.
 
         Arguments:
@@ -225,27 +267,29 @@ class ClusterMetadata:
             self.failed_update(Errors.MetadataEmptyBrokerList(metadata))
             return
 
-        _new_brokers = {}
+        _new_brokers: Dict[NodeId, BrokerMetadata] = {}
         for broker in metadata.brokers:
-            if metadata.API_VERSION == 0:
-                node_id, host, port = broker
+            if isinstance(metadata, MetadataResponse_v0):
+                node_id, host, port = cast(Tuple[int, str, int], broker)
                 rack = None
             else:
-                node_id, host, port, rack = broker
+                node_id, host, port, rack = cast(Tuple[int, str, int, str], broker)
             _new_brokers.update({node_id: BrokerMetadata(node_id, host, port, rack)})
 
-        if metadata.API_VERSION == 0:
+        if isinstance(metadata, MetadataResponse_v0):
             _new_controller = None
         else:
             _new_controller = _new_brokers.get(metadata.controller_id)
 
-        _new_partitions = {}
-        _new_broker_partitions = collections.defaultdict(set)
-        _new_unauthorized_topics = set()
-        _new_internal_topics = set()
+        _new_partitions: Dict[str, Dict[int, PartitionMetadata]] = {}
+        _new_broker_partitions: Dict[NodeId, Set[TopicPartition]] = (
+            collections.defaultdict(set)
+        )
+        _new_unauthorized_topics: Set[str] = set()
+        _new_internal_topics: Set[str] = set()
 
         for topic_data in metadata.topics:
-            if metadata.API_VERSION == 0:
+            if isinstance(metadata, MetadataResponse_v0):
                 error_code, topic, partitions = topic_data
                 is_internal = False
             else:
@@ -307,7 +351,7 @@ class ClusterMetadata:
         self._last_successful_refresh_ms = now
 
         if f:
-            f.success(self)
+            f.set_result(self)
         log.debug("Updated cluster metadata to %s", self)
 
         for listener in self._listeners:
@@ -320,15 +364,19 @@ class ClusterMetadata:
             # another fetch should be unnecessary.
             self._need_update = False
 
-    def add_listener(self, listener):
+    def add_listener(self, listener: ListenerCallable) -> None:
         """Add a callback function to be called on each metadata update"""
         self._listeners.add(listener)
 
-    def remove_listener(self, listener):
+    def remove_listener(self, listener: ListenerCallable) -> None:
         """Remove a previously added listener callback"""
         self._listeners.remove(listener)
 
-    def add_group_coordinator(self, group, response):
+    def add_group_coordinator(
+        self,
+        group: str,
+        response: Union[GroupCoordinatorResponse_v0, GroupCoordinatorResponse_v1],
+    ) -> Optional[str]:
         """Update with metadata for a group coordinator
 
         Arguments:
@@ -355,7 +403,9 @@ class ClusterMetadata:
         self._groups[group] = node_id
         return node_id
 
-    def with_partitions(self, partitions_to_add):
+    def with_partitions(
+        self, partitions_to_add: Iterable[PartitionMetadata]
+    ) -> ClusterMetadata:
         """Returns a copy of cluster metadata with partitions added"""
         new_metadata = ClusterMetadata(**self.config)
         new_metadata._brokers = copy.deepcopy(self._brokers)
@@ -375,10 +425,18 @@ class ClusterMetadata:
 
         return new_metadata
 
-    def coordinator_metadata(self, node_id):
+    def coordinator_metadata(self, node_id: NodeId) -> Optional[BrokerMetadata]:
         return self._coordinators.get(node_id)
 
-    def add_coordinator(self, node_id, host, port, rack=None, *, purpose):
+    def add_coordinator(
+        self,
+        node_id: int,
+        host: str,
+        port: int,
+        rack: Optional[str] = None,
+        *,
+        purpose: Tuple[CoordinationType, str],
+    ) -> None:
         """Keep track of all coordinator nodes separately and remove them if
         a new one was elected for the same purpose (For example group
         coordinator for group X).
@@ -390,7 +448,7 @@ class ClusterMetadata:
         self._coordinators[node_id] = BrokerMetadata(node_id, host, port, rack)
         self._coordinator_by_key[purpose] = node_id
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "ClusterMetadata(brokers: %d, topics: %d, groups: %d)" % (
             len(self._brokers),
             len(self._partitions),
