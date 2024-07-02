@@ -627,7 +627,7 @@ class AIOKafkaConnection:
 
     def close(
         self, reason: Optional[CloseReason] = None, exc: Optional[Exception] = None
-    ) -> asyncio.Future[None]:
+    ) -> Optional[asyncio.Future[None]]:
         log.debug("Closing connection at %s:%s", self._host, self._port)
         if self._reader is not None:
             assert self._writer is not None
@@ -655,7 +655,6 @@ class AIOKafkaConnection:
 
         # transport.close() will close socket, but not right ahead. Return
         # a future in case we need to wait on it.
-        assert self._closed_fut is not None
         return self._closed_fut
 
     def _create_reader_task(self) -> asyncio.Task[None]:
