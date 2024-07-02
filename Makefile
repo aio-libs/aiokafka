@@ -12,6 +12,7 @@ FORMATTED_AREAS=\
 	aiokafka/helpers.py \
 	aiokafka/structs.py \
 	aiokafka/util.py \
+	aiokafka/producer/message_accumulator.py \
 	aiokafka/protocol/ \
 	aiokafka/record/ \
 	tests/test_codec.py \
