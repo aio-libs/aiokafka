@@ -352,13 +352,13 @@ class AIOKafkaProducer:
         await self.client.bootstrap()
 
         if self._compression_type == "lz4":
-            assert (
-                self.client.api_version >= (0, 8, 2)  # fmt: skip
-            ), "LZ4 Requires >= Kafka 0.8.2 Brokers"
+            assert self.client.api_version >= (0, 8, 2), (
+                "LZ4 Requires >= Kafka 0.8.2 Brokers"
+            )  # fmt: skip
         elif self._compression_type == "zstd":
-            assert (
-                self.client.api_version >= (2, 1, 0)  # fmt: skip
-            ), "Zstd Requires >= Kafka 2.1.0 Brokers"
+            assert self.client.api_version >= (2, 1, 0), (
+                "Zstd Requires >= Kafka 2.1.0 Brokers"
+            )  # fmt: skip
 
         if self._txn_manager is not None and self.client.api_version < (0, 11):
             raise UnsupportedVersionError(
@@ -490,9 +490,9 @@ class AIOKafkaProducer:
             from being sent, but cancelling the :meth:`send` coroutine itself
             **will**.
         """
-        assert (
-            value is not None or self.client.api_version >= (0, 8, 1)  # fmt: skip
-        ), "Null messages require kafka >= 0.8.1"
+        assert value is not None or self.client.api_version >= (0, 8, 1), (
+            "Null messages require kafka >= 0.8.1"
+        )  # fmt: skip
         assert not (value is None and key is None), "Need at least one: key or value"
 
         # first make sure the metadata for the topic is available
