@@ -311,6 +311,14 @@ jobs:
       - test-wheels-arm64-mac
       - test-wheels-windows
 
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    environment:
+      name: pypi
+      url: >-
+        https://pypi.org/project/aiokafka/${{ github.ref_name }}
+
     steps:
       - uses: actions/checkout@v2
       - name: Download distributions
@@ -320,6 +328,3 @@ jobs:
           path: dist/
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: ${{ secrets.PYPI_USERNAME }}
-          password: ${{ secrets.PYPI_PASSWORD }}
