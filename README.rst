@@ -71,6 +71,13 @@ Example of AIOKafkaConsumer usage:
 
     asyncio.run(consume())
 
+
+Documentation
+-------------
+
+https://aiokafka.readthedocs.io/
+
+
 Running tests
 -------------
 
