@@ -93,8 +93,6 @@ Installation
 
     pip install aiokafka
 
-.. note:: **aiokafka** requires the kafka-python_ library.
-
 
 Optional LZ4 install
 ++++++++++++++++++++
