@@ -114,7 +114,7 @@ This option will change a bit the logic on message delivery:
     * The above mentioned ``ack="all"`` will be forced. If any other value is
       explicitly passed with ``enable_idempotence=True`` a :exc:`ValueError` will
       be raised.
-    * I contrast to general mode, will not raise :exc:`~.RequestTimedOutError`
+    * In contrast to general mode, will not raise :exc:`~.RequestTimedOutError`
       errors and will not expire batch delivery after ``request_timeout_ms``
       passed.
 
