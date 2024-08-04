@@ -57,7 +57,18 @@
 import struct
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, Sized, Tuple, Type, Union, final
+from typing import (
+    Any,
+    Callable,
+    List,
+    Optional,
+    Sequence,
+    Sized,
+    Tuple,
+    Type,
+    Union,
+    final,
+)
 
 from typing_extensions import Self, TypeIs, assert_never
 
@@ -432,7 +443,7 @@ class _DefaultRecordBatchBuilderPy(
         timestamp: Optional[int],
         key: Optional[bytes],
         value: Optional[bytes],
-        headers: List[Tuple[str, Optional[bytes]]],
+        headers: Sequence[Tuple[str, Optional[bytes]]],
         # Cache for LOAD_FAST opcodes
         encode_varint: Callable[[int, Callable[[int], None]], int] = encode_varint,
         size_of_varint: Callable[[int], int] = size_of_varint,

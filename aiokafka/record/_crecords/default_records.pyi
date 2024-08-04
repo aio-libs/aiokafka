@@ -1,4 +1,4 @@
-from typing import ClassVar, final
+from typing import ClassVar, Sequence, final
 
 from typing_extensions import Literal, Self
 
@@ -112,7 +112,7 @@ class DefaultRecordBatchBuilder(DefaultRecordBatchBuilderProtocol):
         timestamp: int | None,
         key: bytes | None,
         value: bytes | None,
-        headers: list[tuple[str, bytes | None]],
+        headers: Sequence[tuple[str, bytes | None]],
     ) -> DefaultRecordMetadata: ...
     def build(self) -> bytearray: ...
     def size(self) -> int: ...

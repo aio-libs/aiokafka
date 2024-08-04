@@ -6,6 +6,7 @@ from typing import (
     Callable,
     Dict,
     List,
+    NewType,
     Optional,
     Sequence,
     Tuple,
@@ -423,3 +424,6 @@ class CompactArray(Array):
         if length == -1:
             return None
         return [self.array_of.decode(data) for _ in range(length)]
+
+
+BrokerId = NewType("BrokerId", int)
