@@ -1,4 +1,5 @@
 import abc
+from typing import Dict
 
 
 class ConsumerRebalanceListener(abc.ABC):
@@ -103,7 +104,7 @@ class AbstractTokenProvider(abc.ABC):
     """
 
     @abc.abstractmethod
-    async def token(self):
+    async def token(self) -> str:
         """
         An async callback returning a :class:`str` ID/Access Token to be sent to
         the Kafka client. In case where a synchronous callback is needed,
@@ -122,7 +123,7 @@ class AbstractTokenProvider(abc.ABC):
                     # The actual synchronous token callback.
         """
 
-    def extensions(self):
+    def extensions(self) -> Dict[str, str]:
         """
         This is an OPTIONAL method that may be implemented.
 
