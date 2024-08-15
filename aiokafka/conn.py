@@ -719,7 +719,13 @@ class ScramAuthenticator(BaseSaslAuthenticator):
         self._authenticator = self.authenticator_scram()
 
     def first_message(self):
-        client_first_bare = f"n={self._sasl_plain_username},r={self._nonce}"
+        # The characters ',' or '=' in usernames are sent as '=2C' and
+        # '=3D' respectively.
+        # https://datatracker.ietf.org/doc/html/rfc5802#section-5.1
+        quoted_username = (
+            self._sasl_plain_username.replace("=", "=3D").replace( ",", "=2C")
+        )  # fmt: skip
+        client_first_bare = f"n={quoted_username},r={self._nonce}"
         self._auth_message += client_first_bare
         return "n,," + client_first_bare
 
