@@ -1133,14 +1133,6 @@ class GroupCoordinator(BaseCoordinator):
                         self.request_rejoin()
                     else:
                         self.reset_generation()
-                    # need to re-join group
-                    error = error_type(self.group_id)
-                    log.error(
-                        "OffsetCommit failed for group %s due to group"
-                        " error (%s), will rejoin",
-                        self.group_id,
-                        error,
-                    )
                     errored[tp] = error
 
                 else:
