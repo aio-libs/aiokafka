@@ -8,6 +8,7 @@ from typing import (
     List,
     Optional,
     Protocol,
+    Sequence,
     Tuple,
     Union,
     runtime_checkable,
@@ -30,7 +31,7 @@ from ._types import (
 class DefaultRecordBatchBuilderProtocol(Protocol):
     def __init__(
         self,
-        magic: int,
+        magic: Literal[2],
         compression_type: DefaultCompressionTypeT,
         is_transactional: int,
         producer_id: int,
@@ -44,7 +45,7 @@ class DefaultRecordBatchBuilderProtocol(Protocol):
         timestamp: Optional[int],
         key: Optional[bytes],
         value: Optional[bytes],
-        headers: List[Tuple[str, Optional[bytes]]],
+        headers: Sequence[Tuple[str, Optional[bytes]]],
     ) -> Optional[DefaultRecordMetadataProtocol]: ...
     def build(self) -> bytearray: ...
     def size(self) -> int: ...
