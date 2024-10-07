@@ -693,7 +693,7 @@ class AIOKafkaClient:
             err = error_type()
             raise err
         self.cluster.add_coordinator(
-            resp.coordinator_id,
+            str(resp.coordinator_id),
             resp.host,
             resp.port,
             rack=None,
