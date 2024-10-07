@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Generic, List, NamedTuple, Optional, Sequence, Tuple, TypeVar
+from typing import Generic, List, NamedTuple, Optional, Sequence, Tuple, TypeVar, Union
 
 from aiokafka.errors import KafkaError
 
@@ -26,7 +26,7 @@ class TopicPartition(NamedTuple):
 class BrokerMetadata(NamedTuple):
     """A Kafka broker metadata used by admin tools"""
 
-    nodeId: int
+    nodeId: Union[int, str]
     "The Kafka broker id"
 
     host: str
