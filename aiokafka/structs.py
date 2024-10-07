@@ -26,7 +26,7 @@ class TopicPartition(NamedTuple):
 class BrokerMetadata(NamedTuple):
     """A Kafka broker metadata used by admin tools"""
 
-    nodeId: int
+    nodeId: str
     "The Kafka broker id"
 
     host: str
