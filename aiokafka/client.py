@@ -3,6 +3,7 @@ import contextlib
 import logging
 import random
 import time
+from enum import IntEnum
 
 import aiokafka.errors as Errors
 from aiokafka import __version__
@@ -40,12 +41,12 @@ __all__ = ["AIOKafkaClient"]
 log = logging.getLogger("aiokafka")
 
 
-class ConnectionGroup:
+class ConnectionGroup(IntEnum):
     DEFAULT = 0
     COORDINATION = 1
 
 
-class CoordinationType:
+class CoordinationType(IntEnum):
     GROUP = 0
     TRANSACTION = 1
 

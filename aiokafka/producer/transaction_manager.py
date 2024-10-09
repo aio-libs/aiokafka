@@ -1,5 +1,5 @@
 from collections import defaultdict, deque, namedtuple
-from enum import Enum
+from enum import Enum, IntEnum
 
 from aiokafka.structs import TopicPartition
 from aiokafka.util import create_future
@@ -16,7 +16,7 @@ class SubscriptionType(Enum):
     USER_ASSIGNED = 4
 
 
-class TransactionResult:
+class TransactionResult(IntEnum):
     ABORT = 0
     COMMIT = 1
 
