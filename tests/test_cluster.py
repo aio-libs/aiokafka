@@ -20,7 +20,7 @@ def test_empty_broker_list():
     )
     assert len(cluster.brokers()) == 2
 
-def test_request_update(self):
+def test_request_update():
     cluster = ClusterMetadata()
     updated_cluster = cluster.request_update().result()
     assert updated_cluster == cluster
