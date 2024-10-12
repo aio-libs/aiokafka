@@ -1,3 +1,4 @@
+from aiokafka import errors
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.protocol.metadata import MetadataResponse
 
@@ -20,13 +21,20 @@ def test_empty_broker_list():
     )
     assert len(cluster.brokers()) == 2
 
-def test_request_update():
+def test_request_update_expecting_success():
     cluster = ClusterMetadata()
     updated_cluster = cluster.request_update()
     cluster.update_metadata(
-        MetadataResponse[0](
+        MetadataResponse[0]([(0, "foo", 12), (1, "bar", 34)], []),
+    )
+    assert updated_cluster.result() == cluster
+
+def test_request_update_expecting_failure():
+    cluster = ClusterMetadata()
+    updated_cluster = cluster.request_update()
+    test_metadata = MetadataResponse[0](
             [],  # empty brokers
             [(17, "foo", []), (17, "bar", [])],  # topics w/ error
         )
-    )
-    assert updated_cluster.result() == cluster
+    cluster.update_metadata(test_metadata)
+    assert updated_cluster.exception() == errors.MetadataEmptyBrokerList(test_metadata)
