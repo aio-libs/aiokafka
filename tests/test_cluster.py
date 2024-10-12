@@ -1,9 +1,5 @@
-import unittest
-
-import pytest
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.protocol.metadata import MetadataResponse
-from tests._testutil import run_until_complete
 
 
 def test_empty_broker_list():
@@ -24,10 +20,7 @@ def test_empty_broker_list():
     )
     assert len(cluster.brokers()) == 2
 
-@pytest.mark.usefixtures("setup_test_class_serverless")
-class TestClusterMetadata(unittest.TestCase):
-    @run_until_complete
-    async def test_request_update(self):
-        cluster = ClusterMetadata()
-        updated_cluster = await cluster.request_update()
-        assert updated_cluster == cluster
+def test_request_update(self):
+    cluster = ClusterMetadata()
+    updated_cluster = cluster.request_update().result()
+    assert updated_cluster == cluster
