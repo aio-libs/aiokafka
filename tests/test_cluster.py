@@ -1,5 +1,6 @@
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.protocol.metadata import MetadataResponse
+from tests._testutil import run_until_complete
 
 
 def test_empty_broker_list():
@@ -19,3 +20,8 @@ def test_empty_broker_list():
         )
     )
     assert len(cluster.brokers()) == 2
+
+@run_until_complete
+async def test_request_update(self):
+    cluster = ClusterMetadata()
+    cluster.request_update()
