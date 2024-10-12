@@ -209,7 +209,7 @@ class ClusterMetadata:
                 f = self._future
                 self._future = None
         if f:
-            f.failure(exception)
+            f.set_exception(exception)
         self._last_refresh_ms = time.time() * 1000
 
     def update_metadata(self, metadata):
@@ -307,7 +307,7 @@ class ClusterMetadata:
         self._last_successful_refresh_ms = now
 
         if f:
-            f.success(self)
+            f.set_result(self)
         log.debug("Updated cluster metadata to %s", self)
 
         for listener in self._listeners:
