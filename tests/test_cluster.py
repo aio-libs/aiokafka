@@ -21,7 +21,7 @@ def test_empty_broker_list():
     )
     assert len(cluster.brokers()) == 2
 
-@run_until_complete
 async def test_request_update(self):
     cluster = ClusterMetadata()
-    cluster.request_update()
+    updated_cluster = await cluster.request_update()
+    assert updated_cluster == cluster
