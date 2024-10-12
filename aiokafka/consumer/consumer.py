@@ -4,6 +4,7 @@ import re
 import sys
 import traceback
 import warnings
+from typing import Dict, Generic, List, TypeVar
 
 from aiokafka import __version__
 from aiokafka.abc import ConsumerRebalanceListener
@@ -26,7 +27,11 @@ from .subscription_state import SubscriptionState
 log = logging.getLogger(__name__)
 
 
-class AIOKafkaConsumer:
+KT = TypeVar("KT", covariant=True)
+VT = TypeVar("VT", covariant=True)
+
+
+class AIOKafkaConsumer(Generic[KT, VT]):
     """
     A client that consumes records from a Kafka cluster.
 
