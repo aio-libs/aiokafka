@@ -120,8 +120,8 @@ class RecordMetadata(NamedTuple):
     ""
 
 
-KT = TypeVar("KT")
-VT = TypeVar("VT")
+KT = TypeVar("KT", covariant=True)
+VT = TypeVar("VT", covariant=True)
 
 
 @dataclass
