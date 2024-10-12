@@ -22,5 +22,11 @@ def test_empty_broker_list():
 
 def test_request_update():
     cluster = ClusterMetadata()
-    updated_cluster = cluster.request_update().result()
-    assert updated_cluster == cluster
+    updated_cluster = cluster.request_update()
+    cluster.update_metadata(
+        MetadataResponse[0](
+            [],  # empty brokers
+            [(17, "foo", []), (17, "bar", [])],  # topics w/ error
+        )
+    )
+    assert updated_cluster.result() == cluster
