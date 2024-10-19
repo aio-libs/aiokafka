@@ -1,3 +1,5 @@
+from enum import IntEnum
+
 from aiokafka.metrics.compound_stat import AbstractCompoundStat, NamedMeasurable
 from aiokafka.metrics.measurable import AnonMeasurable
 
@@ -5,7 +7,7 @@ from .histogram import Histogram
 from .sampled_stat import AbstractSampledStat
 
 
-class BucketSizing:
+class BucketSizing(IntEnum):
     CONSTANT = 0
     LINEAR = 1
 

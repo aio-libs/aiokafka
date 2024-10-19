@@ -15,6 +15,7 @@ import traceback
 import uuid
 import warnings
 import weakref
+from enum import IntEnum
 
 import async_timeout
 
@@ -45,7 +46,7 @@ READER_LIMIT = 2**16
 SASL_QOP_AUTH = 1
 
 
-class CloseReason:
+class CloseReason(IntEnum):
     CONNECTION_BROKEN = 0
     CONNECTION_TIMEOUT = 1
     OUT_OF_SYNC = 2
