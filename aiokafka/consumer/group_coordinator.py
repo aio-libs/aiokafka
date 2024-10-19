@@ -477,10 +477,7 @@ class GroupCoordinator(BaseCoordinator):
         # so we force a snapshot update.
         self._metadata_snapshot = self._get_metadata_snapshot()
 
-        group_assignment = {}
-        for member_id, assignment in assignments.items():
-            group_assignment[member_id] = assignment
-        return group_assignment
+        return assignments
 
     async def _on_join_complete(
         self, generation, member_id, protocol, member_assignment_bytes
@@ -1210,15 +1207,15 @@ class GroupCoordinator(BaseCoordinator):
     async def _do_fetch_commit_offsets(self, partitions):
         log.debug("Fetching committed offsets for partitions: %s", partitions)
         # construct the request
-        topic_partitions = collections.defaultdict(list)
+        partitions_by_topic = collections.defaultdict(list)
         for tp in partitions:
-            topic_partitions[tp.topic].append(tp.partition)
+            partitions_by_topic[tp.topic].append(tp.partition)
 
-        request = OffsetFetchRequest(self.group_id, list(topic_partitions.items()))
+        request = OffsetFetchRequest(self.group_id, list(partitions_by_topic.items()))
         response = await self._send_req(request)
         offsets = {}
-        for topic, partitions in response.topics:
-            for partition, offset, metadata, error_code in partitions:
+        for topic, topic_partitions in response.topics:
+            for partition, offset, metadata, error_code in topic_partitions:
                 tp = TopicPartition(topic, partition)
                 error_type = Errors.for_code(error_code)
                 if error_type is not Errors.NoError:
