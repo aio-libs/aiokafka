@@ -5,8 +5,10 @@ import copy
 import logging
 import time
 from asyncio import Event, shield
+from collections.abc import Iterable
 from enum import Enum
-from typing import Dict, Iterable, Pattern, Set
+from re import Pattern
+from typing import Dict, Set
 
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.errors import IllegalStateError

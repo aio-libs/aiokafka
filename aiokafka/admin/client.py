@@ -1,8 +1,9 @@
 import asyncio
 import logging
 from collections import defaultdict
+from collections.abc import Sequence
 from ssl import SSLContext
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import async_timeout
 

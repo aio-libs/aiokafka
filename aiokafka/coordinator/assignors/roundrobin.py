@@ -1,7 +1,8 @@
 import collections
 import itertools
 import logging
-from typing import Dict, Iterable, List, Mapping
+from collections.abc import Iterable, Mapping
+from typing import Dict, List
 
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor

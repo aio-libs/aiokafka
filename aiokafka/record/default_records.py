@@ -56,8 +56,9 @@
 
 import struct
 import time
+from collections.abc import Sized
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, Sized, Tuple, Type, Union, final
+from typing import Any, Callable, List, Optional, Tuple, Type, Union, final
 
 from typing_extensions import Self, TypeIs, assert_never
 
@@ -518,8 +519,7 @@ class _DefaultRecordBatchBuilderPy(
 
         # Those should be updated after the length check
         assert self._max_timestamp is not None
-        if self._max_timestamp < timestamp:
-            self._max_timestamp = timestamp
+        self._max_timestamp = max(self._max_timestamp, timestamp)
         self._num_records += 1
         self._last_offset = offset
 

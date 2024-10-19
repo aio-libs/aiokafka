@@ -1,10 +1,8 @@
+from collections.abc import Collection, Iterable, Iterator
 from typing import (
     Any,
     Callable,
-    Collection,
     Generic,
-    Iterable,
-    Iterator,
     Optional,
     Set,
     TypeVar,

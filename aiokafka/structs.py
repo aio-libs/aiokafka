@@ -1,5 +1,6 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Generic, List, NamedTuple, Optional, Sequence, Tuple, TypeVar
+from typing import Generic, List, NamedTuple, Optional, Tuple, TypeVar
 
 from aiokafka.errors import KafkaError
 

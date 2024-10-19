@@ -1,4 +1,5 @@
-from typing import Callable, Iterable, Tuple, Union
+from collections.abc import Iterable
+from typing import Callable, Tuple, Union
 
 from aiokafka.util import NO_EXTENSIONS
 

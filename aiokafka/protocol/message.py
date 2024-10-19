@@ -1,7 +1,8 @@
 import io
 import time
 from binascii import crc32
-from typing import Iterable, List, Literal, Optional, Tuple, Union, cast, overload
+from collections.abc import Iterable
+from typing import List, Literal, Optional, Tuple, Union, cast, overload
 
 from typing_extensions import Self
 

@@ -3,10 +3,9 @@ from __future__ import annotations
 import asyncio
 import os
 from asyncio import AbstractEventLoop
+from collections.abc import Awaitable, Coroutine
 from typing import (
     Any,
-    Awaitable,
-    Coroutine,
     Dict,
     Optional,
     Tuple,
@@ -78,7 +77,7 @@ def commit_structure_validate(
         else:
             try:
                 offset, metadata = offset_and_metadata
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raise ValueError(offsets) from exc
 
             if not isinstance(metadata, str):

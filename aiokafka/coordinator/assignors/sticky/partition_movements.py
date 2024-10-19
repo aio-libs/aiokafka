@@ -1,7 +1,8 @@
 import logging
 from collections import defaultdict
+from collections.abc import Sequence
 from copy import deepcopy
-from typing import Any, Dict, List, NamedTuple, Sequence, Set, Tuple
+from typing import Any, Dict, List, NamedTuple, Set, Tuple
 
 from aiokafka.structs import TopicPartition
 

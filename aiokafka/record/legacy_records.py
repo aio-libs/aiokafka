@@ -3,8 +3,9 @@ from __future__ import annotations
 import struct
 import time
 from binascii import crc32
+from collections.abc import Generator
 from dataclasses import dataclass
-from typing import Any, Generator, List, Optional, Tuple, Type, Union, final
+from typing import Any, List, Optional, Tuple, Type, Union, final
 
 from typing_extensions import Literal, Never, TypeIs, assert_never
 

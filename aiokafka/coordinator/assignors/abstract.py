@@ -1,6 +1,7 @@
 import abc
 import logging
-from typing import Dict, Iterable, Mapping
+from collections.abc import Iterable, Mapping
+from typing import Dict
 
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.coordinator.protocol import (

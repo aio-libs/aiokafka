@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from typing import (
     Any,
     ClassVar,
-    Iterable,
-    Iterator,
     List,
     Optional,
     Protocol,

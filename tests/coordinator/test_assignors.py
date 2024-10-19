@@ -1,6 +1,7 @@
 from collections import defaultdict
+from collections.abc import Generator, Sequence
 from random import randint, sample
-from typing import Callable, Dict, Generator, Optional, Sequence, Set
+from typing import Callable, Dict, Optional, Set
 from unittest.mock import MagicMock
 
 import pytest

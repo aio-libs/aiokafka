@@ -344,7 +344,7 @@ def test_compact_data_structs() -> None:
     assert arr.decode(io.BytesIO(b"\x00")) is None
     enc = arr.encode([])
     assert enc == b"\x01"
-    assert [] == arr.decode(io.BytesIO(enc))
+    assert arr.decode(io.BytesIO(enc)) == []
     encoded = arr.encode(["foo", "bar", "baz", "quux"])
     assert arr.decode(io.BytesIO(encoded)) == ["foo", "bar", "baz", "quux"]
 

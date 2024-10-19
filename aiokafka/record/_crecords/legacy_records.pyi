@@ -1,4 +1,5 @@
-from typing import Any, ClassVar, Generator, final
+from collections.abc import Generator
+from typing import Any, ClassVar, final
 
 from typing_extensions import Buffer, Literal, Never
 

@@ -1,4 +1,5 @@
-from typing import Any, Iterable, Type, TypeVar
+from collections.abc import Iterable
+from typing import Any, Type, TypeVar
 
 __all__ = [
     # aiokafka custom errors

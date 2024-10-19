@@ -1,19 +1,21 @@
 import contextlib
 import logging
 from collections import defaultdict
+from collections.abc import (
+    Collection,
+    Iterable,
+    Mapping,
+    MutableSequence,
+    Sequence,
+    Sized,
+)
 from copy import deepcopy
 from typing import (
     Any,
-    Collection,
     Dict,
-    Iterable,
     List,
-    Mapping,
-    MutableSequence,
     NamedTuple,
     Optional,
-    Sequence,
-    Sized,
     Tuple,
 )
 

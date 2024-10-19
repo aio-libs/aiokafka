@@ -23,7 +23,7 @@ pycrc 0.7.1 (http://www.tty1.net/pycrc/). Command line used:
 """
 
 import array
-from typing import Iterable
+from collections.abc import Iterable
 
 # fmt: off
 CRC_TABLE = (
