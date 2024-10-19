@@ -9,4 +9,4 @@ docker==7.0.0
 # TODO Remove this pi after update of `docker`
 # https://github.com/docker/docker-py/pull/3257
 requests==2.31.0
-cramjam==2.8.0
+cramjam==2.9.0

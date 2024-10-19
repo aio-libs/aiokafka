@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
         with:
-          python-version: "3.8"
+          python-version: "3.9"
       - name: Prepare C files to include
         run: |
           python -m pip install --upgrade pip build
@@ -52,7 +52,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
         with:
-          python-version: "3.8"
+          python-version: "3.9"
       - name: Set up QEMU
         if: ${{ matrix.arch == 'aarch64' }}
         uses: docker/setup-qemu-action@v1
@@ -82,10 +82,8 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
-          - python: "3.8"
-            aiokafka_whl: dist/aiokafka-*-cp38-cp38-win_amd64.whl
           - python: "3.9"
             aiokafka_whl: dist/aiokafka-*-cp39-cp39-win_amd64.whl
           - python: "3.10"
@@ -94,6 +92,8 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp311-cp311-win_amd64.whl
           - python: "3.12"
             aiokafka_whl: dist/aiokafka-*-cp312-cp312-win_amd64.whl
+          - python: "3.13"
+            aiokafka_whl: dist/aiokafka-*-cp313-cp313-win_amd64.whl
 
     steps:
       - uses: actions/checkout@v2
@@ -127,10 +127,8 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
-          - python: "3.8"
-            aiokafka_whl: dist/aiokafka-*-cp38-cp38-macosx_*_x86_64.whl
           - python: "3.9"
             aiokafka_whl: dist/aiokafka-*-cp39-cp39-macosx_*_x86_64.whl
           - python: "3.10"
@@ -139,6 +137,8 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp311-cp311-macosx_*_x86_64.whl
           - python: "3.12"
             aiokafka_whl: dist/aiokafka-*-cp312-cp312-macosx_*_x86_64.whl
+          - python: "3.13"
+            aiokafka_whl: dist/aiokafka-*-cp313-cp313-macosx_*_x86_64.whl
 
     steps:
       - uses: actions/checkout@v2
@@ -170,10 +170,8 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
-          - python: "3.8"
-            aiokafka_whl: dist/aiokafka-*-cp38-cp38-macosx_*_arm64.whl
           - python: "3.9"
             aiokafka_whl: dist/aiokafka-*-cp39-cp39-macosx_*_arm64.whl
           - python: "3.10"
@@ -182,6 +180,8 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp311-cp311-macosx_*_arm64.whl
           - python: "3.12"
             aiokafka_whl: dist/aiokafka-*-cp312-cp312-macosx_*_arm64.whl
+          - python: "3.13"
+            aiokafka_whl: dist/aiokafka-*-cp313-cp313-macosx_*_arm64.whl
 
     steps:
       - uses: actions/checkout@v2
@@ -213,10 +213,8 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
-          - python: "3.8"
-            aiokafka_whl: dist/aiokafka-*-cp38-cp38-manylinux*_x86_64.whl
           - python: "3.9"
             aiokafka_whl: dist/aiokafka-*-cp39-cp39-manylinux*_x86_64.whl
           - python: "3.10"
@@ -225,6 +223,8 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp311-cp311-manylinux*_x86_64.whl
           - python: "3.12"
             aiokafka_whl: dist/aiokafka-*-cp312-cp312-manylinux*_x86_64.whl
+          - python: "3.13"
+            aiokafka_whl: dist/aiokafka-*-cp313-cp313-manylinux*_x86_64.whl
 
     steps:
       - uses: actions/checkout@v2
