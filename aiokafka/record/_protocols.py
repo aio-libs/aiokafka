@@ -4,10 +4,8 @@ from collections.abc import Iterable, Iterator
 from typing import (
     Any,
     ClassVar,
-    List,
     Optional,
     Protocol,
-    Tuple,
     Union,
     runtime_checkable,
 )
@@ -43,7 +41,7 @@ class DefaultRecordBatchBuilderProtocol(Protocol):
         timestamp: Optional[int],
         key: Optional[bytes],
         value: Optional[bytes],
-        headers: List[Tuple[str, Optional[bytes]]],
+        headers: list[tuple[str, Optional[bytes]]],
     ) -> Optional[DefaultRecordMetadataProtocol]: ...
     def build(self) -> bytearray: ...
     def size(self) -> int: ...
@@ -53,21 +51,21 @@ class DefaultRecordBatchBuilderProtocol(Protocol):
         timestamp: int,
         key: Optional[bytes],
         value: Optional[bytes],
-        headers: List[Tuple[str, Optional[bytes]]],
+        headers: list[tuple[str, Optional[bytes]]],
     ) -> int: ...
     @classmethod
     def size_of(
         cls,
         key: Optional[bytes],
         value: Optional[bytes],
-        headers: List[Tuple[str, Optional[bytes]]],
+        headers: list[tuple[str, Optional[bytes]]],
     ) -> int: ...
     @classmethod
     def estimate_size_in_bytes(
         cls,
         key: Optional[bytes],
         value: Optional[bytes],
-        headers: List[Tuple[str, Optional[bytes]]],
+        headers: list[tuple[str, Optional[bytes]]],
     ) -> int: ...
     def set_producer_state(
         self, producer_id: int, producer_epoch: int, base_sequence: int
@@ -143,7 +141,7 @@ class DefaultRecordProtocol(Protocol):
         timestamp_type: int,
         key: Optional[bytes],
         value: Optional[bytes],
-        headers: List[Tuple[str, Optional[bytes]]],
+        headers: list[tuple[str, Optional[bytes]]],
     ) -> None: ...
     @property
     def offset(self) -> int: ...
@@ -164,7 +162,7 @@ class DefaultRecordProtocol(Protocol):
         """Bytes value or None"""
 
     @property
-    def headers(self) -> List[Tuple[str, Optional[bytes]]]: ...
+    def headers(self) -> list[tuple[str, Optional[bytes]]]: ...
     @property
     def checksum(self) -> None: ...
 
@@ -261,7 +259,7 @@ class LegacyRecordProtocol(Protocol):
         """Bytes value or None"""
 
     @property
-    def headers(self) -> List[Never]: ...
+    def headers(self) -> list[Never]: ...
     @property
     def checksum(self) -> int: ...
 

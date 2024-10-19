@@ -1,5 +1,5 @@
 import struct
-from typing import Optional, Tuple
+from typing import Optional
 from unittest import mock
 
 import pytest
@@ -25,7 +25,7 @@ def test_read_write_serde_v0_v1_no_compression(
     magic: Literal[0, 1],
     key: Optional[bytes],
     value: Optional[bytes],
-    checksum: Tuple[int, int],
+    checksum: tuple[int, int],
 ) -> None:
     builder = LegacyRecordBatchBuilder(
         magic=magic, compression_type=0, batch_size=1024 * 1024

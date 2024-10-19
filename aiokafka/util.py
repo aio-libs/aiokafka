@@ -6,9 +6,7 @@ from asyncio import AbstractEventLoop
 from collections.abc import Awaitable, Coroutine
 from typing import (
     Any,
-    Dict,
     Optional,
-    Tuple,
     TypeVar,
     Union,
     cast,
@@ -49,11 +47,11 @@ async def wait_for(fut: Awaitable[T], timeout: Union[None, int, float] = None) -
         return await fut
 
 
-def parse_kafka_version(api_version: str) -> Tuple[int, int, int]:
+def parse_kafka_version(api_version: str) -> tuple[int, int, int]:
     parsed = Version(api_version).release
     if not 2 <= len(parsed) <= 3:
         raise ValueError(api_version)
-    version = cast(Tuple[int, int, int], (*parsed, 0)[:3])
+    version = cast(tuple[int, int, int], (*parsed, 0)[:3])
 
     if not (0, 9) <= version < (3, 0):
         raise ValueError(api_version)
@@ -61,8 +59,8 @@ def parse_kafka_version(api_version: str) -> Tuple[int, int, int]:
 
 
 def commit_structure_validate(
-    offsets: Dict[TopicPartition, Union[int, Tuple[int, str], OffsetAndMetadata]],
-) -> Dict[TopicPartition, OffsetAndMetadata]:
+    offsets: dict[TopicPartition, Union[int, tuple[int, str], OffsetAndMetadata]],
+) -> dict[TopicPartition, OffsetAndMetadata]:
     # validate `offsets` structure
     if not offsets or not isinstance(offsets, dict):
         raise ValueError(offsets)

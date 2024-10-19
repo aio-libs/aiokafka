@@ -1,4 +1,4 @@
-from typing import List, NamedTuple
+from typing import NamedTuple
 
 from aiokafka.protocol.struct import Struct
 from aiokafka.protocol.types import Array, Bytes, Int16, Int32, Schema, String
@@ -7,7 +7,7 @@ from aiokafka.structs import TopicPartition
 
 class ConsumerProtocolMemberMetadata(Struct):
     version: int
-    subscription: List[str]
+    subscription: list[str]
     user_data: bytes
 
     SCHEMA = Schema(
@@ -20,10 +20,10 @@ class ConsumerProtocolMemberMetadata(Struct):
 class ConsumerProtocolMemberAssignment(Struct):
     class Assignment(NamedTuple):
         topic: str
-        partitions: List[int]
+        partitions: list[int]
 
     version: int
-    assignment: List[Assignment]
+    assignment: list[Assignment]
     user_data: bytes
 
     SCHEMA = Schema(
@@ -32,7 +32,7 @@ class ConsumerProtocolMemberAssignment(Struct):
         ("user_data", Bytes),
     )
 
-    def partitions(self) -> List[TopicPartition]:
+    def partitions(self) -> list[TopicPartition]:
         return [
             TopicPartition(topic, partition)
             for topic, partitions in self.assignment

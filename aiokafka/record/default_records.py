@@ -58,7 +58,7 @@ import struct
 import time
 from collections.abc import Sized
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, Tuple, Type, Union, final
+from typing import Any, Callable, Optional, Union, final
 
 from typing_extensions import Self, TypeIs, assert_never
 
@@ -157,7 +157,7 @@ class DefaultRecordBase:
 class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
     def __init__(self, buffer: Union[bytes, bytearray, memoryview]) -> None:
         self._buffer = bytearray(buffer)
-        self._header_data: Tuple[
+        self._header_data: tuple[
             int, int, int, int, int, int, int, int, int, int, int, int, int
         ] = self.HEADER_STRUCT.unpack_from(self._buffer)
         self._pos = self.HEADER_STRUCT.size
@@ -246,7 +246,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
         self._decompressed = True
 
     def _read_msg(
-        self, decode_varint: Callable[[bytearray, int], Tuple[int, int]] = decode_varint
+        self, decode_varint: Callable[[bytearray, int], tuple[int, int]] = decode_varint
     ) -> "_DefaultRecordPy":
         # Record =>
         #   Length => Varint
@@ -293,7 +293,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
             raise CorruptRecordException(
                 f"Found invalid number of record headers {header_count}"
             )
-        headers: List[Tuple[str, Optional[bytes]]] = []
+        headers: list[tuple[str, Optional[bytes]]] = []
         while header_count:
             # Header key is of type String, that can't be None
             h_key_len, pos = decode_varint(buffer, pos)
@@ -368,7 +368,7 @@ class _DefaultRecordPy(DefaultRecordProtocol):
     timestamp_type: int
     key: Optional[bytes]
     value: Optional[bytes]
-    headers: List[Tuple[str, Optional[bytes]]]
+    headers: list[tuple[str, Optional[bytes]]]
 
     @property
     def checksum(self) -> None:
@@ -433,19 +433,19 @@ class _DefaultRecordBatchBuilderPy(
         timestamp: Optional[int],
         key: Optional[bytes],
         value: Optional[bytes],
-        headers: List[Tuple[str, Optional[bytes]]],
+        headers: list[tuple[str, Optional[bytes]]],
         # Cache for LOAD_FAST opcodes
         encode_varint: Callable[[int, Callable[[int], None]], int] = encode_varint,
         size_of_varint: Callable[[int], int] = size_of_varint,
         get_type: Callable[[Any], type] = type,
-        type_int: Type[int] = int,
+        type_int: type[int] = int,
         time_time: Callable[[], float] = time.time,
-        byte_like: Tuple[Type[bytes], Type[bytearray], Type[memoryview]] = (
+        byte_like: tuple[type[bytes], type[bytearray], type[memoryview]] = (
             bytes,
             bytearray,
             memoryview,
         ),
-        bytearray_type: Type[bytearray] = bytearray,
+        bytearray_type: type[bytearray] = bytearray,
         len_func: Callable[[Sized], int] = len,
         zero_len_varint: int = 1,
     ) -> Optional["_DefaultRecordMetadataPy"]:
@@ -593,7 +593,7 @@ class _DefaultRecordBatchBuilderPy(
         timestamp: int,
         key: Optional[bytes],
         value: Optional[bytes],
-        headers: List[Tuple[str, Optional[bytes]]],
+        headers: list[tuple[str, Optional[bytes]]],
     ) -> int:
         if self._first_timestamp is not None:
             timestamp_delta = timestamp - self._first_timestamp
@@ -612,7 +612,7 @@ class _DefaultRecordBatchBuilderPy(
         cls,
         key: Optional[bytes],
         value: Optional[bytes],
-        headers: List[Tuple[str, Optional[bytes]]],
+        headers: list[tuple[str, Optional[bytes]]],
     ) -> int:
         size = 0
         # Key size
@@ -645,7 +645,7 @@ class _DefaultRecordBatchBuilderPy(
         cls,
         key: Optional[bytes],
         value: Optional[bytes],
-        headers: List[Tuple[str, Optional[bytes]]],
+        headers: list[tuple[str, Optional[bytes]]],
     ) -> int:
         """Get the upper bound estimate on the size of record"""
         return (
@@ -694,10 +694,10 @@ class _DefaultRecordMetadataPy(DefaultRecordMetadataProtocol):
         )
 
 
-DefaultRecordBatchBuilder: Type[DefaultRecordBatchBuilderProtocol]
-DefaultRecordMetadata: Type[DefaultRecordMetadataProtocol]
-DefaultRecordBatch: Type[DefaultRecordBatchProtocol]
-DefaultRecord: Type[DefaultRecordProtocol]
+DefaultRecordBatchBuilder: type[DefaultRecordBatchBuilderProtocol]
+DefaultRecordMetadata: type[DefaultRecordMetadataProtocol]
+DefaultRecordBatch: type[DefaultRecordBatchProtocol]
+DefaultRecord: type[DefaultRecordProtocol]
 
 if NO_EXTENSIONS:
     DefaultRecordBatchBuilder = _DefaultRecordBatchBuilderPy

@@ -72,7 +72,7 @@ def kafka_versions(*versions):
             op_str = s[0:2]  # >= <=
             v_str = s[2:]
         else:
-            raise ValueError("Unrecognized kafka version / operator: %s" % s)
+            raise ValueError(f"Unrecognized kafka version / operator: {s}")
 
         op_map = {
             "=": operator.eq,

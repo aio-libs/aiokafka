@@ -1,11 +1,10 @@
 import struct
-from typing import List, Tuple
 
 import pytest
 
 from aiokafka.record import util
 
-varint_data: List[Tuple[bytes, int]] = [
+varint_data: list[tuple[bytes, int]] = [
     (b"\x00", 0),
     (b"\x01", -1),
     (b"\x02", 1),

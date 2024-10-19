@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from typing import Any, Type, TypeVar
+from typing import Any, TypeVar
 
 __all__ = [
     # aiokafka custom errors
@@ -873,5 +873,5 @@ def _iter_subclasses(cls: _T) -> Iterable[_T]:
 kafka_errors = {x.errno: x for x in _iter_subclasses(BrokerResponseError)}
 
 
-def for_code(error_code: int) -> Type[BrokerResponseError]:
+def for_code(error_code: int) -> type[BrokerResponseError]:
     return kafka_errors.get(error_code, UnknownError)

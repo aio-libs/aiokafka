@@ -174,7 +174,7 @@ class AIOKafkaClient:
         return self._get_conn_lock_value
 
     def __repr__(self):
-        return "<AIOKafkaClient client_id=%s>" % self._client_id
+        return f"<AIOKafkaClient client_id={self._client_id}>"
 
     @property
     def api_version(self):
@@ -483,9 +483,7 @@ class AIOKafkaClient:
 
     async def ready(self, node_id, *, group=ConnectionGroup.DEFAULT):
         conn = await self._get_conn(node_id, group=group)
-        if conn is None:
-            return False
-        return True
+        return conn is not None
 
     async def send(self, node_id, request, *, group=ConnectionGroup.DEFAULT):
         """Send a request to a specific node.

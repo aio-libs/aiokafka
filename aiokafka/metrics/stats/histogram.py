@@ -37,7 +37,7 @@ class Histogram:
             for i, value in enumerate(self._hist[:-1])
         ]
         values.append("{}:{}".format(float("inf"), self._hist[-1]))
-        return "{%s}" % ",".join(values)
+        return "{{{}}}".format(",".join(values))
 
     class ConstantBinScheme:
         def __init__(self, bins, min_val, max_val):

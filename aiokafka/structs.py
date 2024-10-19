@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Generic, List, NamedTuple, Optional, Tuple, TypeVar
+from typing import Generic, NamedTuple, Optional, TypeVar
 
 from aiokafka.errors import KafkaError
 
@@ -55,9 +55,9 @@ class PartitionMetadata(NamedTuple):
     leader: int
     "The id of the broker that is the leader for the partition"
 
-    replicas: List[int]
+    replicas: list[int]
     "The ids of all brokers that contain replicas of the partition"
-    isr: List[int]
+    isr: list[int]
     "The ids of all brokers that contain in-sync replicas of the partition"
 
     error: Optional[KafkaError]
@@ -153,7 +153,7 @@ class ConsumerRecord(Generic[KT, VT]):
     serialized_value_size: int
     "The size of the serialized, uncompressed value in bytes."
 
-    headers: Sequence[Tuple[str, bytes]]
+    headers: Sequence[tuple[str, bytes]]
     "The headers"
 
 

@@ -877,6 +877,4 @@ class SendProduceReqHandler(BaseHandler):
         # as long as we set proper sequence, pid and epoch.
         if self._sender._txn_manager is None and batch.expired():
             return False
-        if error.retriable:
-            return True
-        return False
+        return error.retriable

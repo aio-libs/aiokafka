@@ -2,7 +2,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Sequence
 from copy import deepcopy
-from typing import Any, Dict, List, NamedTuple, Set, Tuple
+from typing import Any, NamedTuple
 
 from aiokafka.structs import TopicPartition
 
@@ -49,8 +49,8 @@ class PartitionMovements:
     """
 
     def __init__(self) -> None:
-        self.partition_movements_by_topic: Dict[str, Dict[ConsumerPair, Set[TopicPartition]]] = defaultdict(lambda: defaultdict(set))  # fmt: skip # noqa: E501
-        self.partition_movements: Dict[TopicPartition, ConsumerPair] = {}
+        self.partition_movements_by_topic: dict[str, dict[ConsumerPair, set[TopicPartition]]] = defaultdict(lambda: defaultdict(set))  # fmt: skip # noqa: E501
+        self.partition_movements: dict[TopicPartition, ConsumerPair] = {}
 
     def move_partition(
         self, partition: TopicPartition, old_consumer: str, new_consumer: str
@@ -125,12 +125,12 @@ class PartitionMovements:
         self.partition_movements[partition] = pair
         self.partition_movements_by_topic[partition.topic][pair].add(partition)
 
-    def _has_cycles(self, consumer_pairs: Set[ConsumerPair]) -> bool:
-        cycles: Set[Tuple[str, ...]] = set()
+    def _has_cycles(self, consumer_pairs: set[ConsumerPair]) -> bool:
+        cycles: set[tuple[str, ...]] = set()
         for pair in consumer_pairs:
             reduced_pairs = deepcopy(consumer_pairs)
             reduced_pairs.remove(pair)
-            path: List[str] = [pair.src_member_id]
+            path: list[str] = [pair.src_member_id]
             if self._is_linked(
                 pair.dst_member_id, pair.src_member_id, reduced_pairs, path
             ) and not self._is_subcycle(path, cycles):
@@ -148,7 +148,7 @@ class PartitionMovements:
         )
 
     @staticmethod
-    def _is_subcycle(cycle: List[str], cycles: Set[Tuple[str, ...]]) -> bool:
+    def _is_subcycle(cycle: list[str], cycles: set[tuple[str, ...]]) -> bool:
         super_cycle = deepcopy(cycle)
         super_cycle = super_cycle[:-1]
         super_cycle.extend(cycle)
@@ -158,7 +158,7 @@ class PartitionMovements:
         return False
 
     def _is_linked(
-        self, src: str, dst: str, pairs: Set[ConsumerPair], current_path: List[str]
+        self, src: str, dst: str, pairs: set[ConsumerPair], current_path: list[str]
     ) -> bool:
         if src == dst:
             return False

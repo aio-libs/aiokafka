@@ -434,7 +434,7 @@ class GroupCoordinator(BaseCoordinator):
         assignment_strategy = response.group_protocol
         members = response.members
         assignor = self._lookup_assignor(assignment_strategy)
-        assert assignor, "Invalid assignment protocol: %s" % assignment_strategy
+        assert assignor, f"Invalid assignment protocol: {assignment_strategy}"
         member_metadata = {}
         all_subscribed_topics = set()
         for member in members:
@@ -486,7 +486,7 @@ class GroupCoordinator(BaseCoordinator):
         self, generation, member_id, protocol, member_assignment_bytes
     ):
         assignor = self._lookup_assignor(protocol)
-        assert assignor, "invalid assignment protocol: %s" % protocol
+        assert assignor, f"invalid assignment protocol: {protocol}"
 
         assignment = ConsumerProtocol.ASSIGNMENT.decode(member_assignment_bytes)
 

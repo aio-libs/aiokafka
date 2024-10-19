@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import Optional
 from unittest import mock
 
 import pytest
@@ -11,7 +11,7 @@ from aiokafka.record.default_records import (
     DefaultRecordBatchBuilder,
 )
 
-HeadersT = List[Tuple[str, Optional[bytes]]]
+HeadersT = list[tuple[str, Optional[bytes]]]
 
 
 @pytest.mark.parametrize(

@@ -46,7 +46,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     async def consumer_factory(self, **kwargs):
         enable_auto_commit = kwargs.pop("enable_auto_commit", True)
         auto_offset_reset = kwargs.pop("auto_offset_reset", "earliest")
-        group = kwargs.pop("group", "group-%s" % self.id())
+        group = kwargs.pop("group", f"group-{self.id()}")
         consumer = AIOKafkaConsumer(
             self.topic,
             group_id=group,
@@ -148,7 +148,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     async def test_consumer_context_manager(self):
         await self.send_messages(0, list(range(10)))
 
-        group = "group-%s" % self.id()
+        group = f"group-{self.id()}"
         consumer = AIOKafkaConsumer(
             self.topic,
             group_id=group,
@@ -1578,7 +1578,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_kafka_consumer_sets_coordinator_values(self):
-        group = "test-group-%s" % self.id()
+        group = f"test-group-{self.id()}"
         session_timeout_ms = 12345
         heartbeat_interval_ms = 3456
         retry_backoff_ms = 567
@@ -1627,7 +1627,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             enable_auto_commit=False,
             auto_offset_reset="earliest",
-            group_id="group-%s" % self.id(),
+            group_id=f"group-{self.id()}",
             bootstrap_servers=self.hosts,
         )
         tp = TopicPartition(self.topic, 0)
@@ -1647,7 +1647,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             enable_auto_commit=False,
             auto_offset_reset="earliest",
-            group_id="group-%s" % self.id(),
+            group_id=f"group-{self.id()}",
             bootstrap_servers=self.hosts,
         )
         tp = TopicPartition(self.topic, 0)

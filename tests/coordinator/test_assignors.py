@@ -1,7 +1,7 @@
 from collections import defaultdict
 from collections.abc import Generator, Sequence
 from random import randint, sample
-from typing import Callable, Dict, Optional, Set
+from typing import Callable, Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -28,9 +28,9 @@ def reset_sticky_assignor() -> Generator[None, None, None]:
 
 def create_cluster(
     mocker: MockerFixture,
-    topics: Set[str],
-    topics_partitions: Optional[Set[int]] = None,
-    topic_partitions_lambda: Optional[Callable[[str], Optional[Set[int]]]] = None,
+    topics: set[str],
+    topics_partitions: Optional[set[int]] = None,
+    topic_partitions_lambda: Optional[Callable[[str], Optional[set[int]]]] = None,
 ) -> MagicMock:
     cluster = mocker.MagicMock()
     cluster.topics.return_value = topics
@@ -228,7 +228,7 @@ def test_sticky_assignor2(mocker: MockerFixture) -> None:
 def test_sticky_one_consumer_no_topic(mocker: MockerFixture) -> None:
     cluster = create_cluster(mocker, topics=set(), topics_partitions=set())
 
-    subscriptions: Dict[str, Set[str]] = {
+    subscriptions: dict[str, set[str]] = {
         "C": set(),
     }
     member_metadata = make_member_metadata(subscriptions)
@@ -715,7 +715,7 @@ def test_stickiness(mocker: MockerFixture) -> None:
 
 
 def test_assignment_updated_for_deleted_topic(mocker: MockerFixture) -> None:
-    def topic_partitions(topic: str) -> Optional[Set[int]]:
+    def topic_partitions(topic: str) -> Optional[set[int]]:
         if topic == "t1":
             return {0}
         elif topic == "t3":
@@ -963,7 +963,7 @@ def test_assignment_with_conflicting_previous_generations(
         "C2": 1,
         "C3": 2,
     }
-    member_metadata: Dict[str, ConsumerProtocolMemberMetadata] = {}
+    member_metadata: dict[str, ConsumerProtocolMemberMetadata] = {}
     for member in member_assignments:
         member_metadata[member] = StickyPartitionAssignor._metadata(
             {"t"}, member_assignments[member], member_generations[member]
@@ -976,17 +976,17 @@ def test_assignment_with_conflicting_previous_generations(
 
 
 def make_member_metadata(
-    subscriptions: Dict[str, Set[str]],
-) -> Dict[str, ConsumerProtocolMemberMetadata]:
-    member_metadata: Dict[str, ConsumerProtocolMemberMetadata] = {}
+    subscriptions: dict[str, set[str]],
+) -> dict[str, ConsumerProtocolMemberMetadata]:
+    member_metadata: dict[str, ConsumerProtocolMemberMetadata] = {}
     for member, topics in subscriptions.items():
         member_metadata[member] = StickyPartitionAssignor._metadata(topics, [])
     return member_metadata
 
 
 def assert_assignment(
-    result_assignment: Dict[str, ConsumerProtocolMemberAssignment],
-    expected_assignment: Dict[str, ConsumerProtocolMemberAssignment],
+    result_assignment: dict[str, ConsumerProtocolMemberAssignment],
+    expected_assignment: dict[str, ConsumerProtocolMemberAssignment],
 ) -> None:
     assert result_assignment == expected_assignment
     assert set(result_assignment) == set(expected_assignment)
@@ -997,8 +997,8 @@ def assert_assignment(
 
 
 def verify_validity_and_balance(
-    subscriptions: Dict[str, Set[str]],
-    assignment: Dict[str, ConsumerProtocolMemberAssignment],
+    subscriptions: dict[str, set[str]],
+    assignment: dict[str, ConsumerProtocolMemberAssignment],
 ) -> None:
     """
     Verifies that the given assignment is valid with respect to the given subscriptions
@@ -1071,7 +1071,7 @@ def verify_validity_and_balance(
 
 def group_partitions_by_topic(
     partitions: Sequence[TopicPartition],
-) -> Dict[str, Set[int]]:
+) -> dict[str, set[int]]:
     result = defaultdict(set)
     for p in partitions:
         result[p.topic].add(p.partition)

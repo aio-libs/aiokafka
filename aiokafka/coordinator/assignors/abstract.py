@@ -1,7 +1,6 @@
 import abc
 import logging
 from collections.abc import Iterable, Mapping
-from typing import Dict
 
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.coordinator.protocol import (
@@ -28,7 +27,7 @@ class AbstractPartitionAssignor(abc.ABC):
         cls,
         cluster: ClusterMetadata,
         members: Mapping[str, ConsumerProtocolMemberMetadata],
-    ) -> Dict[str, ConsumerProtocolMemberAssignment]:
+    ) -> dict[str, ConsumerProtocolMemberAssignment]:
         """Perform group assignment given cluster metadata and member subscriptions
 
         Arguments:

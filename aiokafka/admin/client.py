@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Sequence
 from ssl import SSLContext
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Optional, Union
 
 import async_timeout
 
@@ -89,7 +89,7 @@ class AIOKafkaAdminClient:
         self,
         *,
         loop=None,
-        bootstrap_servers: Union[str, List[str]] = "localhost",
+        bootstrap_servers: Union[str, list[str]] = "localhost",
         client_id: str = "aiokafka-" + __version__,
         request_timeout_ms: int = 40000,
         connections_max_idle_ms: int = 540000,
@@ -160,7 +160,7 @@ class AIOKafkaAdminClient:
         log.debug("AIOKafkaAdminClient started")
         self._started = True
 
-    def _matching_api_version(self, operation: Sequence[Type[Request]]) -> int:
+    def _matching_api_version(self, operation: Sequence[type[Request]]) -> int:
         """Find the latest version of the protocol operation
         supported by both this library and the broker.
 
@@ -226,7 +226,7 @@ class AIOKafkaAdminClient:
 
     async def create_topics(
         self,
-        new_topics: List[NewTopic],
+        new_topics: list[NewTopic],
         timeout_ms: Optional[int] = None,
         validate_only: bool = False,
     ) -> Response:
@@ -268,7 +268,7 @@ class AIOKafkaAdminClient:
 
     async def delete_topics(
         self,
-        topics: List[str],
+        topics: list[str],
         timeout_ms: Optional[int] = None,
     ) -> Response:
         """Delete topics from the cluster.
@@ -285,7 +285,7 @@ class AIOKafkaAdminClient:
 
     async def _get_cluster_metadata(
         self,
-        topics: Optional[List[str]] = None,
+        topics: Optional[list[str]] = None,
     ) -> Response:
         """
         Retrieve cluster metadata
@@ -296,20 +296,20 @@ class AIOKafkaAdminClient:
         request = req_cls(topics=topics)
         return await self._send_request(request)
 
-    async def list_topics(self) -> List[str]:
+    async def list_topics(self) -> list[str]:
         metadata = await self._get_cluster_metadata(topics=None)
         obj = metadata.to_object()
         return [t["topic"] for t in obj["topics"]]
 
     async def describe_topics(
         self,
-        topics: Optional[List[str]] = None,
-    ) -> List[Any]:
+        topics: Optional[list[str]] = None,
+    ) -> list[Any]:
         metadata = await self._get_cluster_metadata(topics=topics)
         obj = metadata.to_object()
         return obj["topics"]
 
-    async def describe_cluster(self) -> Dict[str, Any]:
+    async def describe_cluster(self) -> dict[str, Any]:
         metadata = await self._get_cluster_metadata()
         obj = metadata.to_object()
         obj.pop("topics")  # We have 'describe_topics' for this
@@ -317,9 +317,9 @@ class AIOKafkaAdminClient:
 
     async def describe_configs(
         self,
-        config_resources: List[ConfigResource],
+        config_resources: list[ConfigResource],
         include_synonyms: bool = False,
-    ) -> List[Response]:
+    ) -> list[Response]:
         """Fetch configuration parameters for one or more Kafka resources.
 
         :param config_resources: An list of ConfigResource objects.
@@ -361,8 +361,8 @@ class AIOKafkaAdminClient:
         return await asyncio.gather(*futures)
 
     async def alter_configs(
-        self, config_resources: List[ConfigResource]
-    ) -> List[Response]:
+        self, config_resources: list[ConfigResource]
+    ) -> list[Response]:
         """Alter configuration parameters of one or more Kafka resources.
         :param config_resources: A list of ConfigResource objects.
         :return: Appropriate version of AlterConfigsResponse class.
@@ -399,9 +399,9 @@ class AIOKafkaAdminClient:
     @classmethod
     def _convert_config_resources(
         cls,
-        config_resources: List[ConfigResource],
+        config_resources: list[ConfigResource],
         op_type: str = "describe",
-    ) -> Tuple[Dict[int, Any], List[Any]]:
+    ) -> tuple[dict[int, Any], list[Any]]:
         broker_resources = defaultdict(list)
         topic_resources = []
         if op_type == "describe":
@@ -417,7 +417,7 @@ class AIOKafkaAdminClient:
         return broker_resources, topic_resources
 
     @staticmethod
-    def _convert_topic_partitions(topic_partitions: Dict[str, NewPartitions]):
+    def _convert_topic_partitions(topic_partitions: dict[str, NewPartitions]):
         return [
             (topic_name, (new_part.total_count, new_part.new_assignments))
             for topic_name, new_part in topic_partitions.items()
@@ -425,7 +425,7 @@ class AIOKafkaAdminClient:
 
     async def create_partitions(
         self,
-        topic_partitions: Dict[str, NewPartitions],
+        topic_partitions: dict[str, NewPartitions],
         timeout_ms: Optional[int] = None,
         validate_only: bool = False,
     ) -> Response:
@@ -456,10 +456,10 @@ class AIOKafkaAdminClient:
 
     async def describe_consumer_groups(
         self,
-        group_ids: List[str],
+        group_ids: list[str],
         group_coordinator_id: Optional[int] = None,
         include_authorized_operations: bool = False,
-    ) -> List[Response]:
+    ) -> list[Response]:
         """Describe a set of consumer groups.
 
         Any errors are immediately raised.
@@ -509,8 +509,8 @@ class AIOKafkaAdminClient:
 
     async def list_consumer_groups(
         self,
-        broker_ids: Optional[List[int]] = None,
-    ) -> List[Tuple[Any, ...]]:
+        broker_ids: Optional[list[int]] = None,
+    ) -> list[tuple[Any, ...]]:
         """List all consumer groups known to the cluster.
 
         This returns a list of Consumer Group tuples. The tuples are
@@ -579,8 +579,8 @@ class AIOKafkaAdminClient:
         self,
         group_id: str,
         group_coordinator_id: Optional[int] = None,
-        partitions: Optional[List[TopicPartition]] = None,
-    ) -> Dict[TopicPartition, OffsetAndMetadata]:
+        partitions: Optional[list[TopicPartition]] = None,
+    ) -> dict[TopicPartition, OffsetAndMetadata]:
         """Fetch Consumer Offsets for a single consumer group.
 
         Note:
@@ -637,9 +637,9 @@ class AIOKafkaAdminClient:
 
     async def delete_records(
         self,
-        records_to_delete: Dict[TopicPartition, RecordsToDelete],
+        records_to_delete: dict[TopicPartition, RecordsToDelete],
         timeout_ms: Optional[int] = None,
-    ) -> Dict[TopicPartition, int]:
+    ) -> dict[TopicPartition, int]:
         """Delete records from partitions.
 
         :param records_to_delete: A map of RecordsToDelete for each TopicPartition
@@ -682,7 +682,7 @@ class AIOKafkaAdminClient:
 
     @staticmethod
     def _convert_records_to_delete(
-        records_to_delete: Dict[str, List[Tuple[int, RecordsToDelete]]],
+        records_to_delete: dict[str, list[tuple[int, RecordsToDelete]]],
     ):
         return [
             (topic, [(partition, rec.before_offset) for partition, rec in records])

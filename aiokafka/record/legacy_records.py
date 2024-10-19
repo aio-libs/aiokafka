@@ -5,7 +5,7 @@ import time
 from binascii import crc32
 from collections.abc import Generator
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple, Type, Union, final
+from typing import Any, Optional, Union, final
 
 from typing_extensions import Literal, Never, TypeIs, assert_never
 
@@ -194,7 +194,7 @@ class _LegacyRecordBatchPy(LegacyRecordBase, LegacyRecordBatchProtocol):
             assert_never(compression_type)
         return uncompressed
 
-    def _read_header(self, pos: int) -> Tuple[int, int, int, int, int, Optional[int]]:
+    def _read_header(self, pos: int) -> tuple[int, int, int, int, int, Optional[int]]:
         if self._magic == 0:
             offset, length, crc, magic_read, attrs = self.HEADER_STRUCT_V0.unpack_from(
                 self._buffer, pos
@@ -213,9 +213,9 @@ class _LegacyRecordBatchPy(LegacyRecordBase, LegacyRecordBatchProtocol):
 
     def _read_all_headers(
         self,
-    ) -> List[Tuple[Tuple[int, int, int, int, int, Optional[int]], int]]:
+    ) -> list[tuple[tuple[int, int, int, int, int, Optional[int]], int]]:
         pos = 0
-        msgs: List[Tuple[Tuple[int, int, int, int, int, Optional[int]], int]] = []
+        msgs: list[tuple[tuple[int, int, int, int, int, Optional[int]], int]] = []
         buffer_len = len(self._buffer)
         while pos < buffer_len:
             header = self._read_header(pos)
@@ -223,7 +223,7 @@ class _LegacyRecordBatchPy(LegacyRecordBase, LegacyRecordBatchProtocol):
             pos += self.LOG_OVERHEAD + header[1]  # length
         return msgs
 
-    def _read_key_value(self, pos: int) -> Tuple[Optional[bytes], Optional[bytes]]:
+    def _read_key_value(self, pos: int) -> tuple[Optional[bytes], Optional[bytes]]:
         key_size: int = struct.unpack_from(">i", self._buffer, pos)[0]
         pos += self.KEY_LENGTH
         if key_size == -1:
@@ -303,7 +303,7 @@ class _LegacyRecordPy(LegacyRecordProtocol):
     crc: int
 
     @property
-    def headers(self) -> List[Never]:
+    def headers(self) -> list[Never]:
         return []
 
     @property
@@ -332,7 +332,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase, LegacyRecordBatchBuilderProt
         self._magic = magic
         self._compression_type = compression_type
         self._batch_size = batch_size
-        self._msg_buffers: List[bytearray] = []
+        self._msg_buffers: list[bytearray] = []
         self._pos = 0
 
     def append(
@@ -572,10 +572,10 @@ class _LegacyRecordMetadataPy(LegacyRecordMetadataProtocol):
         )
 
 
-LegacyRecordBatchBuilder: Type[LegacyRecordBatchBuilderProtocol]
-LegacyRecordMetadata: Type[LegacyRecordMetadataProtocol]
-LegacyRecordBatch: Type[LegacyRecordBatchProtocol]
-LegacyRecord: Type[LegacyRecordProtocol]
+LegacyRecordBatchBuilder: type[LegacyRecordBatchBuilderProtocol]
+LegacyRecordMetadata: type[LegacyRecordMetadataProtocol]
+LegacyRecordBatch: type[LegacyRecordBatchProtocol]
+LegacyRecord: type[LegacyRecordProtocol]
 
 if NO_EXTENSIONS:
     LegacyRecordBatchBuilder = _LegacyRecordBatchBuilderPy

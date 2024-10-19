@@ -1,6 +1,5 @@
 import io
 import struct
-from typing import Type
 
 import pytest
 
@@ -368,7 +367,7 @@ attr_names = [
 
 @pytest.mark.parametrize("klass", Request.__subclasses__())
 @pytest.mark.parametrize("attr_name", attr_names)
-def test_request_type_conformance(klass: Type[Request], attr_name: str) -> None:
+def test_request_type_conformance(klass: type[Request], attr_name: str) -> None:
     assert hasattr(klass, attr_name)
 
 
@@ -382,5 +381,5 @@ attr_names = [
 
 @pytest.mark.parametrize("klass", Response.__subclasses__())
 @pytest.mark.parametrize("attr_name", attr_names)
-def test_response_type_conformance(klass: Type[Response], attr_name: str) -> None:
+def test_response_type_conformance(klass: type[Response], attr_name: str) -> None:
     assert hasattr(klass, attr_name)

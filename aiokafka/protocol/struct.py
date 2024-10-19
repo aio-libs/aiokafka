@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import Any, ClassVar, List, Union
+from typing import Any, ClassVar, Union
 
 from typing_extensions import Self
 
@@ -36,11 +36,11 @@ class Struct:
 
     def get_item(self, name: str) -> Any:
         if name not in self.SCHEMA.names:
-            raise KeyError("%s is not in the schema" % name)
+            raise KeyError(f"{name} is not in the schema")
         return self.__dict__[name]
 
     def __repr__(self) -> str:
-        key_vals: List[str] = []
+        key_vals: list[str] = []
         for name, field in zip(self.SCHEMA.names, self.SCHEMA.fields):
             key_vals.append(f"{name}={field.repr(self.__dict__[name])}")
         return self.__class__.__name__ + "(" + ", ".join(key_vals) + ")"
