@@ -1093,7 +1093,7 @@ class Fetcher:
 
             for tp in list(self._records.keys()):
                 if partitions and tp not in partitions:
-                    # Cleanup results for unassigned partitons
+                    # Cleanup results for unassigned partitions
                     if not self._subscriptions.is_assigned(tp):
                         del self._records[tp]
                     continue
@@ -1129,7 +1129,7 @@ class Fetcher:
             drained = {}
             for tp in list(self._records.keys()):
                 if partitions and tp not in partitions:
-                    # Cleanup results for unassigned partitons
+                    # Cleanup results for unassigned partitions
                     if not self._subscriptions.is_assigned(tp):
                         del self._records[tp]
                     continue

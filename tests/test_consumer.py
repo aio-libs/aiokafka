@@ -1104,7 +1104,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Wait for group to stabilize
         assign1 = await listener1.wait_assign()
         assign2 = await listener2.wait_assign()
-        # We expect 2 partitons for autocreated topics
+        # We expect 2 partitions for autocreated topics
         my_partitions = {TopicPartition(my_topic, 0), TopicPartition(my_topic, 1)}
         self.assertEqual(assign1 | assign2, my_partitions)
         self.assertEqual(consumer1.assignment() | consumer2.assignment(), my_partitions)
@@ -1118,7 +1118,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # Wait for group to stabilize
         assign1 = await listener1.wait_assign()
         assign2 = await listener2.wait_assign()
-        # We expect 2 partitons for autocreated topics
+        # We expect 2 partitions for autocreated topics
         my_partitions = {
             TopicPartition(my_topic, 0),
             TopicPartition(my_topic, 1),
