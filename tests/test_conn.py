@@ -1,10 +1,13 @@
 import asyncio
 import gc
+import socket
 import struct
-from typing import Any
+import sys
+from typing import Any, AsyncIterable, Iterable, Tuple
 from unittest import mock
 
 import pytest
+import pytest_asyncio
 
 from aiokafka.conn import AIOKafkaConnection, VersionInfo, create_conn
 from aiokafka.errors import (
@@ -144,7 +147,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         with self.assertRaises(KafkaConnectionError):
             await conn.send(request)
 
-        conn._writer = mock.MagicMock()
+        conn._writer = mock.MagicMock(is_closing=mock.Mock(return_value=False))
         conn._writer.write.side_effect = OSError("mocked writer is closed")
 
         with self.assertRaises(KafkaConnectionError):
@@ -173,7 +176,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
             return resp
 
         reader.readexactly.side_effect = [first_resp(), second_resp()]
-        writer = mock.MagicMock()
+        writer = mock.MagicMock(is_closing=mock.Mock(return_value=False))
 
         conn._reader = reader
         conn._writer = writer
@@ -208,7 +211,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
             return resp
 
         reader.readexactly.side_effect = [first_resp(), second_resp()]
-        writer = mock.MagicMock()
+        writer = mock.MagicMock(is_closing=mock.Mock(return_value=False))
 
         conn._reader = reader
         conn._writer = writer
@@ -237,7 +240,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         # setup reader
         reader = mock.MagicMock()
         reader.readexactly.return_value = invoke_osserror()
-        writer = mock.MagicMock()
+        writer = mock.MagicMock(is_closing=mock.Mock(return_value=False))
 
         conn._reader = reader
         conn._writer = writer
@@ -394,7 +397,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         # setup connection with mocked transport and protocol
         conn = AIOKafkaConnection(host="", port=9999)
         conn.close = mock.MagicMock()
-        conn._writer = mock.MagicMock()
+        conn._writer = mock.MagicMock(is_closing=mock.Mock(return_value=False))
         out_buffer = []
         conn._writer.write = mock.Mock(side_effect=out_buffer.append)
         conn._reader = mock.MagicMock()
@@ -424,3 +427,80 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
             conn._send_sasl_token(b"Super data")
         # We don't need to close 2ce
         self.assertEqual(conn.close.call_count, 1)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Uvloop doesn't support Windows")
+class TestClosedSocket:
+    @pytest.fixture(
+        params=(
+            pytest.param("asyncio", id="asyncio"),
+            pytest.param("uvloop", id="uvloop"),
+        ),
+    )
+    def event_loop(
+        self, request: pytest.FixtureRequest
+    ) -> Iterable[asyncio.AbstractEventLoop]:
+        if request.param == "asyncio":
+            policy = asyncio.DefaultEventLoopPolicy()
+        elif request.param == "uvloop":
+            import uvloop
+
+            policy = uvloop.EventLoopPolicy()
+        else:
+            raise ValueError(f"loop {request.param} is not supported")
+
+        loop: asyncio.AbstractEventLoop = policy.new_event_loop()
+        yield loop
+        loop.close()
+
+    @pytest.fixture()
+    def server(self, unused_tcp_port: int) -> Iterable[Tuple[str, int, socket.socket]]:
+        host = "localhost"
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind((host, unused_tcp_port))
+        sock.listen(8)
+        sock.setblocking(False)
+
+        yield host, unused_tcp_port, sock
+
+        sock.close()
+
+    @pytest_asyncio.fixture()
+    async def conn(
+        self, server: Tuple[str, int, socket.socket]
+    ) -> AsyncIterable[AIOKafkaConnection]:
+        host, port, _ = server
+
+        conn = AIOKafkaConnection(host=host, port=port, request_timeout_ms=1000)
+        conn._create_reader_task = mock.Mock()
+
+        yield conn
+
+        fut = conn.close()
+        if fut:
+            await fut
+
+    @pytest.mark.asyncio
+    async def test_send_to_closed_socket(
+        self, server: Tuple[str, int, socket.socket], conn: AIOKafkaConnection
+    ) -> None:
+        host, port, sock = server
+
+        request = MetadataRequest([])
+
+        with pytest.raises(
+            KafkaConnectionError,
+            match=f"KafkaConnectionError: No connection to broker at {host}:{port}",
+        ):
+            await conn.send(request)
+
+        await conn.connect()
+
+        sock.close()
+        await asyncio.sleep(0.1)
+
+        with pytest.raises(
+            KafkaConnectionError,
+            match=f"KafkaConnectionError: Connection at {host}:{port} is closing",
+        ):
+            await conn.send(request)
