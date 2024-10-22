@@ -124,7 +124,7 @@ else:
 
 
 @pytest.fixture(scope="session")
-def ssl_folder(docker_ip_address, docker, kafka_image):
+def ssl_folder(docker, kafka_image):
     ssl_dir = pathlib.Path("tests/ssl_cert")
     if ssl_dir.is_dir():
         # Skip generating certificates when they already exist. Remove
@@ -151,18 +151,13 @@ def ssl_folder(docker_ip_address, docker, kafka_image):
     )
 
     try:
-        for args in [
-            ["ca", "ca-cert", docker_ip_address],
-            ["-k", "server", "ca-cert", "br_", docker_ip_address],
-            ["client", "ca-cert", "cl_", docker_ip_address],
-        ]:
-            exit_code, output = container.exec_run(
-                ["bash", "/gen-ssl-certs.sh", *args],
-                user=f"{os.getuid()}:{os.getgid()}",
-            )
-            if exit_code != 0:
-                print(output.decode(), file=sys.stderr)
-                pytest.exit("Could not generate certificates")
+        exit_code, output = container.exec_run(
+            ["bash", "/gen-ssl-certs.sh"],
+            user=f"{os.getuid()}:{os.getgid()}",
+        )
+        if exit_code != 0:
+            print(output.decode(), file=sys.stderr)
+            pytest.exit("Could not generate certificates")
 
     finally:
         container.stop()

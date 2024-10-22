@@ -1,169 +1,82 @@
 #!/bin/bash
 
-#### Kind thanks for ``librdkafka`` for making this great script.
-# Taken from https://raw.githubusercontent.com/edenhill/librdkafka/master/tests/gen-ssl-certs.sh
-
-#
-#
-# This scripts generates:
-#  - root CA certificate
-#  - server certificate and keystore
-#  - client keys
-#
-# https://cwiki.apache.org/confluence/display/KAFKA/Deploying+SSL+for+Kafka
-#
-
-
-if [[ "$1" == "-k" ]]; then
-    USE_KEYTOOL=1
-    shift
-else
-    USE_KEYTOOL=0
-fi
-
-OP="$1"
-CA_CERT="$2"
-PFX="$3"
-HOST="$4"
-
-C=NN
-ST=NN
-L=NN
-O=NN
-OU=NN
-CN="$HOST"
-
-
-# Password
-PASS="abcdefgh"
-
-# Cert validity, in days
-VALIDITY=10000
+# Documentation:
+# https://kafka.apache.org/documentation.html#security_ssl
+# Content was compiled from:
+# https://medium.com/@ahosanhabib.974/enabling-ssl-tls-encryption-for-kafka-with-jks-8186ccc82dd1
+# https://developer.confluent.io/courses/security/hands-on-setting-up-encryption/
 
 set -e
 
-export LC_ALL=C
+PASS="abcdefgh"
 
-if [[ $OP == "ca" && ! -z "$CA_CERT" && ! -z "$3" ]]; then
-    CN="$3"
-    openssl req -new -x509 -keyout ${CA_CERT}.key -out $CA_CERT -days $VALIDITY -passin "pass:$PASS" -passout "pass:$PASS" <<EOF
-${C}
-${ST}
-${L}
-${O}
-${OU}
-${CN}
-$USER@${CN}
-.
-.
+# Generate CA self-signed certificate
+openssl genpkey -algorithm RSA -out ca.key
+
+cat > ca.cnf <<EOF
+[ ca ]
+default_ca    = CA_default      # The default ca section
+
+[ CA_default ]
+x509_extensions = ca_extensions # The extensions to add to the cert
+
+[ req ]
+distinguished_name = ca_distinguished_name
+x509_extensions    = ca_extensions
+
+[ ca_distinguished_name ]
+commonName         = Common Name (e.g. server FQDN or YOUR name)
+commonName_default = Test Name
+
+[ ca_extensions ]
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always, issuer
+basicConstraints       = critical, CA:true
+keyUsage               = keyCertSign, cRLSign
 EOF
 
+openssl req -x509 -new -key ca.key -days 3650 -out ca.crt -config ca.cnf \
+    -subj "/CN=CA"
 
+# Generate Server Private Key and CSR
+openssl req -new -newkey rsa:4096 -nodes -keyout server.key -out server.csr \
+    -subj "/CN=server"
 
-elif [[ $OP == "server" && ! -z "$CA_CERT" && ! -z "$PFX" && ! -z "$CN" ]]; then
-
-    #Step 1
-    echo "############ Generating key"
-    keytool -storepass "$PASS" -keypass "$PASS" -keystore ${PFX}server.keystore.jks -alias localhost -validity $VALIDITY -keyalg RSA -genkey <<EOF
-$CN
-$OU
-$O
-$L
-$ST
-$C
-yes
-yes
+# Generate the server certificate using the CSR, the CA cert, and private key
+cat > sign-ext.cnf <<EOF
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid,issuer
+basicConstraints       = CA:FALSE
+keyUsage               = digitalSignature, keyEncipherment
 EOF
 
-    #Step 2
-    echo "############ Adding CA"
-    keytool -storepass "$PASS" -keypass "$PASS" -keystore ${PFX}server.truststore.jks -alias CARoot -import -file $CA_CERT <<EOF
-yes
-EOF
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+    -out server.crt -days 3650 -extfile sign-ext.cnf
 
-    #Step 3
-    echo "############ Export certificate"
-    keytool -storepass "$PASS" -keypass "$PASS" -keystore ${PFX}server.keystore.jks -alias localhost -certreq -file ${PFX}cert-file
+# Create Kafka format Keystore
+openssl pkcs12 -export -in server.crt -inkey server.key -name kafka-broker \
+    -out kafka.p12 -password "pass:$PASS"
 
-    echo "############ Sign certificate"
-    openssl x509 -req -CA $CA_CERT -CAkey ${CA_CERT}.key -in ${PFX}cert-file -out ${PFX}cert-signed -days $VALIDITY -CAcreateserial -passin "pass:$PASS"
+# Create Kafka Java KeyStore (JKS)
+keytool -importkeystore -noprompt \
+    -deststoretype pkcs12 -destkeystore br_server.keystore.jks -deststorepass "$PASS" \
+    -srcstoretype pkcs12 -srckeystore kafka.p12 -srcstorepass "$PASS"
 
-
-    echo "############ Import CA"
-    keytool -storepass "$PASS" -keypass "$PASS" -keystore ${PFX}server.keystore.jks -alias CARoot -import -file $CA_CERT <<EOF
-yes
-EOF
-
-    echo "############ Import signed CA"
-    keytool -storepass "$PASS" -keypass "$PASS" -keystore ${PFX}server.keystore.jks -alias localhost -import -file ${PFX}cert-signed
+# Create Kafka TrustStore
+keytool -keystore br_server.truststore.jks -alias CARoot -import -file ca.crt \
+    -storepass "$PASS" -noprompt
 
 
-elif [[ $OP == "client" && ! -z "$CA_CERT" && ! -z "$PFX" && ! -z "$CN" ]]; then
-
-    if [[ $USE_KEYTOOL == 1 ]]; then
-	echo "############ Creating client truststore"
-
-	[[ -f ${PFX}client.truststore.jks ]] || keytool -storepass "$PASS" -keypass "$PASS" -keystore ${PFX}client.truststore.jks -alias CARoot -import -file $CA_CERT <<EOF
-yes
-EOF
-
-	echo "############ Generating key"
-	keytool -storepass "$PASS" -keypass "$PASS" -keystore ${PFX}client.keystore.jks -alias localhost -validity $VALIDITY -keyalg RSA -genkey <<EOF
-$CN
-$OU
-$O
-$L
-$ST
-$C
-yes
-yes
-EOF
-	echo "########### Export certificate"
-	keytool -storepass "$PASS" -keystore ${PFX}client.keystore.jks -alias localhost -certreq -file ${PFX}cert-file
-
-	echo "########### Sign certificate"
-	openssl x509 -req -CA ${CA_CERT} -CAkey ${CA_CERT}.key -in ${PFX}cert-file -out ${PFX}cert-signed -days $VALIDITY -CAcreateserial -passin pass:$PASS
-
-	echo "########### Import CA"
-	keytool -storepass "$PASS" -keypass "$PASS" -keystore ${PFX}client.keystore.jks -alias CARoot -import -file ${CA_CERT} <<EOF
-yes
-EOF
-
-	echo "########### Import signed CA"
-	keytool -storepass "$PASS" -keypass "$PASS" -keystore ${PFX}client.keystore.jks -alias localhost -import -file ${PFX}cert-signed
-
-    else
-	# Standard OpenSSL keys
-	echo "############ Generating key"
-	openssl genrsa -des3 -passout "pass:$PASS" -out ${PFX}client.key 3072
-
-	echo "############ Generating request"
-	openssl req -passin "pass:$PASS" -passout "pass:$PASS" -key ${PFX}client.key -new -out ${PFX}client.req \
-		<<EOF
-$C
-$ST
-$L
-$O
-$OU
-$CN
-.
-$PASS
-.
-EOF
-
-	echo "########### Signing key"
-	openssl x509 -req -passin "pass:$PASS" -in ${PFX}client.req -days $VALIDITY -CA $CA_CERT -CAkey ${CA_CERT}.key -CAserial ${CA_CERT}.srl -out ${PFX}client.pem
-
-    fi
+# To check:
+# keytool -list -v -keystore br_server.keystore.jks -storepass "$PASS"
+# keytool -list -v -keystore br_server.truststore.jks -storepass "$PASS"
 
 
+# Generate client Private Key and CSR
+openssl genpkey -algorithm RSA -out client.key -pass "pass:$PASS"
+openssl req -new -nodes -key client.key -passin "pass:$PASS" -out client.csr \
+    -subj "/CN=client"
 
-
-else
-    echo "Usage: $0 ca <ca-cert-file> <CN>"
-    echo "       $0 [-k] server|client <ca-cert-file> <file_prefix> <hostname>"
-    echo ""
-    echo "       -k = Use keytool/Java Keystore, else standard SSL keys"
-    exit 1
-fi
-
+# Generate the client certificate using the CSR, the CA cert, and private key
+openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+    -out client.crt -days 3650 -extfile sign-ext.cnf

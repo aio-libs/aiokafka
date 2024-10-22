@@ -444,9 +444,9 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 
     def create_ssl_context(self):
         context = create_ssl_context(
-            cafile=str(self.ssl_folder / "ca-cert"),
-            certfile=str(self.ssl_folder / "cl_client.pem"),
-            keyfile=str(self.ssl_folder / "cl_client.key"),
+            cafile=str(self.ssl_folder / "ca.crt"),
+            certfile=str(self.ssl_folder / "client.crt"),
+            keyfile=str(self.ssl_folder / "client.key"),
             password="abcdefgh",
         )
         context.check_hostname = False
