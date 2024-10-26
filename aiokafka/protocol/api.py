@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 from io import BytesIO
-from typing import Any, ClassVar, Dict, Optional, Type, Union
+from typing import Any, ClassVar, Optional, Union
 
 from .struct import Struct
 from .types import Array, Int16, Int32, Schema, String, TaggedFields
@@ -39,7 +39,7 @@ class RequestHeader_v1(Struct):
         request: Request,
         correlation_id: int = 0,
         client_id: str = "aiokafka",
-        tags: Optional[Dict[int, bytes]] = None,
+        tags: Optional[dict[int, bytes]] = None,
     ):
         super().__init__(
             request.API_KEY, request.API_VERSION, correlation_id, client_id, tags or {}
@@ -74,7 +74,7 @@ class Request(Struct, metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def RESPONSE_TYPE(self) -> Type[Response]:
+    def RESPONSE_TYPE(self) -> type[Response]:
         """The Response class associated with the api request"""
 
     @property
@@ -86,7 +86,7 @@ class Request(Struct, metaclass=abc.ABCMeta):
         """Override this method if an api request does not always generate a response"""
         return True
 
-    def to_object(self) -> Dict[str, Any]:
+    def to_object(self) -> dict[str, Any]:
         return _to_object(self.SCHEMA, self)
 
     def build_request_header(
@@ -124,12 +124,12 @@ class Response(Struct, metaclass=abc.ABCMeta):
     def SCHEMA(self) -> Schema:
         """An instance of Schema() representing the response structure"""
 
-    def to_object(self) -> Dict[str, Any]:
+    def to_object(self) -> dict[str, Any]:
         return _to_object(self.SCHEMA, self)
 
 
-def _to_object(schema: Schema, data: Union[Struct, Dict[int, Any]]) -> Dict[str, Any]:
-    obj: Dict[str, Any] = {}
+def _to_object(schema: Schema, data: Union[Struct, dict[int, Any]]) -> dict[str, Any]:
+    obj: dict[str, Any] = {}
     for idx, (name, _type) in enumerate(zip(schema.names, schema.fields)):
         if isinstance(data, Struct):
             val = data.get_item(name)

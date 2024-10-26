@@ -1,4 +1,5 @@
-from typing import Callable, Iterable, Tuple, Union
+from collections.abc import Iterable
+from typing import Callable, Union
 
 from aiokafka.util import NO_EXTENSIONS
 
@@ -82,7 +83,7 @@ def size_of_varint_py(value: int) -> int:
     return 10
 
 
-def decode_varint_py(buffer: bytearray, pos: int = 0) -> Tuple[int, int]:
+def decode_varint_py(buffer: bytearray, pos: int = 0) -> tuple[int, int]:
     """Decode an integer from a varint presentation. See
     https://developers.google.com/protocol-buffers/docs/encoding?csw=1#varints
     on how those can be produced.
@@ -121,7 +122,7 @@ def calc_crc32c_py(memview: Iterable[int]) -> int:
 
 
 calc_crc32c: Callable[[Union[bytes, bytearray]], int]
-decode_varint: Callable[[bytearray, int], Tuple[int, int]]
+decode_varint: Callable[[bytearray, int], tuple[int, int]]
 size_of_varint: Callable[[int], int]
 encode_varint: Callable[[int, Callable[[int], None]], int]
 

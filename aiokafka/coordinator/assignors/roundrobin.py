@@ -1,7 +1,7 @@
 import collections
 import itertools
 import logging
-from typing import Dict, Iterable, List, Mapping
+from collections.abc import Iterable, Mapping
 
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor
@@ -55,12 +55,12 @@ class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
         cls,
         cluster: ClusterMetadata,
         members: Mapping[str, ConsumerProtocolMemberMetadata],
-    ) -> Dict[str, ConsumerProtocolMemberAssignment]:
+    ) -> dict[str, ConsumerProtocolMemberAssignment]:
         all_topics = set()
         for metadata in members.values():
             all_topics.update(metadata.subscription)
 
-        all_topic_partitions: List[TopicPartition] = []
+        all_topic_partitions: list[TopicPartition] = []
         for topic in all_topics:
             partitions = cluster.partitions_for_topic(topic)
             if partitions is None:
@@ -72,7 +72,7 @@ class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
         all_topic_partitions.sort()
 
         # construct {member_id: {topic: [partition, ...]}}
-        assignment: Dict[str, Dict[str, List[int]]] = collections.defaultdict(
+        assignment: dict[str, dict[str, list[int]]] = collections.defaultdict(
             lambda: collections.defaultdict(list)
         )
 

@@ -1,14 +1,13 @@
 import ssl
 from pathlib import Path
-from typing import Tuple
 
 from aiokafka.helpers import create_ssl_context
 
 
-def _check_ssl_dir(ssl_folder: Path) -> Tuple[Path, Path, Path]:
-    cafile = ssl_folder / "ca-cert"
-    certfile = ssl_folder / "cl_client.pem"
-    keyfile = ssl_folder / "cl_client.key"
+def _check_ssl_dir(ssl_folder: Path) -> tuple[Path, Path, Path]:
+    cafile = ssl_folder / "ca.crt"
+    certfile = ssl_folder / "client.crt"
+    keyfile = ssl_folder / "client.key"
     assert ssl_folder.exists(), str(ssl_folder)
     cafile.exists(), str(cafile)
     certfile.exists(), str(certfile)

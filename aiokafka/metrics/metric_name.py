@@ -92,7 +92,7 @@ class MetricName:
         if other is None:
             return False
         return (
-            type(self) == type(other)
+            type(self) is type(other)
             and self.group == other.group
             and self.name == other.name
             and self.tags == other.tags

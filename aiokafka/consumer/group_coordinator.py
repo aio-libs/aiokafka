@@ -434,7 +434,7 @@ class GroupCoordinator(BaseCoordinator):
         assignment_strategy = response.group_protocol
         members = response.members
         assignor = self._lookup_assignor(assignment_strategy)
-        assert assignor, "Invalid assignment protocol: %s" % assignment_strategy
+        assert assignor, f"Invalid assignment protocol: {assignment_strategy}"
         member_metadata = {}
         all_subscribed_topics = set()
         for member in members:
@@ -477,16 +477,13 @@ class GroupCoordinator(BaseCoordinator):
         # so we force a snapshot update.
         self._metadata_snapshot = self._get_metadata_snapshot()
 
-        group_assignment = {}
-        for member_id, assignment in assignments.items():
-            group_assignment[member_id] = assignment
-        return group_assignment
+        return assignments
 
     async def _on_join_complete(
         self, generation, member_id, protocol, member_assignment_bytes
     ):
         assignor = self._lookup_assignor(protocol)
-        assert assignor, "invalid assignment protocol: %s" % protocol
+        assert assignor, f"invalid assignment protocol: {protocol}"
 
         assignment = ConsumerProtocol.ASSIGNMENT.decode(member_assignment_bytes)
 
@@ -1133,14 +1130,6 @@ class GroupCoordinator(BaseCoordinator):
                         self.request_rejoin()
                     else:
                         self.reset_generation()
-                    # need to re-join group
-                    error = error_type(self.group_id)
-                    log.error(
-                        "OffsetCommit failed for group %s due to group"
-                        " error (%s), will rejoin",
-                        self.group_id,
-                        error,
-                    )
                     errored[tp] = error
 
                 else:
@@ -1210,15 +1199,15 @@ class GroupCoordinator(BaseCoordinator):
     async def _do_fetch_commit_offsets(self, partitions):
         log.debug("Fetching committed offsets for partitions: %s", partitions)
         # construct the request
-        topic_partitions = collections.defaultdict(list)
+        partitions_by_topic = collections.defaultdict(list)
         for tp in partitions:
-            topic_partitions[tp.topic].append(tp.partition)
+            partitions_by_topic[tp.topic].append(tp.partition)
 
-        request = OffsetFetchRequest(self.group_id, list(topic_partitions.items()))
+        request = OffsetFetchRequest(self.group_id, list(partitions_by_topic.items()))
         response = await self._send_req(request)
         offsets = {}
-        for topic, partitions in response.topics:
-            for partition, offset, metadata, error_code in partitions:
+        for topic, topic_partitions in response.topics:
+            for partition, offset, metadata, error_code in topic_partitions:
                 tp = TopicPartition(topic, partition)
                 error_type = Errors.for_code(error_code)
                 if error_type is not Errors.NoError:
@@ -1474,7 +1463,7 @@ class CoordinatorGroupRebalance:
         """
         try:
             group_assignment = await self._coordinator._perform_assignment(response)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise Errors.KafkaError(repr(e)) from e
 
         assignment_req = []

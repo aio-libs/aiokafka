@@ -945,9 +945,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         client.force_metadata_update.side_effect = force_metadata_update
 
         async def ready(node_id, group=None):
-            if node_id == 0:
-                return True
-            return False
+            return node_id == 0
 
         client.ready.side_effect = ready
         client.coordinator_lookup = mock.Mock()

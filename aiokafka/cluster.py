@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 from concurrent.futures import Future
-from typing import Optional, Set
+from typing import Optional
 
 from aiokafka import errors as Errors
 from aiokafka.conn import collect_hosts
@@ -74,7 +74,7 @@ class ClusterMetadata:
 
         brokers = {}
         for i, (host, port, _) in enumerate(bootstrap_hosts):
-            node_id = "bootstrap-%s" % i
+            node_id = f"bootstrap-{i}"
             brokers[node_id] = BrokerMetadata(node_id, host, port, None)
         return brokers
 
@@ -104,7 +104,7 @@ class ClusterMetadata:
             or self._coordinator_brokers.get(broker_id)
         )
 
-    def partitions_for_topic(self, topic: str) -> Optional[Set[int]]:
+    def partitions_for_topic(self, topic: str) -> Optional[set[int]]:
         """Return set of all partitions for topic (whether available or not)
 
         Arguments:
@@ -209,7 +209,7 @@ class ClusterMetadata:
                 f = self._future
                 self._future = None
         if f:
-            f.failure(exception)
+            f.set_exception(exception)
         self._last_refresh_ms = time.time() * 1000
 
     def update_metadata(self, metadata):
@@ -307,7 +307,7 @@ class ClusterMetadata:
         self._last_successful_refresh_ms = now
 
         if f:
-            f.success(self)
+            f.set_result(self)
         log.debug("Updated cluster metadata to %s", self)
 
         for listener in self._listeners:

@@ -1,7 +1,8 @@
 import io
 import time
 from binascii import crc32
-from typing import Iterable, List, Literal, Optional, Tuple, Union, cast, overload
+from collections.abc import Iterable
+from typing import Literal, Optional, Union, cast, overload
 
 from typing_extensions import Self
 
@@ -196,16 +197,14 @@ class Message(Struct):
         if self._validated_crc is None:
             raw_msg = self.encode(recalc_crc=False)
             self._validated_crc = crc32(raw_msg[4:])
-        if self.crc == self._validated_crc:
-            return True
-        return False
+        return self.crc == self._validated_crc
 
     def is_compressed(self) -> bool:
         return self.attributes & self.CODEC_MASK != 0
 
     def decompress(
         self,
-    ) -> List[Union[Tuple[int, int, "Message"], Tuple[None, None, "PartialMessage"]]]:
+    ) -> list[Union[tuple[int, int, "Message"], tuple[None, None, "PartialMessage"]]]:
         assert self.value is not None
         codec = self.attributes & self.CODEC_MASK
         assert codec in (
@@ -253,7 +252,7 @@ class MessageSet:
     @classmethod
     def encode(
         cls,
-        items: Union[io.BytesIO, Iterable[Tuple[int, bytes]]],
+        items: Union[io.BytesIO, Iterable[tuple[int, bytes]]],
         prepend_size: bool = True,
     ) -> bytes:
         # RecordAccumulator encodes messagesets internally
@@ -265,7 +264,7 @@ class MessageSet:
                 size += 4
             return items.read(size)
 
-        encoded_values: List[bytes] = []
+        encoded_values: list[bytes] = []
         for offset, message in items:
             encoded_values.append(Int64.encode(offset))
             encoded_values.append(Bytes.encode(message))
@@ -278,7 +277,7 @@ class MessageSet:
     @classmethod
     def decode(
         cls, data: Union[io.BytesIO, bytes], bytes_to_read: Optional[int] = None
-    ) -> List[Union[Tuple[int, int, Message], Tuple[None, None, PartialMessage]]]:
+    ) -> list[Union[tuple[int, int, Message], tuple[None, None, PartialMessage]]]:
         """Compressed messages should pass in bytes_to_read (via message size)
         otherwise, we decode from data as Int32
         """
@@ -292,8 +291,8 @@ class MessageSet:
         # So create an internal buffer to avoid over-reading
         raw = io.BytesIO(data.read(bytes_to_read))
 
-        items: List[
-            Union[Tuple[int, int, Message], Tuple[None, None, PartialMessage]]
+        items: list[
+            Union[tuple[int, int, Message], tuple[None, None, PartialMessage]]
         ] = []
         try:
             while bytes_to_read:
@@ -316,7 +315,7 @@ class MessageSet:
         cls,
         messages: Union[
             io.BytesIO,
-            List[Union[Tuple[int, int, Message], Tuple[None, None, PartialMessage]]],
+            list[Union[tuple[int, int, Message], tuple[None, None, PartialMessage]]],
         ],
     ) -> str:
         if isinstance(messages, io.BytesIO):

@@ -2,6 +2,27 @@
 Changelog
 =========
 
+0.12.0 (2024-10-26)
+===================
+
+New features:
+
+* Build mac x86_64 wheels (pr #1029)
+* Add support for Python 3.13, drop support for Python 3.8 due to end of life (pr #1061)
+* Remove duplicate error logging during rebalance (pr #1025 by @y4n9squared)
+
+
+Bugfixes:
+
+* Quote username in SCRAM auth (pr #1043)
+
+
+Improved Documentation:
+
+* Fix building of readthedocs documentation (pr #1034)
+* Fix typo in producer documentation (pr #1036 by @lgo)
+
+
 0.11.0 (2024-06-30)
 ===================
 

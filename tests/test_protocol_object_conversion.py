@@ -1,16 +1,16 @@
-from typing import Type, TypeVar, Union
+from typing import TypeVar, Union
 
 import pytest
 
 from aiokafka.protocol.admin import Request, Response
 from aiokafka.protocol.types import Array, Int16, Schema, String
 
-C = TypeVar("C", bound=Type[Union[Request, Response]])
+C = TypeVar("C", bound=type[Union[Request, Response]])
 
 
 def _make_test_class(
-    klass: Type[Union[Request, Response]], schema: Schema
-) -> Type[Union[Request, Response]]:
+    klass: type[Union[Request, Response]], schema: Schema
+) -> type[Union[Request, Response]]:
     if klass is Request:
 
         class RequestTestClass(Request):
@@ -32,7 +32,7 @@ def _make_test_class(
 
 @pytest.mark.parametrize("superclass", (Request, Response))
 class TestObjectConversion:
-    def test_get_item(self, superclass: Type[Union[Request, Response]]) -> None:
+    def test_get_item(self, superclass: type[Union[Request, Response]]) -> None:
         TestClass = _make_test_class(superclass, Schema(("myobject", Int16)))
 
         tc = TestClass(myobject=0)
@@ -41,7 +41,7 @@ class TestObjectConversion:
             tc.get_item("does-not-exist")
 
     def test_with_empty_schema(
-        self, superclass: Type[Union[Request, Response]]
+        self, superclass: type[Union[Request, Response]]
     ) -> None:
         TestClass = _make_test_class(superclass, Schema())
 
@@ -50,7 +50,7 @@ class TestObjectConversion:
         assert tc.to_object() == {}
 
     def test_with_basic_schema(
-        self, superclass: Type[Union[Request, Response]]
+        self, superclass: type[Union[Request, Response]]
     ) -> None:
         TestClass = _make_test_class(superclass, Schema(("myobject", Int16)))
 
@@ -59,7 +59,7 @@ class TestObjectConversion:
         assert tc.to_object() == {"myobject": 0}
 
     def test_with_basic_array_schema(
-        self, superclass: Type[Union[Request, Response]]
+        self, superclass: type[Union[Request, Response]]
     ) -> None:
         TestClass = _make_test_class(superclass, Schema(("myarray", Array(Int16))))
 
@@ -68,7 +68,7 @@ class TestObjectConversion:
         assert tc.to_object()["myarray"] == [1, 2, 3]
 
     def test_with_complex_array_schema(
-        self, superclass: Type[Union[Request, Response]]
+        self, superclass: type[Union[Request, Response]]
     ) -> None:
         TestClass = _make_test_class(
             superclass,
@@ -88,7 +88,7 @@ class TestObjectConversion:
         assert obj["myarray"][0]["othersubobject"] == "hello"
 
     def test_with_array_and_other(
-        self, superclass: Type[Union[Request, Response]]
+        self, superclass: type[Union[Request, Response]]
     ) -> None:
         TestClass = _make_test_class(
             superclass,
@@ -110,7 +110,7 @@ class TestObjectConversion:
         assert obj["notarray"] == 42
 
     def test_with_nested_array(
-        self, superclass: Type[Union[Request, Response]]
+        self, superclass: type[Union[Request, Response]]
     ) -> None:
         TestClass = _make_test_class(
             superclass,
@@ -138,7 +138,7 @@ class TestObjectConversion:
         assert obj["myarray"][1]["otherobject"] == 4
 
     def test_with_complex_nested_array(
-        self, superclass: Type[Union[Request, Response]]
+        self, superclass: type[Union[Request, Response]]
     ) -> None:
         TestClass = _make_test_class(
             superclass,

@@ -1,15 +1,11 @@
 import struct
+from collections.abc import Sequence
 from io import BytesIO
 from struct import error
 from typing import (
     Any,
     Callable,
-    Dict,
-    List,
     Optional,
-    Sequence,
-    Tuple,
-    Type,
     TypeVar,
     Union,
     cast,
@@ -22,7 +18,7 @@ from .abstract import AbstractType
 
 T = TypeVar("T")
 
-ValueT: TypeAlias = Union[Type[AbstractType[Any]], "String", "Array", "Schema"]
+ValueT: TypeAlias = Union[type[AbstractType[Any]], "String", "Array", "Schema"]
 
 
 def _pack(f: Callable[[T], bytes], value: T) -> bytes:
@@ -35,7 +31,7 @@ def _pack(f: Callable[[T], bytes], value: T) -> bytes:
         ) from e
 
 
-def _unpack(f: Callable[[Buffer], Tuple[T, ...]], data: Buffer) -> T:
+def _unpack(f: Callable[[Buffer], tuple[T, ...]], data: Buffer) -> T:
     try:
         (value,) = f(data)
     except error as e:
@@ -188,10 +184,10 @@ class Boolean(AbstractType[bool]):
 
 
 class Schema:
-    names: Tuple[str, ...]
-    fields: Tuple[ValueT, ...]
+    names: tuple[str, ...]
+    fields: tuple[ValueT, ...]
 
-    def __init__(self, *fields: Tuple[str, ValueT]):
+    def __init__(self, *fields: tuple[str, ValueT]):
         if fields:
             self.names, self.fields = zip(*fields)
         else:
@@ -204,14 +200,14 @@ class Schema:
 
     def decode(
         self, data: BytesIO
-    ) -> Tuple[Union[Any, str, None, List[Union[Any, Tuple[Any, ...]]]], ...]:
+    ) -> tuple[Union[Any, str, None, list[Union[Any, tuple[Any, ...]]]], ...]:
         return tuple(field.decode(data) for field in self.fields)
 
     def __len__(self) -> int:
         return len(self.fields)
 
     def repr(self, value: Any) -> str:
-        key_vals: List[str] = []
+        key_vals: list[str] = []
         try:
             for i in range(len(self)):
                 try:
@@ -232,16 +228,16 @@ class Array:
 
     @overload
     def __init__(
-        self, array_of_0: Tuple[str, ValueT], *array_of: Tuple[str, ValueT]
+        self, array_of_0: tuple[str, ValueT], *array_of: tuple[str, ValueT]
     ): ...
 
     def __init__(
         self,
-        array_of_0: Union[ValueT, Tuple[str, ValueT]],
-        *array_of: Tuple[str, ValueT],
+        array_of_0: Union[ValueT, tuple[str, ValueT]],
+        *array_of: tuple[str, ValueT],
     ) -> None:
         if array_of:
-            array_of_0 = cast(Tuple[str, ValueT], array_of_0)
+            array_of_0 = cast(tuple[str, ValueT], array_of_0)
             self.array_of = Schema(array_of_0, *array_of)
         else:
             array_of_0 = cast(ValueT, array_of_0)
@@ -260,7 +256,7 @@ class Array:
             (Int32.encode(len(items)), *encoded_items),
         )
 
-    def decode(self, data: BytesIO) -> Optional[List[Union[Any, Tuple[Any, ...]]]]:
+    def decode(self, data: BytesIO) -> Optional[list[Union[Any, tuple[Any, ...]]]]:
         length = Int32.decode(data)
         if length == -1:
             return None
@@ -360,11 +356,11 @@ class CompactString(String):
         return UnsignedVarInt32.encode(len(encoded_value) + 1) + encoded_value
 
 
-class TaggedFields(AbstractType[Dict[int, bytes]]):
+class TaggedFields(AbstractType[dict[int, bytes]]):
     @classmethod
-    def decode(cls, data: BytesIO) -> Dict[int, bytes]:
+    def decode(cls, data: BytesIO) -> dict[int, bytes]:
         num_fields = UnsignedVarInt32.decode(data)
-        ret: Dict[int, bytes] = {}
+        ret: dict[int, bytes] = {}
         if not num_fields:
             return ret
         prev_tag = -1
@@ -379,7 +375,7 @@ class TaggedFields(AbstractType[Dict[int, bytes]]):
         return ret
 
     @classmethod
-    def encode(cls, value: Dict[int, bytes]) -> bytes:
+    def encode(cls, value: dict[int, bytes]) -> bytes:
         ret = UnsignedVarInt32.encode(len(value))
         for k, v in value.items():
             # do we allow for other data types ?? It could get complicated really fast
@@ -418,7 +414,7 @@ class CompactArray(Array):
             (UnsignedVarInt32.encode(len(items) + 1), *encoded_items),
         )
 
-    def decode(self, data: BytesIO) -> Optional[List[Union[Any, Tuple[Any, ...]]]]:
+    def decode(self, data: BytesIO) -> Optional[list[Union[Any, tuple[Any, ...]]]]:
         length = UnsignedVarInt32.decode(data) - 1
         if length == -1:
             return None

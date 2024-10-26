@@ -34,7 +34,7 @@ class Quota:
         if self is other:
             return True
         return (
-            type(self) == type(other)
+            type(self) is type(other)
             and self.bound == other.bound
             and self.is_upper_bound() == other.is_upper_bound()
         )

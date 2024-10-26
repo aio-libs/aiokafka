@@ -1,6 +1,6 @@
 import collections
 import logging
-from typing import Dict, Iterable, List, Mapping
+from collections.abc import Iterable, Mapping
 
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor
@@ -38,14 +38,14 @@ class RangePartitionAssignor(AbstractPartitionAssignor):
         cls,
         cluster: ClusterMetadata,
         members: Mapping[str, ConsumerProtocolMemberMetadata],
-    ) -> Dict[str, ConsumerProtocolMemberAssignment]:
-        consumers_per_topic: Dict[str, List[str]] = collections.defaultdict(list)
+    ) -> dict[str, ConsumerProtocolMemberAssignment]:
+        consumers_per_topic: dict[str, list[str]] = collections.defaultdict(list)
         for member, metadata in members.items():
             for topic in metadata.subscription:
                 consumers_per_topic[topic].append(member)
 
         # construct {member_id: {topic: [partition, ...]}}
-        assignment: Dict[str, Dict[str, List[int]]] = collections.defaultdict(dict)
+        assignment: dict[str, dict[str, list[int]]] = collections.defaultdict(dict)
 
         for topic, consumers_for_topic in consumers_per_topic.items():
             partitions = cluster.partitions_for_topic(topic)
@@ -66,7 +66,7 @@ class RangePartitionAssignor(AbstractPartitionAssignor):
                     length += 1
                 assignment[member][topic] = partitions_list[start : start + length]
 
-        protocol_assignment: Dict[str, ConsumerProtocolMemberAssignment] = {}
+        protocol_assignment: dict[str, ConsumerProtocolMemberAssignment] = {}
         for member_id in members:
             protocol_assignment[member_id] = ConsumerProtocolMemberAssignment(
                 cls.version, sorted(assignment[member_id].items()), b""
