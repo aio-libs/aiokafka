@@ -5,8 +5,6 @@ Welcome to aiokafka's documentation!
 .. _asyncio: https://docs.python.org/3/library/asyncio.html
 .. _kafka-python: https://github.com/dpkp/kafka-python
 
-.. image:: https://img.shields.io/badge/kafka-1.0%2C%200.11%2C%200.10%2C%200.9-brightgreen.svg
-    :target: https://kafka.apache.org
 .. image:: https://img.shields.io/pypi/pyversions/aiokafka.svg
     :target: https://pypi.python.org/pypi/aiokafka
 .. image:: https://img.shields.io/badge/license-Apache%202-blue.svg

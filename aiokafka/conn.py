@@ -410,7 +410,7 @@ class AIOKafkaConnection:
 
         try:
             read_task.result()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if not isinstance(exc, (OSError, EOFError, ConnectionError)):
                 log.exception("Unexpected exception in AIOKafkaConnection")
 

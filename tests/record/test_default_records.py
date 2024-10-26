@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import Optional
 from unittest import mock
 
 import pytest
@@ -11,7 +11,7 @@ from aiokafka.record.default_records import (
     DefaultRecordBatchBuilder,
 )
 
-HeadersT = List[Tuple[str, Optional[bytes]]]
+HeadersT = list[tuple[str, Optional[bytes]]]
 
 
 @pytest.mark.parametrize(
@@ -21,10 +21,9 @@ HeadersT = List[Tuple[str, Optional[bytes]]]
         # Gzip header includes timestamp, so checksum varies
         pytest.param(DefaultRecordBatch.CODEC_GZIP, None, id="gzip"),
         pytest.param(DefaultRecordBatch.CODEC_SNAPPY, 2171068483, id="snappy"),
-        # Checksum is
-        #   462121143 with content size (header = 01101000)
-        #   1260758266 without content size (header = 01100000)
-        pytest.param(DefaultRecordBatch.CODEC_LZ4, 1260758266, id="lz4"),
+        # cramjam uses different parameters for LZ4, so checksum varies from
+        # version to version
+        pytest.param(DefaultRecordBatch.CODEC_LZ4, None, id="lz4"),
         pytest.param(DefaultRecordBatch.CODEC_ZSTD, 1714138923, id="zstd"),
     ],
 )

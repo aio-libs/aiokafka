@@ -1093,12 +1093,12 @@ class Fetcher:
 
             for tp in list(self._records.keys()):
                 if partitions and tp not in partitions:
-                    # Cleanup results for unassigned partitons
+                    # Cleanup results for unassigned partitions
                     if not self._subscriptions.is_assigned(tp):
                         del self._records[tp]
                     continue
                 res_or_error = self._records[tp]
-                if type(res_or_error) == FetchResult:
+                if type(res_or_error) is FetchResult:
                     message = res_or_error.getone()
                     if message is None:
                         # We already processed all messages, request new ones
@@ -1129,12 +1129,12 @@ class Fetcher:
             drained = {}
             for tp in list(self._records.keys()):
                 if partitions and tp not in partitions:
-                    # Cleanup results for unassigned partitons
+                    # Cleanup results for unassigned partitions
                     if not self._subscriptions.is_assigned(tp):
                         del self._records[tp]
                     continue
                 res_or_error = self._records[tp]
-                if type(res_or_error) == FetchResult:
+                if type(res_or_error) is FetchResult:
                     records = res_or_error.getall(max_records)
                     if not res_or_error.has_more():
                         # We processed all messages - request new ones

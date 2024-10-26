@@ -20,7 +20,7 @@
 # used to construct the correct class for Batch itself.
 
 import struct
-from typing import Optional, Type, Union, final
+from typing import Optional, Union, final
 
 from aiokafka.errors import CorruptRecordException
 from aiokafka.util import NO_EXTENSIONS
@@ -104,7 +104,7 @@ class _MemoryRecordsPy(MemoryRecordsProtocol):
             return LegacyRecordBatch(next_slice, magic)
 
 
-MemoryRecords: Type[MemoryRecordsProtocol]
+MemoryRecords: type[MemoryRecordsProtocol]
 
 if NO_EXTENSIONS:
     MemoryRecords = _MemoryRecordsPy

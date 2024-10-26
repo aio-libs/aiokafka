@@ -170,9 +170,7 @@ class ProduceRequestBase(Request):
     required_acks: int
 
     def expect_response(self) -> bool:
-        if self.required_acks == 0:
-            return False
-        return True
+        return self.required_acks != 0
 
 
 class ProduceRequest_v0(ProduceRequestBase):

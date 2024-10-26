@@ -23,7 +23,7 @@ pycrc 0.7.1 (http://www.tty1.net/pycrc/). Command line used:
 """
 
 import array
-from typing import Iterable
+from collections.abc import Iterable
 
 # fmt: off
 CRC_TABLE = (
@@ -106,7 +106,7 @@ def crc_update(crc: int, data: Iterable[int]) -> int:
     Returns:
         32-bit updated CRC-32C as long.
     """
-    if type(data) != array.array or data.itemsize != 1:
+    if not isinstance(data, array.array) or data.itemsize != 1:
         buf = array.array("B", data)
     else:
         buf = data

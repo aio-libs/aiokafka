@@ -4,7 +4,6 @@ import re
 import sys
 import traceback
 import warnings
-from typing import Dict, List
 
 from aiokafka import __version__
 from aiokafka.abc import ConsumerRebalanceListener
@@ -1162,7 +1161,7 @@ class AIOKafkaConsumer:
 
     async def getmany(
         self, *partitions, timeout_ms=0, max_records=None
-    ) -> Dict[TopicPartition, List[ConsumerRecord]]:
+    ) -> dict[TopicPartition, list[ConsumerRecord]]:
         """Get messages from assigned topics / partitions.
 
         Prefetched messages are returned in batches by topic-partition.

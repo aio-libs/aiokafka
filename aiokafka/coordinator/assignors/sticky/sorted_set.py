@@ -1,12 +1,9 @@
+from collections.abc import Collection, Iterable, Iterator
 from typing import (
     Any,
     Callable,
-    Collection,
     Generic,
-    Iterable,
-    Iterator,
     Optional,
-    Set,
     TypeVar,
     final,
 )
@@ -22,7 +19,7 @@ class SortedSet(Generic[T], Collection[T]):
         key: Optional[Callable[[T], Any]] = None,
     ) -> None:
         self._key: Callable[[T], Any] = key if key is not None else lambda x: x
-        self._set: Set[T] = set(iterable) if iterable is not None else set()
+        self._set: set[T] = set(iterable) if iterable is not None else set()
 
         self._cached_last: Optional[T] = None
         self._cached_first: Optional[T] = None

@@ -277,7 +277,7 @@ class AIOKafkaProducer:
         AIOKafkaProducer._PRODUCER_CLIENT_ID_SEQUENCE += 1
         if client_id is None:
             client_id = (
-                "aiokafka-producer-%s" % AIOKafkaProducer._PRODUCER_CLIENT_ID_SEQUENCE
+                f"aiokafka-producer-{AIOKafkaProducer._PRODUCER_CLIENT_ID_SEQUENCE}"
             )
 
         self._key_serializer = key_serializer
