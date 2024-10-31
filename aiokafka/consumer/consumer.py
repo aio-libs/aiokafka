@@ -927,7 +927,8 @@ class AIOKafkaConsumer:
         Returns:
             dict(TopicPartition, OffsetAndTimestamp): mapping from
             partition to the timestamp and offset of the first message with
-            timestamp greater than or equal to the target timestamp.
+            timestamp greater than or equal to the target timestamp. None will
+            be returned for the partition if there is no such message.
 
         Raises:
             ValueError: If the target timestamp is negative
