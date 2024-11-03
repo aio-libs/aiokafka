@@ -28,7 +28,7 @@ class TopicPartition(NamedTuple):
 class BrokerMetadata(NamedTuple):
     """A Kafka broker metadata used by admin tools"""
 
-    nodeId: int | str  # FIXME consider updating implementation
+    nodeId: int | str  # FIXME consider updating implementation (https://github.com/aio-libs/aiokafka/issues/1050)
     "The Kafka broker id"
 
     host: str
