@@ -1,6 +1,7 @@
+from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Generic, List, NamedTuple, Optional, Sequence, Tuple, TypeVar, Union
+from typing import Generic, NamedTuple, Optional, Sequence, TypeVar
 
 from aiokafka.errors import KafkaError
 
@@ -27,7 +28,7 @@ class TopicPartition(NamedTuple):
 class BrokerMetadata(NamedTuple):
     """A Kafka broker metadata used by admin tools"""
 
-    nodeId: Union[int, str]
+    nodeId: int | str  # FIXME consider updating implementation
     "The Kafka broker id"
 
     host: str
