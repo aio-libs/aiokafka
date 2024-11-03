@@ -1,7 +1,7 @@
 from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Generic, NamedTuple, Optional, Sequence, TypeVar
+from typing import Generic, NamedTuple, Optional, TypeVar
 
 from aiokafka.errors import KafkaError
 
