@@ -800,6 +800,3 @@ class AIOKafkaConsumer(Generic[KT, VT]):
     
     async def __aexit__(self, exc_type: type[ET] | None, exc: ET | None, tb: TracebackType | None) -> None:
         ...
-    
-
-
