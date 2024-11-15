@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import base64
 import collections
@@ -16,6 +18,7 @@ import uuid
 import warnings
 import weakref
 from enum import IntEnum
+from typing import Literal
 
 import async_timeout
 
@@ -893,7 +896,7 @@ def get_ip_port_afi(host_and_port_str):
         return host, port, af
 
 
-def collect_hosts(hosts, randomize=True):
+def collect_hosts(hosts: str | list[str], randomize: bool=True) -> list[tuple[str, int, Literal[0] | Literal[2] | Literal[10]]]:
     """
     Collects a comma-separated set of hosts (host:port) and optionally
     randomize the returned list.
