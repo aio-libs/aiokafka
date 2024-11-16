@@ -43,6 +43,7 @@ class ConsumerRebalanceListener(abc.ABC):
     taking over that partition has their :meth:`on_partitions_assigned` callback
     called to load the state.
     """
+
     @abc.abstractmethod
     def on_partitions_revoked(self, revoked: list[TopicPartition]) -> None:
         """
@@ -63,7 +64,7 @@ class ConsumerRebalanceListener(abc.ABC):
                 to the consumer on the last rebalance
         """
         ...
-    
+
     @abc.abstractmethod
     def on_partitions_assigned(self, assigned: list[TopicPartition]) -> None:
         """
@@ -83,8 +84,6 @@ class ConsumerRebalanceListener(abc.ABC):
                 consumer (may include partitions that were previously assigned)
         """
         ...
-    
-
 
 class AbstractTokenProvider(abc.ABC):
     """
@@ -103,6 +102,7 @@ class AbstractTokenProvider(abc.ABC):
     .. _SASL OAuthBearer:
         https://docs.confluent.io/platform/current/kafka/authentication_sasl/authentication_sasl_oauth.html
     """
+
     @abc.abstractmethod
     async def token(self) -> None:
         """
@@ -123,7 +123,7 @@ class AbstractTokenProvider(abc.ABC):
                     # The actual synchronous token callback.
         """
         ...
-    
+
     def extensions(self) -> dict[str, str]:
         """
         This is an OPTIONAL method that may be implemented.
@@ -135,7 +135,5 @@ class AbstractTokenProvider(abc.ABC):
         This feature is only available in Kafka >= 2.1.0.
         """
         ...
-    
-
 
 __all__ = ["ConsumerRebalanceListener", "AbstractTokenProvider"]

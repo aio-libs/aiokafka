@@ -1,19 +1,38 @@
 from concurrent.futures import Future
 from typing import Any, Callable, Optional, Sequence, Set, TypedDict, Union
 from aiokafka.client import CoordinationType
-from aiokafka.protocol.commit import GroupCoordinatorResponse_v0, GroupCoordinatorResponse_v1
-from aiokafka.protocol.metadata import MetadataResponse_v0, MetadataResponse_v1, MetadataResponse_v2, MetadataResponse_v3, MetadataResponse_v4, MetadataResponse_v5
+from aiokafka.protocol.commit import (
+    GroupCoordinatorResponse_v0,
+    GroupCoordinatorResponse_v1,
+)
+from aiokafka.protocol.metadata import (
+    MetadataResponse_v0,
+    MetadataResponse_v1,
+    MetadataResponse_v2,
+    MetadataResponse_v3,
+    MetadataResponse_v4,
+    MetadataResponse_v5,
+)
 from aiokafka.structs import BrokerMetadata, PartitionMetadata, TopicPartition
 
 log = ...
-MetadataResponse = Union[MetadataResponse_v0, MetadataResponse_v1, MetadataResponse_v2, MetadataResponse_v3, MetadataResponse_v4, MetadataResponse_v5,]
-GroupCoordinatorResponse = Union[GroupCoordinatorResponse_v0, GroupCoordinatorResponse_v1]
+MetadataResponse = Union[
+    MetadataResponse_v0,
+    MetadataResponse_v1,
+    MetadataResponse_v2,
+    MetadataResponse_v3,
+    MetadataResponse_v4,
+    MetadataResponse_v5,
+]
+GroupCoordinatorResponse = Union[
+    GroupCoordinatorResponse_v0, GroupCoordinatorResponse_v1
+]
+
 class ClusterConfig(TypedDict):
     retry_backoff_ms: int
     metadata_max_age_ms: int
     bootstrap_servers: str | list[str]
     ...
-
 
 class ClusterMetadata:
     """
@@ -36,13 +55,10 @@ class ClusterMetadata:
             Metadata API Request. Default port is 9092. If no servers are
             specified, will default to localhost:9092.
     """
+
     DEFAULT_CONFIG: ClusterConfig = ...
-    def __init__(self, **configs: int | str | list[str]) -> None:
-        ...
-    
-    def is_bootstrap(self, node_id: str) -> bool:
-        ...
-    
+    def __init__(self, **configs: int | str | list[str]) -> None: ...
+    def is_bootstrap(self, node_id: str) -> bool: ...
     def brokers(self) -> set[BrokerMetadata]:
         """Get all BrokerMetadata
 
@@ -50,7 +66,7 @@ class ClusterMetadata:
             set: {BrokerMetadata, ...}
         """
         ...
-    
+
     def broker_metadata(self, broker_id: str) -> BrokerMetadata | None:
         """Get BrokerMetadata
 
@@ -61,7 +77,7 @@ class ClusterMetadata:
             BrokerMetadata or None if not found
         """
         ...
-    
+
     def partitions_for_topic(self, topic: str) -> Optional[Set[int]]:
         """Return set of all partitions for topic (whether available or not)
 
@@ -72,7 +88,7 @@ class ClusterMetadata:
             set: {partition (int), ...}
         """
         ...
-    
+
     def available_partitions_for_topic(self, topic: str) -> Optional[Set[int]]:
         """Return set of partitions with known leaders
 
@@ -84,11 +100,11 @@ class ClusterMetadata:
             None if topic not found.
         """
         ...
-    
+
     def leader_for_partition(self, partition: PartitionMetadata) -> int | None:
         """Return node_id of leader, -1 unavailable, None if unknown."""
         ...
-    
+
     def partitions_for_broker(self, broker_id: int | str) -> set[TopicPartition] | None:
         """Return TopicPartitions for which the broker is a leader.
 
@@ -100,7 +116,7 @@ class ClusterMetadata:
             None if the broker either has no partitions or does not exist.
         """
         ...
-    
+
     def coordinator_for_group(self, group: str) -> int | str | None:
         """Return node_id of group coordinator.
 
@@ -112,7 +128,7 @@ class ClusterMetadata:
             None if the group does not exist.
         """
         ...
-    
+
     def request_update(self) -> Future[ClusterMetadata]:
         """Flags metadata for update, return Future()
 
@@ -123,7 +139,7 @@ class ClusterMetadata:
             Future (value will be the cluster object after update)
         """
         ...
-    
+
     def topics(self, exclude_internal_topics: bool = ...) -> set[str]:
         """Get set of known topics.
 
@@ -137,11 +153,11 @@ class ClusterMetadata:
             set: {topic (str), ...}
         """
         ...
-    
+
     def failed_update(self, exception: BaseException) -> None:
         """Update cluster state given a failed MetadataRequest."""
         ...
-    
+
     def update_metadata(self, metadata: MetadataResponse) -> None:
         """Update cluster state given a MetadataResponse.
 
@@ -151,16 +167,18 @@ class ClusterMetadata:
         Returns: None
         """
         ...
-    
+
     def add_listener(self, listener: Callable[[ClusterMetadata], Any]) -> None:
         """Add a callback function to be called on each metadata update"""
         ...
-    
+
     def remove_listener(self, listener: Callable[[ClusterMetadata], Any]) -> None:
         """Remove a previously added listener callback"""
         ...
-    
-    def add_group_coordinator(self, group: str, response: GroupCoordinatorResponse) -> str | None:
+
+    def add_group_coordinator(
+        self, group: str, response: GroupCoordinatorResponse
+    ) -> str | None:
         """Update with metadata for a group coordinator
 
         Arguments:
@@ -171,23 +189,27 @@ class ClusterMetadata:
             string: coordinator node_id if metadata is updated, None on error
         """
         ...
-    
-    def with_partitions(self, partitions_to_add: Sequence[PartitionMetadata]) -> ClusterMetadata:
+
+    def with_partitions(
+        self, partitions_to_add: Sequence[PartitionMetadata]
+    ) -> ClusterMetadata:
         """Returns a copy of cluster metadata with partitions added"""
         ...
-    
-    def coordinator_metadata(self, node_id: int | str) -> BrokerMetadata | None:
-        ...
-    
-    def add_coordinator(self, node_id: int | str, host: str, port: int, rack: str | None = ..., *, purpose: tuple[CoordinationType, str]) -> None:
+
+    def coordinator_metadata(self, node_id: int | str) -> BrokerMetadata | None: ...
+    def add_coordinator(
+        self,
+        node_id: int | str,
+        host: str,
+        port: int,
+        rack: str | None = ...,
+        *,
+        purpose: tuple[CoordinationType, str],
+    ) -> None:
         """Keep track of all coordinator nodes separately and remove them if
         a new one was elected for the same purpose (For example group
         coordinator for group X).
         """
         ...
-    
-    def __str__(self) -> str:
-        ...
-    
 
-
+    def __str__(self) -> str: ...
