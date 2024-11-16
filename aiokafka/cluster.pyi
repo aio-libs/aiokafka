@@ -18,13 +18,15 @@ from aiokafka.protocol.metadata import (
 from aiokafka.structs import BrokerMetadata, PartitionMetadata, TopicPartition
 
 log = ...
-MetadataResponse = MetadataResponse_v0 |\
-    MetadataResponse_v1 |\
-    MetadataResponse_v2 |\
-    MetadataResponse_v3 |\
-    MetadataResponse_v4 |\
-    MetadataResponse_v5
-GroupCoordinatorResponse =  GroupCoordinatorResponse_v0 | GroupCoordinatorResponse_v1
+MetadataResponse = (
+    MetadataResponse_v0
+    | MetadataResponse_v1
+    | MetadataResponse_v2
+    | MetadataResponse_v3
+    | MetadataResponse_v4
+    | MetadataResponse_v5
+)
+GroupCoordinatorResponse = GroupCoordinatorResponse_v0 | GroupCoordinatorResponse_v1
 
 class ClusterConfig(TypedDict):
     retry_backoff_ms: int

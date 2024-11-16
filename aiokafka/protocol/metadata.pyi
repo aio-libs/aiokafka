@@ -39,6 +39,5 @@ class MetadataRequest_v5(Request):
     An additional field for offline_replicas has been added to the v5 metadata response
     """
 
-
 MetadataRequest = ...
 MetadataResponse = ...
