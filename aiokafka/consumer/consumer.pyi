@@ -13,11 +13,11 @@ from aiokafka.structs import (
 )
 
 log = ...
-KT = TypeVar("KT", covariant=True)
-VT = TypeVar("VT", covariant=True)
+KT_co = TypeVar("KT_co", covariant=True)
+VT_co = TypeVar("VT_co", covariant=True)
 ET = TypeVar("ET", bound=BaseException)
 
-class AIOKafkaConsumer(Generic[KT, VT]):
+class AIOKafkaConsumer(Generic[KT_co, VT_co]):
     """
     A client that consumes records from a Kafka cluster.
 
@@ -225,8 +225,8 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         client_id: str = ...,
         group_id: str | None = ...,
         group_instance_id: str | None = ...,
-        key_deserializer: Callable[[bytes], KT] = lambda x: x,
-        value_deserializer: Callable[[bytes], VT] = lambda x: x,
+        key_deserializer: Callable[[bytes], KT_co] = lambda x: x,
+        value_deserializer: Callable[[bytes], VT_co] = lambda x: x,
         fetch_max_wait_ms: int = ...,
         fetch_max_bytes: int = ...,
         fetch_min_bytes: int = ...,
@@ -734,7 +734,7 @@ class AIOKafkaConsumer(Generic[KT, VT]):
     def unsubscribe(self) -> None:
         """Unsubscribe from all topics and clear all assigned partitions."""
 
-    async def getone(self, *partitions: TopicPartition) -> ConsumerRecord[KT, VT]:
+    async def getone(self, *partitions: TopicPartition) -> ConsumerRecord[KT_co, VT_co]:
         """
         Get one message from Kafka.
         If no new messages prefetched, this method will wait for it.
@@ -773,7 +773,7 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         *partitions: TopicPartition,
         timeout_ms: int = ...,
         max_records: int | None = ...,
-    ) -> dict[TopicPartition, list[ConsumerRecord[KT, VT]]]:
+    ) -> dict[TopicPartition, list[ConsumerRecord[KT_co, VT_co]]]:
         """Get messages from assigned topics / partitions.
 
         Prefetched messages are returned in batches by topic-partition.
@@ -837,8 +837,8 @@ class AIOKafkaConsumer(Generic[KT, VT]):
             *partitions (tuple[TopicPartition,...]): Partitions to resume.
         """
 
-    def __aiter__(self) -> AIOKafkaConsumer[KT, VT]: ...
-    async def __anext__(self) -> ConsumerRecord[KT, VT]:
+    def __aiter__(self) -> AIOKafkaConsumer[KT_co, VT_co]: ...
+    async def __anext__(self) -> ConsumerRecord[KT_co, VT_co]:
         """Asyncio iterator interface for consumer
 
         Note:
@@ -847,7 +847,7 @@ class AIOKafkaConsumer(Generic[KT, VT]):
             All other KafkaError exceptions will be logged and not raised
         """
 
-    async def __aenter__(self) -> AIOKafkaConsumer[KT, VT]: ...
+    async def __aenter__(self) -> AIOKafkaConsumer[KT_co, VT_co]: ...
     async def __aexit__(
         self, exc_type: type[ET] | None, exc: ET | None, tb: TracebackType | None
     ) -> None: ...

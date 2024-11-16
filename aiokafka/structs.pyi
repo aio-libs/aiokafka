@@ -60,18 +60,18 @@ class RecordMetadata(NamedTuple):
     timestamp_type: int
     log_start_offset: int | None
 
-KT = TypeVar("KT", covariant=True)
-VT = TypeVar("VT", covariant=True)
+KT_co = TypeVar("KT_co", covariant=True)
+VT_co = TypeVar("VT_co", covariant=True)
 
-@dataclass
-class ConsumerRecord(Generic[KT, VT]):
+@dataclass(frozen=True)
+class ConsumerRecord(Generic[KT_co, VT_co]):
     topic: str
     partition: int
     offset: int
     timestamp: int
     timestamp_type: int
-    key: KT | None
-    value: VT | None
+    key: KT_co | None
+    value: VT_co | None
     checksum: int | None
     serialized_key_size: int
     serialized_value_size: int
