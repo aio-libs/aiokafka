@@ -134,13 +134,11 @@ class ConsumerStoppedError(Exception):
     ones.
     """
 
-
 class IllegalOperation(Exception):
     """Raised if you try to execute an operation, that is not available with
     current configuration. For example trying to commit if no group_id was
     given.
     """
-
 
 class NoOffsetForPartitionError(KafkaError): ...
 class RecordTooLargeError(KafkaError): ...
