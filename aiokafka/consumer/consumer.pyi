@@ -1,7 +1,8 @@
 import asyncio
 from ssl import SSLContext
 from types import ModuleType, TracebackType
-from typing import Callable, Dict, Generic, List, Literal, TypeVar
+from typing import Callable, Generic, Literal, TypeVar
+
 from aiokafka.abc import AbstractTokenProvider, ConsumerRebalanceListener
 from aiokafka.coordinator.assignors.abstract import AbstractPartitionAssignor
 from aiokafka.structs import (
@@ -280,7 +281,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         * Wait for possible topic autocreation
         * Join group if ``group_id`` provided
         """
-        ...
 
     def assign(self, partitions: list[TopicPartition]) -> None:
         """Manually assign a list of :class:`.TopicPartition` to this consumer.
@@ -304,7 +304,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
             **no rebalance operation triggered** when group membership or
             cluster and topic metadata change.
         """
-        ...
 
     def assignment(self) -> set[TopicPartition]:
         """Get the set of partitions currently assigned to this consumer.
@@ -321,7 +320,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
             set(TopicPartition): the set of partitions currently assigned to
             this consumer
         """
-        ...
 
     async def stop(self) -> None:
         """Close the consumer, while waiting for finalizers:
@@ -329,7 +327,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         * Commit last consumed message if autocommit enabled
         * Leave group if used Consumer Groups
         """
-        ...
 
     async def commit(
         self,
@@ -390,7 +387,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
 
         .. _kafka-python: https://github.com/dpkp/kafka-python
         """
-        ...
 
     async def committed(self, partition: TopicPartition) -> int | None:
         """Get the last committed offset for the given partition. (whether the
@@ -412,7 +408,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         Raises:
             IllegalOperation: If used with ``group_id == None``
         """
-        ...
 
     async def topics(self) -> set[str]:
         """Get all topics the user is authorized to view.
@@ -420,7 +415,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         Returns:
             set: topics
         """
-        ...
 
     def partitions_for_topic(self, topic: str) -> set[int] | None:
         """Get metadata about the partitions for a given topic.
@@ -434,7 +428,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         Returns:
             set: partition ids
         """
-        ...
 
     async def position(self, partition: TopicPartition) -> int:
         """Get the offset of the *next record* that will be fetched (if a
@@ -455,7 +448,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
             :exc:`~aiokafka.errors.IllegalStateError` in case of unassigned
             partition
         """
-        ...
 
     def highwater(self, partition: TopicPartition) -> int | None:
         """Last known highwater offset for a partition.
@@ -475,7 +467,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         Returns:
             int or None: offset if available
         """
-        ...
 
     def last_stable_offset(self, partition: TopicPartition) -> int | None:
         """Returns the Last Stable Offset of a topic. It will be the last
@@ -493,7 +484,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         Returns:
             int or None: offset if available
         """
-        ...
 
     def last_poll_timestamp(self, partition: TopicPartition) -> int | None:
         """Returns the timestamp of the last poll of this partition (in ms).
@@ -509,7 +499,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         Returns:
             int or None: timestamp if available
         """
-        ...
 
     def seek(self, partition: TopicPartition, offset: int) -> None:
         """Manually specify the fetch offset for a :class:`.TopicPartition`.
@@ -538,7 +527,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
             :exc:`~aiokafka.errors.IllegalStateError` and :exc:`ValueError` in
             respective cases.
         """
-        ...
 
     async def seek_to_beginning(self, *partitions: TopicPartition) -> bool:
         """Seek to the oldest available offset for partitions.
@@ -554,7 +542,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         .. versionadded:: 0.3.0
 
         """
-        ...
 
     async def seek_to_end(self, *partitions: TopicPartition) -> bool:
         """Seek to the most recent available offset for partitions.
@@ -570,7 +557,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         .. versionadded:: 0.3.0
 
         """
-        ...
 
     async def seek_to_committed(
         self, *partitions: TopicPartition
@@ -595,7 +581,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
             :exc:`~aiokafka.errors.IllegalStateError` in case of unassigned
             partition
         """
-        ...
 
     async def offsets_for_times(
         self, timestamps: dict[TopicPartition, int]
@@ -634,7 +619,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         .. versionadded:: 0.3.0
 
         """
-        ...
 
     async def beginning_offsets(
         self, partitions: list[TopicPartition]
@@ -663,7 +647,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         .. versionadded:: 0.3.0
 
         """
-        ...
 
     async def end_offsets(
         self, partitions: list[TopicPartition]
@@ -694,7 +677,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         .. versionadded:: 0.3.0
 
         """
-        ...
 
     def subscribe(
         self,
@@ -741,7 +723,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
                are provided
             TypeError: if listener is not a :class:`.ConsumerRebalanceListener`
         """
-        ...
 
     def subscription(self) -> set[str]:
         """Get the current topics subscription.
@@ -749,11 +730,9 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         Returns:
             set(str): a set of topics
         """
-        ...
 
     def unsubscribe(self) -> None:
         """Unsubscribe from all topics and clear all assigned partitions."""
-        ...
 
     async def getone(self, *partitions: TopicPartition) -> ConsumerRecord[KT, VT]:
         """
@@ -788,14 +767,13 @@ class AIOKafkaConsumer(Generic[KT, VT]):
                 print(message.offset, message.key, message.value)
 
         """
-        ...
 
     async def getmany(
         self,
         *partitions: TopicPartition,
         timeout_ms: int = ...,
         max_records: int | None = ...,
-    ) -> Dict[TopicPartition, List[ConsumerRecord[KT, VT]]]:
+    ) -> dict[TopicPartition, list[ConsumerRecord[KT, VT]]]:
         """Get messages from assigned topics / partitions.
 
         Prefetched messages are returned in batches by topic-partition.
@@ -829,7 +807,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
                     print(message.offset, message.key, message.value)
 
         """
-        ...
 
     def pause(self, *partitions: TopicPartition) -> None:
         """Suspend fetching from the requested partitions.
@@ -844,7 +821,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         Arguments:
             *partitions (list[TopicPartition]): Partitions to pause.
         """
-        ...
 
     def paused(self) -> set[TopicPartition]:
         """Get the partitions that were previously paused using
@@ -853,7 +829,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         Returns:
             set[TopicPartition]: partitions
         """
-        ...
 
     def resume(self, *partitions: TopicPartition) -> None:
         """Resume fetching from the specified (paused) partitions.
@@ -861,7 +836,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
         Arguments:
             *partitions (tuple[TopicPartition,...]): Partitions to resume.
         """
-        ...
 
     def __aiter__(self) -> AIOKafkaConsumer[KT, VT]: ...
     async def __anext__(self) -> ConsumerRecord[KT, VT]:
@@ -872,7 +846,6 @@ class AIOKafkaConsumer(Generic[KT, VT]):
             exceptions can be raised in iterator.
             All other KafkaError exceptions will be logged and not raised
         """
-        ...
 
     async def __aenter__(self) -> AIOKafkaConsumer[KT, VT]: ...
     async def __aexit__(

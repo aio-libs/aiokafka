@@ -1,9 +1,12 @@
 import asyncio
+from collections.abc import Iterable
 from ssl import SSLContext
 from types import ModuleType, TracebackType
-from typing import Callable, Generic, Iterable, Literal, TypeVar
+from typing import Callable, Generic, Literal, TypeVar
+
 from aiokafka.abc import AbstractTokenProvider
 from aiokafka.structs import OffsetAndMetadata, RecordMetadata, TopicPartition
+
 from .message_accumulator import BatchBuilder
 
 log = ...
@@ -220,19 +223,15 @@ class AIOKafkaProducer(Generic[KT, VT]):
     def __del__(self, _warnings: ModuleType = ...) -> None: ...
     async def start(self) -> None:
         """Connect to Kafka cluster and check server version"""
-        ...
 
     async def flush(self) -> None:
         """Wait until all batches are Delivered and futures resolved"""
-        ...
 
     async def stop(self) -> None:
         """Flush all pending data and close all connections to kafka cluster"""
-        ...
 
     async def partitions_for(self, topic: str) -> set[int]:
         """Returns set of all known partitions for the topic."""
-        ...
 
     async def send(
         self,
@@ -286,7 +285,6 @@ class AIOKafkaProducer(Generic[KT, VT]):
             from being sent, but cancelling the :meth:`send` coroutine itself
             **will**.
         """
-        ...
 
     async def send_and_wait(
         self,
@@ -298,7 +296,6 @@ class AIOKafkaProducer(Generic[KT, VT]):
         headers: Iterable[tuple[str, bytes]] | None = ...,
     ) -> RecordMetadata:
         """Publish a message to a topic and wait the result"""
-        ...
 
     def create_batch(self) -> BatchBuilder:
         """Create and return an empty :class:`.BatchBuilder`.
@@ -308,7 +305,6 @@ class AIOKafkaProducer(Generic[KT, VT]):
         Returns:
             BatchBuilder: empty batch to be filled and submitted by the caller.
         """
-        ...
 
     async def send_batch(
         self, batch: BatchBuilder, topic: str, *, partition: int
@@ -324,14 +320,12 @@ class AIOKafkaProducer(Generic[KT, VT]):
             asyncio.Future: object that will be set when the batch is
                 delivered.
         """
-        ...
 
     async def begin_transaction(self) -> None: ...
     async def commit_transaction(self) -> None: ...
     async def abort_transaction(self) -> None: ...
     def transaction(self) -> TransactionContext:
         """Start a transaction context"""
-        ...
 
     async def send_offsets_to_transaction(
         self,

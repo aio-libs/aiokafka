@@ -1,4 +1,5 @@
 import abc
+
 from aiokafka.structs import TopicPartition
 
 class ConsumerRebalanceListener(abc.ABC):
@@ -134,6 +135,5 @@ class AbstractTokenProvider(abc.ABC):
 
         This feature is only available in Kafka >= 2.1.0.
         """
-        ...
 
 __all__ = ["ConsumerRebalanceListener", "AbstractTokenProvider"]

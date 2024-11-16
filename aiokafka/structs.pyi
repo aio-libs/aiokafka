@@ -1,5 +1,7 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Generic, List, NamedTuple, Optional, Sequence, Tuple, TypeVar
+from typing import Generic, NamedTuple, TypeVar
+
 from aiokafka.errors import KafkaError
 
 __all__ = [
@@ -16,7 +18,6 @@ class TopicPartition(NamedTuple):
 
     topic: str
     partition: int
-    ...
 
 class BrokerMetadata(NamedTuple):
     """A Kafka broker metadata used by admin tools"""
@@ -24,8 +25,7 @@ class BrokerMetadata(NamedTuple):
     nodeId: int | str
     host: str
     port: int
-    rack: Optional[str]
-    ...
+    rack: str | None
 
 class PartitionMetadata(NamedTuple):
     """A topic partition metadata describing the state in the MetadataResponse"""
@@ -33,10 +33,9 @@ class PartitionMetadata(NamedTuple):
     topic: str
     partition: int
     leader: int
-    replicas: List[int]
-    isr: List[int]
-    error: Optional[KafkaError]
-    ...
+    replicas: list[int]
+    isr: list[int]
+    error: KafkaError | None
 
 class OffsetAndMetadata(NamedTuple):
     """The Kafka offset commit API
@@ -49,7 +48,6 @@ class OffsetAndMetadata(NamedTuple):
 
     offset: int
     metadata: str
-    ...
 
 class RecordMetadata(NamedTuple):
     """Returned when a :class:`~.AIOKafkaProducer` sends a message"""
@@ -58,10 +56,9 @@ class RecordMetadata(NamedTuple):
     partition: int
     topic_partition: TopicPartition
     offset: int
-    timestamp: Optional[int]
+    timestamp: int | None
     timestamp_type: int
-    log_start_offset: Optional[int]
-    ...
+    log_start_offset: int | None
 
 KT = TypeVar("KT", covariant=True)
 VT = TypeVar("VT", covariant=True)
@@ -73,15 +70,13 @@ class ConsumerRecord(Generic[KT, VT]):
     offset: int
     timestamp: int
     timestamp_type: int
-    key: Optional[KT]
-    value: Optional[VT]
-    checksum: Optional[int]
+    key: KT | None
+    value: VT | None
+    checksum: int | None
     serialized_key_size: int
     serialized_value_size: int
-    headers: Sequence[Tuple[str, bytes]]
-    ...
+    headers: Sequence[tuple[str, bytes]]
 
 class OffsetAndTimestamp(NamedTuple):
     offset: int
-    timestamp: Optional[int]
-    ...
+    timestamp: int | None

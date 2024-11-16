@@ -19,7 +19,6 @@ class OffsetCommitRequest_v1(Request):
     pass
 
 class OffsetCommitRequest_v2(Request):
-    pass
     DEFAULT_GENERATION_ID = ...
     DEFAULT_RETENTION_TIME = ...
 
