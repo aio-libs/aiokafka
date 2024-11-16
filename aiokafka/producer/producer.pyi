@@ -15,11 +15,11 @@ _DEFAULT_PARTITIONER = ...
 
 def _identity(data: bytes) -> bytes: ...
 
-KT = TypeVar("KT", contravariant=True)
-VT = TypeVar("VT", contravariant=True)
+KT_contra = TypeVar("KT_contra", contravariant=True)
+VT_contra = TypeVar("VT_contra", contravariant=True)
 ET = TypeVar("ET", bound=BaseException)
 
-class AIOKafkaProducer(Generic[KT, VT]):
+class AIOKafkaProducer(Generic[KT_contra, VT_contra]):
     """A Kafka client that publishes records to the Kafka cluster.
 
     The producer consists of a pool of buffer space that holds records that
@@ -182,8 +182,8 @@ class AIOKafkaProducer(Generic[KT, VT]):
         request_timeout_ms: int = ...,
         api_version: str = ...,
         acks: Literal[0] | Literal[1] | Literal["all"] | object = ...,
-        key_serializer: Callable[[KT], bytes] = _identity,
-        value_serializer: Callable[[VT], bytes] = _identity,
+        key_serializer: Callable[[KT_contra], bytes] = _identity,
+        value_serializer: Callable[[VT_contra], bytes] = _identity,
         compression_type: (
             Literal["gzip"]
             | Literal["snappy"]
@@ -236,8 +236,8 @@ class AIOKafkaProducer(Generic[KT, VT]):
     async def send(
         self,
         topic: str,
-        value: VT | None = ...,
-        key: KT | None = ...,
+        value: VT_contra | None = ...,
+        key: KT_contra | None = ...,
         partition: int | None = ...,
         timestamp_ms: int | None = ...,
         headers: Iterable[tuple[str, bytes]] | None = ...,
@@ -289,8 +289,8 @@ class AIOKafkaProducer(Generic[KT, VT]):
     async def send_and_wait(
         self,
         topic: str,
-        value: VT | None = ...,
-        key: KT | None = ...,
+        value: VT_contra | None = ...,
+        key: KT_contra | None = ...,
         partition: int | None = ...,
         timestamp_ms: int | None = ...,
         headers: Iterable[tuple[str, bytes]] | None = ...,
@@ -332,13 +332,13 @@ class AIOKafkaProducer(Generic[KT, VT]):
         offsets: dict[TopicPartition, int | tuple[int, str] | OffsetAndMetadata],
         group_id: str,
     ) -> None: ...
-    async def __aenter__(self) -> AIOKafkaProducer[KT, VT]: ...
+    async def __aenter__(self) -> AIOKafkaProducer[KT_contra, VT_contra]: ...
     async def __aexit__(
         self, exc_type: type[ET] | None, exc: ET | None, tb: TracebackType | None
     ) -> None: ...
 
 class TransactionContext:
-    def __init__(self, producer: AIOKafkaProducer[KT, VT]) -> None: ...
+    def __init__(self, producer: AIOKafkaProducer[KT_contra, VT_contra]) -> None: ...
     async def __aenter__(self) -> TransactionContext: ...
     async def __aexit__(
         self, exc_type: type[ET] | None, exc: ET | None, tb: TracebackType | None
