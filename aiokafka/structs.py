@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Generic, NamedTuple, Optional, TypeVar
@@ -28,7 +29,8 @@ class TopicPartition(NamedTuple):
 class BrokerMetadata(NamedTuple):
     """A Kafka broker metadata used by admin tools"""
 
-    nodeId: int | str  # FIXME consider updating implementation (https://github.com/aio-libs/aiokafka/issues/1050)
+    # FIXME: consider updating implementation (https://github.com/aio-libs/aiokafka/issues/1050)
+    nodeId: int | str
     "The Kafka broker id"
 
     host: str
