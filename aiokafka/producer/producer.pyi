@@ -9,11 +9,13 @@ from .message_accumulator import BatchBuilder
 log = ...
 _missing = ...
 _DEFAULT_PARTITIONER = ...
-def _identity(data: bytes) -> bytes:
-    ...
+
+def _identity(data: bytes) -> bytes: ...
+
 KT = TypeVar("KT", contravariant=True)
 VT = TypeVar("VT", contravariant=True)
 ET = TypeVar("ET", bound=BaseException)
+
 class AIOKafkaProducer(Generic[KT, VT]):
     """A Kafka client that publishes records to the Kafka cluster.
 
@@ -162,33 +164,85 @@ class AIOKafkaProducer(Generic[KT, VT]):
         Many configuration parameters are taken from the Java client:
         https://kafka.apache.org/documentation.html#producerconfigs
     """
+
     _PRODUCER_CLIENT_ID_SEQUENCE = ...
     _COMPRESSORS = ...
     _closed = ...
     _source_traceback = ...
-    def __init__(self, *, loop: asyncio.AbstractEventLoop | None = ..., bootstrap_servers: str | list[str] = ..., client_id: str | None = ..., metadata_max_age_ms: int = ..., request_timeout_ms: int = ..., api_version: str = ..., acks: Literal[0] | Literal[1] | Literal["all"] | object = ..., key_serializer: Callable[[KT], bytes] = _identity, value_serializer: Callable[[VT], bytes] = _identity, compression_type: Literal["gzip"] | Literal["snappy"] | Literal["lz4"] | Literal["zstd"] | None = ..., max_batch_size: int = ..., partitioner: Callable[[bytes, list[int], list[int]], int] = ..., max_request_size: int = ..., linger_ms: int = ..., retry_backoff_ms: int = ..., security_protocol: Literal["PLAINTEXT"] | Literal["SSL"] | Literal["SASL_PLAINTEXT"] | Literal["SASL_SSL"] = ..., ssl_context: SSLContext | None = ..., connections_max_idle_ms: int = ..., enable_idempotence: bool = ..., transactional_id: int | str | None = ..., transaction_timeout_ms: int = ..., sasl_mechanism: Literal["PLAIN"] | Literal["GSSAPI"] | Literal["SCRAM-SHA-256"] | Literal["SCRAM-SHA-512"] | Literal["OAUTHBEARER"] = ..., sasl_plain_password: str | None = ..., sasl_plain_username: str | None = ..., sasl_kerberos_service_name: str = ..., sasl_kerberos_domain_name: str | None = ..., sasl_oauth_token_provider: AbstractTokenProvider | None = ...) -> None:
-        ...
-    
-    def __del__(self, _warnings: ModuleType = ...) -> None:
-        ...
-    
+    def __init__(
+        self,
+        *,
+        loop: asyncio.AbstractEventLoop | None = ...,
+        bootstrap_servers: str | list[str] = ...,
+        client_id: str | None = ...,
+        metadata_max_age_ms: int = ...,
+        request_timeout_ms: int = ...,
+        api_version: str = ...,
+        acks: Literal[0] | Literal[1] | Literal["all"] | object = ...,
+        key_serializer: Callable[[KT], bytes] = _identity,
+        value_serializer: Callable[[VT], bytes] = _identity,
+        compression_type: (
+            Literal["gzip"]
+            | Literal["snappy"]
+            | Literal["lz4"]
+            | Literal["zstd"]
+            | None
+        ) = ...,
+        max_batch_size: int = ...,
+        partitioner: Callable[[bytes, list[int], list[int]], int] = ...,
+        max_request_size: int = ...,
+        linger_ms: int = ...,
+        retry_backoff_ms: int = ...,
+        security_protocol: (
+            Literal["PLAINTEXT"]
+            | Literal["SSL"]
+            | Literal["SASL_PLAINTEXT"]
+            | Literal["SASL_SSL"]
+        ) = ...,
+        ssl_context: SSLContext | None = ...,
+        connections_max_idle_ms: int = ...,
+        enable_idempotence: bool = ...,
+        transactional_id: int | str | None = ...,
+        transaction_timeout_ms: int = ...,
+        sasl_mechanism: (
+            Literal["PLAIN"]
+            | Literal["GSSAPI"]
+            | Literal["SCRAM-SHA-256"]
+            | Literal["SCRAM-SHA-512"]
+            | Literal["OAUTHBEARER"]
+        ) = ...,
+        sasl_plain_password: str | None = ...,
+        sasl_plain_username: str | None = ...,
+        sasl_kerberos_service_name: str = ...,
+        sasl_kerberos_domain_name: str | None = ...,
+        sasl_oauth_token_provider: AbstractTokenProvider | None = ...,
+    ) -> None: ...
+    def __del__(self, _warnings: ModuleType = ...) -> None: ...
     async def start(self) -> None:
         """Connect to Kafka cluster and check server version"""
         ...
-    
+
     async def flush(self) -> None:
         """Wait until all batches are Delivered and futures resolved"""
         ...
-    
+
     async def stop(self) -> None:
         """Flush all pending data and close all connections to kafka cluster"""
         ...
-    
+
     async def partitions_for(self, topic: str) -> set[int]:
         """Returns set of all known partitions for the topic."""
         ...
-    
-    async def send(self, topic: str, value: VT | None = ..., key: KT | None = ..., partition: int | None = ..., timestamp_ms: int | None = ..., headers: Iterable[tuple[str, bytes]] | None = ...) -> asyncio.Future[RecordMetadata]:
+
+    async def send(
+        self,
+        topic: str,
+        value: VT | None = ...,
+        key: KT | None = ...,
+        partition: int | None = ...,
+        timestamp_ms: int | None = ...,
+        headers: Iterable[tuple[str, bytes]] | None = ...,
+    ) -> asyncio.Future[RecordMetadata]:
         """Publish a message to a topic.
 
         Arguments:
@@ -233,11 +287,19 @@ class AIOKafkaProducer(Generic[KT, VT]):
             **will**.
         """
         ...
-    
-    async def send_and_wait(self, topic: str, value: VT | None = ..., key: KT | None = ..., partition: int | None = ..., timestamp_ms: int | None = ..., headers: Iterable[tuple[str, bytes]] | None = ...) -> RecordMetadata:
+
+    async def send_and_wait(
+        self,
+        topic: str,
+        value: VT | None = ...,
+        key: KT | None = ...,
+        partition: int | None = ...,
+        timestamp_ms: int | None = ...,
+        headers: Iterable[tuple[str, bytes]] | None = ...,
+    ) -> RecordMetadata:
         """Publish a message to a topic and wait the result"""
         ...
-    
+
     def create_batch(self) -> BatchBuilder:
         """Create and return an empty :class:`.BatchBuilder`.
 
@@ -247,8 +309,10 @@ class AIOKafkaProducer(Generic[KT, VT]):
             BatchBuilder: empty batch to be filled and submitted by the caller.
         """
         ...
-    
-    async def send_batch(self, batch: BatchBuilder, topic: str, *, partition: int) -> asyncio.Future[RecordMetadata]:
+
+    async def send_batch(
+        self, batch: BatchBuilder, topic: str, *, partition: int
+    ) -> asyncio.Future[RecordMetadata]:
         """Submit a BatchBuilder for publication.
 
         Arguments:
@@ -261,37 +325,27 @@ class AIOKafkaProducer(Generic[KT, VT]):
                 delivered.
         """
         ...
-    
-    async def begin_transaction(self) -> None:
-        ...
-    
-    async def commit_transaction(self) -> None:
-        ...
-    
-    async def abort_transaction(self) -> None:
-        ...
-    
+
+    async def begin_transaction(self) -> None: ...
+    async def commit_transaction(self) -> None: ...
+    async def abort_transaction(self) -> None: ...
     def transaction(self) -> TransactionContext:
         """Start a transaction context"""
         ...
-    
-    async def send_offsets_to_transaction(self, offsets: dict[TopicPartition, int | tuple[int, str] | OffsetAndMetadata], group_id: str) -> None:
-        ...
-    
-    async def __aenter__(self) -> AIOKafkaProducer[KT, VT]:
-        ...
-    
-    async def __aexit__(self, exc_type: type[ET] | None, exc: ET | None, tb: TracebackType | None) -> None:
-        ...
-    
 
+    async def send_offsets_to_transaction(
+        self,
+        offsets: dict[TopicPartition, int | tuple[int, str] | OffsetAndMetadata],
+        group_id: str,
+    ) -> None: ...
+    async def __aenter__(self) -> AIOKafkaProducer[KT, VT]: ...
+    async def __aexit__(
+        self, exc_type: type[ET] | None, exc: ET | None, tb: TracebackType | None
+    ) -> None: ...
 
 class TransactionContext:
-    def __init__(self, producer: AIOKafkaProducer[KT, VT]) -> None:
-        ...
-    
-    async def __aenter__(self) -> TransactionContext:
-        ...
-    
-    async def __aexit__(self, exc_type: type[ET] | None, exc: ET | None, tb: TracebackType | None) -> None:
-        ...
+    def __init__(self, producer: AIOKafkaProducer[KT, VT]) -> None: ...
+    async def __aenter__(self) -> TransactionContext: ...
+    async def __aexit__(
+        self, exc_type: type[ET] | None, exc: ET | None, tb: TracebackType | None
+    ) -> None: ...

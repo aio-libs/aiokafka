@@ -8,27 +8,20 @@ class ConsumerProtocolMemberMetadata(Struct):
     user_data: bytes
     SCHEMA = ...
 
-
 class ConsumerProtocolMemberAssignment(Struct):
     class Assignment(NamedTuple):
         topic: str
         partitions: List[int]
         ...
-    
-    
+
     version: int
     assignment: List[Assignment]
     user_data: bytes
     SCHEMA = ...
-    def partitions(self) -> List[TopicPartition]:
-        ...
-    
-
+    def partitions(self) -> List[TopicPartition]: ...
 
 class ConsumerProtocol:
     PROTOCOL_TYPE = ...
     ASSIGNMENT_STRATEGIES = ...
     METADATA = ConsumerProtocolMemberMetadata
     ASSIGNMENT = ConsumerProtocolMemberAssignment
-
-

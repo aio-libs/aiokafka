@@ -1,22 +1,31 @@
 import abc
 from typing import Dict, Iterable, Mapping
 from aiokafka.cluster import ClusterMetadata
-from aiokafka.coordinator.protocol import ConsumerProtocolMemberAssignment, ConsumerProtocolMemberMetadata
+from aiokafka.coordinator.protocol import (
+    ConsumerProtocolMemberAssignment,
+    ConsumerProtocolMemberMetadata,
+)
 
 log = ...
+
 class AbstractPartitionAssignor(abc.ABC):
     """Abstract assignor implementation which does some common grunt work (in particular
     collecting partition counts which are always needed in assignors).
     """
+
     @property
     @abc.abstractmethod
     def name(self) -> str:
         """.name should be a string identifying the assignor"""
         ...
-    
+
     @classmethod
     @abc.abstractmethod
-    def assign(cls, cluster: ClusterMetadata, members: Mapping[str, ConsumerProtocolMemberMetadata]) -> Dict[str, ConsumerProtocolMemberAssignment]:
+    def assign(
+        cls,
+        cluster: ClusterMetadata,
+        members: Mapping[str, ConsumerProtocolMemberMetadata],
+    ) -> Dict[str, ConsumerProtocolMemberAssignment]:
         """Perform group assignment given cluster metadata and member subscriptions
 
         Arguments:
@@ -28,7 +37,7 @@ class AbstractPartitionAssignor(abc.ABC):
             dict: {member_id: MemberAssignment}
         """
         ...
-    
+
     @classmethod
     @abc.abstractmethod
     def metadata(cls, topics: Iterable[str]) -> ConsumerProtocolMemberMetadata:
@@ -41,7 +50,7 @@ class AbstractPartitionAssignor(abc.ABC):
             MemberMetadata struct
         """
         ...
-    
+
     @classmethod
     @abc.abstractmethod
     def on_assignment(cls, assignment: ConsumerProtocolMemberAssignment) -> None:
@@ -54,6 +63,3 @@ class AbstractPartitionAssignor(abc.ABC):
             assignment (MemberAssignment): the member's assignment
         """
         ...
-    
-
-
