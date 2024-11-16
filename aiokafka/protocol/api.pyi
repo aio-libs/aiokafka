@@ -1,6 +1,7 @@
 import abc
 from io import BytesIO
-from typing import Any, ClassVar, Dict, Optional, Type, Union
+from typing import Any, ClassVar
+
 from .struct import Struct
 from .types import Schema
 
@@ -17,7 +18,7 @@ class RequestHeader_v1(Struct):
         request: Request,
         correlation_id: int = ...,
         client_id: str = ...,
-        tags: Optional[Dict[int, bytes]] = ...,
+        tags: dict[int, bytes] | None = ...,
     ) -> None: ...
 
 class ResponseHeader_v0(Struct):
@@ -42,7 +43,7 @@ class Request(Struct, metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def RESPONSE_TYPE(self) -> Type[Response]:
+    def RESPONSE_TYPE(self) -> type[Response]:
         """The Response class associated with the api request"""
         ...
 
@@ -54,15 +55,14 @@ class Request(Struct, metaclass=abc.ABCMeta):
 
     def expect_response(self) -> bool:
         """Override this method if an api request does not always generate a response"""
-        ...
 
-    def to_object(self) -> Dict[str, Any]: ...
+    def to_object(self) -> dict[str, Any]: ...
     def build_request_header(
         self, correlation_id: int, client_id: str
-    ) -> Union[RequestHeader_v0, RequestHeader_v1]: ...
+    ) -> RequestHeader_v0 | RequestHeader_v1: ...
     def parse_response_header(
-        self, read_buffer: Union[BytesIO, bytes]
-    ) -> Union[ResponseHeader_v0, ResponseHeader_v1]: ...
+        self, read_buffer: BytesIO | bytes
+    ) -> ResponseHeader_v0 | ResponseHeader_v1: ...
 
 class Response(Struct, metaclass=abc.ABCMeta):
     @property
@@ -83,4 +83,4 @@ class Response(Struct, metaclass=abc.ABCMeta):
         """An instance of Schema() representing the response structure"""
         ...
 
-    def to_object(self) -> Dict[str, Any]: ...
+    def to_object(self) -> dict[str, Any]: ...

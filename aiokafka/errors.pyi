@@ -1,4 +1,4 @@
-from typing import Any, Type, TypeVar
+from typing import Any, TypeVar
 
 __all__ = [
     "ConsumerStoppedError",
@@ -134,7 +134,6 @@ class ConsumerStoppedError(Exception):
     ones.
     """
 
-    ...
 
 class IllegalOperation(Exception):
     """Raised if you try to execute an operation, that is not available with
@@ -142,7 +141,6 @@ class IllegalOperation(Exception):
     given.
     """
 
-    ...
 
 class NoOffsetForPartitionError(KafkaError): ...
 class RecordTooLargeError(KafkaError): ...
@@ -162,7 +160,6 @@ class BrokerResponseError(KafkaError):
     description: str = ...
     def __str__(self) -> str:
         """Add errno to standard KafkaError str"""
-        ...
 
 class NoError(BrokerResponseError):
     errno = ...
@@ -562,4 +559,4 @@ class MemberIdRequired(BrokerResponseError):
 _T = TypeVar("_T", bound=type)
 kafka_errors = ...
 
-def for_code(error_code: int) -> Type[BrokerResponseError]: ...
+def for_code(error_code: int) -> type[BrokerResponseError]: ...
