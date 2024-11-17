@@ -1,7 +1,7 @@
 Manual commit
 =============
 
-When processing sensitive data, setting ``enable_auto_commit=True`` for the
+When processing sensitive data, using ``enable_auto_commit=True`` (default) for the
 Consumer can lead to data loss in the event of a critical failure. To avoid
 this, set ``enable_auto_commit=False`` and commit offsets manually only after
 messages have been processed. Note, that this is a tradeoff from *at most once*
