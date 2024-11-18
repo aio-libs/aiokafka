@@ -11,6 +11,9 @@ Improved Documentation:
   (pr #1068 by @jzvandenoever)
 * Fix Java Client API reference (pr #1069 by @emmanuel-ferdman)
 
+Misc:
+* Use SPDX license expression for project metadata.
+
 
 0.12.0 (2024-10-26)
 ===================

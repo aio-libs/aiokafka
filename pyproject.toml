@@ -1,17 +1,16 @@
 [build-system]
-requires = ["setuptools >=61", "wheel", "Cython >=3.0.5"]
+requires = ["setuptools >=77", "Cython >=3.0.5"]
 
 [project]
 name = "aiokafka"
 description = "Kafka integration with asyncio"
 readme = "README.rst"
 requires-python = ">=3.9"
-license = { file = "LICENSE" }
+license = "Apache-2.0"
 authors = [
     { name = "Andrew Svetlov", email = "andrew.svetlov@gmail.com" },
 ]
 classifiers = [
-    "License :: OSI Approved :: Apache Software License",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
