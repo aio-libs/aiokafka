@@ -6,7 +6,7 @@ name = "aiokafka"
 description = "Kafka integration with asyncio"
 readme = "README.rst"
 requires-python = ">=3.9"
-license = { file = "LICENSE" }
+license = { text = "Apache-2.0" }
 authors = [
     { name = "Andrew Svetlov", email = "andrew.svetlov@gmail.com" },
 ]
