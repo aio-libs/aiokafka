@@ -1,6 +1,6 @@
 import pytest
 
-from aiokafka.partitioner import DefaultPartitioner, murmur2
+from aiokafka.partitioner import DefaultPartitioner, RoundRobinPartitioner, murmur2
 
 
 def test_default_partitioner():
@@ -41,3 +41,21 @@ def test_murmur2_not_ascii():
     # Verify no regression of murmur2() bug encoding py2 bytes that don't ascii encode
     murmur2(b"\xa4")
     murmur2(b"\x81" * 1000)
+
+
+def test_round_robin_partitioner():
+    partitioner = RoundRobinPartitioner()
+
+    all_partitions = available_partitions = list(range(2))
+    assert partitioner(None, all_partitions, available_partitions) == 0
+    assert partitioner(None, all_partitions, available_partitions) == 1
+    assert partitioner(None, all_partitions, available_partitions) == 0
+    assert partitioner(None, all_partitions, available_partitions) == 1
+
+    all_partitions = available_partitions = list(range(4))
+    assert partitioner(None, all_partitions, available_partitions) == 2
+    assert partitioner(None, all_partitions, available_partitions) == 3
+
+    all_partitions = [50]
+    available_partitions = [70]
+    assert partitioner(None, all_partitions, available_partitions) == 70
