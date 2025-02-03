@@ -3,7 +3,8 @@ import gc
 import socket
 import struct
 import sys
-from typing import Any, AsyncIterable, Iterable, Tuple
+from collections.abc import AsyncIterable, Iterable
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -437,9 +438,9 @@ class TestClosedSocket:
             pytest.param("uvloop", id="uvloop"),
         ),
     )
-    def event_loop(
+    def event_loop_policy(
         self, request: pytest.FixtureRequest
-    ) -> Iterable[asyncio.AbstractEventLoop]:
+    ) -> Iterable[asyncio.AbstractEventLoopPolicy]:
         if request.param == "asyncio":
             policy = asyncio.DefaultEventLoopPolicy()
         elif request.param == "uvloop":
@@ -449,12 +450,10 @@ class TestClosedSocket:
         else:
             raise ValueError(f"loop {request.param} is not supported")
 
-        loop: asyncio.AbstractEventLoop = policy.new_event_loop()
-        yield loop
-        loop.close()
+        yield policy
 
     @pytest.fixture()
-    def server(self, unused_tcp_port: int) -> Iterable[Tuple[str, int, socket.socket]]:
+    def server(self, unused_tcp_port: int) -> Iterable[tuple[str, int, socket.socket]]:
         host = "localhost"
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind((host, unused_tcp_port))
@@ -467,7 +466,7 @@ class TestClosedSocket:
 
     @pytest_asyncio.fixture()
     async def conn(
-        self, server: Tuple[str, int, socket.socket]
+        self, server: tuple[str, int, socket.socket]
     ) -> AsyncIterable[AIOKafkaConnection]:
         host, port, _ = server
 
@@ -482,7 +481,7 @@ class TestClosedSocket:
 
     @pytest.mark.asyncio
     async def test_send_to_closed_socket(
-        self, server: Tuple[str, int, socket.socket], conn: AIOKafkaConnection
+        self, server: tuple[str, int, socket.socket], conn: AIOKafkaConnection
     ) -> None:
         host, port, sock = server
 
