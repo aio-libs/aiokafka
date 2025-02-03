@@ -103,7 +103,7 @@ this value to ``max_poll_interval_ms``, same as in Java client.
 Prefetching is more sophisticated
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the `Kafka Java Client <Java Client API>`_ and `kafka-python`_, the
+In the `Kafka Java Client <Java Client API_>`_ and `kafka-python`_, the
 prefetching is very simple, as it only performs prefetches:
 
 * in :meth:`~kafka.KafkaConsumer.poll` call if we don't have enough data stored to satisfy

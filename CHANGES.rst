@@ -2,6 +2,16 @@
 Changelog
 =========
 
+0.13.0 (????-??-??)
+===================
+
+Improved Documentation:
+
+* Fix incomplete documentation for `AIOKafkaConsumer.offset_for_times``
+  (pr #1068 by @jzvandenoever)
+* Fix Java Client API reference (pr #1069 by @emmanuel-ferdman)
+
+
 0.12.0 (2024-10-26)
 ===================
 

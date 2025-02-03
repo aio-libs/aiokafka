@@ -99,7 +99,7 @@ To run tests with a specific version of Kafka (default one is 2.8.1) use KAFKA_V
 
     make cov SCALA_VERSION=2.11 KAFKA_VERSION=0.10.2.1
 
-Test running cheatsheat:
+Test running cheat-sheet:
 
  * ``make test FLAGS="-l -x --ff"`` - run until 1 failure, rerun failed tests first. Great for cleaning up a lot of errors, say after a big refactor.
  * ``make test FLAGS="-k consumer"`` - run only the consumer tests.
