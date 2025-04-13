@@ -109,7 +109,7 @@ jobs:
 
       - name: Install python dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip setuptools
           python -m pip install -r requirements-win-test.txt
           python -m pip install ${{ matrix.aiokafka_whl }}
         shell: bash
@@ -154,7 +154,7 @@ jobs:
 
       - name: Install python dependencies
         run: |
-          pip install --upgrade pip setuptools wheel
+          pip install --upgrade pip setuptools
           pip install -r requirements-ci.txt
           pip install ${{ matrix.aiokafka_whl }}
 
@@ -197,7 +197,7 @@ jobs:
 
       - name: Install python dependencies
         run: |
-          pip install --upgrade pip setuptools wheel
+          pip install --upgrade pip setuptools
           pip install -r requirements-ci.txt
           pip install ${{ matrix.aiokafka_whl }}
 
@@ -244,7 +244,7 @@ jobs:
           sudo apt-get install -y libkrb5-dev
       - name: Install python dependencies
         run: |
-          pip install --upgrade pip setuptools wheel
+          pip install --upgrade pip setuptools
           pip install -r requirements-ci.txt
           pip install ${{ matrix.aiokafka_whl }}
 
@@ -294,7 +294,7 @@ jobs:
               yum install -y epel-release && \
               yum-config-manager --enable epel && \
               yum install -y krb5-devel && \
-              pip install --upgrade pip setuptools wheel && \
+              pip install --upgrade pip setuptools && \
               pip install -r requirements-ci.txt && \
               pip install ${{ matrix.aiokafka_whl }} && \
               rm -rf aiokafka && \

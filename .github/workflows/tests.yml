@@ -46,7 +46,7 @@ jobs:
 
     - name: Install python dependencies
       run: |
-        pip install --upgrade pip setuptools wheel
+        pip install --upgrade pip setuptools
         pip install -r requirements-ci.txt
         pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
 
@@ -101,7 +101,7 @@ jobs:
 
     - name: Install python dependencies
       run: |
-        pip install --upgrade pip setuptools wheel
+        pip install --upgrade pip setuptools
         pip install -r requirements-win-test.txt
         pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
 
@@ -169,7 +169,7 @@ jobs:
 
     - name: Install python dependencies
       run: |
-        pip install --upgrade pip setuptools wheel
+        pip install --upgrade pip setuptools
         pip install -r requirements-ci.txt
         pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
 
@@ -295,7 +295,7 @@ jobs:
 
     - name: Install python dependencies
       run: |
-        pip install --upgrade pip setuptools wheel
+        pip install --upgrade pip setuptools
         pip install -r requirements-ci.txt
         pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
 
