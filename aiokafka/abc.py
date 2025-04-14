@@ -105,7 +105,7 @@ class AbstractTokenProvider(abc.ABC):
     """
 
     @abc.abstractmethod
-    async def token(self) -> None:
+    async def token(self) -> str:
         """
         An async callback returning a :class:`str` ID/Access Token to be sent to
         the Kafka client. In case where a synchronous callback is needed,
