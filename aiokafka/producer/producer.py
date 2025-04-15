@@ -1,9 +1,15 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import sys
 import traceback
 import warnings
+from ssl import SSLContext
+from types import ModuleType, TracebackType
+from typing import Callable, Generic, Iterable, Literal, TypeVar
 
+from aiokafka.abc import AbstractTokenProvider
 from aiokafka.client import AIOKafkaClient
 from aiokafka.codec import has_gzip, has_lz4, has_snappy, has_zstd
 from aiokafka.errors import (
@@ -14,7 +20,7 @@ from aiokafka.errors import (
 from aiokafka.partitioner import DefaultPartitioner
 from aiokafka.record.default_records import DefaultRecordBatch
 from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
-from aiokafka.structs import TopicPartition
+from aiokafka.structs import OffsetAndMetadata, RecordMetadata, TopicPartition
 from aiokafka.util import (
     INTEGER_MAX_VALUE,
     commit_structure_validate,
@@ -22,7 +28,7 @@ from aiokafka.util import (
     get_running_loop,
 )
 
-from .message_accumulator import MessageAccumulator
+from .message_accumulator import BatchBuilder, MessageAccumulator
 from .sender import Sender
 from .transaction_manager import TransactionManager
 
@@ -30,11 +36,19 @@ log = logging.getLogger(__name__)
 
 _missing = object()
 
+def _identity(data: bytes) -> bytes:
+    return data
+
 
 _DEFAULT_PARTITIONER = DefaultPartitioner()
 
 
-class AIOKafkaProducer:
+KT = TypeVar("KT", contravariant=True)
+VT = TypeVar("VT", contravariant=True)
+ET = TypeVar("ET", bound=BaseException)
+
+
+class AIOKafkaProducer(Generic[KT, VT]):
     """A Kafka client that publishes records to the Kafka cluster.
 
     The producer consists of a pool of buffer space that holds records that
@@ -60,17 +74,18 @@ class AIOKafkaProducer:
             full node list.  It just needs to have at least one broker that will
             respond to a Metadata API Request. Default port is 9092. If no
             servers are specified, will default to ``localhost:9092``.
-        client_id (str): a name for this client. This string is passed in
+        client_id (str or None): a name for this client. This string is passed in
             each request to servers and can be used to identify specific
             server-side log entries that correspond to this client.
-            Default: ``aiokafka-producer-#`` (appended with a unique number
-            per instance)
-        key_serializer (Callable): used to convert user-supplied keys to bytes
-            If not :data:`None`, called as ``f(key),`` should return
+            If ``None`` ``aiokafka-producer-#`` (appended with a unique number
+            per instance) is used.
+            Default: :data:`None`
+        key_serializer (Callable[[KT], bytes]): used to convert user-supplied keys
+            to bytes. If not :data:`None`, called as ``f(key),`` should return
             :class:`bytes`.
             Default: :data:`None`.
-        value_serializer (Callable): used to convert user-supplied message
-            values to :class:`bytes`. If not :data:`None`, called as
+        value_serializer (Callable[[VT], bytes]): used to convert user-supplied
+            message values to :class:`bytes`. If not :data:`None`, called as
             ``f(value)``, should return :class:`bytes`.
             Default: :data:`None`.
         acks (Any): one of ``0``, ``1``, ``all``. The number of acknowledgments
@@ -197,33 +212,33 @@ class AIOKafkaProducer:
     def __init__(
         self,
         *,
-        loop=None,
-        bootstrap_servers="localhost",
-        client_id=None,
-        metadata_max_age_ms=300000,
-        request_timeout_ms=40000,
-        api_version="auto",
-        acks=_missing,
-        key_serializer=None,
-        value_serializer=None,
-        compression_type=None,
-        max_batch_size=16384,
-        partitioner=_DEFAULT_PARTITIONER,
-        max_request_size=1048576,
-        linger_ms=0,
-        retry_backoff_ms=100,
-        security_protocol="PLAINTEXT",
-        ssl_context=None,
-        connections_max_idle_ms=540000,
-        enable_idempotence=False,
-        transactional_id=None,
-        transaction_timeout_ms=60000,
-        sasl_mechanism="PLAIN",
-        sasl_plain_password=None,
-        sasl_plain_username=None,
-        sasl_kerberos_service_name="kafka",
-        sasl_kerberos_domain_name=None,
-        sasl_oauth_token_provider=None,
+        loop: asyncio.AbstractEventLoop | None=None,
+        bootstrap_servers: str | list[str]="localhost",
+        client_id: str | None=None,
+        metadata_max_age_ms: int=300000,
+        request_timeout_ms: int=40000,
+        api_version: str="auto",
+        acks: Literal[0] | Literal[1] | Literal["all"] | object=_missing,
+        key_serializer: Callable[[KT], bytes]=_identity,
+        value_serializer: Callable[[VT], bytes]=_identity,
+        compression_type: Literal["gzip"] | Literal["snappy"] | Literal["lz4"] | Literal["zstd"] | None=None,
+        max_batch_size: int=16384,
+        partitioner: Callable[[bytes, list[int], list[int]], int]=_DEFAULT_PARTITIONER,
+        max_request_size: int=1048576,
+        linger_ms: int=0,
+        retry_backoff_ms: int=100,
+        security_protocol: Literal["PLAINTEXT"] | Literal["SSL"] | Literal["SASL_PLAINTEXT"] | Literal["SASL_SSL"]="PLAINTEXT",
+        ssl_context: SSLContext | None=None,
+        connections_max_idle_ms: int=540000,
+        enable_idempotence: bool=False,
+        transactional_id: int | str | None=None, # In theory, this could be any unique object
+        transaction_timeout_ms: int=60000,
+        sasl_mechanism: Literal["PLAIN"] | Literal["GSSAPI"] | Literal["SCRAM-SHA-256"] | Literal["SCRAM-SHA-512"] | Literal["OAUTHBEARER"]="PLAIN",
+        sasl_plain_password: str | None=None,
+        sasl_plain_username: str | None=None,
+        sasl_kerberos_service_name: str="kafka",
+        sasl_kerberos_domain_name: str | None=None,
+        sasl_oauth_token_provider: AbstractTokenProvider | None=None,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -328,7 +343,7 @@ class AIOKafkaProducer:
 
     # Warn if producer was not closed properly
     # We don't attempt to close the Consumer, as __del__ is synchronous
-    def __del__(self, _warnings=warnings):
+    def __del__(self, _warnings: ModuleType=warnings) -> None:
         if self._closed is False:
             _warnings.warn(
                 f"Unclosed AIOKafkaProducer {self!r}",
@@ -343,7 +358,7 @@ class AIOKafkaProducer:
                 context["source_traceback"] = self._source_traceback
             self._loop.call_exception_handler(context)
 
-    async def start(self):
+    async def start(self) -> None:
         """Connect to Kafka cluster and check server version"""
         assert (
             self._loop is get_running_loop()
@@ -371,11 +386,11 @@ class AIOKafkaProducer:
         self._producer_magic = 0 if self.client.api_version < (0, 10) else 1
         log.debug("Kafka producer started")
 
-    async def flush(self):
+    async def flush(self) -> None:
         """Wait until all batches are Delivered and futures resolved"""
         await self._message_accumulator.flush()
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Flush all pending data and close all connections to kafka cluster"""
         if self._closed:
             return
@@ -396,11 +411,11 @@ class AIOKafkaProducer:
         await self.client.close()
         log.debug("The Kafka producer has closed.")
 
-    async def partitions_for(self, topic):
+    async def partitions_for(self, topic: str) -> set[int]:
         """Returns set of all known partitions for the topic."""
         return await self.client._wait_on_metadata(topic)
 
-    def _serialize(self, topic, key, value):
+    def _serialize(self, topic: str, key: KT, value: VT):
         if self._key_serializer is None:
             serialized_key = key
         else:
@@ -425,8 +440,8 @@ class AIOKafkaProducer:
         return serialized_key, serialized_value
 
     def _partition(
-        self, topic, partition, key, value, serialized_key, serialized_value
-    ):
+        self, topic: str, partition: int, key: KT, value: VT, serialized_key: bytes, serialized_value: bytes
+    ) -> int:
         if partition is not None:
             assert partition >= 0
             assert partition in self._metadata.partitions_for_topic(
@@ -440,13 +455,13 @@ class AIOKafkaProducer:
 
     async def send(
         self,
-        topic,
-        value=None,
-        key=None,
-        partition=None,
-        timestamp_ms=None,
-        headers=None,
-    ):
+        topic: str,
+        value: VT | None=None,
+        key: KT | None=None,
+        partition: int | None=None,
+        timestamp_ms: int | None=None,
+        headers: Iterable[tuple[str, bytes]] | None=None,
+    ) -> asyncio.Future[RecordMetadata]:
         """Publish a message to a topic.
 
         Arguments:
@@ -534,18 +549,18 @@ class AIOKafkaProducer:
 
     async def send_and_wait(
         self,
-        topic,
-        value=None,
-        key=None,
-        partition=None,
-        timestamp_ms=None,
-        headers=None,
-    ):
+        topic: str,
+        value: VT | None=None,
+        key: KT | None=None,
+        partition: int | None=None,
+        timestamp_ms: int | None=None,
+        headers: Iterable[tuple[str, bytes]] | None=None,
+    ) -> RecordMetadata:
         """Publish a message to a topic and wait the result"""
         future = await self.send(topic, value, key, partition, timestamp_ms, headers)
         return await future
 
-    def create_batch(self):
+    def create_batch(self) -> BatchBuilder[KT, VT]:
         """Create and return an empty :class:`.BatchBuilder`.
 
         The batch is not queued for send until submission to :meth:`send_batch`.
@@ -557,7 +572,7 @@ class AIOKafkaProducer:
             key_serializer=self._key_serializer, value_serializer=self._value_serializer
         )
 
-    async def send_batch(self, batch, topic, *, partition):
+    async def send_batch(self, batch: BatchBuilder, topic: str, *, partition: int) -> asyncio.Future[RecordMetadata]:
         """Submit a BatchBuilder for publication.
 
         Arguments:
@@ -590,13 +605,13 @@ class AIOKafkaProducer:
         )
         return future
 
-    def _ensure_transactional(self):
+    def _ensure_transactional(self) -> None:
         if self._txn_manager is None or self._txn_manager.transactional_id is None:
             raise IllegalOperation(
                 "You need to configure transaction_id to use transactions"
             )
 
-    async def begin_transaction(self):
+    async def begin_transaction(self) -> None:
         self._ensure_transactional()
         log.debug(
             "Beginning a new transaction for id %s", self._txn_manager.transactional_id
@@ -604,7 +619,7 @@ class AIOKafkaProducer:
         await asyncio.shield(self._txn_manager.wait_for_pid())
         self._txn_manager.begin_transaction()
 
-    async def commit_transaction(self):
+    async def commit_transaction(self) -> None:
         self._ensure_transactional()
         log.debug(
             "Committing transaction for id %s", self._txn_manager.transactional_id
@@ -614,7 +629,7 @@ class AIOKafkaProducer:
             self._txn_manager.wait_for_transaction_end(),
         )
 
-    async def abort_transaction(self):
+    async def abort_transaction(self) -> None:
         self._ensure_transactional()
         log.debug("Aborting transaction for id %s", self._txn_manager.transactional_id)
         self._txn_manager.aborting_transaction()
@@ -622,12 +637,12 @@ class AIOKafkaProducer:
             self._txn_manager.wait_for_transaction_end(),
         )
 
-    def transaction(self):
+    def transaction(self) -> TransactionContext:
         """Start a transaction context"""
 
         return TransactionContext(self)
 
-    async def send_offsets_to_transaction(self, offsets, group_id):
+    async def send_offsets_to_transaction(self, offsets: dict[TopicPartition, int | tuple[int, str] | OffsetAndMetadata], group_id: str) -> None:
         self._ensure_transactional()
 
         if not self._txn_manager.is_in_transaction():
@@ -647,23 +662,23 @@ class AIOKafkaProducer:
         fut = self._txn_manager.add_offsets_to_txn(formatted_offsets, group_id)
         await asyncio.shield(fut)
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> AIOKafkaProducer[KT, VT]:
         await self.start()
         return self
 
-    async def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(self, exc_type: type[ET] | None, exc: ET | None, tb: TracebackType | None) -> None:
         await self.stop()
 
 
 class TransactionContext:
-    def __init__(self, producer):
+    def __init__(self, producer: AIOKafkaProducer[KT, VT]):
         self._producer = producer
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> TransactionContext:
         await self._producer.begin_transaction()
         return self
 
-    async def __aexit__(self, exc_type, exc_value, traceback):
+    async def __aexit__(self, exc_type: type[ET] | None, exc: ET | None, tb: TracebackType | None) -> None:
         if exc_type is not None:
             # If called directly we want the API to raise a InvalidState error,
             # but when exiting a context manager we should just let it out

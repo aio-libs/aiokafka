@@ -29,7 +29,6 @@ class TopicPartition(NamedTuple):
 class BrokerMetadata(NamedTuple):
     """A Kafka broker metadata used by admin tools"""
 
-    # FIXME: consider updating implementation (https://github.com/aio-libs/aiokafka/issues/1050)
     nodeId: int | str
     "The Kafka broker id"
 
@@ -120,8 +119,8 @@ class RecordMetadata(NamedTuple):
     ""
 
 
-KT = TypeVar("KT")
-VT = TypeVar("VT")
+KT = TypeVar("KT", covariant=True)
+VT = TypeVar("VT", covariant=True)
 
 
 @dataclass

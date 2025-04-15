@@ -3,6 +3,7 @@ import collections
 import copy
 import time
 from collections.abc import Sequence
+from typing import Generic, TypeVar
 
 from aiokafka.errors import (
     KafkaTimeoutError,
@@ -16,7 +17,11 @@ from aiokafka.structs import RecordMetadata
 from aiokafka.util import create_future, get_running_loop
 
 
-class BatchBuilder:
+KT = TypeVar("KT", contravariant=True)
+VT = TypeVar("VT", contravariant=True)
+
+
+class BatchBuilder(Generic[KT, VT]):
     def __init__(
         self,
         magic,

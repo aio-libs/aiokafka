@@ -1,5 +1,7 @@
 import abc
 
+from aiokafka.structs import TopicPartition
+
 
 class ConsumerRebalanceListener(abc.ABC):
     """
@@ -45,7 +47,7 @@ class ConsumerRebalanceListener(abc.ABC):
     """
 
     @abc.abstractmethod
-    def on_partitions_revoked(self, revoked):
+    def on_partitions_revoked(self, revoked: list[TopicPartition]) -> None:
         """
         A coroutine or function the user can implement to provide cleanup or
         custom state save on the start of a rebalance operation.
@@ -65,7 +67,7 @@ class ConsumerRebalanceListener(abc.ABC):
         """
 
     @abc.abstractmethod
-    def on_partitions_assigned(self, assigned):
+    def on_partitions_assigned(self, assigned: list[TopicPartition]) -> None:
         """
         A coroutine or function the user can implement to provide load of
         custom consumer state or cache warmup on completion of a successful
@@ -103,7 +105,7 @@ class AbstractTokenProvider(abc.ABC):
     """
 
     @abc.abstractmethod
-    async def token(self):
+    async def token(self) -> str:
         """
         An async callback returning a :class:`str` ID/Access Token to be sent to
         the Kafka client. In case where a synchronous callback is needed,
@@ -122,7 +124,7 @@ class AbstractTokenProvider(abc.ABC):
                     # The actual synchronous token callback.
         """
 
-    def extensions(self):
+    def extensions(self) -> dict[str, str]:
         """
         This is an OPTIONAL method that may be implemented.
 
