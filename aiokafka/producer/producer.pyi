@@ -182,8 +182,9 @@ class AIOKafkaProducer(Generic[KT_contra, VT_contra]):
         request_timeout_ms: int = ...,
         api_version: str = ...,
         acks: Literal[0] | Literal[1] | Literal["all"] | object = ...,
-        key_serializer: Callable[[KT_contra], bytes] = _identity,
-        value_serializer: Callable[[VT_contra], bytes] = _identity,
+        # Skip type-checking for mypy because it doesn't seem to realize KT_contra and VT_contra are typevars
+        key_serializer: Callable[[KT_contra], bytes] = _identity,  # type: ignore
+        value_serializer: Callable[[VT_contra], bytes] = _identity,  # type: ignore
         compression_type: (
             Literal["gzip"]
             | Literal["snappy"]
