@@ -99,6 +99,7 @@ class Array:
     def __init__(
         self, array_of_0: tuple[str, ValueT], *array_of: tuple[str, ValueT]
     ) -> None: ...
+    @overload
     def __init__(
         self,
         array_of_0: ValueT | tuple[str, ValueT],
