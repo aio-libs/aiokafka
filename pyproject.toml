@@ -65,6 +65,7 @@ asyncio_mode = "auto"
 addopts = ["--strict-config", "--strict-markers"]
 markers = [
     "ssl: Tests that require SSL certificates to run",
+    "oauthbearer: Tests that require SASL OAUTHBEARER mechanism to run",
 ]
 filterwarnings = [
     "error",

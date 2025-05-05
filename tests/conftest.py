@@ -202,8 +202,15 @@ class KafkaServer:
 
 if sys.platform != "win32":
 
+    @pytest.fixture(scope="class")
+    def kafka_server(request, kafka_server_basic, kafka_server_oauthbearer):
+        if request.node.get_closest_marker("oauthbearer"):
+            return kafka_server_oauthbearer
+
+        return kafka_server_basic
+
     @pytest.fixture(scope="session")
-    def kafka_server(
+    def kafka_server_basic(
         kafka_image, docker, docker_ip_address, unused_port, session_id, ssl_folder
     ):
         kafka_host = docker_ip_address
@@ -262,6 +269,75 @@ if sys.platform != "win32":
                 print("--- STDERR:")
                 print(output.decode(), file=sys.stderr)
                 pytest.exit("Could not start Kafka Server")
+
+            yield KafkaServer(
+                kafka_host,
+                kafka_port,
+                kafka_ssl_port,
+                kafka_sasl_plain_port,
+                kafka_sasl_ssl_port,
+                container,
+            )
+        finally:
+            container.stop()
+
+    @pytest.fixture(scope="session")
+    def kafka_server_oauthbearer(
+        kafka_image, docker, docker_ip_address, unused_port, session_id, ssl_folder
+    ):
+        kafka_host = docker_ip_address
+        kafka_port = unused_port()
+        kafka_ssl_port = unused_port()
+        kafka_sasl_plain_port = unused_port()
+        kafka_sasl_ssl_port = unused_port()
+
+        environment = {
+            "ADVERTISED_HOST": kafka_host,
+            "ADVERTISED_PORT": kafka_port,
+            "ADVERTISED_SSL_PORT": kafka_ssl_port,
+            "ADVERTISED_SASL_PLAINTEXT_PORT": kafka_sasl_plain_port,
+            "ADVERTISED_SASL_SSL_PORT": kafka_sasl_ssl_port,
+            "NUM_PARTITIONS": 2,
+        }
+
+        kafka_version = kafka_image.split(":")[-1].split("_")[-1]
+        kafka_version = tuple(int(x) for x in kafka_version.split("."))
+
+        if kafka_version < (0, 10, 0):
+            pytest.skip("SASL OAUTHBEARER requires Kafka version >= 0.10.0")
+
+        environment["SASL_MECHANISMS"] = "OAUTHBEARER"
+        environment["SASL_JAAS_FILE"] = "kafka_server_jaas.conf"
+
+        container = docker.containers.run(
+            image=kafka_image,
+            name="aiokafka-oauthbearer-tests",
+            ports={
+                kafka_port: kafka_port,
+                kafka_ssl_port: kafka_ssl_port,
+                kafka_sasl_plain_port: kafka_sasl_plain_port,
+                kafka_sasl_ssl_port: kafka_sasl_ssl_port,
+            },
+            volumes={str(ssl_folder.resolve()): {"bind": "/ssl_cert", "mode": "ro"}},
+            environment=environment,
+            tty=True,
+            detach=True,
+            remove=True,
+        )
+
+        try:
+            if not wait_kafka(kafka_host, kafka_port):
+                exit_code, output = container.exec_run(
+                    ["supervisorctl", "tail", "-20000", "kafka"]
+                )
+                print("Kafka (SASL OAUTHBEARER) failed to start. \n--- STDOUT:")
+                print(output.decode(), file=sys.stdout)
+                exit_code, output = container.exec_run(
+                    ["supervisorctl", "tail", "-20000", "kafka", "stderr"]
+                )
+                print("--- STDERR:")
+                print(output.decode(), file=sys.stderr)
+                pytest.exit("Could not start Kafka Server (SASL OAUTHBEARER)")
 
             yield KafkaServer(
                 kafka_host,
