@@ -48,6 +48,22 @@ if [[ ! -z "$SASL_MECHANISMS" ]]; then
     OPTIONS+=("--override" "allow.everyone.if.no.acl.found=true")
     export KAFKA_OPTS="-Djava.security.auth.login.config=/etc/kafka/$SASL_JAAS_FILE"
 
+    # OAUTHBEARER configuration is incompatible with other SASL configurations present in JAAS file
+    if [[ "$SASL_MECHANISMS" == "OAUTHBEARER" ]]; then
+        OPTIONS+=("--override" "listener.name.sasl_plaintext.oauthbearer.sasl.jaas.config=
+           org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required
+           unsecuredLoginStringClaim_sub=\"producer\"
+           unsecuredValidatorAllowableClockSkewMs=\"3000\";"
+        )
+        OPTIONS+=("--override" "listener.name.sasl_ssl.oauthbearer.sasl.jaas.config=
+           org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required
+           unsecuredLoginStringClaim_sub=\"consumer\"
+           unsecuredValidatorAllowableClockSkewMs=\"3000\";"
+        )
+        OPTIONS+=("--override" "listener.name.sasl_plaintext.oauthbearer.connections.max.reauth.ms=3600000")
+        OPTIONS+=("--override" "listener.name.sasl_ssl.oauthbearer.connections.max.reauth.ms=3600000")
+    fi
+
     LISTENERS="$LISTENERS,SASL_PLAINTEXT://:$ADVERTISED_SASL_PLAINTEXT_PORT"
     ADVERTISED_LISTENERS="$ADVERTISED_LISTENERS,SASL_PLAINTEXT://$ADVERTISED_HOST:$ADVERTISED_SASL_PLAINTEXT_PORT"
 
