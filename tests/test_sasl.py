@@ -1,6 +1,13 @@
+import asyncio
+from datetime import datetime, timedelta, timezone
+from functools import partial
+
+import jwt
 import pytest
 
+from aiokafka.abc import AbstractTokenProvider
 from aiokafka.admin import AIOKafkaAdminClient
+from aiokafka.conn import CloseReason
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import (
     GroupAuthorizationFailedError,
@@ -477,3 +484,210 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         )
         with self.assertRaises(TransactionalIdAuthorizationFailed):
             await producer.send_and_wait(self.topic, b"123", partition=1)
+
+
+class TokenProvider(AbstractTokenProvider):
+    def __init__(self, *, subject: str, expiration_time: timedelta) -> None:
+        self.subject = subject
+        self.expiration_time = expiration_time
+
+    async def token(self) -> str:
+        return await asyncio.get_running_loop().run_in_executor(None, self._token)
+
+    def _token(self) -> str:
+        sub = self.subject
+        iat = datetime.now(timezone.utc).timestamp()
+        exp = iat + self.expiration_time.total_seconds()
+
+        access_token = jwt.encode(
+            key=None,
+            headers={"alg": "none"},
+            payload={"sub": sub, "iat": iat, "exp": exp},
+        )
+
+        return access_token
+
+
+@pytest.mark.oauthbearer
+@pytest.mark.usefixtures("setup_test_class")
+class TestKafkaSASLOAuthBearer(KafkaIntegrationTestCase):
+    TEST_TIMEOUT = 60
+
+    @property
+    def group_id(self):
+        return self.topic + "_group"
+
+    @property
+    def sasl_hosts(self):
+        # Produce/consume by SASL_PLAINTEXT
+        return f"{self.kafka_host}:{self.kafka_sasl_plain_port}"
+
+    @property
+    def sasl_ssl_hosts(self):
+        # Produce/consume by SASL_SSL
+        return f"{self.kafka_host}:{self.kafka_sasl_ssl_port}"
+
+    async def oauthbearer_producer_factory(self, token_expiration_time=None, **kw):
+        producer = AIOKafkaProducer(
+            api_version="0.10.2",
+            bootstrap_servers=[self.sasl_hosts],
+            security_protocol="SASL_PLAINTEXT",
+            sasl_mechanism="OAUTHBEARER",
+            sasl_oauth_token_provider=TokenProvider(
+                subject="producer",
+                expiration_time=token_expiration_time or timedelta(hours=1),
+            ),
+            **kw,
+        )
+        self.add_cleanup(producer.stop)
+        await producer.start()
+        return producer
+
+    async def oauthbearer_consumer_factory(self, token_expiration_time=None, **kw):
+        kwargs = {
+            "enable_auto_commit": True,
+            "auto_offset_reset": "earliest",
+            "group_id": self.group_id,
+        }
+        kwargs.update(kw)
+        consumer = AIOKafkaConsumer(
+            self.topic,
+            api_version="0.10.2",
+            bootstrap_servers=[self.sasl_ssl_hosts],
+            security_protocol="SASL_SSL",
+            ssl_context=self.create_ssl_context(),
+            sasl_mechanism="OAUTHBEARER",
+            sasl_oauth_token_provider=TokenProvider(
+                subject="consumer",
+                expiration_time=token_expiration_time or timedelta(hours=1),
+            ),
+            **kwargs,
+        )
+        self.add_cleanup(consumer.stop)
+        await consumer.start()
+        return consumer
+
+    @kafka_versions(">=0.10.2")
+    @run_until_complete
+    async def test_sasl_oauthbearer(self):
+        producer = await self.oauthbearer_producer_factory()
+        await producer.send_and_wait(topic=self.topic, value=b"Super oauthbearer msg")
+
+        consumer = await self.oauthbearer_consumer_factory()
+        msg = await consumer.getone()
+        self.assertEqual(msg.value, b"Super oauthbearer msg")
+
+    @kafka_versions(">=0.10.2")
+    @run_until_complete
+    async def test_sasl_oauthbearer_reauthentication(self):
+        reauthentication_done = asyncio.Event()
+
+        def reauthentication_callback(_task: asyncio.Task) -> None:
+            reauthentication_done.set()
+
+        token_expiration_time = timedelta(seconds=5)
+        producer = await self.oauthbearer_producer_factory(token_expiration_time)
+        await producer.send_and_wait(topic=self.topic, value=b"Before re-auth msg")
+
+        (conn,) = producer.client._conns.values()
+        conn_reauthentication_task = conn._sasl_reauthentication_task
+        conn_reauthentication_task.add_done_callback(reauthentication_callback)
+
+        consumer = await self.oauthbearer_consumer_factory()
+        msg = await consumer.getone()
+        self.assertEqual(msg.value, b"Before re-auth msg")
+
+        assert not reauthentication_done.is_set()
+        assert not conn_reauthentication_task.done()
+
+        await reauthentication_done.wait()
+
+        assert conn_reauthentication_task.done()
+        assert conn_reauthentication_task is not conn._sasl_reauthentication_task
+
+        await producer.send_and_wait(topic=self.topic, value=b"After re-auth msg")
+        msg = await consumer.getone()
+        self.assertEqual(msg.value, b"After re-auth msg")
+
+    @kafka_versions(">=0.10.2")
+    @run_until_complete
+    async def test_sasl_oauthbearer_reauthentication_cannot_be_interrupted(self):
+        reauthentication_started = asyncio.Event()
+        reauthentication_done = asyncio.Event()
+
+        def event_clear_wrapper(original_event_clear_fn) -> None:
+            original_event_clear_fn()
+            reauthentication_started.set()
+
+        def reauthentication_callback(_task: asyncio.Task) -> None:
+            reauthentication_done.set()
+
+        token_expiration_time = timedelta(seconds=5)
+        producer = await self.oauthbearer_producer_factory(token_expiration_time)
+        await producer.send_and_wait(topic=self.topic, value=b"Before re-auth msg")
+
+        (conn,) = producer.client._conns.values()
+        conn_reauthentication_task = conn._sasl_reauthentication_task
+        conn_reauthentication_task.add_done_callback(reauthentication_callback)
+        conn_reauthentication_done = conn._sasl_reauthentication_done
+        conn_reauthentication_done.clear = partial(
+            event_clear_wrapper,
+            conn_reauthentication_done.clear,
+        )
+
+        consumer = await self.oauthbearer_consumer_factory()
+        msg = await consumer.getone()
+        self.assertEqual(msg.value, b"Before re-auth msg")
+
+        assert not reauthentication_done.is_set()
+        assert not conn_reauthentication_task.done()
+
+        await reauthentication_started.wait()
+        await producer.send_and_wait(topic=self.topic, value=b"During re-auth msg")
+        await reauthentication_done.wait()
+
+        assert conn_reauthentication_task.done()
+        assert conn_reauthentication_task is not conn._sasl_reauthentication_task
+
+        msg = await consumer.getone()
+        self.assertEqual(msg.value, b"During re-auth msg")
+
+    @kafka_versions(">=0.10.2")
+    @run_until_complete
+    async def test_sasl_oauthbearer_reauthentication_handles_failure_gracefully(self):
+        conn_close_reason = None
+        reauthentication_done = asyncio.Event()
+
+        def reauthentication_callback(_task: asyncio.Task) -> None:
+            reauthentication_done.set()
+
+        def do_sasl_handshake() -> None:
+            raise ConnectionError()
+
+        def on_connection_closed(_conn, reason: CloseReason) -> None:
+            nonlocal conn_close_reason
+            conn_close_reason = reason
+
+        token_expiration_time = timedelta(seconds=5)
+        producer = await self.oauthbearer_producer_factory(token_expiration_time)
+        await producer.send_and_wait(topic=self.topic, value=b"Before re-auth msg")
+
+        (conn,) = producer.client._conns.values()
+        conn_reauthentication_task = conn._sasl_reauthentication_task
+        conn_reauthentication_task.add_done_callback(reauthentication_callback)
+        conn._do_sasl_handshake = do_sasl_handshake
+        conn._on_close_cb = on_connection_closed
+
+        consumer = await self.oauthbearer_consumer_factory()
+        msg = await consumer.getone()
+        self.assertEqual(msg.value, b"Before re-auth msg")
+
+        assert not reauthentication_done.is_set()
+        assert not conn_reauthentication_task.done()
+
+        await reauthentication_done.wait()
+
+        assert conn_reauthentication_task.done()
+        assert conn_reauthentication_task is conn._sasl_reauthentication_task
+        assert conn.connected() is False
+        assert conn_close_reason is CloseReason.AUTH_FAILURE
