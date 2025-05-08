@@ -40,6 +40,12 @@ transparently adapts as topic partitions it fetches migrate within the
 cluster. It also interacts with the broker to allow groups of consumers to load
 balance consumption using :ref:`Consumer Groups <consumer-groups>`.
 
+.. note::
+   `client_rack` parameter can be provided to
+   :class:`.AIOKafkaConsumer` to enable rack-aware assignment when
+   connecting to Kafka brokers 2.4.0 or later. This advertises the client's
+   rack ID to the broker for improved partition placement.
+
 
 .. _offset_and_position:
 
