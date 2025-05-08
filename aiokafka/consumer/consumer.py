@@ -67,7 +67,7 @@ class AIOKafkaConsumer:
         group_instance_id (str or None): name of the group instance ID used for
             static membership (KIP-345)
         client_rack (str or None): rack ID of this client for rack-aware
-            assignment (KIP-881). Default: None
+            assignment. Default: None
         key_deserializer (Callable): Any callable that takes a
             raw message key and returns a deserialized key.
         value_deserializer (Callable, Optional): Any callable that takes a
