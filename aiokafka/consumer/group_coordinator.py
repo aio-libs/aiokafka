@@ -229,6 +229,7 @@ class GroupCoordinator(BaseCoordinator):
         *,
         group_id="aiokafka-default-group",
         group_instance_id=None,
+        client_rack=None,
         session_timeout_ms=10000,
         heartbeat_interval_ms=3000,
         retry_backoff_ms=100,
@@ -265,6 +266,7 @@ class GroupCoordinator(BaseCoordinator):
         self.member_id = JoinGroupRequest[0].UNKNOWN_MEMBER_ID
         self.group_id = group_id
         self._group_instance_id = group_instance_id
+        self._client_rack = client_rack
         self.coordinator_id = None
 
         # Coordination flags and futures
@@ -1311,6 +1313,7 @@ class CoordinatorGroupRebalance:
                         metadata_list,
                     )
                 elif self._api_version < (2, 3, 0):
+                    # Kafka < 2.3.0: use protocol without static membership
                     request = JoinGroupRequest[2](
                         self.group_id,
                         self._session_timeout_ms,
@@ -1319,7 +1322,8 @@ class CoordinatorGroupRebalance:
                         ConsumerProtocol.PROTOCOL_TYPE,
                         metadata_list,
                     )
-                else:
+                elif self._api_version < (2, 4, 0):
+                    # Kafka 2.3.x: use protocol with static membership, no rack support
                     request = JoinGroupRequest[3](
                         self.group_id,
                         self._session_timeout_ms,
@@ -1328,6 +1332,19 @@ class CoordinatorGroupRebalance:
                         self._coordinator._group_instance_id,
                         ConsumerProtocol.PROTOCOL_TYPE,
                         metadata_list,
+                    )
+                else:
+                    # Kafka >= 2.4.0: include client.rack in JoinGroupRequest v8
+                    rack_id = self._coordinator._client_rack or ""
+                    request = JoinGroupRequest[4](
+                        self.group_id,
+                        self._session_timeout_ms,
+                        self._rebalance_timeout_ms,
+                        self._coordinator.member_id,
+                        self._coordinator._group_instance_id,
+                        ConsumerProtocol.PROTOCOL_TYPE,
+                        metadata_list,
+                        rack_id,
                     )
 
                 # create the request for the coordinator

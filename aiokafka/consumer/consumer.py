@@ -66,6 +66,8 @@ class AIOKafkaConsumer:
             Default: None
         group_instance_id (str or None): name of the group instance ID used for
             static membership (KIP-345)
+        client_rack (str or None): rack ID of this client for rack-aware
+            assignment (KIP-881). Default: None
         key_deserializer (Callable): Any callable that takes a
             raw message key and returns a deserialized key.
         value_deserializer (Callable, Optional): Any callable that takes a
@@ -234,6 +236,7 @@ class AIOKafkaConsumer:
         client_id="aiokafka-" + __version__,
         group_id=None,
         group_instance_id=None,
+        client_rack=None,
         key_deserializer=None,
         value_deserializer=None,
         fetch_max_wait_ms=500,
@@ -306,6 +309,7 @@ class AIOKafkaConsumer:
 
         self._group_id = group_id
         self._group_instance_id = group_instance_id
+        self._client_rack = client_rack
         self._heartbeat_interval_ms = heartbeat_interval_ms
         self._session_timeout_ms = session_timeout_ms
         self._retry_backoff_ms = retry_backoff_ms
@@ -406,6 +410,7 @@ class AIOKafkaConsumer:
                 self._subscription,
                 group_id=self._group_id,
                 group_instance_id=self._group_instance_id,
+                client_rack=self._client_rack,
                 heartbeat_interval_ms=self._heartbeat_interval_ms,
                 session_timeout_ms=self._session_timeout_ms,
                 retry_backoff_ms=self._retry_backoff_ms,

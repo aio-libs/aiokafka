@@ -119,11 +119,33 @@ class JoinGroupRequest_v5(Request):
     UNKNOWN_MEMBER_ID = ""
 
 
+# JoinGroupRequest version 8: adds rack_id for client.rack support (KIP-881)
+class JoinGroupRequest_v8(Request):
+    API_KEY = 11
+    API_VERSION = 8
+    RESPONSE_TYPE = JoinGroupResponse_v5
+    SCHEMA = Schema(
+        ("group", String("utf-8")),
+        ("session_timeout", Int32),
+        ("rebalance_timeout", Int32),
+        ("member_id", String("utf-8")),
+        ("group_instance_id", String("utf-8")),
+        ("protocol_type", String("utf-8")),
+        (
+            "group_protocols",
+            Array(("protocol_name", String("utf-8")), ("protocol_metadata", Bytes)),
+        ),
+        ("rack_id", String("utf-8")),
+    )
+    UNKNOWN_MEMBER_ID = JoinGroupRequest_v5.UNKNOWN_MEMBER_ID
+
+
 JoinGroupRequest = [
     JoinGroupRequest_v0,
     JoinGroupRequest_v1,
     JoinGroupRequest_v2,
     JoinGroupRequest_v5,
+    JoinGroupRequest_v8,
 ]
 JoinGroupResponse = [
     JoinGroupResponse_v0,
