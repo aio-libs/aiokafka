@@ -443,6 +443,8 @@ class Fetcher:
 
         if client.api_version >= (2, 4, 0):
             req_version = 11
+        elif client.api_version >= (0, 11):
+            req_version = 4
         elif client.api_version >= (0, 10, 1):
             req_version = 3
         elif client.api_version >= (0, 10):
