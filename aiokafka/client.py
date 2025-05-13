@@ -479,7 +479,7 @@ class AIOKafkaClient:
                 await self.force_metadata_update()
             return None
         else:
-            return self._conns[conn_id] 
+            return self._conns[conn_id]
 
     async def ready(self, node_id, *, group=ConnectionGroup.DEFAULT):
         conn = await self._get_conn(node_id, group=group)
