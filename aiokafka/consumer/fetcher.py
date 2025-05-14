@@ -783,7 +783,13 @@ class Fetcher:
                     continue
 
                 if error_type is Errors.NoError:
-                    if request.API_VERSION >= 4:
+                    if request.API_VERSION >= 11:
+                        aborted_transactions = part_data[-3]
+                        lso = part_data[-5]
+                    elif request.API_VERSION >= 5:
+                        aborted_transactions = part_data[-2]
+                        lso = part_data[-4]
+                    elif request.API_VERSION >= 4:
                         aborted_transactions = part_data[-2]
                         lso = part_data[-3]
                     else:
