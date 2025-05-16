@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import gzip
 import io
 import struct
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from typing_extensions import Buffer
+if TYPE_CHECKING:
+    from typing_extensions import Buffer
 
 _XERIAL_V1_HEADER = (-126, b"S", b"N", b"A", b"P", b"P", b"Y", 0, 1, 1)
 _XERIAL_V1_FORMAT = "bccccccBii"

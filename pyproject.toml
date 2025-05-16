@@ -30,7 +30,7 @@ dynamic = ["version"]
 dependencies = [
     "async-timeout",
     "packaging",
-    "typing_extensions >=4.10.0",
+
 ]
 
 [project.optional-dependencies]

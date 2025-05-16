@@ -54,13 +54,16 @@
 # * Timestamp Type (3)
 # * Compression Type (0-2)
 
+from __future__ import annotations
+
 import struct
 import time
 from collections.abc import Sized
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Union, final
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union, final
 
-from typing_extensions import Self, TypeIs, assert_never
+if TYPE_CHECKING:
+    from typing_extensions import Self, TypeIs, assert_never
 
 import aiokafka.codec as codecs
 from aiokafka.codec import (

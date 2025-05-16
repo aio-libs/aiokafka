@@ -13,6 +13,7 @@ Improved Documentation:
 
 Misc:
 * Use SPDX license expression for project metadata.
+* Remove typing_extensions from run time requirements (pr #1109)
 
 
 0.12.0 (2024-10-26)

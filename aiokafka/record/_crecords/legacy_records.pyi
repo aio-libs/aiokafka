@@ -1,7 +1,10 @@
-from collections.abc import Generator
-from typing import Any, ClassVar, final
+from __future__ import annotations
 
-from typing_extensions import Buffer, Literal, Never
+from collections.abc import Generator
+from typing import TYPE_CHECKING, Any, ClassVar, final
+
+if TYPE_CHECKING:
+    from typing_extensions import Buffer, Literal, Never
 
 from aiokafka.record._protocols import (
     LegacyRecordBatchBuilderProtocol,

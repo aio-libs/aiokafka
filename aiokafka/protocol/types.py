@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import struct
 from collections.abc import Sequence
 from io import BytesIO
 from struct import error
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Optional,
@@ -12,7 +15,8 @@ from typing import (
     overload,
 )
 
-from typing_extensions import Buffer, TypeAlias
+if TYPE_CHECKING:
+    from typing_extensions import Buffer, TypeAlias
 
 from .abstract import AbstractType
 

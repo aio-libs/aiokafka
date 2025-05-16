@@ -1,7 +1,10 @@
-from io import BytesIO
-from typing import Any, ClassVar, Union
+from __future__ import annotations
 
-from typing_extensions import Self
+from io import BytesIO
+from typing import TYPE_CHECKING, Any, ClassVar, Union
+
+if TYPE_CHECKING:
+    from typing_extensions import Self
 
 from .types import Schema
 

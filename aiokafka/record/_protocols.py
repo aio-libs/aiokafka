@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
     Optional,
@@ -10,7 +11,8 @@ from typing import (
     runtime_checkable,
 )
 
-from typing_extensions import Literal, Never
+if TYPE_CHECKING:
+    from typing_extensions import Literal, Never
 
 from ._types import (
     CodecGzipT,

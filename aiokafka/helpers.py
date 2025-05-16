@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 from os import PathLike
 from ssl import Purpose, SSLContext, create_default_context
-from typing import Callable, Union
+from typing import TYPE_CHECKING, Callable, Union
 
-from typing_extensions import Buffer
+if TYPE_CHECKING:
+    from typing_extensions import Buffer
 
 log = logging.getLogger(__name__)
 

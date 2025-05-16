@@ -1,6 +1,9 @@
-from typing import Union
+from __future__ import annotations
 
-from typing_extensions import Literal
+from typing import TYPE_CHECKING, Union
+
+if TYPE_CHECKING:
+    from typing_extensions import Literal
 
 CodecNoneT = Literal[0x00]
 CodecGzipT = Literal[0x01]

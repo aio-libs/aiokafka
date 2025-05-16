@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import struct
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from typing_extensions import Self
+if TYPE_CHECKING:
+    from typing_extensions import Self
 
 _SCHEMA = struct.Struct(">HH")
 

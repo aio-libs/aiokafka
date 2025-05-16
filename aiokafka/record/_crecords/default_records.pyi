@@ -1,6 +1,7 @@
-from typing import ClassVar, final
+from typing import TYPE_CHECKING, ClassVar, final
 
-from typing_extensions import Literal, Self
+if TYPE_CHECKING:
+    from typing_extensions import Literal, Self
 
 from aiokafka.record._protocols import (
     DefaultRecordBatchBuilderProtocol,

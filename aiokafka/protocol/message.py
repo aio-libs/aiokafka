@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import io
 import time
 from binascii import crc32
 from collections.abc import Iterable
-from typing import Literal, Optional, Union, cast, overload
+from typing import TYPE_CHECKING, Literal, Optional, Union, cast, overload
 
-from typing_extensions import Self
+if TYPE_CHECKING:
+    from typing_extensions import Self
 
 from aiokafka.codec import (
     gzip_decode,
