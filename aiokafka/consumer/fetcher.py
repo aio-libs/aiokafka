@@ -427,7 +427,9 @@ class Fetcher:
         # waiters directly
         self._subscriptions.register_fetch_waiters(self._fetch_waiters)
 
-        if client.api_version >= (0, 11):
+        if client.api_version >= (2, 1, 0):  # Kafka 2.1 → Fetch v10
+            req_version = 10
+        elif client.api_version >= (0, 11):
             req_version = 4
         elif client.api_version >= (0, 10, 1):
             req_version = 3
@@ -640,23 +642,61 @@ class Fetcher:
 
             # Create fetch request
             by_topics = collections.defaultdict(list)
-            for tp, position in partition_data:
-                by_topics[tp.topic].append(
-                    (tp.partition, position, self._max_partition_fetch_bytes)
-                )
+            version = self._fetch_request_class.API_VERSION
             klass = self._fetch_request_class
-            if klass.API_VERSION > 3:
+
+            for tp, position in partition_data:
+                # — leader epoch for v10
+                if version >= 10:
+                    tp_state = assignment.state_value(tp)
+                    leader_epoch = getattr(tp_state, "current_leader_epoch", None)
+                    if leader_epoch is None:
+                        leader_epoch = -1  # epoch unknown – allowed by protocol
+                    entry = (
+                        tp.partition,
+                        leader_epoch,
+                        position,
+                        0,  # log_start_offset
+                        self._max_partition_fetch_bytes,
+                    )
+                # —— v4–v9
+                elif version >= 4:
+                    entry = (tp.partition, position, self._max_partition_fetch_bytes)
+                # —— v3
+                elif version >= 3:
+                    entry = (tp.partition, position, self._max_partition_fetch_bytes)
+                # —— v0–v2
+                else:
+                    entry = (tp.partition, position)
+
+                by_topics[tp.topic].append(entry)
+
+            # -------- build FetchRequest ----------
+            if version >= 10:
                 req = klass(
                     -1,  # replica_id
                     self._fetch_max_wait_ms,
                     self._fetch_min_bytes,
                     self._fetch_max_bytes,
                     self._isolation_level,
+                    0,  # session_id
+                    -1,  # session_epoch
+                    list(by_topics.items()),
+                    [],  # forgotten_topics_data
+                    "",  # rack_id
+                )
+            elif version >= 4:
+                req = klass(
+                    -1,
+                    self._fetch_max_wait_ms,
+                    self._fetch_min_bytes,
+                    self._fetch_max_bytes,
+                    self._isolation_level,
                     list(by_topics.items()),
                 )
-            elif klass.API_VERSION == 3:
+            elif version == 3:
                 req = klass(
-                    -1,  # replica_id
+                    -1,
                     self._fetch_max_wait_ms,
                     self._fetch_min_bytes,
                     self._fetch_max_bytes,
@@ -664,7 +704,7 @@ class Fetcher:
                 )
             else:
                 req = klass(
-                    -1,  # replica_id
+                    -1,
                     self._fetch_max_wait_ms,
                     self._fetch_min_bytes,
                     list(by_topics.items()),
@@ -705,12 +745,25 @@ class Fetcher:
             return False
 
         fetch_offsets = {}
+        version = request.API_VERSION
+
         for topic, partitions in request.topics:
-            for partition, offset, _ in partitions:
-                fetch_offsets[TopicPartition(topic, partition)] = offset
+            for entry in partitions:
+                if version >= 10:
+                    partition, _, fetch_offset, _, _ = entry
+                elif version > 3:
+                    partition, fetch_offset, _ = entry
+                else:
+                    partition, fetch_offset, _ = entry
+                fetch_offsets[TopicPartition(topic, partition)] = fetch_offset
 
         now_ms = int(1000 * time.time())
-        for topic, partitions in response.topics:
+        if hasattr(response, "topics"):  # v0–v9
+            topic_blocks = response.topics
+        else:  # v10+
+            topic_blocks = response.responses
+
+        for topic, partitions in topic_blocks:
             for partition, error_code, highwater, *part_data in partitions:
                 tp = TopicPartition(topic, partition)
                 error_type = Errors.for_code(error_code)
@@ -789,6 +842,8 @@ class Fetcher:
                 elif error_type in (
                     Errors.NotLeaderForPartitionError,
                     Errors.UnknownTopicOrPartitionError,
+                    Errors.FencedLeaderEpochError,
+                    Errors.UnknownLeaderEpochError,
                 ):
                     self._client.force_metadata_update()
                 elif error_type is Errors.OffsetOutOfRangeError:
