@@ -182,8 +182,35 @@ class FetchResponse_v9(Response):
 class FetchResponse_v10(Response):
     API_KEY = 1
     API_VERSION = 10
-    SCHEMA = FetchResponse_v7.SCHEMA
-
+    SCHEMA = Schema(
+        ("throttle_time_ms", Int32),
+        ("error_code",        Int16),
+        ("session_id",        Int32),
+        (
+            "responses",
+            Array(
+                ("topic", String("utf-8")),
+                (
+                    "partition_responses",
+                    Array(
+                        ("partition",           Int32),
+                        ("error_code",          Int16),
+                        ("high_watermark",      Int64),
+                        ("last_stable_offset",  Int64),
+                        ("log_start_offset",    Int64),
+                        (
+                            "aborted_transactions",
+                            Array(
+                                ("producer_id", Int64),
+                                ("first_offset", Int64),
+                            ),
+                        ),
+                        ("records", Bytes),
+                    ),
+                ),
+            ),
+        ),
+    )
 
 class FetchResponse_v11(Response):
     API_KEY = 1
@@ -443,13 +470,45 @@ class FetchRequest_v9(Request):
 
 class FetchRequest_v10(Request):
     """
-    bumped up to indicate ZStandard capability. (see KIP-110)
+    adds rack_id to signal ZStandard support (see KIP-110, KIP-392)
     """
 
     API_KEY = 1
     API_VERSION = 10
     RESPONSE_TYPE = FetchResponse_v10
-    SCHEMA = FetchRequest_v9.SCHEMA
+    SCHEMA = Schema(
+        ("replica_id", Int32),
+        ("max_wait_time", Int32),
+        ("min_bytes", Int32),
+        ("max_bytes", Int32),
+        ("isolation_level", Int8),
+        ("session_id", Int32),
+        ("session_epoch", Int32),
+        (
+            "topics",
+            Array(
+                ("topic", String("utf-8")),
+                (
+                    "partitions",
+                    Array(
+                        ("partition", Int32),
+                        ("current_leader_epoch", Int32),
+                        ("fetch_offset", Int64),
+                        ("log_start_offset", Int64),
+                        ("max_bytes", Int32),
+                    ),
+                ),
+            ),
+        ),
+        (
+            "forgotten_topics_data",
+            Array(
+                ("topic", String("utf-8")),
+                ("partitions", Array(Int32)),
+            ),
+        ),
+        ("rack_id", String("utf-8")),
+    )
 
 
 class FetchRequest_v11(Request):
