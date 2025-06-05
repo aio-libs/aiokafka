@@ -354,6 +354,7 @@ class Fetcher:
             ofther value will raise the exception. Default: 'latest'.
         isolation_level (str): Controls how to read messages written
             transactionally. See consumer description.
+        rack_id (str, optional): The rack id of the consumer.
     """
 
     def __init__(
@@ -369,7 +370,8 @@ class Fetcher:
             prefetch_backoff=0.1,
             retry_backoff_ms=100,
             auto_offset_reset='latest',
-            isolation_level="read_uncommitted"):
+            isolation_level="read_uncommitted",
+            rack_id=""):
         self._client = client
         self._loop = client._loop
         self._key_deserializer = key_deserializer
@@ -394,6 +396,7 @@ class Fetcher:
             raise ValueError(
                 f"Incorrect isolation level {isolation_level}")
 
+        self._rack_id = rack_id
         self._records = collections.OrderedDict()
         self._in_flight = set()
         self._pending_tasks = set()
@@ -405,7 +408,9 @@ class Fetcher:
         # waiters directly
         self._subscriptions.register_fetch_waiters(self._fetch_waiters)
 
-        if client.api_version >= (0, 11):
+        if client.api_version >= (2, 4, 0):
+            req_version = 11
+        elif client.api_version >= (0, 11):
             req_version = 4
         elif client.api_version >= (0, 10, 1):
             req_version = 3
@@ -620,7 +625,17 @@ class Fetcher:
                     position,
                     self._max_partition_fetch_bytes))
             klass = self._fetch_request_class
-            if klass.API_VERSION > 3:
+            if klass.API_VERSION > 10:
+                req = klass(
+                    -1,  # replica_id
+                    self._fetch_max_wait_ms,
+                    self._fetch_min_bytes,
+                    self._fetch_max_bytes,
+                    self._isolation_level,
+                    self._rack_id,
+                    list(by_topics.items())
+                )
+            elif klass.API_VERSION > 3:
                 req = klass(
                     -1,  # replica_id
                     self._fetch_max_wait_ms,
