@@ -1,28 +1,35 @@
 import asyncio
+import contextlib
 import re
 from unittest import mock
 
-from kafka.protocol.group import (
-    JoinGroupRequest_v0 as JoinGroupRequest,
-    SyncGroupResponse_v0 as SyncGroupResponse,
-    LeaveGroupRequest_v0 as LeaveGroupRequest,
-    HeartbeatRequest_v0 as HeartbeatRequest,
-)
-from kafka.protocol.commit import (
-    OffsetCommitRequest, OffsetCommitResponse_v2,
-    OffsetFetchRequest_v1 as OffsetFetchRequest
-)
-import kafka.errors as Errors
-
-from ._testutil import KafkaIntegrationTestCase, run_until_complete
-
+import aiokafka.errors as Errors
 from aiokafka import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
-from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.consumer.group_coordinator import (
-    GroupCoordinator, CoordinatorGroupRebalance, NoGroupCoordinator)
+    CoordinatorGroupRebalance,
+    GroupCoordinator,
+    NoGroupCoordinator,
+)
 from aiokafka.consumer.subscription_state import SubscriptionState
+from aiokafka.protocol.commit import OffsetCommitRequest, OffsetCommitResponse_v2
+from aiokafka.protocol.commit import OffsetFetchRequest_v1 as OffsetFetchRequest
+from aiokafka.protocol.group import (
+    HeartbeatRequest_v0 as HeartbeatRequest,
+)
+from aiokafka.protocol.group import (
+    JoinGroupRequest_v0 as JoinGroupRequest,
+)
+from aiokafka.protocol.group import (
+    LeaveGroupRequest_v0 as LeaveGroupRequest,
+)
+from aiokafka.protocol.group import (
+    SyncGroupResponse_v0 as SyncGroupResponse,
+)
+from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.util import create_future, create_task, get_running_loop
+
+from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 UNKNOWN_MEMBER_ID = JoinGroupRequest.UNKNOWN_MEMBER_ID
 
@@ -34,11 +41,11 @@ class RebalanceListenerForTest(ConsumerRebalanceListener):
 
     def on_partitions_revoked(self, revoked):
         self.revoked.append(revoked)
-        raise Exception("coordinator should ignore this exception")
+        raise Exception("coordinator should ignore this exception")  # noqa: TRY002
 
     def on_partitions_assigned(self, assigned):
         self.assigned.append(assigned)
-        raise Exception("coordinator should ignore this exception")
+        raise Exception("coordinator should ignore this exception")  # noqa: TRY002
 
 
 class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
@@ -48,18 +55,20 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
-        await self.wait_topic(client, 'topic1')
-        await self.wait_topic(client, 'topic2')
+        await self.wait_topic(client, "topic1")
+        await self.wait_topic(client, "topic2")
 
         # Check if the initial group join is performed correctly with minimal
         # setup
         subscription = SubscriptionState()
-        subscription.subscribe(topics={'topic1', 'topic2'})
+        subscription.subscribe(topics={"topic1", "topic2"})
         coordinator = GroupCoordinator(
-            client, subscription,
+            client,
+            subscription,
             session_timeout_ms=10000,
             heartbeat_interval_ms=500,
-            retry_backoff_ms=100)
+            retry_backoff_ms=100,
+        )
 
         self.assertEqual(coordinator.coordinator_id, None)
         self.assertTrue(coordinator.need_rejoin(subscription.subscription))
@@ -74,28 +83,23 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         tp_list = subscription.assigned_partitions()
         self.assertEqual(
-            tp_list,
-            {
-                ('topic1', 0),
-                ('topic1', 1),
-                ('topic2', 0),
-                ('topic2', 1)
-            }
+            tp_list, {("topic1", 0), ("topic1", 1), ("topic2", 0), ("topic2", 1)}
         )
 
         # Check if adding an additional coordinator will rebalance correctly
         client2 = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client2.bootstrap()
         subscription2 = SubscriptionState()
-        subscription2.subscribe(topics={'topic1', 'topic2'})
+        subscription2.subscribe(topics={"topic1", "topic2"})
         coordinator2 = GroupCoordinator(
-            client2, subscription2,
+            client2,
+            subscription2,
             session_timeout_ms=10000,
             heartbeat_interval_ms=500,
-            retry_backoff_ms=100)
+            retry_backoff_ms=100,
+        )
         await asyncio.gather(
-            subscription.wait_for_assignment(),
-            subscription2.wait_for_assignment()
+            subscription.wait_for_assignment(), subscription2.wait_for_assignment()
         )
 
         tp_list = subscription.assigned_partitions()
@@ -104,13 +108,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertEqual(len(tp_list2), 2)
         tp_list |= tp_list2
         self.assertEqual(
-            tp_list,
-            {
-                ('topic1', 0),
-                ('topic1', 1),
-                ('topic2', 0),
-                ('topic2', 1)
-            }
+            tp_list, {("topic1", 0), ("topic1", 1), ("topic2", 0), ("topic2", 1)}
         )
         # Check is closing the first coordinator will rebalance the second
         await coordinator.close()
@@ -119,13 +117,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         await subscription2.wait_for_assignment()
         tp_list = subscription2.assigned_partitions()
         self.assertEqual(
-            tp_list,
-            {
-                ('topic1', 0),
-                ('topic1', 1),
-                ('topic2', 0),
-                ('topic2', 1)
-            }
+            tp_list, {("topic1", 0), ("topic1", 1), ("topic2", 0), ("topic2", 1)}
         )
         await coordinator2.close()
         await client2.close()
@@ -134,22 +126,16 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_failed_group_join(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
-        await self.wait_topic(client, 'topic1')
+        await self.wait_topic(client, "topic1")
         self.add_cleanup(client.close)
 
         subscription = SubscriptionState()
-        subscription.subscribe(topics={'topic1'})
-        coordinator = GroupCoordinator(
-            client, subscription,
-            retry_backoff_ms=10)
+        subscription.subscribe(topics={"topic1"})
+        coordinator = GroupCoordinator(client, subscription, retry_backoff_ms=10)
         coordinator._coordination_task.cancel()  # disable for test
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await coordinator._coordination_task
-        except asyncio.CancelledError:
-            pass
-        coordinator._coordination_task = create_task(
-            asyncio.sleep(0.1)
-        )
+        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
         coordinator.coordinator_id = 15
         self.add_cleanup(coordinator.close)
 
@@ -161,12 +147,16 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         async def do_rebalance():
             rebalance = CoordinatorGroupRebalance(
-                coordinator, coordinator.group_id, coordinator.coordinator_id,
-                subscription.subscription, coordinator._assignors,
+                coordinator,
+                coordinator.group_id,
+                coordinator.coordinator_id,
+                subscription.subscription,
+                coordinator._assignors,
                 coordinator._session_timeout_ms,
-                coordinator._retry_backoff_ms)
+                coordinator._retry_backoff_ms,
+            )
             rebalance._on_join_leader = _on_join_leader_mock
-            return (await rebalance.perform_group_join())
+            return await rebalance.perform_group_join()
 
         mocked = mock.MagicMock()
         coordinator._client = mocked
@@ -180,7 +170,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 group_protocol="roundrobin",
                 leader_id="111",  # leader_id
                 member_id="111",  # member_id
-                members=[]
+                members=[],
             )
             return resp
 
@@ -204,13 +194,12 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertEqual(coordinator.need_rejoin(subsc), True)
 
         # no exception expected, member_id should be reset
-        coordinator.member_id = 'some_invalid_member_id'
+        coordinator.member_id = "some_invalid_member_id"
         error_type = Errors.UnknownMemberIdError
         resp = await do_rebalance()
         self.assertIsNone(resp)
         self.assertEqual(coordinator.need_rejoin(subsc), True)
-        self.assertEqual(
-            coordinator.member_id, JoinGroupRequest.UNKNOWN_MEMBER_ID)
+        self.assertEqual(coordinator.member_id, JoinGroupRequest.UNKNOWN_MEMBER_ID)
 
         error_type = Errors.UnknownError()
         with self.assertRaises(Errors.KafkaError):  # Masked as unknown error
@@ -238,8 +227,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         # Subscription changes before rebalance finishes
         async def send_change_sub(*args, **kw):
-            subscription.subscribe(topics={'topic2'})
-            return (await send(*args, **kw))
+            subscription.subscribe(topics={"topic2"})
+            return await send(*args, **kw)
+
         mocked.send.side_effect = send_change_sub
         resp = await do_rebalance()
         self.assertEqual(resp, None)
@@ -256,27 +246,27 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_failed_sync_group(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         subscription = SubscriptionState()
-        subscription.subscribe(topics={'topic1'})
+        subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
-            client, subscription,
-            heartbeat_interval_ms=20000)
-        coordinator._coordination_task.cancel()  # disable for test
-        try:
-            await coordinator._coordination_task
-        except asyncio.CancelledError:
-            pass
-        coordinator._coordination_task = create_task(
-            asyncio.sleep(0.1)
+            client, subscription, heartbeat_interval_ms=20000
         )
+        coordinator._coordination_task.cancel()  # disable for test
+        with contextlib.suppress(asyncio.CancelledError):
+            await coordinator._coordination_task
+        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
         coordinator.coordinator_id = 15
         self.add_cleanup(coordinator.close)
 
         async def do_sync_group():
             rebalance = CoordinatorGroupRebalance(
-                coordinator, coordinator.group_id, coordinator.coordinator_id,
-                subscription.subscription, coordinator._assignors,
+                coordinator,
+                coordinator.group_id,
+                coordinator.coordinator_id,
+                subscription.subscription,
+                coordinator._assignors,
                 coordinator._session_timeout_ms,
-                coordinator._retry_backoff_ms)
+                coordinator._retry_backoff_ms,
+            )
             await rebalance._on_join_follower()
 
         mocked = mock.MagicMock()
@@ -287,18 +277,17 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         async def send(*agrs, **kw):
             resp = SyncGroupResponse(
-                error_code=error_type.errno,
-                member_assignment=b"123"
+                error_code=error_type.errno, member_assignment=b"123"
             )
             return resp
 
         mocked.send.side_effect = send
 
-        coordinator.member_id = 'some_invalid_member_id'
+        coordinator.member_id = "some_invalid_member_id"
 
         error_type = Errors.RebalanceInProgressError
         await do_sync_group()
-        self.assertEqual(coordinator.member_id, 'some_invalid_member_id')
+        self.assertEqual(coordinator.member_id, "some_invalid_member_id")
         self.assertEqual(coordinator.need_rejoin(subsc), True)
 
         error_type = Errors.UnknownMemberIdError
@@ -338,8 +327,14 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         member_assignment = mock.Mock()
 
         rebalance = CoordinatorGroupRebalance(
-            coordinator, "group_id", "coordinator_id", subscription,
-            assignors, 1000, 1000)
+            coordinator,
+            "group_id",
+            "coordinator_id",
+            subscription,
+            assignors,
+            1000,
+            1000,
+        )
 
         async def send_req(request):
             await asyncio.sleep(0.1)
@@ -373,14 +368,13 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         test_listener = RebalanceListenerForTest()
         subscription = SubscriptionState()
         coordinator = GroupCoordinator(
-            client, subscription,
-            group_id='subs-pattern-group')
+            client, subscription, group_id="subs-pattern-group"
+        )
 
-        await self.wait_topic(client, 'st-topic1')
-        await self.wait_topic(client, 'st-topic2')
+        await self.wait_topic(client, "st-topic1")
+        await self.wait_topic(client, "st-topic2")
 
-        subscription.subscribe_pattern(
-            re.compile('st-topic*'), listener=test_listener)
+        subscription.subscribe_pattern(re.compile("st-topic*"), listener=test_listener)
         client.set_topics([])
         await subscription.wait_for_assignment()
 
@@ -389,10 +383,10 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         tp_list = subscription.assigned_partitions()
         assigned = {
-            ('st-topic1', 0),
-            ('st-topic1', 1),
-            ('st-topic2', 0),
-            ('st-topic2', 1),
+            ("st-topic1", 0),
+            ("st-topic1", 1),
+            ("st-topic2", 0),
+            ("st-topic2", 1),
         }
         self.assertEqual(tp_list, assigned)
 
@@ -405,17 +399,19 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_commit_failed_scenarios(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
-        await self.wait_topic(client, 'topic1')
+        await self.wait_topic(client, "topic1")
         subscription = SubscriptionState()
-        subscription.subscribe(topics={'topic1'})
+        subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
-            client, subscription,
-            group_id='test-offsets-group')
+            client,
+            subscription,
+            group_id="test-offsets-group",
+        )
 
         await subscription.wait_for_assignment()
         assignment = subscription.subscription.assignment
 
-        offsets = {TopicPartition('topic1', 0): OffsetAndMetadata(1, '')}
+        offsets = {TopicPartition("topic1", 0): OffsetAndMetadata(1, "")}
         await coordinator.commit_offsets(assignment, offsets)
 
         _orig_send_req = coordinator._send_req
@@ -430,7 +426,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                         error_code = commit_error.errno
                     resp_topics = [("topic1", [(0, error_code)])]
                     return OffsetCommitResponse_v2(resp_topics)
-                return (await _orig_send_req(request))
+                return await _orig_send_req(request)
+
             mocked.side_effect = mock_send_req
 
             # Not retriable errors are propagated
@@ -482,27 +479,18 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             assignment = subscription.subscription.assignment
 
             # Coordinator errors should be retried after it was found again
-            commit_error = [
-                Errors.GroupCoordinatorNotAvailableError,
-                Errors.NoError
-            ]
+            commit_error = [Errors.GroupCoordinatorNotAvailableError, Errors.NoError]
             await coordinator.commit_offsets(assignment, offsets)
-            commit_error = [
-                Errors.NotCoordinatorForGroupError,
-                Errors.NoError
-            ]
+            commit_error = [Errors.NotCoordinatorForGroupError, Errors.NoError]
             await coordinator.commit_offsets(assignment, offsets)
-            commit_error = [
-                Errors.RequestTimedOutError,
-                Errors.NoError
-            ]
+            commit_error = [Errors.RequestTimedOutError, Errors.NoError]
             await coordinator.commit_offsets(assignment, offsets)
 
             # Make sure coordinator_id is reset properly each retry
             for retriable_error in (
-                    Errors.GroupCoordinatorNotAvailableError,
-                    Errors.NotCoordinatorForGroupError,
-                    Errors.RequestTimedOutError,
+                Errors.GroupCoordinatorNotAvailableError,
+                Errors.NotCoordinatorForGroupError,
+                Errors.RequestTimedOutError,
             ):
                 self.assertIsNotNone(coordinator.coordinator_id)
                 commit_error = retriable_error
@@ -525,15 +513,15 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_fetchoffsets_failed_scenarios(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
-        await self.wait_topic(client, 'topic1')
+        await self.wait_topic(client, "topic1")
         subscription = SubscriptionState()
-        subscription.subscribe(topics={'topic1'})
+        subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
-            client, subscription,
-            group_id='fetch-offsets-group')
+            client, subscription, group_id="fetch-offsets-group"
+        )
         await subscription.wait_for_assignment()
 
-        tp = TopicPartition('topic1', 0)
+        tp = TopicPartition("topic1", 0)
         partitions = {tp}
         _orig_send_req = coordinator._send_req
         with mock.patch.object(coordinator, "_send_req") as mocked:
@@ -551,7 +539,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                         offset = -1
                     resp_topics = [("topic1", [(0, offset, "", error_code)])]
                     return request.RESPONSE_TYPE(resp_topics)
-                return (await _orig_send_req(request))
+                return await _orig_send_req(request)
+
             mocked.side_effect = mock_send_req
 
             # 0 partitions call should just fast return
@@ -564,7 +553,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 Errors.GroupLoadInProgressError,
                 Errors.NoError,
                 Errors.NoError,
-                Errors.NoError
+                Errors.NoError,
             ]
             res = await coordinator.fetch_committed_offsets(partitions)
             self.assertEqual(res, {tp: OffsetAndMetadata(10, "")})
@@ -579,7 +568,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 Errors.NotCoordinatorForGroupError,
                 Errors.NoError,
                 Errors.NoError,
-                Errors.NoError
+                Errors.NoError,
             ]
             r = await coordinator.fetch_committed_offsets(partitions)
             self.assertEqual(r, {tp: OffsetAndMetadata(10, "")})
@@ -601,35 +590,38 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # See issue #88
         client = AIOKafkaClient(
             metadata_max_age_ms=2000,
-            bootstrap_servers=self.hosts)
+            bootstrap_servers=self.hosts,
+        )
         await client.bootstrap()
-        await self.wait_topic(client, 'topic1')
-        await self.wait_topic(client, 'topic2')
+        await self.wait_topic(client, "topic1")
+        await self.wait_topic(client, "topic2")
         subscription = SubscriptionState()
-        subscription.subscribe(topics={'topic1'})
-        client.set_topics(('topic1', ))
+        subscription.subscribe(topics={"topic1"})
+        client.set_topics(("topic1",))
         coordinator = GroupCoordinator(
-            client, subscription,
-            group_id='race-rebalance-subscribe-replace',
-            heartbeat_interval_ms=1000)
+            client,
+            subscription,
+            group_id="race-rebalance-subscribe-replace",
+            heartbeat_interval_ms=1000,
+        )
 
         _perform_assignment = coordinator._perform_assignment
-        with mock.patch.object(coordinator, '_perform_assignment') as mocked:
+        with mock.patch.object(coordinator, "_perform_assignment") as mocked:
 
             async def _new(*args, **kw):
                 # Change the subscription to different topic before we finish
                 # rebalance
                 res = await _perform_assignment(*args, **kw)
                 if subscription.subscription.topics == {"topic1"}:
-                    subscription.subscribe(topics={'topic2'})
-                    client.set_topics(('topic2', ))
+                    subscription.subscribe(topics={"topic2"})
+                    client.set_topics(("topic2",))
                 return res
+
             mocked.side_effect = _new
 
             await subscription.wait_for_assignment()
-            topics = {
-                tp.topic for tp in subscription.assigned_partitions()}
-            self.assertEqual(topics, {'topic2'})
+            topics = {tp.topic for tp in subscription.assigned_partitions()}
+            self.assertEqual(topics, {"topic2"})
 
             # There should only be 2 rebalances to finish the task
             self.assertEqual(mocked.call_count, 2)
@@ -642,32 +634,34 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # same as above, but with adding topics instead of replacing them
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
-        await self.wait_topic(client, 'topic1')
-        await self.wait_topic(client, 'topic2')
+        await self.wait_topic(client, "topic1")
+        await self.wait_topic(client, "topic2")
         subscription = SubscriptionState()
-        subscription.subscribe(topics={'topic1'})
+        subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
-            client, subscription,
-            group_id='race-rebalance-subscribe-append',
-            heartbeat_interval_ms=20000000)
+            client,
+            subscription,
+            group_id="race-rebalance-subscribe-append",
+            heartbeat_interval_ms=20000000,
+        )
 
         _perform_assignment = coordinator._perform_assignment
-        with mock.patch.object(coordinator, '_perform_assignment') as mocked:
+        with mock.patch.object(coordinator, "_perform_assignment") as mocked:
 
             async def _new(*args, **kw):
                 # Change the subscription to different topic before we finish
                 # rebalance
                 res = await _perform_assignment(*args, **kw)
                 if subscription.subscription.topics == {"topic1"}:
-                    subscription.subscribe(topics={'topic1', 'topic2'})
-                    client.set_topics(('topic1', 'topic2', ))
+                    subscription.subscribe(topics={"topic1", "topic2"})
+                    client.set_topics(("topic1", "topic2"))
                 return res
+
             mocked.side_effect = _new
 
             await subscription.wait_for_assignment()
-            topics = {
-                tp.topic for tp in subscription.assigned_partitions()}
-            self.assertEqual(topics, {'topic1', 'topic2'})
+            topics = {tp.topic for tp in subscription.assigned_partitions()}
+            self.assertEqual(topics, {"topic1", "topic2"})
 
             # There should only be 2 rebalances to finish the task
             self.assertEqual(mocked.call_count, 2)
@@ -683,74 +677,81 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # Just ensure topics are created
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
-        await self.wait_topic(client, 'topic1')
-        await self.wait_topic(client, 'topic2')
+        await self.wait_topic(client, "topic1")
+        await self.wait_topic(client, "topic2")
         await client.close()
 
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
         self.add_cleanup(client.close)
         subscription = SubscriptionState()
-        client.set_topics(("topic1", ))
-        subscription.subscribe(topics={'topic1'})
+        client.set_topics(("topic1",))
+        subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
-            client, subscription,
-            group_id='race-rebalance-metadata-update',
-            heartbeat_interval_ms=20000000)
+            client,
+            subscription,
+            group_id="race-rebalance-metadata-update",
+            heartbeat_interval_ms=20000000,
+        )
         self.add_cleanup(coordinator.close)
         await subscription.wait_for_assignment()
         # Check that topic's partitions are properly assigned
         self.assertEqual(
             subscription.assigned_partitions(),
-            {TopicPartition("topic1", 0), TopicPartition("topic1", 1)})
+            {TopicPartition("topic1", 0), TopicPartition("topic1", 1)},
+        )
 
         _metadata_update = client._metadata_update
-        with mock.patch.object(client, '_metadata_update') as mocked:
+        with mock.patch.object(client, "_metadata_update") as mocked:
+
             async def _new(*args, **kw):
                 # Just make metadata updates a bit more slow for test
                 # robustness
                 await asyncio.sleep(0.5)
                 res = await _metadata_update(*args, **kw)
                 return res
+
             mocked.side_effect = _new
 
             # This case will assure, that the started metadata update will be
             # waited for before assigning partitions. ``set_topics`` will start
             # the metadata update
-            subscription.subscribe(topics={'topic2'})
-            client.set_topics(('topic2', ))
+            subscription.subscribe(topics={"topic2"})
+            client.set_topics(("topic2",))
             await subscription.wait_for_assignment()
             self.assertEqual(
                 subscription.assigned_partitions(),
-                {TopicPartition("topic2", 0), TopicPartition("topic2", 1)})
+                {TopicPartition("topic2", 0), TopicPartition("topic2", 1)},
+            )
 
     @run_until_complete
     async def test_coordinator_metadata_change_by_broker(self):
         # Issue #108. We can have a misleading metadata change, that will
         # trigger additional rebalance
-        client = AIOKafkaClient(
-            bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
-        await self.wait_topic(client, 'topic1')
-        await self.wait_topic(client, 'topic2')
-        client.set_topics(['other_topic'])
+        await self.wait_topic(client, "topic1")
+        await self.wait_topic(client, "topic2")
+        client.set_topics(["other_topic"])
         await client.force_metadata_update()
 
         subscription = SubscriptionState()
         coordinator = GroupCoordinator(
-            client, subscription,
-            group_id='race-rebalance-subscribe-append',
-            heartbeat_interval_ms=2000000)
-        subscription.subscribe(topics={'topic1'})
-        await client.set_topics(('topic1', ))
+            client,
+            subscription,
+            group_id="race-rebalance-subscribe-append",
+            heartbeat_interval_ms=2000000,
+        )
+        subscription.subscribe(topics={"topic1"})
+        await client.set_topics(("topic1",))
         await subscription.wait_for_assignment()
 
         _perform_assignment = coordinator._perform_assignment
-        with mock.patch.object(coordinator, '_perform_assignment') as mocked:
+        with mock.patch.object(coordinator, "_perform_assignment") as mocked:
             mocked.side_effect = _perform_assignment
 
-            subscription.subscribe(topics={'topic2'})
-            await client.set_topics(('topic2', ))
+            subscription.subscribe(topics={"topic2"})
+            await client.set_topics(("topic2",))
 
             # Should only trigger 1 rebalance, but will trigger 2 with bug:
             #   Metadata snapshot will change:
@@ -759,8 +760,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             #   {'topic1': {0, 1}, 'topic2': {0, 1}} -> {'topic2': {0, 1}}
             await subscription.wait_for_assignment()
             await client.force_metadata_update()
-            self.assertFalse(
-                coordinator.need_rejoin(subscription.subscription))
+            self.assertFalse(coordinator.need_rejoin(subscription.subscription))
             self.assertEqual(mocked.call_count, 1)
 
         await coordinator.close()
@@ -772,18 +772,21 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # fails on join prepare)
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
-        await self.wait_topic(client, 'topic1')
+        await self.wait_topic(client, "topic1")
         subscription = SubscriptionState()
-        subscription.subscribe(topics={'topic1'})
+        subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
-            client, subscription,
-            group_id='test-offsets-group', session_timeout_ms=6000,
-            heartbeat_interval_ms=1000)
+            client,
+            subscription,
+            group_id="test-offsets-group",
+            session_timeout_ms=6000,
+            heartbeat_interval_ms=1000,
+        )
         await subscription.wait_for_assignment()
         assignment = subscription.subscription.assignment
 
         # Make sure we have something to commit before rejoining
-        tp = TopicPartition('topic1', 0)
+        tp = TopicPartition("topic1", 0)
         subscription.seek(tp, 0)
         offsets = assignment.all_consumed_offsets()
         self.assertTrue(offsets)  # Not empty
@@ -792,10 +795,12 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         _orig_send_req = coordinator._send_req
         resp_topics = [("topic1", [(0, Errors.UnknownMemberIdError.errno)])]
         with mock.patch.object(coordinator, "_send_req") as mocked:
+
             async def mock_send_req(request):
                 if request.API_KEY == OffsetCommitRequest[0].API_KEY:
                     return OffsetCommitResponse_v2(resp_topics)
-                return (await _orig_send_req(request))
+                return await _orig_send_req(request)
+
             mocked.side_effect = mock_send_req
 
             with self.assertRaises(Errors.CommitFailedError):
@@ -813,11 +818,14 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         await client.bootstrap()
         self.add_cleanup(client.close)
         subscription = SubscriptionState()
-        subscription.subscribe(topics={'topic1'})
+        subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
-            client, subscription,
-            group_id='test-my-group', session_timeout_ms=6000,
-            heartbeat_interval_ms=1000)
+            client,
+            subscription,
+            group_id="test-my-group",
+            session_timeout_ms=6000,
+            heartbeat_interval_ms=1000,
+        )
         self.add_cleanup(coordinator.close)
 
         request = OffsetCommitRequest[2](topics=[])
@@ -830,8 +838,10 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.assertIsNotNone(coordinator.coordinator_id)
 
         with mock.patch.object(client, "send") as mocked:
+
             async def mock_send(*args, **kw):
                 raise Errors.KafkaError("Some unexpected error")
+
             mocked.side_effect = mock_send
 
             # _send_req should mark coordinator dead on errors
@@ -855,11 +865,13 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 await waiter
 
         coordinator = GroupCoordinator(
-            client, subscription,
-            group_id='test-my-group', session_timeout_ms=6000,
-            heartbeat_interval_ms=1000)
-        subscription.subscribe(
-            topics={'topic1'}, listener=WaitingListener())
+            client,
+            subscription,
+            group_id="test-my-group",
+            session_timeout_ms=6000,
+            heartbeat_interval_ms=1000,
+        )
+        subscription.subscribe(topics={"topic1"}, listener=WaitingListener())
 
         # Close task should be loyal to rebalance and wait for it to finish
         close_task = create_task(coordinator.close())
@@ -880,10 +892,13 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(client.close)
         subscription = SubscriptionState()
         coordinator = GroupCoordinator(
-            client, subscription,
-            group_id='test-my-group', session_timeout_ms=6000,
-            heartbeat_interval_ms=1000)
-        subscription.subscribe(topics={'topic1'})
+            client,
+            subscription,
+            group_id="test-my-group",
+            session_timeout_ms=6000,
+            heartbeat_interval_ms=1000,
+        )
+        subscription.subscribe(topics={"topic1"})
         await subscription.wait_for_assignment()
 
         waiter = create_future()
@@ -908,18 +923,16 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_coordinator_ensure_coordinator_known(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         subscription = SubscriptionState()
-        subscription.subscribe(topics={'topic1'})
+        subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
-            client, subscription,
-            heartbeat_interval_ms=20000)
-        coordinator._coordination_task.cancel()  # disable for test
-        try:
-            await coordinator._coordination_task
-        except asyncio.CancelledError:
-            pass
-        coordinator._coordination_task = create_task(
-            asyncio.sleep(0.1,)
+            client,
+            subscription,
+            heartbeat_interval_ms=20000,
         )
+        coordinator._coordination_task.cancel()  # disable for test
+        with contextlib.suppress(asyncio.CancelledError):
+            await coordinator._coordination_task
+        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
         self.add_cleanup(coordinator.close)
 
         def force_metadata_update():
@@ -932,9 +945,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         client.force_metadata_update.side_effect = force_metadata_update
 
         async def ready(node_id, group=None):
-            if node_id == 0:
-                return True
-            return False
+            return node_id == 0
+
         client.ready.side_effect = ready
         client.coordinator_lookup = mock.Mock()
 
@@ -945,6 +957,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             if isinstance(node_id, Exception):
                 raise node_id
             return node_id
+
         client.coordinator_lookup.side_effect = _do_coordinator_lookup
 
         # CASE: the lookup returns a broken node, that can't be connected
@@ -980,18 +993,16 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_coordinator__do_heartbeat(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         subscription = SubscriptionState()
-        subscription.subscribe(topics={'topic1'})
+        subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
-            client, subscription,
-            heartbeat_interval_ms=20000)
-        coordinator._coordination_task.cancel()  # disable for test
-        try:
-            await coordinator._coordination_task
-        except asyncio.CancelledError:
-            pass
-        coordinator._coordination_task = create_task(
-            asyncio.sleep(0.1)
+            client,
+            subscription,
+            heartbeat_interval_ms=20000,
         )
+        coordinator._coordination_task.cancel()  # disable for test
+        with contextlib.suppress(asyncio.CancelledError):
+            await coordinator._coordination_task
+        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
         self.add_cleanup(coordinator.close)
 
         _orig_send_req = coordinator._send_req
@@ -1008,7 +1019,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                 else:
                     error_code = heartbeat_error.errno
                 return HeartbeatRequest.RESPONSE_TYPE(error_code)
-            return (await _orig_send_req(request))
+            return await _orig_send_req(request)
+
         mocked.side_effect = mock_send_req
 
         coordinator.coordinator_id = 15
@@ -1062,20 +1074,18 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_coordinator__heartbeat_routine(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         subscription = SubscriptionState()
-        subscription.subscribe(topics={'topic1'})
+        subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
-            client, subscription,
+            client,
+            subscription,
             heartbeat_interval_ms=100,
             session_timeout_ms=300,
-            retry_backoff_ms=50)
-        coordinator._coordination_task.cancel()  # disable for test
-        try:
-            await coordinator._coordination_task
-        except asyncio.CancelledError:
-            pass
-        coordinator._coordination_task = create_task(
-            asyncio.sleep(0.1)
+            retry_backoff_ms=50,
         )
+        coordinator._coordination_task.cancel()  # disable for test
+        with contextlib.suppress(asyncio.CancelledError):
+            await coordinator._coordination_task
+        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
         self.add_cleanup(coordinator.close)
 
         coordinator._do_heartbeat = mocked = mock.Mock()
@@ -1088,22 +1098,21 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             if isinstance(success, list):
                 return success.pop(0)
             return success
+
         mocked.side_effect = _do_heartbeat
 
         async def ensure_coordinator_known():
             return None
 
         coordinator.ensure_coordinator_known = mock.Mock()
-        coordinator.ensure_coordinator_known.side_effect = (
-            ensure_coordinator_known
-        )
+        coordinator.ensure_coordinator_known.side_effect = ensure_coordinator_known
 
-        routine = create_task(
-            coordinator._heartbeat_routine())
+        routine = create_task(coordinator._heartbeat_routine())
 
         def cleanup():
             routine.cancel()
             return routine
+
         self.add_cleanup(cleanup)
 
         # CASE: simple heartbeat
@@ -1134,16 +1143,14 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         subscription = SubscriptionState()
         tp = TopicPartition("topic1", 0)
         coordinator = GroupCoordinator(
-            client, subscription,
-            heartbeat_interval_ms=20000)
-        coordinator._coordination_task.cancel()  # disable for test
-        try:
-            await coordinator._coordination_task
-        except asyncio.CancelledError:
-            pass
-        coordinator._coordination_task = create_task(
-            asyncio.sleep(0.1)
+            client,
+            subscription,
+            heartbeat_interval_ms=20000,
         )
+        coordinator._coordination_task.cancel()  # disable for test
+        with contextlib.suppress(asyncio.CancelledError):
+            await coordinator._coordination_task
+        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
         self.add_cleanup(coordinator.close)
 
         coordinator._do_fetch_commit_offsets = mocked = mock.Mock()
@@ -1153,6 +1160,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         async def do_fetch(need_update):
             test_self.assertEqual(need_update, [tp])
             return fetched_offsets
+
         mocked.side_effect = do_fetch
 
         def reset_assignment():
@@ -1161,6 +1169,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             tp_state = assignment.state_value(tp)
             fut = tp_state.fetch_committed()
             return assignment, tp_state, fut
+
         assignment, tp_state, fut = reset_assignment()
 
         # Success case
@@ -1197,24 +1206,23 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         subscription = SubscriptionState()
         tp = TopicPartition("topic1", 0)
         coordinator = GroupCoordinator(
-            client, subscription,
-            heartbeat_interval_ms=20000, auto_commit_interval_ms=1000,
-            retry_backoff_ms=50)
-        coordinator._coordination_task.cancel()  # disable for test
-        try:
-            await coordinator._coordination_task
-        except asyncio.CancelledError:
-            pass
-        coordinator._coordination_task = create_task(
-            asyncio.sleep(0.1)
+            client,
+            subscription,
+            heartbeat_interval_ms=20000,
+            auto_commit_interval_ms=1000,
+            retry_backoff_ms=50,
         )
+        coordinator._coordination_task.cancel()  # disable for test
+        with contextlib.suppress(asyncio.CancelledError):
+            await coordinator._coordination_task
+        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
         self.add_cleanup(coordinator.close)
 
         coordinator._do_commit_offsets = mocked = mock.Mock()
 
         async def do_commit(*args, **kw):
             await asyncio.sleep(0.1)
-            return
+
         mocked.side_effect = do_commit
 
         def reset_assignment():
@@ -1222,6 +1230,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             assignment = subscription.subscription.assignment
             tp_state = assignment.state_value(tp)
             return assignment, tp_state
+
         assignment, tp_state = reset_assignment()
 
         # Fast return if autocommit disabled
@@ -1240,7 +1249,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # 1000ms interval minus 100 sleep
         self.assertAlmostEqual(timeout, 0.9, places=1)
         self.assertAlmostEqual(
-            coordinator._next_autocommit_deadline, now + interval, places=1)
+            coordinator._next_autocommit_deadline, now + interval, places=1
+        )
         self.assertEqual(mocked.call_count, 1)
 
         # Retriable errors should backoff and retry, no skip autocommit
@@ -1252,8 +1262,8 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # Dealine should be set into future, not depending on commit time, to
         # avoid busy loops
         self.assertAlmostEqual(
-            coordinator._next_autocommit_deadline, now + timeout,
-            places=1)
+            coordinator._next_autocommit_deadline, now + timeout, places=1
+        )
 
         # UnknownMemberId should also retry
         coordinator._next_autocommit_deadline = 0
@@ -1275,26 +1285,27 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         subscription = SubscriptionState()
         tp = TopicPartition("topic1", 0)
         coordinator = GroupCoordinator(
-            client, subscription,
-            heartbeat_interval_ms=20000, auto_commit_interval_ms=1000,
-            retry_backoff_ms=50)
+            client,
+            subscription,
+            heartbeat_interval_ms=20000,
+            auto_commit_interval_ms=1000,
+            retry_backoff_ms=50,
+        )
         self.add_cleanup(coordinator.close)
 
         def start_coordination():
             if coordinator._coordination_task:
                 coordinator._coordination_task.cancel()
             coordinator._coordination_task = task = create_task(
-                coordinator._coordination_routine())
+                coordinator._coordination_routine()
+            )
             return task
 
         async def stop_coordination():
             coordinator._coordination_task.cancel()  # disable for test
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await coordinator._coordination_task
-            except asyncio.CancelledError:
-                pass
-            coordinator._coordination_task = create_task(
-                asyncio.sleep(0.1))
+            coordinator._coordination_task = create_task(asyncio.sleep(0.1))
 
         await stop_coordination()
 
@@ -1321,6 +1332,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             else:
                 await asyncio.sleep(0.1)
                 return False
+
         rejoin_mock.side_effect = do_rejoin
 
         async def _maybe_do_autocommit(assign):
@@ -1434,28 +1446,22 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # did not change. We should handle the case by refreshing meta again.
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         await client.bootstrap()
-        await self.wait_topic(client, 'topic1')
-        await self.wait_topic(client, 'topic2')
-        await client.set_topics(('other_topic', ))
+        await self.wait_topic(client, "topic1")
+        await self.wait_topic(client, "topic2")
+        await client.set_topics(("other_topic",))
 
         subscription = SubscriptionState()
-        coordinator = NoGroupCoordinator(
-            client, subscription)
-        subscription.subscribe(topics={'topic1'})
-        client.set_topics(('topic1', ))
+        coordinator = NoGroupCoordinator(client, subscription)
+        subscription.subscribe(topics={"topic1"})
+        client.set_topics(("topic1",))
         await asyncio.sleep(0.0001)
 
         # Change subscription before metadata update is received
-        subscription.subscribe(topics={'topic2'})
-        metadata_fut = client.set_topics(('topic2', ))
+        subscription.subscribe(topics={"topic2"})
+        metadata_fut = client.set_topics(("topic2",))
 
-        try:
-            await asyncio.wait_for(
-                metadata_fut,
-                timeout=0.2
-            )
-        except asyncio.TimeoutError:
-            pass
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(metadata_fut, timeout=0.2)
 
         self.assertFalse(client._sync_task.done())
 

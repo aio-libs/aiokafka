@@ -1,17 +1,26 @@
-"""
-.. _kafka-python: https://github.com/dpkp/kafka-python
-"""
+from __future__ import annotations
 
 import logging
+from os import PathLike
+from ssl import Purpose, SSLContext, create_default_context
+from typing import Callable, Union
 
-from ssl import create_default_context, Purpose
+from typing_extensions import Buffer
 
 log = logging.getLogger(__name__)
 
 
-def create_ssl_context(*, cafile=None, capath=None, cadata=None,
-                       certfile=None, keyfile=None, password=None,
-                       crlfile=None):
+def create_ssl_context(
+    *,
+    cafile: Union[str, bytes, PathLike[str], PathLike[bytes], None] = None,
+    capath: Union[str, bytes, PathLike[str], PathLike[bytes], None] = None,
+    cadata: Union[str, Buffer, None] = None,
+    certfile: Union[str, bytes, PathLike[str], PathLike[bytes], None] = None,
+    keyfile: Union[str, bytes, PathLike[str], PathLike[bytes], None] = None,
+    password: Union[
+        Callable[[], Union[str, bytes, bytearray]], str, bytes, bytearray, None
+    ] = None,
+) -> SSLContext:
     """
     Simple helper, that creates an :class:`~ssl.SSLContext` based on params similar to
     those in `kafka-python`_, but with some restrictions like:
@@ -48,26 +57,28 @@ def create_ssl_context(*, cafile=None, capath=None, cadata=None,
             :meth:`~ssl.SSLContext.load_cert_chain`.
             Default: :data:`None`.
 
+    .. _kafka-python: https://github.com/dpkp/kafka-python
     """
     if cafile or capath:
-        log.info('Loading SSL CA from %s', cafile or capath)
+        log.info("Loading SSL CA from %s", cafile or capath)
     elif cadata is not None:
-        log.info('Loading SSL CA from data provided in `cadata`')
-        log.debug('`cadata`: %r', cadata)
+        log.info("Loading SSL CA from data provided in `cadata`")
+        log.debug("`cadata`: %r", cadata)
     # Creating context with default params for client sockets.
     context = create_default_context(
-        Purpose.SERVER_AUTH, cafile=cafile, capath=capath, cadata=cadata)
+        Purpose.SERVER_AUTH, cafile=cafile, capath=capath, cadata=cadata
+    )
     # Load certificate if one is specified.
     if certfile is not None:
-        log.info('Loading SSL Cert from %s', certfile)
+        log.info("Loading SSL Cert from %s", certfile)
         if keyfile:
             if password is not None:
-                log.info('Loading SSL Key from %s with password', keyfile)
+                log.info("Loading SSL Key from %s with password", keyfile)
             else:  # pragma: no cover
-                log.info('Loading SSL Key from %s without password', keyfile)
+                log.info("Loading SSL Key from %s without password", keyfile)
         # NOTE: From docs:
         # If the password argument is not specified and a password is required,
-        # OpenSSL’s built-in password prompting mechanism will be used to
+        # OpenSSL's built-in password prompting mechanism will be used to
         # interactively prompt the user for a password.
         context.load_cert_chain(certfile, keyfile, password)
     return context

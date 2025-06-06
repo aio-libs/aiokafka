@@ -1,8 +1,7 @@
 import abc
-from kafka import ConsumerRebalanceListener as BaseConsumerRebalanceListener
 
 
-class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
+class ConsumerRebalanceListener(abc.ABC):
     """
     A callback interface that the user can implement to trigger custom actions
     when the set of partitions assigned to the consumer changes.
@@ -64,7 +63,6 @@ class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
             revoked (list(TopicPartition)): the partitions that were assigned
                 to the consumer on the last rebalance
         """
-        pass
 
     @abc.abstractmethod
     def on_partitions_assigned(self, assigned):
@@ -84,7 +82,6 @@ class ConsumerRebalanceListener(BaseConsumerRebalanceListener):
             assigned (list(TopicPartition)): the partitions assigned to the
                 consumer (may include partitions that were previously assigned)
         """
-        pass
 
 
 class AbstractTokenProvider(abc.ABC):
@@ -105,14 +102,11 @@ class AbstractTokenProvider(abc.ABC):
         https://docs.confluent.io/platform/current/kafka/authentication_sasl/authentication_sasl_oauth.html
     """
 
-    def __init__(self, **config):
-        pass
-
     @abc.abstractmethod
     async def token(self):
         """
         An async callback returning a :class:`str` ID/Access Token to be sent to
-        the Kafka client. In case where a synchoronous callback is needed,
+        the Kafka client. In case where a synchronous callback is needed,
         implementations like following can be used:
 
         .. code-block:: python
@@ -121,13 +115,12 @@ class AbstractTokenProvider(abc.ABC):
 
             class CustomTokenProvider(AbstractTokenProvider):
                 async def token(self):
-                    return asyncio.get_running_loop().run_in_executor(
+                    return await asyncio.get_running_loop().run_in_executor(
                         None, self._token)
 
                 def _token(self):
-                    # The actual synchoronous token callback.
+                    # The actual synchronous token callback.
         """
-        pass
 
     def extensions(self):
         """
@@ -144,5 +137,5 @@ class AbstractTokenProvider(abc.ABC):
 
 __all__ = [
     "ConsumerRebalanceListener",
-    "AbstractTokenProvider"
+    "AbstractTokenProvider",
 ]

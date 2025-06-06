@@ -12,22 +12,22 @@ jobs:
   package-source:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: 3.7
+          python-version: "3.9"
       - name: Prepare C files to include
         run: |
-          python -m pip install --upgrade pip setuptools
+          python -m pip install --upgrade pip build
           python -m pip install -r requirements-cython.txt
           # Make sure we install to have all c files to be shiped with bundle
-          python -m pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
+          python -m pip install -vv -U .  # We set -vv to see compiler exceptions/warnings
       - name: Build source package
-        run: python setup.py sdist
+        run: python -m build --sdist
       - name: Upload source package
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: dist-source
           path: dist/
 
   package-wheel:
@@ -35,37 +35,45 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        arch: [auto]
         include:
+          # Available runner images:
+          # https://github.com/actions/runner-images#available-images
+          - os: ubuntu-latest
+            arch: x86_64
           - os: ubuntu-latest
             arch: aarch64
+          - os: macos-13
+            arch: x86_64
+          - os: macos-latest
+            arch: arm64
+          - os: windows-latest
+            arch: amd64
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: 3.7
+          python-version: "3.9"
       - name: Set up QEMU
         if: ${{ matrix.arch == 'aarch64' }}
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@v3
       - name: Build wheels
         env:
           CIBW_ARCHS_LINUX: ${{matrix.arch}}
-          CIBW_BUILD: cp37-* cp38-* cp39-* cp310-* cp311-*
+          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-*
           CIBW_SKIP: '*-musllinux*'
           CIBW_BEFORE_BUILD_LINUX: pip install -r requirements-cython.txt && yum install -y zlib-devel
           # On windows and mac we should have z library preinstalled
           CIBW_BEFORE_BUILD: pip install -r requirements-cython.txt
           CIBW_BUILD_VERBOSITY: 2
         run: |
-          python -m pip install --upgrade pip setuptools
+          python -m pip install --upgrade pip
           pip install cibuildwheel
           cibuildwheel --output-dir dist
         shell: bash
       - name: Upload wheels
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: dist-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/
 
   test-wheels-windows:
@@ -74,31 +82,34 @@ jobs:
 
     strategy:
       matrix:
-        # 3.10 is excluded because docker's dependency on pywin32==227
-        python: ["3.7", "3.8", "3.9"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
-          - python: "3.7"
-            aiokafka_whl: dist/aiokafka-*-cp37-cp37m-win_amd64.whl
-          - python: "3.8"
-            aiokafka_whl: dist/aiokafka-*-cp38-cp38-win_amd64.whl
           - python: "3.9"
             aiokafka_whl: dist/aiokafka-*-cp39-cp39-win_amd64.whl
+          - python: "3.10"
+            aiokafka_whl: dist/aiokafka-*-cp310-cp310-win_amd64.whl
+          - python: "3.11"
+            aiokafka_whl: dist/aiokafka-*-cp311-cp311-win_amd64.whl
+          - python: "3.12"
+            aiokafka_whl: dist/aiokafka-*-cp312-cp312-win_amd64.whl
+          - python: "3.13"
+            aiokafka_whl: dist/aiokafka-*-cp313-cp313-win_amd64.whl
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Download distributions
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
-          name: dist
+          name: dist-windows-latest-amd64
           path: dist/
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
 
       - name: Install python dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip setuptools
           python -m pip install -r requirements-win-test.txt
           python -m pip install ${{ matrix.aiokafka_whl }}
         shell: bash
@@ -112,41 +123,81 @@ jobs:
 
   test-wheels-mac:
     needs: [package-source, package-wheel]
+    runs-on: macos-13
+
+    strategy:
+      matrix:
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        include:
+          - python: "3.9"
+            aiokafka_whl: dist/aiokafka-*-cp39-cp39-macosx_*_x86_64.whl
+          - python: "3.10"
+            aiokafka_whl: dist/aiokafka-*-cp310-cp310-macosx_*_x86_64.whl
+          - python: "3.11"
+            aiokafka_whl: dist/aiokafka-*-cp311-cp311-macosx_*_x86_64.whl
+          - python: "3.12"
+            aiokafka_whl: dist/aiokafka-*-cp312-cp312-macosx_*_x86_64.whl
+          - python: "3.13"
+            aiokafka_whl: dist/aiokafka-*-cp313-cp313-macosx_*_x86_64.whl
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-macos-13-x86_64
+          path: dist/
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install python dependencies
+        run: |
+          pip install --upgrade pip setuptools
+          pip install -r requirements-ci.txt
+          pip install ${{ matrix.aiokafka_whl }}
+
+      - name: Run Unit Tests
+        run: |
+          # Remove source code to be sure we use wheel code
+          rm -rf aiokafka
+          make ci-test-unit
+
+  test-wheels-arm64-mac:
+    needs: [package-source, package-wheel]
     runs-on: macos-latest
 
     strategy:
       matrix:
-        python: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
-          - python: "3.7"
-            aiokafka_whl: dist/aiokafka-*-cp37-cp37m-macosx_10_9_x86_64.whl
-          - python: "3.8"
-            aiokafka_whl: dist/aiokafka-*-cp38-cp38-macosx_10_9_x86_64.whl
           - python: "3.9"
-            aiokafka_whl: dist/aiokafka-*-cp39-cp39-macosx_10_9_x86_64.whl
+            aiokafka_whl: dist/aiokafka-*-cp39-cp39-macosx_*_arm64.whl
           - python: "3.10"
-            aiokafka_whl: dist/aiokafka-*-cp310-cp310-macosx_10_9_x86_64.whl
+            aiokafka_whl: dist/aiokafka-*-cp310-cp310-macosx_*_arm64.whl
           - python: "3.11"
-            aiokafka_whl: dist/aiokafka-*-cp311-cp311-macosx_10_9_x86_64.whl
+            aiokafka_whl: dist/aiokafka-*-cp311-cp311-macosx_*_arm64.whl
+          - python: "3.12"
+            aiokafka_whl: dist/aiokafka-*-cp312-cp312-macosx_*_arm64.whl
+          - python: "3.13"
+            aiokafka_whl: dist/aiokafka-*-cp313-cp313-macosx_*_arm64.whl
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Download distributions
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
-          name: dist
+          name: dist-macos-latest-arm64
           path: dist/
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Install system dependencies
-        run: |
-          brew install snappy
       - name: Install python dependencies
         run: |
-          pip install --upgrade pip setuptools wheel
+          pip install --upgrade pip setuptools
           pip install -r requirements-ci.txt
           pip install ${{ matrix.aiokafka_whl }}
 
@@ -162,38 +213,38 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
-          - python: "3.7"
-            aiokafka_whl: dist/aiokafka-*-cp37-cp37m-manylinux*_x86_64.whl
-          - python: "3.8"
-            aiokafka_whl: dist/aiokafka-*-cp38-cp38-manylinux*_x86_64.whl
           - python: "3.9"
             aiokafka_whl: dist/aiokafka-*-cp39-cp39-manylinux*_x86_64.whl
           - python: "3.10"
             aiokafka_whl: dist/aiokafka-*-cp310-cp310-manylinux*_x86_64.whl
           - python: "3.11"
             aiokafka_whl: dist/aiokafka-*-cp311-cp311-manylinux*_x86_64.whl
+          - python: "3.12"
+            aiokafka_whl: dist/aiokafka-*-cp312-cp312-manylinux*_x86_64.whl
+          - python: "3.13"
+            aiokafka_whl: dist/aiokafka-*-cp313-cp313-manylinux*_x86_64.whl
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Download distributions
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
-          name: dist
+          name: dist-ubuntu-latest-x86_64
           path: dist/
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsnappy-dev libzstd-dev libkrb5-dev
+          sudo apt-get install -y libkrb5-dev
       - name: Install python dependencies
         run: |
-          pip install --upgrade pip setuptools wheel
+          pip install --upgrade pip setuptools
           pip install -r requirements-ci.txt
           pip install ${{ matrix.aiokafka_whl }}
 
@@ -213,26 +264,26 @@ jobs:
     strategy:
       matrix:
         include:
-          - pyver: cp37-cp37m
-            aiokafka_whl: dist/aiokafka-*-cp37-cp37m-manylinux*_aarch64.whl
-          - pyver: cp38-cp38
-            aiokafka_whl: dist/aiokafka-*-cp38-cp38-manylinux*_aarch64.whl
           - pyver: cp39-cp39
             aiokafka_whl: dist/aiokafka-*-cp39-cp39-manylinux*_aarch64.whl
           - pyver: cp310-cp310
             aiokafka_whl: dist/aiokafka-*-cp310-cp310-manylinux*_aarch64.whl
           - pyver: cp311-cp311
             aiokafka_whl: dist/aiokafka-*-cp311-cp311-manylinux*_aarch64.whl
+          - pyver: cp312-cp312
+            aiokafka_whl: dist/aiokafka-*-cp312-cp312-manylinux*_aarch64.whl
+          - pyver: cp313-cp313
+            aiokafka_whl: dist/aiokafka-*-cp313-cp313-manylinux*_aarch64.whl
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Set up QEMU
         id: qemu
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@v3
       - name: Download distributions
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
-          name: dist
+          name: dist-ubuntu-latest-aarch64
           path: dist/
       - name: Test Wheel
         run: |
@@ -242,8 +293,8 @@ jobs:
               source .env/bin/activate && \
               yum install -y epel-release && \
               yum-config-manager --enable epel && \
-              yum install -y snappy-devel libzstd-devel krb5-devel && \
-              pip install --upgrade pip setuptools wheel && \
+              yum install -y krb5-devel && \
+              pip install --upgrade pip setuptools && \
               pip install -r requirements-ci.txt && \
               pip install ${{ matrix.aiokafka_whl }} && \
               rm -rf aiokafka && \
@@ -253,17 +304,28 @@ jobs:
   deploy:
 
     runs-on: ubuntu-latest
-    needs: [test-wheels-linux, test-wheels-aarch64-linux, test-wheels-mac, test-wheels-windows]
+    needs:
+      - test-wheels-linux
+      - test-wheels-aarch64-linux
+      - test-wheels-mac
+      - test-wheels-arm64-mac
+      - test-wheels-windows
+
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    environment:
+      name: pypi
+      url: >-
+        https://pypi.org/project/aiokafka/${{ github.ref_name }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Download distributions
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
-          name: dist
           path: dist/
+          pattern: dist-*
+          merge-multiple: true
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@master
-        with:
-          user: ${{ secrets.PYPI_USERNAME }}
-          password: ${{ secrets.PYPI_PASSWORD }}
+        uses: pypa/gh-action-pypi-publish@release/v1

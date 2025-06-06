@@ -71,6 +71,13 @@ Example of AIOKafkaConsumer usage:
 
     asyncio.run(consume())
 
+
+Documentation
+-------------
+
+https://aiokafka.readthedocs.io/
+
+
 Running tests
 -------------
 
@@ -81,18 +88,18 @@ generate ssh keys for some tests.
 
 Setting up tests requirements (assuming you're within virtualenv on ubuntu 14.04+)::
 
-    sudo apt-get install -y libsnappy-dev libzstd-dev
+    sudo apt-get install -y libkrb5-dev krb5-user
     make setup
 
 Running tests with coverage::
 
     make cov
 
-To run tests with a specific version of Kafka (default one is 1.0.2) use KAFKA_VERSION variable::
+To run tests with a specific version of Kafka (default one is 2.8.1) use KAFKA_VERSION variable::
 
-    make cov KAFKA_VERSION=0.10.2.1
+    make cov SCALA_VERSION=2.11 KAFKA_VERSION=0.10.2.1
 
-Test running cheatsheat:
+Test running cheat-sheet:
 
  * ``make test FLAGS="-l -x --ff"`` - run until 1 failure, rerun failed tests first. Great for cleaning up a lot of errors, say after a big refactor.
  * ``make test FLAGS="-k consumer"`` - run only the consumer tests.

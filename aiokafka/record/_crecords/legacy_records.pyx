@@ -1,10 +1,10 @@
 #cython: language_level=3
 
-from kafka.codec import (
-    gzip_encode, snappy_encode, lz4_encode, lz4_encode_old_kafka,
-    gzip_decode, snappy_decode, lz4_decode, lz4_decode_old_kafka
+import aiokafka.codec as codecs
+from aiokafka.codec import (
+    gzip_encode, snappy_encode, lz4_encode,
+    gzip_decode, snappy_decode, lz4_decode,
 )
-import kafka.codec as codecs
 from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from zlib import crc32 as py_crc32  # needed for windows macro
 
@@ -141,7 +141,10 @@ cdef class LegacyRecordBatch:
             uncompressed = snappy_decode(value)
         elif compression_type == _ATTR_CODEC_LZ4:
             if self._magic == 0:
-                uncompressed = lz4_decode_old_kafka(value)
+                # https://issues.apache.org/jira/browse/KAFKA-3160
+                raise UnsupportedCodecError(
+                    "LZ4 is not supported for broker version 0.8/0.9"
+                )
             else:
                 uncompressed = lz4_decode(value)
 
@@ -437,7 +440,10 @@ cdef class LegacyRecordBatchBuilder:
                 compressed = snappy_encode(self._buffer)
             elif self._compression_type == _ATTR_CODEC_LZ4:
                 if self._magic == 0:
-                    compressed = lz4_encode_old_kafka(bytes(self._buffer))
+                    # https://issues.apache.org/jira/browse/KAFKA-3160
+                    raise UnsupportedCodecError(
+                        "LZ4 is not supported for broker version 0.8/0.9"
+                    )
                 else:
                     compressed = lz4_encode(bytes(self._buffer))
             else:

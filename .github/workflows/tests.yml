@@ -18,16 +18,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: 3.9
 
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libsnappy-dev libzstd-dev libkrb5-dev
+        sudo apt-get install -y libkrb5-dev
 
     - name: Get pip cache dir
       id: pip-cache
@@ -36,17 +36,17 @@ jobs:
         echo "::set-output name=dir::$(pip cache dir)"
 
     - name: Cache packages
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
         key: ${{ runner.os }}-py-3.9-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
         # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
         restore-keys: |
-         ${{ runner.os }}-py-3.9-
+          ${{ runner.os }}-py-3.9-
 
     - name: Install python dependencies
       run: |
-        pip install --upgrade pip setuptools wheel
+        pip install --upgrade pip setuptools
         pip install -r requirements-ci.txt
         pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
 
@@ -56,7 +56,7 @@ jobs:
 
     - name: Lint code
       run: |
-        make flake
+        make lint
 
     - name: Check readme for package
       run: |
@@ -73,15 +73,14 @@ jobs:
 
     strategy:
       matrix:
-        # 3.10 is excluded because docker's dependency on pywin32==227
-        python: ["3.7", "3.8", "3.9"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       with:
         ref: ${{ github.event.pull_request.head.sha }}
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python }}
 
@@ -92,7 +91,7 @@ jobs:
         echo "::set-output name=dir::$(pip cache dir)"
 
     - name: Cache packages
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
         key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-win-test.txt') }}-${{ hashFiles('setup.py') }}
@@ -102,7 +101,7 @@ jobs:
 
     - name: Install python dependencies
       run: |
-        pip install --upgrade pip setuptools wheel
+        pip install --upgrade pip setuptools
         pip install -r requirements-win-test.txt
         pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
 
@@ -121,7 +120,7 @@ jobs:
         AIOKAFKA_NO_EXTENSIONS: "1"
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v1
+      uses: codecov/codecov-action@v4
       with:
         file: ./coverage-ext.xml
         flags: unit,cext
@@ -129,7 +128,7 @@ jobs:
       if: ${{ always() }}
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v1
+      uses: codecov/codecov-action@v4
       with:
         file: ./coverage-py.xml
         flags: unit,purepy
@@ -142,14 +141,14 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.7", "3.8", "3.9", "3.10"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       with:
         ref: ${{ github.event.pull_request.head.sha }}
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python }}
 
@@ -160,7 +159,7 @@ jobs:
         echo "::set-output name=dir::$(pip cache dir)"
 
     - name: Cache packages
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
         key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
@@ -168,13 +167,9 @@ jobs:
         restore-keys: |
          ${{ runner.os }}-py-${{ matrix.python }}-
 
-    - name: Install system dependencies
-      run: |
-        brew install snappy
-
     - name: Install python dependencies
       run: |
-        pip install --upgrade pip setuptools wheel
+        pip install --upgrade pip setuptools
         pip install -r requirements-ci.txt
         pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
 
@@ -193,7 +188,7 @@ jobs:
         AIOKAFKA_NO_EXTENSIONS: "1"
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v1
+      uses: codecov/codecov-action@v4
       with:
         file: ./coverage-ext.xml
         flags: unit,cext
@@ -201,7 +196,7 @@ jobs:
       if: ${{ always() }}
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v1
+      uses: codecov/codecov-action@v4
       with:
         file: ./coverage-py.xml
         flags: unit,purepy
@@ -215,73 +210,73 @@ jobs:
     strategy:
       matrix:
         include:
-          - python: "3.11"
+          - python: "3.13"
             kafka: "2.8.1"
             scala: "2.13"
 
           # Older python versions against latest broker
-          - python: "3.7"
-            kafka: "2.8.1"
-            scala: "2.13"
-          - python: "3.8"
-            kafka: "2.8.1"
-            scala: "2.13"
           - python: "3.9"
             kafka: "2.8.1"
             scala: "2.13"
           - python: "3.10"
             kafka: "2.8.1"
             scala: "2.13"
+          - python: "3.11"
+            kafka: "2.8.1"
+            scala: "2.13"
+          - python: "3.12"
+            kafka: "2.8.1"
+            scala: "2.13"
 
           # Older brokers against latest python version
-          - python: "3.11"
+          - python: "3.13"
             kafka: "0.9.0.1"
             scala: "2.11"
-          - python: "3.11"
+          - python: "3.13"
             kafka: "0.10.2.1"
             scala: "2.11"
-          - python: "3.11"
+          - python: "3.13"
             kafka: "0.11.0.3"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.13"
             kafka: "1.1.1"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.13"
             kafka: "2.1.1"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.13"
             kafka: "2.2.2"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.13"
             kafka: "2.3.1"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.13"
             kafka: "2.4.1"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.13"
             kafka: "2.5.1"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.13"
             kafka: "2.6.3"
             scala: "2.12"
-          - python: "3.11"
+          - python: "3.13"
             kafka: "2.7.2"
             scala: "2.13"
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       with:
         ref: ${{ github.event.pull_request.head.sha }}
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python }}
 
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libsnappy-dev libzstd-dev libkrb5-dev krb5-user
+        sudo apt-get install -y libkrb5-dev krb5-user
 
     - name: Get pip cache dir
       id: pip-cache
@@ -290,7 +285,7 @@ jobs:
         echo "::set-output name=dir::$(pip cache dir)"
 
     - name: Cache packages
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
         key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
@@ -300,7 +295,7 @@ jobs:
 
     - name: Install python dependencies
       run: |
-        pip install --upgrade pip setuptools wheel
+        pip install --upgrade pip setuptools
         pip install -r requirements-ci.txt
         pip install -vv -Ue .  # We set -vv to see compiler exceptions/warnings
 
@@ -322,7 +317,7 @@ jobs:
         KAFKA_VERSION: ${{ matrix.kafka }}
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v1
+      uses: codecov/codecov-action@v4
       with:
         file: ./coverage-ext.xml
         flags: integration,cext
@@ -330,7 +325,7 @@ jobs:
       if: ${{ always() }}
 
     - name: Upload coverage without cext to Codecov
-      uses: codecov/codecov-action@v1
+      uses: codecov/codecov-action@v4
       with:
         file: ./coverage-py.xml
         flags: integration,purepy

@@ -1,21 +1,23 @@
 import asyncio
+
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import ConsumerStoppedError, NoOffsetForPartitionError
 from aiokafka.util import create_task
-from ._testutil import (
-    KafkaIntegrationTestCase, run_until_complete, random_string)
+
+from ._testutil import KafkaIntegrationTestCase, random_string, run_until_complete
 
 
 class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_aiter(self):
-        await self.send_messages(0, list(range(0, 10)))
+        await self.send_messages(0, list(range(10)))
         await self.send_messages(1, list(range(10, 20)))
 
         consumer = AIOKafkaConsumer(
             self.topic,
             bootstrap_servers=self.hosts,
-            auto_offset_reset='earliest')
+            auto_offset_reset="earliest",
+        )
         await consumer.start()
         self.add_cleanup(consumer.stop)
 
@@ -23,10 +25,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         async for m in consumer:
             messages.append(m)
             if len(messages) == 20:
-                # Flake8==3.0.3 gives
-                #   F999 'break' outside loop
-                # for `async` syntax
-                break  # noqa
+                break
 
         self.assert_message_count(messages, 20)
 
@@ -43,57 +42,57 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             self.topic,
             bootstrap_servers=self.hosts,
-            auto_offset_reset='earliest',
+            auto_offset_reset="earliest",
             max_partition_fetch_bytes=4000,
-            api_version="0.9")
+            api_version="0.9",
+        )
         await consumer.start()
         self.add_cleanup(consumer.stop)
 
         messages = []
-        with self.assertLogs(
-                'aiokafka.consumer.consumer', level='ERROR') as cm:
+        with self.assertLogs("aiokafka.consumer.consumer", level="ERROR") as cm:
             async for m in consumer:
                 messages.append(m)
                 if len(messages) == 2:
-                    # Flake8==3.0.3 gives
-                    #   F999 'break' outside loop
-                    # for `async` syntax
-                    break  # noqa
+                    break
 
             self.assertEqual(len(cm.output), 1)
             self.assertTrue(
-                'ERROR:aiokafka.consumer.consumer:error in consumer iterator'
-                in cm.output[0])
+                "ERROR:aiokafka.consumer.consumer:error in consumer iterator"
+                in cm.output[0]
+            )
         self.assertEqual(messages[0].value, large_messages[0])
         self.assertEqual(messages[1].value, small_messages[0])
 
     @run_until_complete
     async def test_exception_in_aiter(self):
-        await self.send_messages(0, [b'test'])
+        await self.send_messages(0, [b"test"])
 
         consumer = AIOKafkaConsumer(
             self.topic,
             bootstrap_servers=self.hosts,
-            auto_offset_reset="none")
+            auto_offset_reset="none",
+        )
         await consumer.start()
         self.add_cleanup(consumer.stop)
 
         with self.assertRaises(NoOffsetForPartitionError):
-            async for m in consumer:
-                m  # pragma: no cover
+            async for _m in consumer:
+                pass  # pragma: no cover
 
     @run_until_complete
     async def test_consumer_stops_iter(self):
         consumer = AIOKafkaConsumer(
             self.topic,
             bootstrap_servers=self.hosts,
-            auto_offset_reset="earliest")
+            auto_offset_reset="earliest",
+        )
         await consumer.start()
         self.add_cleanup(consumer.stop)
 
         async def iterator():
             async for msg in consumer:  # pragma: no cover
-                assert False, f"No items should be here, got {msg}"
+                raise AssertionError(f"No items should be here, got {msg}")
 
         task = create_task(iterator())
         await asyncio.sleep(0.1)

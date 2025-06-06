@@ -1,13 +1,21 @@
+from __future__ import annotations
+
 import asyncio
 import os
 from asyncio import AbstractEventLoop
-from typing import Any, Awaitable, Coroutine, Dict, Tuple, TypeVar, Union, cast
+from collections.abc import Awaitable, Coroutine
+from typing import (
+    Any,
+    Optional,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import async_timeout
 from packaging.version import Version
 
 from .structs import OffsetAndMetadata, TopicPartition
-
 
 __all__ = [
     "create_task",
@@ -21,12 +29,12 @@ __all__ = [
 T = TypeVar("T")
 
 
-def create_task(coro: Coroutine[Any, Any, T]) -> "asyncio.Task[T]":
+def create_task(coro: Coroutine[Any, Any, T]) -> asyncio.Task[T]:
     loop = get_running_loop()
     return loop.create_task(coro)
 
 
-def create_future(loop: AbstractEventLoop = None) -> "asyncio.Future[T]":
+def create_future(loop: Optional[AbstractEventLoop] = None) -> asyncio.Future[T]:
     if loop is None:
         loop = get_running_loop()
     return loop.create_future()
@@ -39,11 +47,11 @@ async def wait_for(fut: Awaitable[T], timeout: Union[None, int, float] = None) -
         return await fut
 
 
-def parse_kafka_version(api_version: str) -> Tuple[int, int, int]:
+def parse_kafka_version(api_version: str) -> tuple[int, int, int]:
     parsed = Version(api_version).release
     if not 2 <= len(parsed) <= 3:
         raise ValueError(api_version)
-    version = cast(Tuple[int, int, int], (parsed + (0,))[:3])
+    version = cast(tuple[int, int, int], (*parsed, 0)[:3])
 
     if not (0, 9) <= version < (3, 0):
         raise ValueError(api_version)
@@ -51,8 +59,8 @@ def parse_kafka_version(api_version: str) -> Tuple[int, int, int]:
 
 
 def commit_structure_validate(
-    offsets: Dict[TopicPartition, Union[int, Tuple[int, str], OffsetAndMetadata]]
-) -> Dict[TopicPartition, OffsetAndMetadata]:
+    offsets: dict[TopicPartition, Union[int, tuple[int, str], OffsetAndMetadata]],
+) -> dict[TopicPartition, OffsetAndMetadata]:
     # validate `offsets` structure
     if not offsets or not isinstance(offsets, dict):
         raise ValueError(offsets)
@@ -60,18 +68,18 @@ def commit_structure_validate(
     formatted_offsets = {}
     for tp, offset_and_metadata in offsets.items():
         if not isinstance(tp, TopicPartition):
-            raise ValueError("Key should be TopicPartition instance")
+            raise TypeError("Key should be TopicPartition instance")
 
         if isinstance(offset_and_metadata, int):
             offset, metadata = offset_and_metadata, ""
         else:
             try:
                 offset, metadata = offset_and_metadata
-            except Exception:
-                raise ValueError(offsets)
+            except Exception as exc:
+                raise ValueError(offsets) from exc
 
             if not isinstance(metadata, str):
-                raise ValueError("Metadata should be a string")
+                raise TypeError("Metadata should be a string")
 
         formatted_offsets[tp] = OffsetAndMetadata(offset, metadata)
     return formatted_offsets

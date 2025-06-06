@@ -43,8 +43,8 @@ cdef class DefaultRecord:
 
     cdef:
         readonly int64_t offset
-        int64_t timestamp
-        char timestamp_type
+        readonly int64_t timestamp
+        readonly char timestamp_type
         readonly object key
         readonly object value
         readonly object headers

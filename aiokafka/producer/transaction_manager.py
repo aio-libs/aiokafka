@@ -1,9 +1,8 @@
-from enum import Enum
-from collections import namedtuple, defaultdict, deque
+from collections import defaultdict, deque, namedtuple
+from enum import Enum, IntEnum
 
 from aiokafka.structs import TopicPartition
 from aiokafka.util import create_future
-
 
 PidAndEpoch = namedtuple("PidAndEpoch", ["pid", "epoch"])
 NO_PRODUCER_ID = -1
@@ -11,21 +10,18 @@ NO_PRODUCER_EPOCH = -1
 
 
 class SubscriptionType(Enum):
-
     NONE = 1
     AUTO_TOPICS = 2
     AUTO_PATTERN = 3
     USER_ASSIGNED = 4
 
 
-class TransactionResult:
-
+class TransactionResult(IntEnum):
     ABORT = 0
     COMMIT = 1
 
 
 class TransactionState(Enum):
-
     UNINITIALIZED = 1
     READY = 2
     IN_TRANSACTION = 3
@@ -37,22 +33,22 @@ class TransactionState(Enum):
     @classmethod
     def is_transition_valid(cls, source, target):
         if target == cls.READY:
-            return source == cls.UNINITIALIZED or \
-                source == cls.COMMITTING_TRANSACTION or \
-                source == cls.ABORTING_TRANSACTION
+            return source in [
+                cls.UNINITIALIZED,
+                cls.COMMITTING_TRANSACTION,
+                cls.ABORTING_TRANSACTION,
+            ]
         elif target == cls.IN_TRANSACTION:
             return source == cls.READY
         elif target == cls.COMMITTING_TRANSACTION:
             return source == cls.IN_TRANSACTION
         elif target == cls.ABORTING_TRANSACTION:
-            return source == cls.IN_TRANSACTION or \
-                source == cls.ABORTABLE_ERROR
-        elif target == cls.ABORTABLE_ERROR or target == cls.FATAL_ERROR:
-            return True
+            return source in [cls.IN_TRANSACTION, cls.ABORTABLE_ERROR]
+        else:
+            return target in [cls.ABORTABLE_ERROR, cls.FATAL_ERROR]
 
 
 class TransactionManager:
-
     def __init__(self, transactional_id, transaction_timeout_ms):
         self.transactional_id = transactional_id
         self.transaction_timeout_ms = transaction_timeout_ms
@@ -93,8 +89,8 @@ class TransactionManager:
         # Java will wrap those automatically, but in Python we will break
         # on `struct.pack` if ints are too big, so we do it here
         seq = self._sequence_numbers[tp] + increment
-        if seq > 2 ** 31 - 1:
-            seq -= 2 ** 32
+        if seq > 2**31 - 1:
+            seq -= 2**32
         self._sequence_numbers[tp] = seq
 
     @property
@@ -108,8 +104,9 @@ class TransactionManager:
     # TRANSACTION PART
 
     def _transition_to(self, target):
-        assert TransactionState.is_transition_valid(self.state, target), \
-            f"Invalid state transition {self.state} -> {target}"
+        assert TransactionState.is_transition_valid(
+            self.state, target
+        ), f"Invalid state transition {self.state} -> {target}"
         self.state = target
 
     def begin_transaction(self):
@@ -176,9 +173,7 @@ class TransactionManager:
         assert self.is_in_transaction()
         assert self.transactional_id
         fut = create_future()
-        self._pending_txn_offsets.append(
-            (group_id, offsets, fut)
-        )
+        self._pending_txn_offsets.append((group_id, offsets, fut))
         self.notify_task_waiter()
         return fut
 
@@ -190,15 +185,17 @@ class TransactionManager:
 
     def consumer_group_to_add(self):
         if self._txn_consumer_group is not None:
-            return
+            return None
         for group_id, _, _ in self._pending_txn_offsets:
             return group_id
+        return None
 
     def offsets_to_commit(self):
         if self._txn_consumer_group is None:
-            return
+            return None
         for group_id, offsets, _ in self._pending_txn_offsets:
             return offsets, group_id
+        return None
 
     def partition_added(self, tp: TopicPartition):
         self._pending_txn_partitions.remove(tp)
@@ -227,14 +224,11 @@ class TransactionManager:
         elif self.state == TransactionState.ABORTING_TRANSACTION:
             return TransactionResult.ABORT
         else:
-            return
+            return None
 
     def is_empty_transaction(self):
         # whether we sent either data to a partition or committed offset
-        return (
-            len(self.txn_partitions) == 0 and
-            self._txn_consumer_group is None
-        )
+        return len(self.txn_partitions) == 0 and self._txn_consumer_group is None
 
     def is_fatal_error(self):
         return self.state == TransactionState.FATAL_ERROR

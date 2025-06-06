@@ -35,7 +35,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 import re, os.path
 
 def get_release():
-    regexp = re.compile(r"^__version__\W*=\W*'([\d.abrcdev]+)'")
+    regexp = re.compile(r"^__version__\W*=\W*(?P<quote>['\"])([\d.abrcdev]+)(?P=quote)")
     here = os.path.dirname(__file__)
     root = os.path.dirname(here)
     init_py = os.path.join(root, 'aiokafka', '__init__.py')
@@ -86,7 +86,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'aiokafka'
-copyright = '2015-2017, Aio-libs contributors'
+copyright = '2015-2024, Aio-libs contributors'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -119,6 +119,7 @@ nitpick_ignore = [
     ("py:class", "KT"),
     ("py:class", "Optional[~ VT]"),
     ("py:class", "VT"),
+    ("py:class", "typing_extensions.Buffer"),
 ]
 
 # If true, '()' will be appended to :func: etc. cross-reference text.
@@ -150,9 +151,8 @@ html_theme_options = {
     'description': 'Apache Kafka client for asyncio',
     'github_user': 'aio-libs',
     'github_repo': 'aiokafka',
-    'github_button': False,
+    'github_button': True,
     'github_banner': True,
-    'travis_button': True,
     'codecov_button': True,
     'note_bg': '#E5ECD1',
     'note_border': '#BFCF8C',

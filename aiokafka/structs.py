@@ -1,13 +1,10 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Generic, NamedTuple, Optional, Sequence, Tuple, TypeVar
+from typing import Generic, NamedTuple, Optional, TypeVar
 
-from kafka.structs import (
-    BrokerMetadata,
-    OffsetAndMetadata,
-    PartitionMetadata,
-    TopicPartition,
-)
-
+from aiokafka.errors import KafkaError
 
 __all__ = [
     "OffsetAndMetadata",
@@ -17,6 +14,75 @@ __all__ = [
     "BrokerMetadata",
     "PartitionMetadata",
 ]
+
+
+class TopicPartition(NamedTuple):
+    """A topic and partition tuple"""
+
+    topic: str
+    "A topic name"
+
+    partition: int
+    "A partition id"
+
+
+class BrokerMetadata(NamedTuple):
+    """A Kafka broker metadata used by admin tools"""
+
+    # FIXME: consider updating implementation (https://github.com/aio-libs/aiokafka/issues/1050)
+    nodeId: int | str
+    "The Kafka broker id"
+
+    host: str
+    "The Kafka broker hostname"
+
+    port: int
+    "The Kafka broker port"
+
+    rack: Optional[str]
+    """The rack of the broker, which is used to in rack aware partition
+    assignment for fault tolerance.
+    Examples: `RACK1`, `us-east-1d`. Default: None
+    """
+
+
+class PartitionMetadata(NamedTuple):
+    """A topic partition metadata describing the state in the MetadataResponse"""
+
+    topic: str
+    "The topic name of the partition this metadata relates to"
+
+    partition: int
+    "The id of the partition this metadata relates to"
+
+    leader: int
+    "The id of the broker that is the leader for the partition"
+
+    replicas: list[int]
+    "The ids of all brokers that contain replicas of the partition"
+    isr: list[int]
+    "The ids of all brokers that contain in-sync replicas of the partition"
+
+    error: Optional[KafkaError]
+    "A KafkaError object associated with the request for this partition metadata"
+
+
+class OffsetAndMetadata(NamedTuple):
+    """The Kafka offset commit API
+
+    The Kafka offset commit API allows users to provide additional metadata
+    (in the form of a string) when an offset is committed. This can be useful
+    (for example) to store information about which node made the commit,
+    what time the commit was made, etc.
+    """
+
+    offset: int
+    "The offset to be committed"
+
+    metadata: str
+    "Non-null metadata"
+
+    # TODO add leaderEpoch:
 
 
 class RecordMetadata(NamedTuple):
@@ -81,7 +147,7 @@ class ConsumerRecord(Generic[KT, VT]):
     value: Optional[VT]
     "The value"
 
-    checksum: int
+    checksum: Optional[int]
     "Deprecated"
 
     serialized_key_size: int
@@ -90,7 +156,7 @@ class ConsumerRecord(Generic[KT, VT]):
     serialized_value_size: int
     "The size of the serialized, uncompressed value in bytes."
 
-    headers: Sequence[Tuple[str, bytes]]
+    headers: Sequence[tuple[str, bytes]]
     "The headers"
 
 

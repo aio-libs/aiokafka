@@ -2,6 +2,120 @@
 Changelog
 =========
 
+0.13.0 (????-??-??)
+===================
+
+Improved Documentation:
+
+* Fix incomplete documentation for `AIOKafkaConsumer.offset_for_times``
+  (pr #1068 by @jzvandenoever)
+* Fix Java Client API reference (pr #1069 by @emmanuel-ferdman)
+
+Misc:
+* Use SPDX license expression for project metadata.
+
+
+0.12.0 (2024-10-26)
+===================
+
+New features:
+
+* Build mac x86_64 wheels (pr #1029)
+* Add support for Python 3.13, drop support for Python 3.8 due to end of life (pr #1061)
+* Remove duplicate error logging during rebalance (pr #1025 by @y4n9squared)
+
+
+Bugfixes:
+
+* Quote username in SCRAM auth (pr #1043)
+
+
+Improved Documentation:
+
+* Fix building of readthedocs documentation (pr #1034)
+* Fix typo in producer documentation (pr #1036 by @lgo)
+
+
+0.11.0 (2024-06-30)
+===================
+
+New features:
+
+* Implement DeleteRecords API (`KIP-204`_) (pr #969 by @vmaurin)
+
+.. _KIP-204: https://cwiki.apache.org/confluence/display/KAFKA/KIP-204+%3A+Adding+records+deletion+operation+to+the+new+Admin+Client+API
+
+
+Bugfixes:
+
+* Fix serialization for batch (issue #886, pr #887 by @ydjin0602)
+* Fix type annotation for `AIOKafkaAdminClient.create_partitions`
+  (pr #978 by @alm0ra)
+* Fix `NotControllerError` in `AIOKafkaAdminClient.create_topics` and other
+  methods (issue #995)
+* Fix unintended cancellation of fetcher task (issue #983, pr #1007 by @apmorton)
+
+
+0.10.0 (2023-12-15)
+===================
+
+New features:
+
+* Support static membership protocol, `KIP-345`_ (issue #680, pr #941 by
+  @patkivikram and @joshuaherrera)
+
+.. _KIP-345: https://cwiki.apache.org/confluence/display/KAFKA/KIP-345%3A+Introduce+static+membership+protocol+to+reduce+consumer+rebalances
+
+
+Bugfixes:
+
+* Fix extra dependencies (issue #952)
+
+
+0.9.0 (2023-12-04)
+==================
+
+New features:
+
+* Include `kafka-python` into `aiokafka`'s code base (issue #928 and others)
+* Replace `python-snappy` and `zstandard` with `cramjam` (issue #930)
+* PEP518 compliant `pyproject.toml`
+* Python 3.12 support
+
+
+Bugfixes:
+
+* Fix type annotation for `ConsumerRecord` (pr #912 by @zschumacher)
+* Improve send performance (issue #943)
+* Fix `DescribeConfigsResponse_v1`
+
+
+Improved Documentation:
+
+* Fix `AbstractTokenProvider.token` example (pr #919 by @mtomilov)
+
+
+0.8.1 (2023-05-31)
+==================
+
+New features:
+
+* Drop support for Python 3.7 due to end of life (pr #893)
+
+
+Bugfixes:
+
+* Add SASL authentication support to `AIOKafkaAdminClient` (issue #889,
+  pr #890 by @selevit)
+
+
+Improved Documentation:
+
+* Update `security_protocol` argument docstring (issue #883, pr #884 by
+  @gabrielmbmb)
+* Remove incorrect `await` for `AIOKafkaConsumer.highwater()` (pr #858 by
+  @yi-jiayu)
+
 
 0.8.0 (2022-11-21)
 ==================

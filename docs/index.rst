@@ -2,11 +2,9 @@ Welcome to aiokafka's documentation!
 ====================================
 
 .. _GitHub: https://github.com/aio-libs/aiokafka
-.. _asyncio: http://docs.python.org/3.7/library/asyncio.html
+.. _asyncio: https://docs.python.org/3/library/asyncio.html
 .. _kafka-python: https://github.com/dpkp/kafka-python
 
-.. image:: https://img.shields.io/badge/kafka-1.0%2C%200.11%2C%200.10%2C%200.9-brightgreen.svg
-    :target: https://kafka.apache.org
 .. image:: https://img.shields.io/pypi/pyversions/aiokafka.svg
     :target: https://pypi.python.org/pypi/aiokafka
 .. image:: https://img.shields.io/badge/license-Apache%202-blue.svg
@@ -89,17 +87,17 @@ Read more in :ref:`Producer client <producer-usage>` section.
 Installation
 ------------
 
-.. code::
+.. code:: bash
 
     pip install aiokafka
-
-.. note:: **aiokafka** requires the kafka-python_ library.
 
 
 Optional LZ4 install
 ++++++++++++++++++++
 
 To enable LZ4 compression/decompression, install **aiokafka** with :code:`lz4` extra option:
+
+.. code:: bash
 
     pip install 'aiokafka[lz4]'
 
@@ -110,33 +108,7 @@ from http://landinghub.visualstudio.com/visual-cpp-build-tools
 Optional Snappy install
 +++++++++++++++++++++++
 
-1. Download and build Snappy from http://google.github.io/snappy/
-
-Ubuntu:
-
-.. code:: bash
-
-    apt-get install libsnappy-dev
-
-OSX:
-
-.. code:: bash
-
-    brew install snappy
-
-From Source:
-
-.. code:: bash
-
-    wget https://github.com/google/snappy/tarball/master
-    tar xzvf google-snappy-X.X.X-X-XXXXXXXX.tar.gz
-    cd google-snappy-X.X.X-X-XXXXXXXX
-    ./configure
-    make
-    sudo make install
-
-
-1. Install **aiokafka** with :code:`snappy` extra option
+To enable Snappy compression/decompression, install **aiokafka** with :code:`snappy` extra option
 
 .. code:: bash
 
@@ -171,9 +143,6 @@ The project is hosted on GitHub_
 Please feel free to file an issue on `bug tracker
 <https://github.com/aio-libs/aiokafka/issues>`_ if you have found a bug
 or have some suggestion for library improvement.
-
-The library uses `Travis <https://travis-ci.com/aio-libs/aiokafka>`_ for
-Continious Integration.
 
 
 Authors and License

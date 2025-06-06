@@ -1,10 +1,11 @@
-import pytest
 import re
 
+import pytest
+
+from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.consumer.subscription_state import SubscriptionState
 from aiokafka.errors import IllegalStateError
 from aiokafka.structs import TopicPartition
-from aiokafka.abc import ConsumerRebalanceListener
 
 
 @pytest.fixture
@@ -13,7 +14,6 @@ async def subscription_state():
 
 
 class MockListener(ConsumerRebalanceListener):
-
     def on_partitions_revoked(self, revoked):
         pass
 
@@ -34,14 +34,14 @@ async def test_subscribe_topic(subscription_state):
     # or user assignment
     with pytest.raises(IllegalStateError):
         subscription_state.subscribe_pattern(
-            pattern=re.compile("^tests-.*$"), listener=mock_listener)
+            pattern=re.compile("^tests-.*$"), listener=mock_listener
+        )
     with pytest.raises(IllegalStateError):
         subscription_state.assign_from_user([TopicPartition("topic", 0)])
 
     # Subsciption of the same type can be applied
     old_subsciption = subscription_state.subscription
-    subscription_state.subscribe(
-        {"tp1", "tp2", "tp3"}, listener=mock_listener)
+    subscription_state.subscribe({"tp1", "tp2", "tp3"}, listener=mock_listener)
 
     assert subscription_state.subscription is not None
     assert subscription_state.subscription.topics == {"tp1", "tp2", "tp3"}
@@ -54,8 +54,7 @@ async def test_subscribe_topic(subscription_state):
 async def test_subscribe_pattern(subscription_state):
     mock_listener = MockListener()
     pattern = re.compile("^tests-.*$")
-    subscription_state.subscribe_pattern(
-        pattern=pattern, listener=mock_listener)
+    subscription_state.subscribe_pattern(pattern=pattern, listener=mock_listener)
 
     assert subscription_state.subscription is None
     assert subscription_state.subscribed_pattern == pattern
@@ -64,7 +63,8 @@ async def test_subscribe_pattern(subscription_state):
     # `unsubscribe` called
     with pytest.raises(IllegalStateError):
         subscription_state.subscribe(
-            topics={"tp1", "tp2", "tp3"}, listener=mock_listener)
+            topics={"tp1", "tp2", "tp3"}, listener=mock_listener
+        )
     with pytest.raises(IllegalStateError):
         subscription_state.assign_from_user([TopicPartition("topic", 0)])
 
@@ -73,7 +73,7 @@ async def test_user_assignment(subscription_state):
     topic_partitions = {
         TopicPartition("topic1", 0),
         TopicPartition("topic1", 1),
-        TopicPartition("topic2", 0)
+        TopicPartition("topic2", 0),
     }
     subscription_state.assign_from_user(topic_partitions)
     assert subscription_state.subscription is not None
@@ -90,16 +90,18 @@ async def test_user_assignment(subscription_state):
     mock_listener = MockListener()
     with pytest.raises(IllegalStateError):
         subscription_state.subscribe(
-            topics={"tp1", "tp2", "tp3"}, listener=mock_listener)
+            topics={"tp1", "tp2", "tp3"}, listener=mock_listener
+        )
     with pytest.raises(IllegalStateError):
         subscription_state.subscribe_pattern(
-            pattern=re.compile("^tests-.*$"), listener=mock_listener)
+            pattern=re.compile("^tests-.*$"), listener=mock_listener
+        )
 
     # Assignment can be changed manually again thou
     new_tps = {
         TopicPartition("topic3", 0),
         TopicPartition("topic3", 1),
-        TopicPartition("topic4", 0)
+        TopicPartition("topic4", 0),
     }
     subscription_state.assign_from_user(new_tps)
 
@@ -174,8 +176,7 @@ async def test_assigned_state(subscription_state):
     assert tp_state is not None
 
     assert repr(tp_state) == (
-        "TopicPartitionState<Status=PartitionStatus.AWAITING_RESET"
-        " position=None>"
+        "TopicPartitionState<Status=PartitionStatus.AWAITING_RESET position=None>"
     )
 
 

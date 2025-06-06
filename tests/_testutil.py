@@ -1,51 +1,50 @@
 import asyncio
-import string
-import random
-import time
-import unittest
-import pytest
-import operator
 import inspect
-import subprocess
-import pathlib
-import shutil
-import sys
+import logging
+import operator
 import os
-
+import pathlib
+import random
+import shutil
+import string
+import subprocess
+import sys
+import unittest
 from concurrent import futures
 from contextlib import contextmanager
 from functools import wraps
+from unittest.mock import Mock
+
+import pytest
 
 from aiokafka import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import KafkaConnectionError
-from aiokafka.producer import AIOKafkaProducer
 from aiokafka.helpers import create_ssl_context
+from aiokafka.producer import AIOKafkaProducer
 
-import logging
 log = logging.getLogger(__name__)
 
 
-__all__ = ['KafkaIntegrationTestCase', 'random_string']
+__all__ = ["KafkaIntegrationTestCase", "random_string"]
 
 
 def run_until_complete(fun):
-    assert inspect.iscoroutinefunction(fun), (
-        "Can not decorate ordinary function, only async ones"
-    )
+    assert inspect.iscoroutinefunction(
+        fun
+    ), "Can not decorate ordinary function, only async ones"
 
     @wraps(fun)
     def wrapper(test, *args, **kw):
         loop = test.loop
         timeout = getattr(test, "TEST_TIMEOUT", 120)
-        ret = loop.run_until_complete(
-            asyncio.wait_for(fun(test, *args, **kw), timeout))
+        ret = loop.run_until_complete(asyncio.wait_for(fun(test, *args, **kw), timeout))
         return ret
+
     return wrapper
 
 
 def run_in_thread(fun):
-
     @wraps(fun)
     def wrapper(test, *args, **kw):
         timeout = getattr(test, "TEST_TIMEOUT", 120)
@@ -60,11 +59,11 @@ def kafka_versions(*versions):
     # Took from kafka-python
 
     def version_str_to_list(s):
-        return list(map(int, s.split('.')))  # e.g., [0, 8, 1, 1]
+        return list(map(int, s.split(".")))  # e.g., [0, 8, 1, 1]
 
     def construct_lambda(s):
         if s[0].isdigit():
-            op_str = '='
+            op_str = "="
             v_str = s
         elif s[1].isdigit():
             op_str = s[0]  # ! < > =
@@ -73,15 +72,15 @@ def kafka_versions(*versions):
             op_str = s[0:2]  # >= <=
             v_str = s[2:]
         else:
-            raise ValueError('Unrecognized kafka version / operator: %s' % s)
+            raise ValueError(f"Unrecognized kafka version / operator: {s}")
 
         op_map = {
-            '=': operator.eq,
-            '!': operator.ne,
-            '>': operator.gt,
-            '<': operator.lt,
-            '>=': operator.ge,
-            '<=': operator.le
+            "=": operator.eq,
+            "!": operator.ne,
+            ">": operator.gt,
+            "<": operator.lt,
+            ">=": operator.ge,
+            "<=": operator.le,
         }
         op = op_map[op_str]
         version = version_str_to_list(v_str)
@@ -95,20 +94,20 @@ def kafka_versions(*versions):
             kafka_version = self.kafka_version
 
             if not kafka_version:
-                self.skipTest(
-                    "no kafka version found. Is this an integration test?")
+                self.skipTest("no kafka version found. Is this an integration test?")
 
             for f in validators:
                 if not f(kafka_version):
                     self.skipTest("unsupported kafka version")
 
             return func(self, *args, **kw)
+
         return wrapper
+
     return kafka_versions
 
 
 class StubRebalanceListener(ConsumerRebalanceListener):
-
     def __init__(self):
         self.assigns = asyncio.Queue()
         self.revokes = asyncio.Queue()
@@ -116,7 +115,7 @@ class StubRebalanceListener(ConsumerRebalanceListener):
         self.revoked = None
 
     async def wait_assign(self):
-        return (await self.assigns.get())
+        return await self.assigns.get()
 
     def reset(self):
         while not self.assigns.empty():
@@ -131,8 +130,19 @@ class StubRebalanceListener(ConsumerRebalanceListener):
         self.assigns.put_nowait(assigned)
 
 
-class ACLManager:
+class DetectRebalanceListener(ConsumerRebalanceListener):
+    def __init__(self):
+        self.revoke_mock = Mock()
+        self.assign_mock = Mock()
 
+    async def on_partitions_revoked(self, revoked):
+        self.revoke_mock(revoked)
+
+    async def on_partitions_assigned(self, assigned):
+        self.assign_mock(assigned)
+
+
+class ACLManager:
     def __init__(self, docker, tag):
         self._docker = docker
         self._active_acls = []
@@ -143,17 +153,21 @@ class ACLManager:
         return f"/opt/kafka_{self._tag}/bin/kafka-acls.sh"
 
     def _exec(self, *cmd_options):
-        cmd = ' '.join(
-            [self.cmd, "--force",
-              '--authorizer-properties zookeeper.connect=localhost:2181'
-             ] + list(cmd_options))
+        cmd = " ".join(
+            [
+                self.cmd,
+                "--force",
+                "--authorizer-properties zookeeper.connect=localhost:2181",
+                *cmd_options,
+            ]
+        )
         exit_code, output = self._docker.exec_run(cmd)
         if exit_code != 0:
-            for line in output.split(b'\n'):
+            for line in output.split(b"\n"):
                 log.warning(line)
             raise RuntimeError("Failed to apply ACL")
         else:
-            for line in output.split(b'\n'):
+            for line in output.split(b"\n"):
                 log.debug(line)
             return output
 
@@ -171,14 +185,22 @@ class ACLManager:
         opts = []
         if principal:
             opts.append(f"--principal User:{principal}")
-        return self._exec('--list', *opts)
+        return self._exec("--list", *opts)
 
     def _format_params(
-            self, cluster=None, topic=None, group=None,
-            transactional_id=None,
-            allow_principal=None, deny_principal=None,
-            allow_host=None, deny_host=None,
-            operation=None, producer=None, consumer=None):
+        self,
+        cluster=None,
+        topic=None,
+        group=None,
+        transactional_id=None,
+        allow_principal=None,
+        deny_principal=None,
+        allow_host=None,
+        deny_host=None,
+        operation=None,
+        producer=None,
+        consumer=None,
+    ):
         options = []
         if cluster:
             options.append("--cluster")
@@ -210,7 +232,6 @@ class ACLManager:
 
 
 class KafkaConfig:
-
     def __init__(self, docker, tag):
         self._docker = docker
         self._active_acls = []
@@ -221,15 +242,14 @@ class KafkaConfig:
         return f"/opt/kafka_{self._tag}/bin/kafka-configs.sh"
 
     def _exec(self, *cmd_options):
-        cmd = ' '.join(
-            [self.cmd, "--zookeeper", "localhost:2181"] + list(cmd_options))
+        cmd = " ".join([self.cmd, "--zookeeper", "localhost:2181", *cmd_options])
         exit_code, output = self._docker.exec_run(cmd)
         if exit_code != 0:
-            for line in output.split(b'\n'):
+            for line in output.split(b"\n"):
                 log.warning(line)
             raise RuntimeError("Failed to apply Config")
         else:
-            for line in output.split(b'\n'):
+            for line in output.split(b"\n"):
                 log.debug(line)
             return output
 
@@ -237,73 +257,79 @@ class KafkaConfig:
         self._exec(
             "--alter",
             "--add-config",
-            "SCRAM-SHA-256=[password={0}],SCRAM-SHA-512=[password={0}]".format(
-                password),
-            "--entity-type", "users",
-            "--entity-name", username)
+            f"SCRAM-SHA-256=[password={password}],SCRAM-SHA-512=[password={password}]",
+            "--entity-type",
+            "users",
+            "--entity-name",
+            username,
+        )
 
 
 class KerberosUtils:
-
     def __init__(self, docker):
         self._docker = docker
 
     def create_keytab(
-            self, principal="client/localhost",
-            password="aiokafka",
-            keytab_file="client.keytab"):
-
+        self,
+        principal="client/localhost",
+        password="aiokafka",
+        keytab_file="client.keytab",
+    ):
         scripts_dir = pathlib.Path("docker/scripts/krb5.conf")
         os.environ["KRB5_CONFIG"] = str(scripts_dir.absolute())
 
-        keytab_dir = pathlib.Path('tests/keytab')
+        keytab_dir = pathlib.Path("tests/keytab")
         if keytab_dir.exists():
             shutil.rmtree(str(keytab_dir))
 
         keytab_dir.mkdir()
 
-        if sys.platform == 'darwin':
+        if sys.platform == "darwin":
             res = subprocess.run(
-                ['ktutil', '-k', keytab_file,
-                 'add',
-                 '-p', principal,
-                 '-V', '1',
-                 '-e', 'aes256-cts-hmac-sha1-96',
-                 '-w', password],
+                [
+                    "ktutil",
+                    "-k",
+                    keytab_file,
+                    "add",
+                    "-p",
+                    principal,
+                    "-V",
+                    "1",
+                    "-e",
+                    "aes256-cts-hmac-sha1-96",
+                    "-w",
+                    password,
+                ],
                 cwd=str(keytab_dir.absolute()),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE)
+                capture_output=True,
+                check=False,
+            )
             if res.returncode != 0:
                 print(
                     "Failed to setup keytab for Kerberos.\n"
-                    "stdout: \n{}\nstrerr: \n{}".format(
-                        res.stdout, res.stderr),
-                    file=sys.stderr
+                    f"stdout: \n{res.stdout}\nstrerr: \n{res.stderr}",
+                    file=sys.stderr,
                 )
                 res.check_returncode()
-        elif sys.platform != 'win32':
+        elif sys.platform != "win32":
             input_data = (
-                "add_entry -password -p {principal} -k 1 "
+                f"add_entry -password -p {principal} -k 1 "
                 "-e aes256-cts-hmac-sha1-96\n"
-                "{password}\n"
-                "write_kt {keytab_file}\n"
-            ).format(
-                principal=principal,
-                password=password,
-                keytab_file=keytab_file)
+                f"{password}\n"
+                f"write_kt {keytab_file}\n"
+            )
             res = subprocess.run(
-                ['ktutil'],
+                ["ktutil"],
                 cwd=str(keytab_dir.absolute()),
                 input=input_data.encode(),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-                )
+                capture_output=True,
+                check=False,
+            )
             if res.returncode != 0:
                 print(
                     "Failed to setup keytab for Kerberos.\n"
-                    "stdout: \n{}\nstrerr: \n{}".format(
-                        res.stdout, res.stderr),
-                    file=sys.stderr
+                    f"stdout: \n{res.stdout}\nstrerr: \n{res.stderr}",
+                    file=sys.stderr,
                 )
                 res.check_returncode()
         else:
@@ -314,19 +340,16 @@ class KerberosUtils:
     def kinit(self, principal):
         assert self.keytab
         subprocess.run(
-            ['kinit', '-kt', str(self.keytab.absolute()), principal],
-            check=True)
+            ["kinit", "-kt", str(self.keytab.absolute()), principal], check=True
+        )
 
     def kdestroy(self):
         assert self.keytab
-        subprocess.run(
-            ['kdestroy', '-A'],
-            check=True)
+        subprocess.run(["kdestroy", "-A"], check=True)
 
 
-@pytest.mark.usefixtures('setup_test_class')
+@pytest.mark.usefixtures("setup_test_class")
 class KafkaIntegrationTestCase(unittest.TestCase):
-
     topic = None
 
     @contextmanager
@@ -341,8 +364,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 
     def random_topic_name(self):
         return "topic-{}-{}".format(
-            self.id()[self.id().rindex(".") + 1:],
-            random_string(10).decode('utf-8')
+            self.id()[self.id().rindex(".") + 1 :], random_string(10).decode("utf-8")
         )
 
     def setUp(self):
@@ -363,7 +385,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 
     async def wait_topic(self, client, topic):
         client.add_topic(topic)
-        for i in range(5):
+        for _ in range(5):
             ok = await client.force_metadata_update()
             if ok:
                 ok = topic in client.cluster.topics()
@@ -374,8 +396,14 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         raise AssertionError(f'No topic "{topic}" exists')
 
     async def send_messages(
-        self, partition, messages, *, topic=None,
-        timestamp_ms=None, return_inst=False, headers=None
+        self,
+        partition,
+        messages,
+        *,
+        topic=None,
+        timestamp_ms=None,
+        return_inst=False,
+        headers=None,
     ):
         topic = topic or self.topic
         ret = []
@@ -390,8 +418,12 @@ class KafkaIntegrationTestCase(unittest.TestCase):
                 elif isinstance(msg, int):
                     msg = str(msg).encode()
                 future = await producer.send(
-                    topic, msg, partition=partition,
-                    timestamp_ms=timestamp_ms, headers=headers)
+                    topic,
+                    msg,
+                    partition=partition,
+                    timestamp_ms=timestamp_ms,
+                    headers=headers,
+                )
                 resp = await future
                 self.assertEqual(resp.topic, topic)
                 self.assertEqual(resp.partition, partition)
@@ -412,32 +444,31 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 
     def create_ssl_context(self):
         context = create_ssl_context(
-            cafile=str(self.ssl_folder / "ca-cert"),
-            certfile=str(self.ssl_folder / "cl_client.pem"),
-            keyfile=str(self.ssl_folder / "cl_client.key"),
-            password="abcdefgh")
+            cafile=str(self.ssl_folder / "ca.crt"),
+            certfile=str(self.ssl_folder / "client.crt"),
+            keyfile=str(self.ssl_folder / "client.key"),
+            password="abcdefgh",
+        )
         context.check_hostname = False
         return context
 
 
 def random_string(length):
     s = "".join(random.choice(string.ascii_letters) for _ in range(length))
-    return s.encode('utf-8')
+    return s.encode("utf-8")
 
 
 def wait_kafka(kafka_host, kafka_port, timeout=120):
     loop = asyncio.new_event_loop()
     try:
-        res = loop.run_until_complete(
-            _wait_kafka(kafka_host, kafka_port, timeout)
-        )
+        res = loop.run_until_complete(_wait_kafka(kafka_host, kafka_port, timeout))
     finally:
         loop.close()
     return res
 
 
 async def _wait_kafka(kafka_host, kafka_port, timeout):
-    hosts = [f'{kafka_host}:{kafka_port}']
+    hosts = [f"{kafka_host}:{kafka_port}"]
     loop = asyncio.get_event_loop()
 
     # Reconnecting until Kafka in docker becomes available
@@ -454,6 +485,16 @@ async def _wait_kafka(kafka_host, kafka_port, timeout):
             pass
         finally:
             await client.close()
-        time.sleep(0.5)
+        await asyncio.sleep(0.5)
         if loop.time() - start > timeout:
             return False
+
+
+async def _wait_mock_count(listener, cnt):
+    while True:
+        if (
+            listener.revoke_mock.call_count > cnt
+            and listener.assign_mock.call_count > cnt
+        ):
+            return
+        await asyncio.sleep(1)

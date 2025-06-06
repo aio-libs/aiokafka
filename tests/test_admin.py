@@ -1,15 +1,12 @@
 import asyncio
 
-from kafka.admin import NewTopic, NewPartitions
-from kafka.admin.config_resource import ConfigResource, ConfigResourceType
-
-from aiokafka.admin import AIOKafkaAdminClient
+from aiokafka.admin import AIOKafkaAdminClient, NewPartitions, NewTopic, RecordsToDelete
+from aiokafka.admin.config_resource import ConfigResource, ConfigResourceType
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.structs import TopicPartition
-from ._testutil import (
-    KafkaIntegrationTestCase, kafka_versions, run_until_complete
-)
+
+from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_complete
 
 
 class TestAdmin(KafkaIntegrationTestCase):
@@ -19,7 +16,7 @@ class TestAdmin(KafkaIntegrationTestCase):
         self.add_cleanup(admin.close)
         return admin
 
-    @kafka_versions('>=0.10.0.0')
+    @kafka_versions(">=0.10.0.0")
     @run_until_complete
     async def test_metadata(self):
         admin = await self.create_admin()
@@ -28,7 +25,7 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert metadata.topics is not None
         assert len(metadata.brokers) == 1
 
-    @kafka_versions('>=0.10.1.0')
+    @kafka_versions(">=0.10.1.0")
     @run_until_complete
     async def test_create_topics(self):
         admin = await self.create_admin()
@@ -40,7 +37,7 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert error_code == 0
         assert not error
 
-    @kafka_versions('>=0.10.1.0')  # Since we use `create_topics()`
+    @kafka_versions(">=0.10.1.0")  # Since we use `create_topics()`
     @run_until_complete
     async def test_list_topics(self):
         admin = await self.create_admin()
@@ -51,7 +48,7 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert set(actual) >= topic_names
 
     # @kafka_versions('>=0.10.1.0')
-    @kafka_versions('>=1.0.0')  # XXX Times out with 0.10.2.1 and 0.11.0.3
+    @kafka_versions(">=1.0.0")  # XXX Times out with 0.10.2.1 and 0.11.0.3
     @run_until_complete
     async def test_delete_topics(self):
         admin = await self.create_admin()
@@ -68,7 +65,7 @@ class TestAdmin(KafkaIntegrationTestCase):
         topics = await admin.list_topics()
         assert self.topic not in topics
 
-    @kafka_versions('>=0.11.0.0')
+    @kafka_versions(">=0.11.0.0")
     @run_until_complete
     async def test_describe_configs_topic(self):
         admin = await self.create_admin()
@@ -84,7 +81,7 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert resource_type == ConfigResourceType.TOPIC
         assert resource_name == self.topic
 
-    @kafka_versions('>=0.11.0.0')
+    @kafka_versions(">=0.11.0.0")
     @run_until_complete
     async def test_describe_configs_broker(self):
         admin = await self.create_admin()
@@ -100,7 +97,7 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert resource_type == ConfigResourceType.BROKER
         assert resource_name == str(broker_id)
 
-    @kafka_versions('>=0.11.0.0')
+    @kafka_versions(">=0.11.0.0")
     @run_until_complete
     async def test_alter_configs(self):
         admin = await self.create_admin()
@@ -118,16 +115,16 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert name == "cleanup.policy"
         assert value == "delete"
 
-    @kafka_versions('>=0.10.0.0')
+    @kafka_versions(">=0.10.0.0")
     @run_until_complete
     async def test_describe_cluster(self):
         admin = await self.create_admin()
         [broker_id] = admin._client.cluster._brokers.keys()
         resp = await admin.describe_cluster()
-        assert len(resp['brokers']) == 1
-        assert resp['brokers'][0]['node_id'] == broker_id
+        assert len(resp["brokers"]) == 1
+        assert resp["brokers"][0]["node_id"] == broker_id
 
-    @kafka_versions('>=1.0.0')
+    @kafka_versions(">=1.0.0")
     @run_until_complete
     async def test_create_partitions(self):
         admin = await self.create_admin()
@@ -143,11 +140,11 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert len(new_partitions) == 2
         assert new_partitions > old_partitions
 
-    @kafka_versions('>=0.10.0.0')
+    @kafka_versions(">=0.10.0.0")
     @run_until_complete
     async def test_list_consumer_groups(self):
         admin = await self.create_admin()
-        group_id = f'group-{self.id()}'
+        group_id = f"group-{self.id()}"
         consumer = AIOKafkaConsumer(
             self.topic, group_id=group_id, bootstrap_servers=self.hosts
         )
@@ -160,11 +157,11 @@ class TestAdmin(KafkaIntegrationTestCase):
         groups = [group for group, *_ in resp]
         assert group_id in groups
 
-    @kafka_versions('>=0.10.0.0')
+    @kafka_versions(">=0.10.0.0")
     @run_until_complete
     async def test_describe_consumer_groups(self):
         admin = await self.create_admin()
-        group_id = f'group-{self.id()}'
+        group_id = f"group-{self.id()}"
         consumer = AIOKafkaConsumer(
             self.topic, group_id=group_id, bootstrap_servers=self.hosts
         )
@@ -178,22 +175,24 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert error_code == 0
         assert group == group_id
 
-    @kafka_versions('>=0.10.0.0')
+    @kafka_versions(">=0.10.0.0")
     @run_until_complete
     async def test_list_consumer_group_offsets(self):
         admin = await self.create_admin()
-        group_id = f'group-{self.id()}'
+        group_id = f"group-{self.id()}"
 
         consumer = AIOKafkaConsumer(
-            self.topic, group_id=group_id, bootstrap_servers=self.hosts,
-            enable_auto_commit=False
+            self.topic,
+            group_id=group_id,
+            bootstrap_servers=self.hosts,
+            enable_auto_commit=False,
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
 
         async with AIOKafkaProducer(bootstrap_servers=self.hosts) as producer:
-            await producer.send_and_wait(self.topic, b'some-message')
-            await producer.send_and_wait(self.topic, b'other-message')
+            await producer.send_and_wait(self.topic, b"some-message")
+            await producer.send_and_wait(self.topic, b"other-message")
 
         msg = await consumer.getone()
         await consumer.commit()
@@ -202,3 +201,38 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert resp[tp].offset == msg.offset + 1
         resp = await admin.list_consumer_group_offsets(group_id, partitions=[tp])
         assert resp[tp].offset == msg.offset + 1
+
+    @kafka_versions(">=1.1.0")
+    @run_until_complete
+    async def test_delete_records(self):
+        admin = await self.create_admin()
+
+        await admin.create_topics([NewTopic(self.topic, 1, 1)])
+
+        async with AIOKafkaProducer(bootstrap_servers=self.hosts) as producer:
+            first_message = await producer.send_and_wait(
+                self.topic, partition=0, value=b"some-message"
+            )
+            await producer.send_and_wait(
+                self.topic, partition=0, value=b"other-message"
+            )
+
+        await admin.delete_records(
+            {
+                TopicPartition(self.topic, 0): RecordsToDelete(
+                    before_offset=first_message.offset + 1
+                )
+            }
+        )
+
+        consumer = AIOKafkaConsumer(
+            self.topic,
+            bootstrap_servers=self.hosts,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+        )
+        await consumer.start()
+        self.add_cleanup(consumer.stop)
+
+        msg = await consumer.getone()
+        assert msg.value == b"other-message"

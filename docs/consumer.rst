@@ -144,7 +144,7 @@ bulk. The algorithm can be enhanced by taking advantage of:
 
 * :meth:`await consumer.getmany() <aiokafka.AIOKafkaConsumer.getmany>` to
   avoid multiple calls to get a batch of messages.
-* :meth:`await consumer.highwater(partition)
+* :meth:`consumer.highwater(partition)
   <aiokafka.AIOKafkaConsumer.highwater>` to understand if we have more
   unconsumed messages or this one is the last one in the partition.
 
@@ -399,8 +399,8 @@ new topic matching a *subscribed regex* is created. For example::
         bootstrap_servers='localhost:9092',
         metadata_max_age_ms=30000,  # This controls the polling interval
     )
-    await consumer.start()
     consumer.subscribe(pattern="^MyGreatTopic-.*$")
+    await consumer.start()
 
     async for msg in consumer:  # Will detect metadata changes
         print("Consumed msg %s %s %s" % (msg.topic, msg.partition, msg.value))

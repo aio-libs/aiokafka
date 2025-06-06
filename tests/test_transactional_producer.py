@@ -1,34 +1,34 @@
 import asyncio
-from ._testutil import (
-    KafkaIntegrationTestCase, run_until_complete, kafka_versions
-)
+import contextlib
 
+from aiokafka.consumer import AIOKafkaConsumer
+from aiokafka.errors import (
+    IllegalOperation,
+    OutOfOrderSequenceNumber,
+    ProducerFenced,
+    UnsupportedVersionError,
+)
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.producer.transaction_manager import TransactionState
-from aiokafka.consumer import AIOKafkaConsumer
-
-from aiokafka.errors import (
-    UnsupportedVersionError,
-    ProducerFenced, OutOfOrderSequenceNumber, IllegalOperation
-)
 from aiokafka.structs import TopicPartition
 from aiokafka.util import create_task
 
+from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_complete
+
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
-
-    @kafka_versions('<0.11.0')
+    @kafka_versions("<0.11.0")
     @run_until_complete
     async def test_producer_transactions_not_supported(self):
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer")
-        producer
+            transactional_id="sobaka_producer",
+        )
         with self.assertRaises(UnsupportedVersionError):
             await producer.start()
         await producer.stop()
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_simple(self):
         # The test here will just check if we can do simple produce with
@@ -36,18 +36,19 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer")
+            transactional_id="sobaka_producer",
+        )
         await producer.start()
         self.add_cleanup(producer.stop)
 
         async with producer.transaction():
-            meta = await producer.send_and_wait(
-                self.topic, b'hello, Kafka!')
+            meta = await producer.send_and_wait(self.topic, b"hello, Kafka!")
 
         consumer = AIOKafkaConsumer(
             self.topic,
             bootstrap_servers=self.hosts,
-            auto_offset_reset="earliest")
+            auto_offset_reset="earliest",
+        )
         await consumer.start()
         self.add_cleanup(consumer.stop)
         msg = await consumer.getone()
@@ -56,7 +57,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.value, b"hello, Kafka!")
         self.assertEqual(msg.key, None)
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_empty_txn(self):
         # If we commit or abort transaction that was never started we should
@@ -64,7 +65,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer")
+            transactional_id="sobaka_producer",
+        )
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -74,7 +76,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         await producer.begin_transaction()
         await producer.abort_transaction()
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_fences_off_previous(self):
         # Test 2 producers fencing one another by using the same
@@ -82,23 +84,27 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p1")
+            transactional_id="sobaka_producer",
+            client_id="p1",
+        )
         await producer.start()
         self.add_cleanup(producer.stop)
 
         producer2 = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p2")
+            transactional_id="sobaka_producer",
+            client_id="p2",
+        )
         await producer2.start()
         self.add_cleanup(producer2.stop)
         async with producer2.transaction():
-            await producer2.send_and_wait(self.topic, b'hello, Kafka! 2')
+            await producer2.send_and_wait(self.topic, b"hello, Kafka! 2")
 
         with self.assertRaises(ProducerFenced):
             async with producer.transaction():
-                await producer.send_and_wait(self.topic, b'hello, Kafka!')
+                await producer.send_and_wait(self.topic, b"hello, Kafka!")
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_restart_reaquire_pid(self):
         # While it's documented that PID may change we need to be sure we
@@ -106,19 +112,23 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p1")
+            transactional_id="sobaka_producer",
+            client_id="p1",
+        )
         await producer.start()
         pid = producer._txn_manager.producer_id
         await producer.stop()
 
         producer2 = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p2")
+            transactional_id="sobaka_producer",
+            client_id="p2",
+        )
         await producer2.start()
         self.add_cleanup(producer2.stop)
         self.assertEqual(pid, producer2._txn_manager.producer_id)
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_raise_out_of_sequence(self):
         # If we were to fail to send some message we should get\
@@ -126,19 +136,22 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p1")
+            transactional_id="sobaka_producer",
+            client_id="p1",
+        )
         await producer.start()
         self.add_cleanup(producer.stop)
 
         with self.assertRaises(OutOfOrderSequenceNumber):
             async with producer.transaction():
-                await producer.send_and_wait(self.topic, b'msg1', partition=0)
+                await producer.send_and_wait(self.topic, b"msg1", partition=0)
                 # Imitate a not delivered message
                 producer._txn_manager.increment_sequence_number(
-                    TopicPartition(self.topic, 0), 1)
-                await producer.send_and_wait(self.topic, b'msg2', partition=0)
+                    TopicPartition(self.topic, 0), 1
+                )
+                await producer.send_and_wait(self.topic, b"msg2", partition=0)
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_aborting_previous_failure(self):
         # If we were to fail to send some message we should get\
@@ -146,19 +159,22 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p1")
+            transactional_id="sobaka_producer",
+            client_id="p1",
+        )
         await producer.start()
         self.add_cleanup(producer.stop)
 
         with self.assertRaises(OutOfOrderSequenceNumber):
             async with producer.transaction():
-                await producer.send_and_wait(self.topic, b'msg1', partition=0)
+                await producer.send_and_wait(self.topic, b"msg1", partition=0)
                 # Imitate a not delivered message
                 producer._txn_manager.increment_sequence_number(
-                    TopicPartition(self.topic, 0), 1)
-                await producer.send_and_wait(self.topic, b'msg2', partition=0)
+                    TopicPartition(self.topic, 0), 1
+                )
+                await producer.send_and_wait(self.topic, b"msg2", partition=0)
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_send_offsets_to_transaction(self):
         # This is a pair test of Consume - To - Produce processing. We consume
@@ -167,7 +183,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # This will update commit point in Consumer too.
 
         # Setup some messages in INPUT topic
-        await self.send_messages(0, list(range(0, 100)))
+        await self.send_messages(0, list(range(100)))
         await self.send_messages(1, list(range(100, 200)))
         in_topic = self.topic
         out_topic = self.topic + "-out"
@@ -178,13 +194,16 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             enable_auto_commit=False,
             group_id=group_id,
-            auto_offset_reset="earliest")
+            auto_offset_reset="earliest",
+        )
         await consumer.start()
         self.add_cleanup(consumer.stop)
 
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p1")
+            transactional_id="sobaka_producer",
+            client_id="p1",
+        )
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -207,18 +226,17 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                             out_msg = b"OUT-" + msg.value
                             # We produce to the same partition
                             await producer.send(
-                                out_topic, value=out_msg,
-                                partition=tp.partition)
+                                out_topic, value=out_msg, partition=tp.partition
+                            )
                         offsets[tp] = msg.offset + 1
-                    await producer.send_offsets_to_transaction(
-                        offsets, group_id)
+                    await producer.send_offsets_to_transaction(offsets, group_id)
 
         await transform()
         for tp in assignment:
             offset = await consumer.committed(tp)
             self.assertEqual(offset, 100)
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_send_offsets_and_abort(self):
         # Following previous, we will process but abort transaction. Commit
@@ -226,7 +244,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # reset
 
         # Setup some messages in INPUT topic
-        await self.send_messages(0, list(range(0, 100)))
+        await self.send_messages(0, list(range(100)))
         await self.send_messages(1, list(range(100, 200)))
         in_topic = self.topic
         out_topic = self.topic + "-out"
@@ -237,13 +255,16 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             enable_auto_commit=False,
             group_id=group_id,
-            auto_offset_reset="earliest")
+            auto_offset_reset="earliest",
+        )
         await consumer.start()
         self.add_cleanup(consumer.stop)
 
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p1")
+            transactional_id="sobaka_producer",
+            client_id="p1",
+        )
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -266,18 +287,15 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                             out_msg = b"OUT-" + msg.value
                             # We produce to the same partition
                             await producer.send(
-                                out_topic, value=out_msg,
-                                partition=tp.partition)
+                                out_topic, value=out_msg, partition=tp.partition
+                            )
                         offsets[tp] = msg.offset + 1
-                    await producer.send_offsets_to_transaction(
-                        offsets, group_id)
+                    await producer.send_offsets_to_transaction(offsets, group_id)
                     if raise_error:
                         raise ValueError()
 
-        try:
+        with contextlib.suppress(ValueError):
             await transform(raise_error=True)
-        except ValueError:
-            pass
 
         for tp in assignment:
             offset = await consumer.committed(tp)
@@ -290,12 +308,14 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             offset = await consumer.committed(tp)
             self.assertEqual(offset, 100)
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_send_offsets_error_checks(self):
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p1")
+            transactional_id="sobaka_producer",
+            client_id="p1",
+        )
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -308,7 +328,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             with self.assertRaises(ValueError):
                 await producer.send_offsets_to_transaction({}, group_id=None)
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_flush_before_commit(self):
         # We need to be sure, that we send all pending batches before
@@ -316,13 +336,15 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p1")
+            transactional_id="sobaka_producer",
+            client_id="p1",
+        )
         await producer.start()
         self.add_cleanup(producer.stop)
 
         await producer.begin_transaction()
         futs = []
-        for i in range(10):
+        for _ in range(10):
             fut = await producer.send(self.topic, b"Super msg")
             futs.append(fut)
 
@@ -331,7 +353,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         for fut in futs:
             self.assertTrue(fut.done())
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_flush_2_batches_before_commit(self):
         # We need to be sure if batches that are pending and batches that are
@@ -340,7 +362,9 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p1")
+            transactional_id="sobaka_producer",
+            client_id="p1",
+        )
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -361,12 +385,14 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertTrue(fut1.done())
         self.assertTrue(fut2.done())
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_cancel_txn_methods(self):
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p1")
+            transactional_id="sobaka_producer",
+            client_id="p1",
+        )
         txn_manager = producer._txn_manager
         self.assertEqual(txn_manager.state, TransactionState.UNINITIALIZED)
         await producer.start()
@@ -377,10 +403,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             # Coroutines will not be started until we yield at least 1ce
             await asyncio.sleep(0)
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         # test cancel begin_transaction.
         task = create_task(producer.begin_transaction())
@@ -392,8 +416,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(txn_manager.state, TransactionState.IN_TRANSACTION)
         task = create_task(producer.commit_transaction())
         await cancel(task)
-        self.assertEqual(
-            txn_manager.state, TransactionState.COMMITTING_TRANSACTION)
+        self.assertEqual(txn_manager.state, TransactionState.COMMITTING_TRANSACTION)
         await asyncio.sleep(0.1)
         self.assertEqual(txn_manager.state, TransactionState.READY)
 
@@ -402,16 +425,14 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(txn_manager.state, TransactionState.IN_TRANSACTION)
         task = create_task(producer.abort_transaction())
         await cancel(task)
-        self.assertEqual(
-            txn_manager.state, TransactionState.ABORTING_TRANSACTION)
+        self.assertEqual(txn_manager.state, TransactionState.ABORTING_TRANSACTION)
         await asyncio.sleep(0.1)
         self.assertEqual(txn_manager.state, TransactionState.READY)
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_require_transactional_id(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts)
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -427,12 +448,14 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(IllegalOperation):
             await producer.send_offsets_to_transaction({}, group_id="123")
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_send_message_outside_txn(self):
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p1")
+            transactional_id="sobaka_producer",
+            client_id="p1",
+        )
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -455,12 +478,14 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(IllegalOperation):
             await producer.send(self.topic, value=b"2", partition=0)
 
-    @kafka_versions('>=0.11.0')
+    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_send_batch_outside_txn(self):
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer", client_id="p1")
+            transactional_id="sobaka_producer",
+            client_id="p1",
+        )
         await producer.start()
         self.add_cleanup(producer.stop)
 

@@ -38,5 +38,5 @@ def test_txn_manager(txn_manager):
     assert txn_manager.sequence_number(tp1) == 1
 
     # sequence number should wrap around 32 bit signed integers
-    txn_manager.increment_sequence_number(tp1, 2 ** 32 - 5)
+    txn_manager.increment_sequence_number(tp1, 2**32 - 5)
     assert txn_manager.sequence_number(tp1) == -4

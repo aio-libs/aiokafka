@@ -1,24 +1,23 @@
-import logging
+from __future__ import annotations
+
 import contextlib
 import copy
+import logging
 import time
-from asyncio import shield, Event, Future
+from asyncio import Event, shield
+from collections.abc import Iterable
 from enum import Enum
+from re import Pattern
 
-from typing import Dict, FrozenSet, Iterable, List, Pattern, Set
-
+from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.errors import IllegalStateError
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.util import create_future, get_running_loop
 
 log = logging.getLogger(__name__)
 
-(List, Future)
-
 
 class SubscriptionType(Enum):
-
     NONE = 1
     AUTO_TOPICS = 2
     AUTO_PATTERN = 3
@@ -26,7 +25,7 @@ class SubscriptionType(Enum):
 
 
 class SubscriptionState:
-    """ Intermediate bridge to coordinate work between Consumer, Coordinator
+    """Intermediate bridge to coordinate work between Consumer, Coordinator
     and Fetcher primitives.
 
         The class is different from kafka-python's implementation to provide
@@ -55,7 +54,7 @@ class SubscriptionState:
         self._last_fetch_ended = time.monotonic()
 
     @property
-    def subscription(self) -> "Subscription":
+    def subscription(self) -> Subscription:
         return self._subscription
 
     @property
@@ -72,7 +71,7 @@ class SubscriptionState:
             return self._subscription.topics
         return set()
 
-    def assigned_partitions(self) -> Set[TopicPartition]:
+    def assigned_partitions(self) -> set[TopicPartition]:
         if self._subscription is None:
             return set()
         if self._subscription.assignment is None:
@@ -86,10 +85,10 @@ class SubscriptionState:
         return self._subscription._reassignment_in_progress
 
     def partitions_auto_assigned(self) -> bool:
-        return (
-            self._subscription_type == SubscriptionType.AUTO_TOPICS or
-            self._subscription_type == SubscriptionType.AUTO_PATTERN
-        )
+        return self._subscription_type in [
+            SubscriptionType.AUTO_TOPICS,
+            SubscriptionType.AUTO_PATTERN,
+        ]
 
     def is_assigned(self, tp: TopicPartition) -> bool:
         if self._subscription is None:
@@ -99,29 +98,28 @@ class SubscriptionState:
         return tp in self._subscription.assignment.tps
 
     def _set_subscription_type(self, subscription_type: SubscriptionType):
-        if (self._subscription_type == SubscriptionType.NONE or
-                self._subscription_type == subscription_type):
+        if self._subscription_type in [SubscriptionType.NONE, subscription_type]:
             self._subscription_type = subscription_type
         else:
             raise IllegalStateError(
                 "Subscription to topics, partitions and pattern are mutually "
-                "exclusive")
+                "exclusive"
+            )
 
-    def _change_subscription(self, subscription: "Subscription"):
-        log.info('Updating subscribed topics to: %s', subscription.topics)
+    def _change_subscription(self, subscription: Subscription):
+        log.info("Updating subscribed topics to: %s", subscription.topics)
         # Set old subscription as inactive
         if self._subscription is not None:
             self._subscription._unsubscribe()
         self._subscription = subscription
         self._notify_subscription_waiters()
 
-    def _assigned_state(self, tp: TopicPartition) -> "TopicPartitionState":
+    def _assigned_state(self, tp: TopicPartition) -> TopicPartitionState:
         assert self._subscription is not None
         assert self._subscription.assignment is not None
         tp_state = self._subscription.assignment.state_value(tp)
         if tp_state is None:
-            raise IllegalStateError(
-                f"No current assignment for partition {tp}")
+            raise IllegalStateError(f"No current assignment for partition {tp}")
         return tp_state
 
     def _notify_subscription_waiters(self):
@@ -138,15 +136,14 @@ class SubscriptionState:
 
     # Consumer callable API:
 
-    def subscribe(self, topics: Set[str], listener=None):
-        """ Subscribe to a list (or tuple) of topics
+    def subscribe(self, topics: set[str], listener=None):
+        """Subscribe to a list (or tuple) of topics
 
         Caller: Consumer.
         Affects: SubscriptionState.subscription
         """
         assert isinstance(topics, set)
-        assert (listener is None or
-                isinstance(listener, ConsumerRebalanceListener))
+        assert listener is None or isinstance(listener, ConsumerRebalanceListener)
         self._set_subscription_type(SubscriptionType.AUTO_TOPICS)
 
         self._change_subscription(Subscription(topics, loop=self._loop))
@@ -154,7 +151,7 @@ class SubscriptionState:
         self._notify_subscription_waiters()
 
     def subscribe_pattern(self, pattern: Pattern, listener=None):
-        """ Subscribe to all topics matching a regex pattern.
+        """Subscribe to all topics matching a regex pattern.
         Subsequent calls `subscribe_from_pattern()` by Coordinator will provide
         the actual subscription topics.
 
@@ -162,15 +159,14 @@ class SubscriptionState:
         Affects: SubscriptionState.subscribed_pattern
         """
         assert hasattr(pattern, "match"), "Expected Pattern type"
-        assert (listener is None or
-                isinstance(listener, ConsumerRebalanceListener))
+        assert listener is None or isinstance(listener, ConsumerRebalanceListener)
         self._set_subscription_type(SubscriptionType.AUTO_PATTERN)
 
         self._subscribed_pattern = pattern
         self._listener = listener
 
     def assign_from_user(self, partitions: Iterable[TopicPartition]):
-        """ Manually assign partitions. After this call automatic assignment
+        """Manually assign partitions. After this call automatic assignment
         will be impossible and will raise an ``IllegalStateError``.
 
         Caller: Consumer.
@@ -178,12 +174,11 @@ class SubscriptionState:
         """
         self._set_subscription_type(SubscriptionType.USER_ASSIGNED)
 
-        self._change_subscription(
-            ManualSubscription(partitions, loop=self._loop))
+        self._change_subscription(ManualSubscription(partitions, loop=self._loop))
         self._notify_assignment_waiters()
 
     def unsubscribe(self):
-        """ Unsubscribe from the last subscription. This will also clear the
+        """Unsubscribe from the last subscription. This will also clear the
         subscription type.
 
         Caller: Consumer.
@@ -200,8 +195,8 @@ class SubscriptionState:
 
     # Coordinator callable API:
 
-    def subscribe_from_pattern(self, topics: Set[str]):
-        """ Change subscription on cluster metadata update if a new topic
+    def subscribe_from_pattern(self, topics: set[str]):
+        """Change subscription on cluster metadata update if a new topic
         created or one is removed.
 
         Caller: Coordinator
@@ -210,20 +205,22 @@ class SubscriptionState:
         assert self._subscription_type == SubscriptionType.AUTO_PATTERN
         self._change_subscription(Subscription(topics))
 
-    def assign_from_subscribed(self, assignment: Set[TopicPartition]):
-        """ Set assignment if automatic assignment is used.
+    def assign_from_subscribed(self, assignment: set[TopicPartition]):
+        """Set assignment if automatic assignment is used.
 
         Caller: Coordinator
         Affects: SubscriptionState.subscription.assignment
         """
         assert self._subscription_type in [
-            SubscriptionType.AUTO_PATTERN, SubscriptionType.AUTO_TOPICS]
+            SubscriptionType.AUTO_PATTERN,
+            SubscriptionType.AUTO_TOPICS,
+        ]
 
         self._subscription._assign(assignment)
         self._notify_assignment_waiters()
 
     def begin_reassignment(self):
-        """ Signal from Coordinator that a group re-join is needed. For example
+        """Signal from Coordinator that a group re-join is needed. For example
         this will be called if a commit or heartbeat fails with an
         InvalidMember error.
 
@@ -235,7 +232,7 @@ class SubscriptionState:
     # Fetcher callable API:
 
     def seek(self, tp: TopicPartition, offset: int):
-        """ Force reset of position to the specified offset.
+        """Force reset of position to the specified offset.
 
         Caller: Consumer, Fetcher
         Affects: TopicPartitionState.position
@@ -245,7 +242,7 @@ class SubscriptionState:
     # Waiters
 
     def wait_for_subscription(self):
-        """ Wait for subscription change. This will always wait for next
+        """Wait for subscription change. This will always wait for next
         subscription.
         """
         fut = create_future()
@@ -253,7 +250,7 @@ class SubscriptionState:
         return fut
 
     def wait_for_assignment(self):
-        """ Wait for next assignment. Be careful, as this will always wait for
+        """Wait for next assignment. Be careful, as this will always wait for
         next assignment, even if the current one is active.
         """
         fut = create_future()
@@ -264,8 +261,7 @@ class SubscriptionState:
         self._fetch_waiters = waiters
 
     def abort_waiters(self, exc):
-        """ Critical error occurred, we will abort any pending waiter
-        """
+        """Critical error occurred, we will abort any pending waiter"""
         for waiter in self._assignment_waiters:
             if not waiter.done():
                 waiter.set_exception(copy.copy(exc))
@@ -280,7 +276,7 @@ class SubscriptionState:
     def pause(self, tp: TopicPartition) -> None:
         self._assigned_state(tp).pause()
 
-    def paused_partitions(self) -> Set[TopicPartition]:
+    def paused_partitions(self) -> set[TopicPartition]:
         res = set()
         for tp in self.assigned_partitions():
             if self._assigned_state(tp).paused:
@@ -302,7 +298,7 @@ class SubscriptionState:
 
     @property
     def fetcher_idle_time(self):
-        """ How much time (in seconds) spent without consuming any records """
+        """How much time (in seconds) spent without consuming any records"""
         if self._fetch_count == 0:
             return time.monotonic() - self._last_fetch_ended
         else:
@@ -310,7 +306,7 @@ class SubscriptionState:
 
 
 class Subscription:
-    """ Describes current subscription to a list of topics. In case of pattern
+    """Describes current subscription to a list of topics. In case of pattern
     subscription a new instance of this class will be created if number of
     matched topics change.
 
@@ -343,8 +339,9 @@ class Subscription:
 
     def _assign(self, topic_partitions: Iterable[TopicPartition]):
         for tp in topic_partitions:
-            assert tp.topic in self._topics, \
-                f"Received an assignment for unsubscribed topic: {tp}"
+            assert (
+                tp.topic in self._topics
+            ), f"Received an assignment for unsubscribed topic: {tp}"
 
         if self._assignment is not None:
             self._assignment._unassign()
@@ -362,17 +359,15 @@ class Subscription:
 
 
 class ManualSubscription(Subscription):
-    """ Describes a user assignment
-    """
+    """Describes a user assignment"""
 
     def __init__(self, user_assignment: Iterable[TopicPartition], loop=None):
         topics = (tp.topic for tp in user_assignment)
         super().__init__(topics, loop=loop)
         self._assignment = Assignment(user_assignment)
 
-    def _assign(
-            self, topic_partitions: Set[TopicPartition]):  # pragma: no cover
-        assert False, "Should not be called"
+    def _assign(self, topic_partitions: set[TopicPartition]):  # pragma: no cover
+        raise AssertionError("Should not be called")
 
     @property
     def _reassignment_in_progress(self):
@@ -383,11 +378,11 @@ class ManualSubscription(Subscription):
         pass
 
     def _begin_reassignment(self):  # pragma: no cover
-        assert False, "Should not be called"
+        raise AssertionError("Should not be called")
 
 
 class Assignment:
-    """ Describes current partition assignment. New instance will be created
+    """Describes current partition assignment. New instance will be created
     on each group rebalance if automatic assignment is used.
 
     States:
@@ -418,20 +413,20 @@ class Assignment:
     def _unassign(self):
         self.unassign_future.set_result(None)
 
-    def state_value(self, tp: TopicPartition) -> "TopicPartitionState":
+    def state_value(self, tp: TopicPartition) -> TopicPartitionState:
         return self._tp_state.get(tp)
 
-    def all_consumed_offsets(self) -> Dict[TopicPartition, OffsetAndMetadata]:
-        """ Returns consumed offsets as {TopicPartition: OffsetAndMetadata} """
+    def all_consumed_offsets(self) -> dict[TopicPartition, OffsetAndMetadata]:
+        """Returns consumed offsets as {TopicPartition: OffsetAndMetadata}"""
         all_consumed = {}
         for tp in self._topic_partitions:
             state = self.state_value(tp)
             if state.has_valid_position:
-                all_consumed[tp] = OffsetAndMetadata(state.position, '')
+                all_consumed[tp] = OffsetAndMetadata(state.position, "")
         return all_consumed
 
     def requesting_committed(self):
-        """ Return all partitions that are requesting commit point fetch """
+        """Return all partitions that are requesting commit point fetch"""
         requesting = []
         for tp in self._topic_partitions:
             tp_state = self.state_value(tp)
@@ -441,14 +436,13 @@ class Assignment:
 
 
 class PartitionStatus(Enum):
-
     AWAITING_RESET = 0
     CONSUMING = 1
     UNASSIGNED = 2
 
 
 class TopicPartitionState:
-    """ Shared Partition metadata state.
+    """Shared Partition metadata state.
 
     After creation the workflow is similar to:
 
@@ -508,7 +502,7 @@ class TopicPartitionState:
         return self._reset_strategy
 
     def await_reset(self, strategy):
-        """ Called by either Coonsumer in `seek_to_*` or by Coordinator after
+        """Called by either Coonsumer in `seek_to_*` or by Coordinator after
         setting initial committed point.
         """
         self._reset_strategy = strategy
@@ -526,8 +520,7 @@ class TopicPartitionState:
         return fut
 
     def update_committed(self, offset_meta: OffsetAndMetadata):
-        """ Called by Coordinator on successful commit to update commit cache.
-        """
+        """Called by Coordinator on successful commit to update commit cache."""
         for fut in self._committed_futs:
             if not fut.done():
                 fut.set_result(offset_meta)
@@ -536,13 +529,12 @@ class TopicPartitionState:
     # Position manipulation
 
     def consumed_to(self, position: int):
-        """ Called by Fetcher when yielding results to Consumer
-        """
+        """Called by Fetcher when yielding results to Consumer"""
         assert self._status == PartitionStatus.CONSUMING
         self._position = position
 
     def reset_to(self, position: int):
-        """ Called by Fetcher after performing a reset to force position to
+        """Called by Fetcher after performing a reset to force position to
         a new point.
         """
         assert self._status == PartitionStatus.AWAITING_RESET
@@ -553,8 +545,7 @@ class TopicPartitionState:
             self._position_fut.set_result(None)
 
     def seek(self, position: int):
-        """ Called by Consumer to force position to a specific offset
-        """
+        """Called by Consumer to force position to a specific offset"""
         self._position = position
         self._reset_strategy = None
         self._status = PartitionStatus.CONSUMING

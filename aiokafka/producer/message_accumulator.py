@@ -2,34 +2,65 @@ import asyncio
 import collections
 import copy
 import time
+from collections.abc import Sequence
 
-from aiokafka.errors import (KafkaTimeoutError,
-                             NotLeaderForPartitionError,
-                             LeaderNotAvailableError,
-                             ProducerClosed)
-from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
+from aiokafka.errors import (
+    KafkaTimeoutError,
+    LeaderNotAvailableError,
+    NotLeaderForPartitionError,
+    ProducerClosed,
+)
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
+from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import RecordMetadata
 from aiokafka.util import create_future, get_running_loop
 
 
 class BatchBuilder:
-    def __init__(self, magic, batch_size, compression_type,
-                 *, is_transactional):
+    def __init__(
+        self,
+        magic,
+        batch_size,
+        compression_type,
+        *,
+        is_transactional,
+        key_serializer=None,
+        value_serializer=None,
+    ):
         if magic < 2:
             assert not is_transactional
             self._builder = LegacyRecordBatchBuilder(
-                magic, compression_type, batch_size)
+                magic, compression_type, batch_size
+            )
         else:
             self._builder = DefaultRecordBatchBuilder(
-                magic, compression_type, is_transactional=is_transactional,
-                producer_id=-1, producer_epoch=-1, base_sequence=0,
-                batch_size=batch_size)
+                magic,
+                compression_type,
+                is_transactional=is_transactional,
+                producer_id=-1,
+                producer_epoch=-1,
+                base_sequence=0,
+                batch_size=batch_size,
+            )
         self._relative_offset = 0
         self._buffer = None
         self._closed = False
+        self._key_serializer = key_serializer
+        self._value_serializer = value_serializer
 
-    def append(self, *, timestamp, key, value, headers=[]):
+    def _serialize(self, key, value):
+        if self._key_serializer is None:
+            serialized_key = key
+        else:
+            serialized_key = self._key_serializer(key)
+        if self._value_serializer is None:
+            serialized_value = value
+        else:
+            serialized_value = self._value_serializer(value)
+
+        return serialized_key, serialized_value
+
+    def append(self, *, timestamp, key, value, headers: Sequence = []):
         """Add a message to the batch.
 
         Arguments:
@@ -46,12 +77,19 @@ class BatchBuilder:
             with crc, offset, size, and timestamp fields. If the batch is full
             or closed, returns None.
         """
+        if headers is None:
+            headers = []
         if self._closed:
             return None
 
+        key_bytes, value_bytes = self._serialize(key, value)
         metadata = self._builder.append(
-            self._relative_offset, timestamp, key, value,
-            headers=headers)
+            self._relative_offset,
+            timestamp,
+            key=key_bytes,
+            value=value_bytes,
+            headers=headers,
+        )
 
         # Check if we could add the message
         if metadata is None:
@@ -78,8 +116,7 @@ class BatchBuilder:
 
     def _set_producer_state(self, producer_id, producer_epoch, base_sequence):
         assert type(self._builder) is DefaultRecordBatchBuilder
-        self._builder.set_producer_state(
-            producer_id, producer_epoch, base_sequence)
+        self._builder.set_producer_state(producer_id, producer_epoch, base_sequence)
 
     def _build(self):
         self.close()
@@ -125,8 +162,14 @@ class MessageBatch:
     def record_count(self):
         return self._builder.record_count()
 
-    def append(self, key, value, timestamp_ms, _create_future=create_future,
-               headers=[]):
+    def append(
+        self,
+        key,
+        value,
+        timestamp_ms,
+        _create_future=create_future,
+        headers: Sequence = [],
+    ):
         """Append message (key and value) to batch
 
         Returns:
@@ -135,7 +178,8 @@ class MessageBatch:
             asyncio.Future that will resolved when message is delivered
         """
         metadata = self._builder.append(
-            timestamp=timestamp_ms, key=key, value=value, headers=headers)
+            timestamp=timestamp_ms, key=key, value=value, headers=headers
+        )
         if metadata is None:
             return None
 
@@ -143,8 +187,13 @@ class MessageBatch:
         self._msg_futures.append((future, metadata))
         return future
 
-    def done(self, base_offset, timestamp=None, log_start_offset=None,
-             _record_metadata_class=RecordMetadata):
+    def done(
+        self,
+        base_offset,
+        timestamp=None,
+        log_start_offset=None,
+        _record_metadata_class=RecordMetadata,
+    ):
         """Resolve all pending futures"""
         tp = self._tp
         topic = tp.topic
@@ -156,9 +205,17 @@ class MessageBatch:
 
         # Set main batch future
         if not self.future.done():
-            self.future.set_result(_record_metadata_class(
-                topic, partition, tp, base_offset, timestamp, timestamp_type,
-                log_start_offset))
+            self.future.set_result(
+                _record_metadata_class(
+                    topic,
+                    partition,
+                    tp,
+                    base_offset,
+                    timestamp,
+                    timestamp_type,
+                    log_start_offset,
+                )
+            )
 
         # Set message futures
         for future, metadata in self._msg_futures:
@@ -169,12 +226,20 @@ class MessageBatch:
             if timestamp == -1:
                 timestamp = metadata.timestamp
             offset = base_offset + metadata.offset
-            future.set_result(_record_metadata_class(
-                topic, partition, tp, offset, timestamp, timestamp_type,
-                log_start_offset))
+            future.set_result(
+                _record_metadata_class(
+                    topic,
+                    partition,
+                    tp,
+                    offset,
+                    timestamp,
+                    timestamp_type,
+                    log_start_offset,
+                )
+            )
 
     def done_noack(self):
-        """ Resolve all pending futures to None """
+        """Resolve all pending futures to None"""
         # Faster resolve for base_offset=None case.
         if not self.future.done():
             self.future.set_result(None)
@@ -227,8 +292,7 @@ class MessageBatch:
 
     def set_producer_state(self, producer_id, producer_epoch, base_sequence):
         assert not self._drain_waiter.done()
-        self._builder._set_producer_state(
-            producer_id, producer_epoch, base_sequence)
+        self._builder._set_producer_state(producer_id, producer_epoch, base_sequence)
 
     def get_data_buffer(self):
         return self._builder._build()
@@ -247,9 +311,17 @@ class MessageAccumulator:
     Producer adds messages to this accumulator and a background send task
     gets batches per nodes to process it.
     """
+
     def __init__(
-            self, cluster, batch_size, compression_type, batch_ttl, *,
-            txn_manager=None, loop=None):
+        self,
+        cluster,
+        batch_size,
+        compression_type,
+        batch_ttl,
+        *,
+        txn_manager=None,
+        loop=None,
+    ):
         if loop is None:
             loop = get_running_loop()
         self._loop = loop
@@ -270,12 +342,10 @@ class MessageAccumulator:
         self._api_version = api_version
 
     async def flush(self):
-        waiters = []
-        for batches in self._batches.values():
-            for batch in list(batches):
-                waiters.append(batch.future)
-        for batch in list(self._pending_batches):
-            waiters.append(batch.future)
+        waiters = [
+            batch.future for batches in self._batches.values() for batch in batches
+        ]
+        waiters += [batch.future for batch in self._pending_batches]
         if waiters:
             await asyncio.wait(waiters)
 
@@ -283,12 +353,11 @@ class MessageAccumulator:
         waiters = []
         for batches in self._batches.values():
             for batch in batches:
-                # We force all buffers to close to finalyze the transaction
+                # We force all buffers to close to finalize the transaction
                 # scope. We should not add anything to this transaction.
                 batch._builder.close()
                 waiters.append(batch.future)
-        for batch in self._pending_batches:
-            waiters.append(batch.future)
+        waiters += [batch.future for batch in self._pending_batches]
         # Wait for all waiters to finish. We only wait for the scope we defined
         # above, other batches should not be delivered as part of this
         # transaction
@@ -309,10 +378,15 @@ class MessageAccumulator:
         await self.flush()
 
     async def add_message(
-        self, tp, key, value, timeout, timestamp_ms=None,
-        headers=[]
+        self,
+        tp,
+        key,
+        value,
+        timeout,
+        timestamp_ms=None,
+        headers: Sequence = [],
     ):
-        """ Add message to batch by topic-partition
+        """Add message to batch by topic-partition
         If batch is already full this method waits (`timeout` seconds maximum)
         until batch is drained by send task
         """
@@ -343,7 +417,7 @@ class MessageAccumulator:
                 raise KafkaTimeoutError()
 
     def data_waiter(self):
-        """ Return waiter future that will be resolved when accumulator contain
+        """Return waiter future that will be resolved when accumulator contain
         some data for drain
         """
         return self._wait_data_future
@@ -352,23 +426,26 @@ class MessageAccumulator:
         batch = self._batches[tp].popleft()
         not_retry = batch.retry_count == 0
         if self._txn_manager is not None and not_retry:
-            assert self._txn_manager.has_pid(), \
-                "We should have waited for it in sender routine"
+            assert (
+                self._txn_manager.has_pid()
+            ), "We should have waited for it in sender routine"
             seq = self._txn_manager.sequence_number(batch.tp)
-            self._txn_manager.increment_sequence_number(
-                batch.tp, batch.record_count)
+            self._txn_manager.increment_sequence_number(batch.tp, batch.record_count)
             batch.set_producer_state(
                 producer_id=self._txn_manager.producer_id,
                 producer_epoch=self._txn_manager.producer_epoch,
-                base_sequence=seq)
+                base_sequence=seq,
+            )
         batch.drain_ready()
         if len(self._batches[tp]) == 0:
             del self._batches[tp]
         self._pending_batches.add(batch)
 
         if not_retry:
+
             def cb(fut, batch=batch, self=self):
                 self._pending_batches.remove(batch)
+
             batch.future.add_done_callback(cb)
         return batch
 
@@ -378,8 +455,8 @@ class MessageAccumulator:
         self._pending_batches.remove(batch)
         batch.reset_drain()
 
-    def drain_by_nodes(self, ignore_nodes, muted_partitions=set()):
-        """ Group batches by leader to partition nodes. """
+    def drain_by_nodes(self, ignore_nodes, muted_partitions=frozenset()):
+        """Group batches by leader to partition nodes."""
         nodes = collections.defaultdict(dict)
         unknown_leaders_exist = False
         for tp in list(self._batches.keys()):
@@ -422,7 +499,7 @@ class MessageAccumulator:
 
         return nodes, unknown_leaders_exist
 
-    def create_builder(self):
+    def create_builder(self, key_serializer=None, value_serializer=None):
         if self._api_version >= (0, 11):
             magic = 2
         elif self._api_version >= (0, 10):
@@ -431,12 +508,19 @@ class MessageAccumulator:
             magic = 0
 
         is_transactional = False
-        if self._txn_manager is not None and \
-                self._txn_manager.transactional_id is not None:
+        if (
+            self._txn_manager is not None
+            and self._txn_manager.transactional_id is not None
+        ):
             is_transactional = True
         return BatchBuilder(
-            magic, self._batch_size, self._compression_type,
-            is_transactional=is_transactional)
+            magic,
+            self._batch_size,
+            self._compression_type,
+            is_transactional=is_transactional,
+            key_serializer=key_serializer,
+            value_serializer=value_serializer,
+        )
 
     def _append_batch(self, builder, tp):
         # We must do this before actual add takes place to check for errors.

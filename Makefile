@@ -5,53 +5,72 @@ SCALA_VERSION?=2.13
 KAFKA_VERSION?=2.8.1
 DOCKER_IMAGE=aiolibs/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
 DIFF_BRANCH=origin/master
-FORMATTED_AREAS=aiokafka/util.py aiokafka/structs.py
+FORMATTED_AREAS=\
+	aiokafka/codec.py \
+	aiokafka/coordinator/ \
+	aiokafka/errors.py \
+	aiokafka/helpers.py \
+	aiokafka/structs.py \
+	aiokafka/util.py \
+	aiokafka/protocol/ \
+	aiokafka/record/ \
+	tests/test_codec.py \
+	tests/test_helpers.py \
+	tests/test_protocol.py \
+	tests/test_protocol_object_conversion.py \
+	tests/coordinator/ \
+	tests/record/
 
+.PHONY: setup
 setup:
 	pip install -r requirements-dev.txt
 	pip install -Ue .
 
+.PHONY: format
 format:
-	isort $(FORMATTED_AREAS) setup.py
-	black $(FORMATTED_AREAS) setup.py
+	ruff format aiokafka tests setup.py
+	ruff check --fix aiokafka tests setup.py
 
-flake: lint
+.PHONY: lint
 lint:
-	black --check $(FORMATTED_AREAS) setup.py
-	@if ! isort -c $(FORMATTED_AREAS) setup.py; then \
-            echo "Import sort errors, run 'make format' to fix them!!!"; \
-            isort --diff --color $(FORMATTED_AREAS) setup.py; \
-            false; \
-        fi
-	flake8 aiokafka tests setup.py
+	ruff format --check aiokafka tests setup.py
+	ruff check aiokafka tests setup.py
 	mypy --install-types --non-interactive $(FORMATTED_AREAS)
 
-test: flake
+.PHONY: test
+test: lint
 	pytest -s --show-capture=no --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
-vtest: flake
+.PHONY: vtest
+vtest: lint
 	pytest -s -v --log-level INFO --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
-cov cover coverage: flake
+.PHONY: cov cover coverage
+cov cover coverage: lint
 	pytest -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 	@echo "open file://`pwd`/htmlcov/index.html"
 
+.PHONY: ci-test-unit
 ci-test-unit:
 	pytest -s --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml --color=yes $(FLAGS) tests
 
+.PHONY: ci-test-all
 ci-test-all:
 	pytest -s -v --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
 coverage.xml: .coverage
 	coverage xml
 
+.PHONY: diff-cov
 diff-cov: coverage.xml
 	git fetch
 	diff-cover coverage.xml --html-report diff-cover.html --compare-branch=$(DIFF_BRANCH)
 
+.PHONY: check-readme
 check-readme:
 	python setup.py check -rms
 
+.PHONY: clean
 clean:
 	rm -rf `find . -name __pycache__`
 	rm -f `find . -type f -name '*.py[co]' `
@@ -72,8 +91,7 @@ clean:
 	rm -f aiokafka/record/_crecords/memory_records.c
 	rm -f aiokafka/record/_crecords/*.html
 
+.PHONY: doc
 doc:
 	make -C docs html
 	@echo "open file://`pwd`/docs/_build/html/index.html"
-
-.PHONY: all flake test vtest cov clean doc

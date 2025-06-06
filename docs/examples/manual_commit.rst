@@ -1,12 +1,12 @@
 Manual commit
 =============
 
-When processing more sensitive data ``enable_auto_commit=False`` mode of
-Consumer can lead to data loss in cases of critical failure. To avoid it we
-can commit offsets manually after they were processed. Note, that this is a
-tradeoff from *at most once* to *at least once* delivery, to achieve
-*exactly once* you will need to save offsets in the destination database and
-validate those yourself.
+When processing sensitive data, using ``enable_auto_commit=True`` (default) for the
+Consumer can lead to data loss in the event of a critical failure. To avoid
+this, set ``enable_auto_commit=False`` and commit offsets manually only after
+messages have been processed. Note, that this is a tradeoff from *at most once*
+to *at least once* delivery, to achieve *exactly once* you will need to save
+offsets in the destination database and validate those yourself.
 
 More on message delivery: https://kafka.apache.org/documentation.html#semantics
 
@@ -22,7 +22,7 @@ Consumer:
 
     import json
     import asyncio
-    from kafka.common import KafkaError
+    from aiokafka.errors import KafkaError
     from aiokafka import AIOKafkaConsumer
 
     async def consume():

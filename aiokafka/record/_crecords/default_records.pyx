@@ -55,12 +55,12 @@
 # * Timestamp Type (3)
 # * Compression Type (0-2)
 
-from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
-from kafka.codec import (
+import aiokafka.codec as codecs
+from aiokafka.codec import (
     gzip_encode, snappy_encode, lz4_encode, zstd_encode,
     gzip_decode, snappy_decode, lz4_decode, zstd_decode
 )
-import kafka.codec as codecs
+from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 
 from cpython cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_WRITABLE, \
                      PyBUF_SIMPLE, PyBUF_READ, Py_buffer, \
@@ -447,20 +447,6 @@ cdef class DefaultRecord:
         record.value = value
         record.headers = headers
         return record
-
-    @property
-    def timestamp(self):
-        if self.timestamp != -1:
-            return self.timestamp
-        else:
-            return None
-
-    @property
-    def timestamp_type(self):
-        if self.timestamp != -1:
-            return self.timestamp_type
-        else:
-            return None
 
     def __repr__(self):
         return (

@@ -2,4 +2,4 @@
 -r requirements-docs.txt
 
 diff-cover==6.4.2
-setuptools>=34.4.0
+build==1.0.3
