@@ -11,6 +11,14 @@ Improved Documentation:
   (pr #1068 by @jzvandenoever)
 * Fix Java Client API reference (pr #1069 by @emmanuel-ferdman)
 
+
+
+Bugfixes:
+
+* Make KafkaStorageError retriable after metadata refresh like in other implementations (pr #1115 by @omerhadari)
+
+
+
 Misc:
 * Use SPDX license expression for project metadata.
 
