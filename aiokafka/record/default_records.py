@@ -56,9 +56,9 @@
 
 import struct
 import time
-from collections.abc import Callable, Sized
+from collections.abc import Callable, Collection, Sized
 from dataclasses import dataclass
-from typing import Any, Optional, final
+from typing import Any, final
 
 from typing_extensions import Self, TypeIs, assert_never
 
@@ -361,7 +361,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
 @final
 @dataclass(frozen=True)
 class _DefaultRecordPy(DefaultRecordProtocol):
-    __slots__ = ("offset", "timestamp", "timestamp_type", "key", "value", "headers")
+    __slots__ = ("headers", "key", "offset", "timestamp", "timestamp_type", "value")
 
     offset: int
     timestamp: int
@@ -440,15 +440,11 @@ class _DefaultRecordBatchBuilderPy(
         get_type: Callable[[Any], type] = type,
         type_int: type[int] = int,
         time_time: Callable[[], float] = time.time,
-        byte_like: tuple[type[bytes], type[bytearray], type[memoryview]] = (
-            bytes,
-            bytearray,
-            memoryview,
-        ),
+        byte_like: Collection[type] = (bytes, bytearray, memoryview),
         bytearray_type: type[bytearray] = bytearray,
         len_func: Callable[[Sized], int] = len,
         zero_len_varint: int = 1,
-    ) -> Optional["_DefaultRecordMetadataPy"]:
+    ) -> "_DefaultRecordMetadataPy | None":
         """Write message to messageset buffer with MsgVersion 2"""
         # Check types
         if get_type(offset) != type_int:
@@ -677,7 +673,7 @@ class _DefaultRecordBatchBuilderPy(
 @final
 @dataclass(frozen=True)
 class _DefaultRecordMetadataPy(DefaultRecordMetadataProtocol):
-    __slots__ = ("size", "timestamp", "offset")
+    __slots__ = ("offset", "size", "timestamp")
 
     offset: int
     size: int

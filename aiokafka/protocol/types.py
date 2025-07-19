@@ -4,7 +4,6 @@ from io import BytesIO
 from struct import error
 from typing import (
     Any,
-    Optional,
     TypeAlias,
     TypeVar,
     Union,
@@ -145,7 +144,7 @@ class String:
         return repr(value)
 
 
-class Bytes(AbstractType[Optional[bytes]]):
+class Bytes(AbstractType[bytes | None]):
     @classmethod
     def encode(cls, value: bytes | None) -> bytes:
         if value is None:
@@ -386,7 +385,7 @@ class TaggedFields(AbstractType[dict[int, bytes]]):
         return ret
 
 
-class CompactBytes(AbstractType[Optional[bytes]]):
+class CompactBytes(AbstractType[bytes | None]):
     @classmethod
     def decode(cls, data: BytesIO) -> bytes | None:
         length = UnsignedVarInt32.decode(data) - 1
