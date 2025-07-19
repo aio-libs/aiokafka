@@ -740,7 +740,9 @@ class OperationNotAttempted(BrokerResponseError):
 class KafkaStorageError(BrokerResponseError):
     errno = 56
     message = "KAFKA_STORAGE_ERROR"
-    description = "The user-specified log directory is not found in the broker config."
+    description = "Disk error when trying to access log file on the disk."
+    retriable = True
+    invalid_metadata = True
 
 
 class LogDirNotFound(BrokerResponseError):
