@@ -442,7 +442,7 @@ class GroupCoordinator(BaseCoordinator):
                 member_id, group_instance_id, metadata_bytes = member
             elif isinstance(
                 response,
-                (JoinGroupResponse[0], JoinGroupResponse[1], JoinGroupResponse[2]),
+                JoinGroupResponse[0] | JoinGroupResponse[1] | JoinGroupResponse[2],
             ):
                 member_id, metadata_bytes = member
             else:
@@ -986,11 +986,9 @@ class GroupCoordinator(BaseCoordinator):
         # as retriable.
         return error.retriable or isinstance(
             error,
-            (
-                Errors.UnknownMemberIdError,
-                Errors.IllegalGenerationError,
-                Errors.RebalanceInProgressError,
-            ),
+            Errors.UnknownMemberIdError
+            | Errors.IllegalGenerationError
+            | Errors.RebalanceInProgressError,
         )
 
     async def _maybe_do_last_autocommit(self, assignment):

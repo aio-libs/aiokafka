@@ -391,7 +391,7 @@ class Assignment:
     """
 
     def __init__(self, topic_partitions: Iterable[TopicPartition]):
-        assert isinstance(topic_partitions, (list, set, tuple))
+        assert isinstance(topic_partitions, list | set | tuple)
 
         self._topic_partitions = frozenset(topic_partitions)
 

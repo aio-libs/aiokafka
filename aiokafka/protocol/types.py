@@ -241,7 +241,7 @@ class Array:
             self.array_of = Schema(array_of_0, *array_of)
         else:
             array_of_0 = cast(ValueT, array_of_0)
-            if isinstance(array_of_0, (String, Array, Schema)) or issubclass(
+            if isinstance(array_of_0, String | Array | Schema) or issubclass(
                 array_of_0, AbstractType
             ):
                 self.array_of = array_of_0
