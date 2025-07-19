@@ -5,7 +5,7 @@ requires = ["setuptools >=77", "Cython >=3.0.5"]
 name = "aiokafka"
 description = "Kafka integration with asyncio"
 readme = "README.rst"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "Apache-2.0"
 authors = [
     { name = "Andrew Svetlov", email = "andrew.svetlov@gmail.com" },
@@ -13,7 +13,6 @@ authors = [
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -158,7 +157,7 @@ pyupgrade.keep-runtime-typing = true
 docstring-code-format = true
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 disable_error_code = "import-untyped"
 check_untyped_defs = true
 disallow_any_generics = true
