@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Sequence
 from ssl import SSLContext
-from typing import Any, Optional, Union
+from typing import Any
 
 import async_timeout
 
@@ -89,21 +89,21 @@ class AIOKafkaAdminClient:
         self,
         *,
         loop=None,
-        bootstrap_servers: Union[str, list[str]] = "localhost",
+        bootstrap_servers: str | list[str] = "localhost",
         client_id: str = "aiokafka-" + __version__,
         request_timeout_ms: int = 40000,
         connections_max_idle_ms: int = 540000,
         retry_backoff_ms: int = 100,
         metadata_max_age_ms: int = 300000,
         security_protocol: str = "PLAINTEXT",
-        ssl_context: Optional[SSLContext] = None,
+        ssl_context: SSLContext | None = None,
         api_version: str = "auto",
         sasl_mechanism: str = "PLAIN",
-        sasl_plain_username: Optional[str] = None,
-        sasl_plain_password: Optional[str] = None,
+        sasl_plain_username: str | None = None,
+        sasl_plain_password: str | None = None,
         sasl_kerberos_service_name: str = "kafka",
-        sasl_kerberos_domain_name: Optional[str] = None,
-        sasl_oauth_token_provider: Optional[str] = None,
+        sasl_kerberos_domain_name: str | None = None,
+        sasl_oauth_token_provider: str | None = None,
     ):
         self._closed = False
         self._started = False
@@ -141,7 +141,7 @@ class AIOKafkaAdminClient:
     async def _send_request(
         self,
         request: Request,
-        node_id: Optional[int] = None,
+        node_id: int | None = None,
     ) -> Response:
         if node_id is None:
             node_id = self._client.get_random_node()
@@ -227,7 +227,7 @@ class AIOKafkaAdminClient:
     async def create_topics(
         self,
         new_topics: list[NewTopic],
-        timeout_ms: Optional[int] = None,
+        timeout_ms: int | None = None,
         validate_only: bool = False,
     ) -> Response:
         """Create new topics in the cluster.
@@ -269,7 +269,7 @@ class AIOKafkaAdminClient:
     async def delete_topics(
         self,
         topics: list[str],
-        timeout_ms: Optional[int] = None,
+        timeout_ms: int | None = None,
     ) -> Response:
         """Delete topics from the cluster.
 
@@ -285,7 +285,7 @@ class AIOKafkaAdminClient:
 
     async def _get_cluster_metadata(
         self,
-        topics: Optional[list[str]] = None,
+        topics: list[str] | None = None,
     ) -> Response:
         """
         Retrieve cluster metadata
@@ -303,7 +303,7 @@ class AIOKafkaAdminClient:
 
     async def describe_topics(
         self,
-        topics: Optional[list[str]] = None,
+        topics: list[str] | None = None,
     ) -> list[Any]:
         metadata = await self._get_cluster_metadata(topics=topics)
         obj = metadata.to_object()
@@ -426,7 +426,7 @@ class AIOKafkaAdminClient:
     async def create_partitions(
         self,
         topic_partitions: dict[str, NewPartitions],
-        timeout_ms: Optional[int] = None,
+        timeout_ms: int | None = None,
         validate_only: bool = False,
     ) -> Response:
         """Create additional partitions for an existing topic.
@@ -457,7 +457,7 @@ class AIOKafkaAdminClient:
     async def describe_consumer_groups(
         self,
         group_ids: list[str],
-        group_coordinator_id: Optional[int] = None,
+        group_coordinator_id: int | None = None,
         include_authorized_operations: bool = False,
     ) -> list[Response]:
         """Describe a set of consumer groups.
@@ -509,7 +509,7 @@ class AIOKafkaAdminClient:
 
     async def list_consumer_groups(
         self,
-        broker_ids: Optional[list[int]] = None,
+        broker_ids: list[int] | None = None,
     ) -> list[tuple[Any, ...]]:
         """List all consumer groups known to the cluster.
 
@@ -578,8 +578,8 @@ class AIOKafkaAdminClient:
     async def list_consumer_group_offsets(
         self,
         group_id: str,
-        group_coordinator_id: Optional[int] = None,
-        partitions: Optional[list[TopicPartition]] = None,
+        group_coordinator_id: int | None = None,
+        partitions: list[TopicPartition] | None = None,
     ) -> dict[TopicPartition, OffsetAndMetadata]:
         """Fetch Consumer Offsets for a single consumer group.
 
@@ -638,7 +638,7 @@ class AIOKafkaAdminClient:
     async def delete_records(
         self,
         records_to_delete: dict[TopicPartition, RecordsToDelete],
-        timeout_ms: Optional[int] = None,
+        timeout_ms: int | None = None,
     ) -> dict[TopicPartition, int]:
         """Delete records from partitions.
 

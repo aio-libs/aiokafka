@@ -1,8 +1,7 @@
-from typing import Optional
+from typing import Literal
 from unittest import mock
 
 import pytest
-from typing_extensions import Literal
 
 import aiokafka.codec
 from aiokafka.errors import UnsupportedCodecError
@@ -11,7 +10,7 @@ from aiokafka.record.default_records import (
     DefaultRecordBatchBuilder,
 )
 
-HeadersT = list[tuple[str, Optional[bytes]]]
+HeadersT = list[tuple[str, bytes | None]]
 
 
 @pytest.mark.parametrize(

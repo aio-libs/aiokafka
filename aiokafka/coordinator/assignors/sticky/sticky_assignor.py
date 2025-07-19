@@ -13,7 +13,6 @@ from copy import deepcopy
 from typing import (
     Any,
     NamedTuple,
-    Optional,
 )
 
 from aiokafka.cluster import ClusterMetadata
@@ -745,10 +744,10 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
     name = "sticky"
     version = 0
 
-    member_assignment: Optional[list[TopicPartition]] = None
+    member_assignment: list[TopicPartition] | None = None
     generation: int = DEFAULT_GENERATION_ID
 
-    _latest_partition_movements: Optional[PartitionMovements] = None
+    _latest_partition_movements: PartitionMovements | None = None
 
     @classmethod
     def assign(
@@ -843,7 +842,7 @@ class StickyPartitionAssignor(AbstractPartitionAssignor):
     def _metadata(
         cls,
         topics: Iterable[str],
-        member_assignment_partitions: Optional[list[TopicPartition]],
+        member_assignment_partitions: list[TopicPartition] | None,
         generation: int = -1,
     ) -> ConsumerProtocolMemberMetadata:
         if member_assignment_partitions is None:

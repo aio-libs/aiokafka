@@ -783,7 +783,7 @@ class ScramAuthenticator(BaseSaslAuthenticator):
 
     @staticmethod
     def _xor_bytes(left, right):
-        return bytes(lb ^ rb for lb, rb in zip(left, right))
+        return bytes(lb ^ rb for lb, rb in zip(left, right, strict=False))
 
 
 class OAuthAuthenticator(BaseSaslAuthenticator):

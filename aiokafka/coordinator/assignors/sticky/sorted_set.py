@@ -1,9 +1,7 @@
-from collections.abc import Collection, Iterable, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator
 from typing import (
     Any,
-    Callable,
     Generic,
-    Optional,
     TypeVar,
     final,
 )
@@ -15,16 +13,16 @@ T = TypeVar("T")
 class SortedSet(Generic[T], Collection[T]):
     def __init__(
         self,
-        iterable: Optional[Iterable[T]] = None,
-        key: Optional[Callable[[T], Any]] = None,
+        iterable: Iterable[T] | None = None,
+        key: Callable[[T], Any] | None = None,
     ) -> None:
         self._key: Callable[[T], Any] = key if key is not None else lambda x: x
         self._set: set[T] = set(iterable) if iterable is not None else set()
 
-        self._cached_last: Optional[T] = None
-        self._cached_first: Optional[T] = None
+        self._cached_last: T | None = None
+        self._cached_first: T | None = None
 
-    def first(self) -> Optional[T]:
+    def first(self) -> T | None:
         if self._cached_first is not None:
             return self._cached_first
 
@@ -35,7 +33,7 @@ class SortedSet(Generic[T], Collection[T]):
         self._cached_first = first
         return first
 
-    def last(self) -> Optional[T]:
+    def last(self) -> T | None:
         if self._cached_last is not None:
             return self._cached_last
 

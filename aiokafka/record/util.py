@@ -1,5 +1,4 @@
-from collections.abc import Iterable
-from typing import Callable, Union
+from collections.abc import Callable, Iterable
 
 from aiokafka.util import NO_EXTENSIONS
 
@@ -121,7 +120,7 @@ def calc_crc32c_py(memview: Iterable[int]) -> int:
     return crc
 
 
-calc_crc32c: Callable[[Union[bytes, bytearray]], int]
+calc_crc32c: Callable[[bytes | bytearray], int]
 decode_varint: Callable[[bytearray, int], tuple[int, int]]
 size_of_varint: Callable[[int], int]
 encode_varint: Callable[[int, Callable[[int], None]], int]

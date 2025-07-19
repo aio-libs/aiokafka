@@ -1,7 +1,6 @@
 import gzip
 import io
 import struct
-from typing import Optional
 
 from typing_extensions import Buffer
 
@@ -30,7 +29,7 @@ def has_lz4() -> bool:
     return cramjam is not None
 
 
-def gzip_encode(payload: Buffer, compresslevel: Optional[int] = None) -> bytes:
+def gzip_encode(payload: Buffer, compresslevel: int | None = None) -> bytes:
     if not compresslevel:
         compresslevel = 9
 
@@ -94,7 +93,7 @@ def snappy_encode(
         return cramjam.snappy.compress_raw(payload)
 
     out = io.BytesIO()
-    for fmt, dat in zip(_XERIAL_V1_FORMAT, _XERIAL_V1_HEADER):
+    for fmt, dat in zip(_XERIAL_V1_FORMAT, _XERIAL_V1_HEADER, strict=False):
         out.write(struct.pack("!" + fmt, dat))
 
     payload = memoryview(payload)
@@ -186,7 +185,7 @@ def lz4_decode(payload: Buffer) -> bytes:
     return bytes(cramjam.lz4.decompress(payload))
 
 
-def zstd_encode(payload: Buffer, level: Optional[int] = None) -> bytes:
+def zstd_encode(payload: Buffer, level: int | None = None) -> bytes:
     if not has_zstd():
         raise NotImplementedError("Zstd codec is not available")
 

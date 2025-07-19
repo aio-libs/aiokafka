@@ -56,9 +56,9 @@
 
 import struct
 import time
-from collections.abc import Sized
+from collections.abc import Callable, Sized
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Union, final
+from typing import Any, Optional, final
 
 from typing_extensions import Self, TypeIs, assert_never
 
@@ -133,7 +133,7 @@ class DefaultRecordBase:
 
     def _assert_has_codec(
         self, compression_type: int
-    ) -> TypeIs[Union[CodecGzipT, CodecSnappyT, CodecLz4T, CodecZstdT]]:
+    ) -> TypeIs[CodecGzipT | CodecSnappyT | CodecLz4T | CodecZstdT]:
         if compression_type == self.CODEC_GZIP:
             checker, name = codecs.has_gzip, "gzip"
         elif compression_type == self.CODEC_SNAPPY:
@@ -155,7 +155,7 @@ class DefaultRecordBase:
 
 @final
 class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
-    def __init__(self, buffer: Union[bytes, bytearray, memoryview]) -> None:
+    def __init__(self, buffer: bytes | bytearray | memoryview) -> None:
         self._buffer = bytearray(buffer)
         self._header_data: tuple[
             int, int, int, int, int, int, int, int, int, int, int, int, int
@@ -293,7 +293,7 @@ class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
             raise CorruptRecordException(
                 f"Found invalid number of record headers {header_count}"
             )
-        headers: list[tuple[str, Optional[bytes]]] = []
+        headers: list[tuple[str, bytes | None]] = []
         while header_count:
             # Header key is of type String, that can't be None
             h_key_len, pos = decode_varint(buffer, pos)
@@ -366,9 +366,9 @@ class _DefaultRecordPy(DefaultRecordProtocol):
     offset: int
     timestamp: int
     timestamp_type: int
-    key: Optional[bytes]
-    value: Optional[bytes]
-    headers: list[tuple[str, Optional[bytes]]]
+    key: bytes | None
+    value: bytes | None
+    headers: list[tuple[str, bytes | None]]
 
     @property
     def checksum(self) -> None:
@@ -410,8 +410,8 @@ class _DefaultRecordBatchBuilderPy(
         self._producer_epoch = producer_epoch
         self._base_sequence = base_sequence
 
-        self._first_timestamp: Optional[int] = None
-        self._max_timestamp: Optional[int] = None
+        self._first_timestamp: int | None = None
+        self._max_timestamp: int | None = None
         self._last_offset = 0
         self._num_records = 0
 
@@ -430,10 +430,10 @@ class _DefaultRecordBatchBuilderPy(
     def append(
         self,
         offset: int,
-        timestamp: Optional[int],
-        key: Optional[bytes],
-        value: Optional[bytes],
-        headers: list[tuple[str, Optional[bytes]]],
+        timestamp: int | None,
+        key: bytes | None,
+        value: bytes | None,
+        headers: list[tuple[str, bytes | None]],
         # Cache for LOAD_FAST opcodes
         encode_varint: Callable[[int, Callable[[int], None]], int] = encode_varint,
         size_of_varint: Callable[[int], int] = size_of_varint,
@@ -591,9 +591,9 @@ class _DefaultRecordBatchBuilderPy(
         self,
         offset: int,
         timestamp: int,
-        key: Optional[bytes],
-        value: Optional[bytes],
-        headers: list[tuple[str, Optional[bytes]]],
+        key: bytes | None,
+        value: bytes | None,
+        headers: list[tuple[str, bytes | None]],
     ) -> int:
         if self._first_timestamp is not None:
             timestamp_delta = timestamp - self._first_timestamp
@@ -610,9 +610,9 @@ class _DefaultRecordBatchBuilderPy(
     @classmethod
     def size_of(
         cls,
-        key: Optional[bytes],
-        value: Optional[bytes],
-        headers: list[tuple[str, Optional[bytes]]],
+        key: bytes | None,
+        value: bytes | None,
+        headers: list[tuple[str, bytes | None]],
     ) -> int:
         size = 0
         # Key size
@@ -643,9 +643,9 @@ class _DefaultRecordBatchBuilderPy(
     @classmethod
     def estimate_size_in_bytes(
         cls,
-        key: Optional[bytes],
-        value: Optional[bytes],
-        headers: list[tuple[str, Optional[bytes]]],
+        key: bytes | None,
+        value: bytes | None,
+        headers: list[tuple[str, bytes | None]],
     ) -> int:
         """Get the upper bound estimate on the size of record"""
         return (

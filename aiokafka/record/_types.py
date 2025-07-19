@@ -1,6 +1,4 @@
-from typing import Union
-
-from typing_extensions import Literal
+from typing import Literal, Union
 
 CodecNoneT = Literal[0x00]
 CodecGzipT = Literal[0x01]
