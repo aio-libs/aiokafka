@@ -741,8 +741,8 @@ class KafkaStorageError(BrokerResponseError):
     errno = 56
     message = "KAFKA_STORAGE_ERROR"
     description = "Disk error when trying to access log file on the disk."
-    retriable: bool = True
-    invalid_metadata: bool = True
+    retriable = True
+    invalid_metadata = True
 
 
 class LogDirNotFound(BrokerResponseError):
