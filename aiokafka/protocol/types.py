@@ -1,18 +1,17 @@
 import struct
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from io import BytesIO
 from struct import error
 from typing import (
     Any,
-    Callable,
-    Optional,
+    TypeAlias,
     TypeVar,
     Union,
     cast,
     overload,
 )
 
-from typing_extensions import Buffer, TypeAlias
+from typing_extensions import Buffer
 
 from .abstract import AbstractType
 
@@ -125,13 +124,13 @@ class String:
     def __init__(self, encoding: str = "utf-8"):
         self.encoding = encoding
 
-    def encode(self, value: Optional[str]) -> bytes:
+    def encode(self, value: str | None) -> bytes:
         if value is None:
             return Int16.encode(-1)
         encoded_value = str(value).encode(self.encoding)
         return Int16.encode(len(encoded_value)) + encoded_value
 
-    def decode(self, data: BytesIO) -> Optional[str]:
+    def decode(self, data: BytesIO) -> str | None:
         length = Int16.decode(data)
         if length < 0:
             return None
@@ -145,16 +144,16 @@ class String:
         return repr(value)
 
 
-class Bytes(AbstractType[Optional[bytes]]):
+class Bytes(AbstractType[bytes | None]):
     @classmethod
-    def encode(cls, value: Optional[bytes]) -> bytes:
+    def encode(cls, value: bytes | None) -> bytes:
         if value is None:
             return Int32.encode(-1)
         else:
             return Int32.encode(len(value)) + value
 
     @classmethod
-    def decode(cls, data: BytesIO) -> Optional[bytes]:
+    def decode(cls, data: BytesIO) -> bytes | None:
         length = Int32.decode(data)
         if length < 0:
             return None
@@ -164,7 +163,7 @@ class Bytes(AbstractType[Optional[bytes]]):
         return value
 
     @classmethod
-    def repr(cls, value: Optional[bytes]) -> str:
+    def repr(cls, value: bytes | None) -> str:
         return repr(
             value[:100] + b"..." if value is not None and len(value) > 100 else value
         )
@@ -189,7 +188,7 @@ class Schema:
 
     def __init__(self, *fields: tuple[str, ValueT]):
         if fields:
-            self.names, self.fields = zip(*fields)
+            self.names, self.fields = zip(*fields, strict=False)
         else:
             self.names, self.fields = (), ()
 
@@ -200,7 +199,7 @@ class Schema:
 
     def decode(
         self, data: BytesIO
-    ) -> tuple[Union[Any, str, None, list[Union[Any, tuple[Any, ...]]]], ...]:
+    ) -> tuple[Any | str | None | list[Any | tuple[Any, ...]], ...]:
         return tuple(field.decode(data) for field in self.fields)
 
     def __len__(self) -> int:
@@ -233,7 +232,7 @@ class Array:
 
     def __init__(
         self,
-        array_of_0: Union[ValueT, tuple[str, ValueT]],
+        array_of_0: ValueT | tuple[str, ValueT],
         *array_of: tuple[str, ValueT],
     ) -> None:
         if array_of:
@@ -241,14 +240,14 @@ class Array:
             self.array_of = Schema(array_of_0, *array_of)
         else:
             array_of_0 = cast(ValueT, array_of_0)
-            if isinstance(array_of_0, (String, Array, Schema)) or issubclass(
+            if isinstance(array_of_0, String | Array | Schema) or issubclass(
                 array_of_0, AbstractType
             ):
                 self.array_of = array_of_0
             else:
                 raise ValueError("Array instantiated with no array_of type")
 
-    def encode(self, items: Optional[Sequence[Any]]) -> bytes:
+    def encode(self, items: Sequence[Any] | None) -> bytes:
         if items is None:
             return Int32.encode(-1)
         encoded_items = (self.array_of.encode(item) for item in items)
@@ -256,13 +255,13 @@ class Array:
             (Int32.encode(len(items)), *encoded_items),
         )
 
-    def decode(self, data: BytesIO) -> Optional[list[Union[Any, tuple[Any, ...]]]]:
+    def decode(self, data: BytesIO) -> list[Any | tuple[Any, ...]] | None:
         length = Int32.decode(data)
         if length == -1:
             return None
         return [self.array_of.decode(data) for _ in range(length)]
 
-    def repr(self, list_of_items: Optional[Sequence[Any]]) -> str:
+    def repr(self, list_of_items: Sequence[Any] | None) -> str:
         if list_of_items is None:
             return "NULL"
         return "[" + ", ".join(self.array_of.repr(item) for item in list_of_items) + "]"
@@ -340,7 +339,7 @@ class VarInt64(AbstractType[int]):
 
 
 class CompactString(String):
-    def decode(self, data: BytesIO) -> Optional[str]:
+    def decode(self, data: BytesIO) -> str | None:
         length = UnsignedVarInt32.decode(data) - 1
         if length < 0:
             return None
@@ -349,7 +348,7 @@ class CompactString(String):
             raise ValueError("Buffer underrun decoding string")
         return value.decode(self.encoding)
 
-    def encode(self, value: Optional[str]) -> bytes:
+    def encode(self, value: str | None) -> bytes:
         if value is None:
             return UnsignedVarInt32.encode(0)
         encoded_value = str(value).encode(self.encoding)
@@ -386,9 +385,9 @@ class TaggedFields(AbstractType[dict[int, bytes]]):
         return ret
 
 
-class CompactBytes(AbstractType[Optional[bytes]]):
+class CompactBytes(AbstractType[bytes | None]):
     @classmethod
-    def decode(cls, data: BytesIO) -> Optional[bytes]:
+    def decode(cls, data: BytesIO) -> bytes | None:
         length = UnsignedVarInt32.decode(data) - 1
         if length < 0:
             return None
@@ -398,7 +397,7 @@ class CompactBytes(AbstractType[Optional[bytes]]):
         return value
 
     @classmethod
-    def encode(cls, value: Optional[bytes]) -> bytes:
+    def encode(cls, value: bytes | None) -> bytes:
         if value is None:
             return UnsignedVarInt32.encode(0)
         else:
@@ -406,7 +405,7 @@ class CompactBytes(AbstractType[Optional[bytes]]):
 
 
 class CompactArray(Array):
-    def encode(self, items: Optional[Sequence[Any]]) -> bytes:
+    def encode(self, items: Sequence[Any] | None) -> bytes:
         if items is None:
             return UnsignedVarInt32.encode(0)
         encoded_items = (self.array_of.encode(item) for item in items)
@@ -414,7 +413,7 @@ class CompactArray(Array):
             (UnsignedVarInt32.encode(len(items) + 1), *encoded_items),
         )
 
-    def decode(self, data: BytesIO) -> Optional[list[Union[Any, tuple[Any, ...]]]]:
+    def decode(self, data: BytesIO) -> list[Any | tuple[Any, ...]] | None:
         length = UnsignedVarInt32.decode(data) - 1
         if length == -1:
             return None

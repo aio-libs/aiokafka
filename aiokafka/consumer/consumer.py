@@ -452,7 +452,7 @@ class AIOKafkaConsumer:
                 await self._client._wait_on_metadata(topic)
 
     def _validate_topics(self, topics):
-        if not isinstance(topics, (tuple, set, list)):
+        if not isinstance(topics, tuple | set | list):
             raise TypeError("Topics should be list of strings")
         return set(topics)
 

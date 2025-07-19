@@ -22,7 +22,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: 3.9
+        python-version: "3.10"
 
     - name: Install system dependencies
       run: |
@@ -39,10 +39,10 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
-        key: ${{ runner.os }}-py-3.9-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
+        key: ${{ runner.os }}-py-3.10-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
         # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
         restore-keys: |
-          ${{ runner.os }}-py-3.9-
+          ${{ runner.os }}-py-3.10-
 
     - name: Install python dependencies
       run: |
@@ -73,7 +73,7 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
     - uses: actions/checkout@v4
@@ -141,7 +141,7 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
     - uses: actions/checkout@v4
@@ -215,9 +215,6 @@ jobs:
             scala: "2.13"
 
           # Older python versions against latest broker
-          - python: "3.9"
-            kafka: "2.8.1"
-            scala: "2.13"
           - python: "3.10"
             kafka: "2.8.1"
             scala: "2.13"

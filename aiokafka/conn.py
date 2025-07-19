@@ -411,7 +411,7 @@ class AIOKafkaConnection:
         try:
             read_task.result()
         except Exception as exc:
-            if not isinstance(exc, (OSError, EOFError, ConnectionError)):
+            if not isinstance(exc, OSError | EOFError | ConnectionError):
                 log.exception("Unexpected exception in AIOKafkaConnection")
 
             self = self_ref()
@@ -783,7 +783,7 @@ class ScramAuthenticator(BaseSaslAuthenticator):
 
     @staticmethod
     def _xor_bytes(left, right):
-        return bytes(lb ^ rb for lb, rb in zip(left, right))
+        return bytes(lb ^ rb for lb, rb in zip(left, right, strict=False))
 
 
 class OAuthAuthenticator(BaseSaslAuthenticator):

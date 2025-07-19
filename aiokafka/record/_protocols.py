@@ -4,13 +4,12 @@ from collections.abc import Iterable, Iterator
 from typing import (
     Any,
     ClassVar,
-    Optional,
+    Literal,
     Protocol,
-    Union,
     runtime_checkable,
 )
 
-from typing_extensions import Literal, Never
+from typing_extensions import Never
 
 from ._types import (
     CodecGzipT,
@@ -38,34 +37,34 @@ class DefaultRecordBatchBuilderProtocol(Protocol):
     def append(
         self,
         offset: int,
-        timestamp: Optional[int],
-        key: Optional[bytes],
-        value: Optional[bytes],
-        headers: list[tuple[str, Optional[bytes]]],
-    ) -> Optional[DefaultRecordMetadataProtocol]: ...
+        timestamp: int | None,
+        key: bytes | None,
+        value: bytes | None,
+        headers: list[tuple[str, bytes | None]],
+    ) -> DefaultRecordMetadataProtocol | None: ...
     def build(self) -> bytearray: ...
     def size(self) -> int: ...
     def size_in_bytes(
         self,
         offset: int,
         timestamp: int,
-        key: Optional[bytes],
-        value: Optional[bytes],
-        headers: list[tuple[str, Optional[bytes]]],
+        key: bytes | None,
+        value: bytes | None,
+        headers: list[tuple[str, bytes | None]],
     ) -> int: ...
     @classmethod
     def size_of(
         cls,
-        key: Optional[bytes],
-        value: Optional[bytes],
-        headers: list[tuple[str, Optional[bytes]]],
+        key: bytes | None,
+        value: bytes | None,
+        headers: list[tuple[str, bytes | None]],
     ) -> int: ...
     @classmethod
     def estimate_size_in_bytes(
         cls,
-        key: Optional[bytes],
-        value: Optional[bytes],
-        headers: list[tuple[str, Optional[bytes]]],
+        key: bytes | None,
+        value: bytes | None,
+        headers: list[tuple[str, bytes | None]],
     ) -> int: ...
     def set_producer_state(
         self, producer_id: int, producer_epoch: int, base_sequence: int
@@ -98,7 +97,7 @@ class DefaultRecordBatchProtocol(Iterator["DefaultRecordProtocol"], Protocol):
     CODEC_LZ4: ClassVar[CodecLz4T]
     CODEC_ZSTD: ClassVar[CodecZstdT]
 
-    def __init__(self, buffer: Union[bytes, bytearray, memoryview]) -> None: ...
+    def __init__(self, buffer: bytes | bytearray | memoryview) -> None: ...
     @property
     def base_offset(self) -> int: ...
     @property
@@ -139,9 +138,9 @@ class DefaultRecordProtocol(Protocol):
         offset: int,
         timestamp: int,
         timestamp_type: int,
-        key: Optional[bytes],
-        value: Optional[bytes],
-        headers: list[tuple[str, Optional[bytes]]],
+        key: bytes | None,
+        value: bytes | None,
+        headers: list[tuple[str, bytes | None]],
     ) -> None: ...
     @property
     def offset(self) -> int: ...
@@ -154,15 +153,15 @@ class DefaultRecordProtocol(Protocol):
         """CREATE_TIME(0) or APPEND_TIME(1)"""
 
     @property
-    def key(self) -> Optional[bytes]:
+    def key(self) -> bytes | None:
         """Bytes key or None"""
 
     @property
-    def value(self) -> Optional[bytes]:
+    def value(self) -> bytes | None:
         """Bytes value or None"""
 
     @property
-    def headers(self) -> list[tuple[str, Optional[bytes]]]: ...
+    def headers(self) -> list[tuple[str, bytes | None]]: ...
     @property
     def checksum(self) -> None: ...
 
@@ -177,11 +176,11 @@ class LegacyRecordBatchBuilderProtocol(Protocol):
     def append(
         self,
         offset: int,
-        timestamp: Optional[int],
-        key: Optional[bytes],
-        value: Optional[bytes],
+        timestamp: int | None,
+        key: bytes | None,
+        value: bytes | None,
         headers: Any = None,
-    ) -> Optional[LegacyRecordMetadataProtocol]: ...
+    ) -> LegacyRecordMetadataProtocol | None: ...
     def build(self) -> bytearray:
         """Compress batch to be ready for send"""
 
@@ -192,8 +191,8 @@ class LegacyRecordBatchBuilderProtocol(Protocol):
         self,
         offset: int,
         timestamp: int,
-        key: Optional[bytes],
-        value: Optional[bytes],
+        key: bytes | None,
+        value: bytes | None,
     ) -> int:
         """Actual size of message to add"""
 
@@ -221,9 +220,9 @@ class LegacyRecordBatchProtocol(Iterable["LegacyRecordProtocol"], Protocol):
 
     is_control_batch: bool
     is_transactional: bool
-    producer_id: Optional[int]
+    producer_id: int | None
 
-    def __init__(self, buffer: Union[bytes, bytearray, memoryview], magic: int): ...
+    def __init__(self, buffer: bytes | bytearray | memoryview, magic: int): ...
     @property
     def next_offset(self) -> int: ...
     def validate_crc(self) -> bool: ...
@@ -234,28 +233,28 @@ class LegacyRecordProtocol(Protocol):
     def __init__(
         self,
         offset: int,
-        timestamp: Optional[int],
-        timestamp_type: Optional[Literal[0, 1]],
-        key: Optional[bytes],
-        value: Optional[bytes],
+        timestamp: int | None,
+        timestamp_type: Literal[0, 1] | None,
+        key: bytes | None,
+        value: bytes | None,
         crc: int,
     ) -> None: ...
     @property
     def offset(self) -> int: ...
     @property
-    def timestamp(self) -> Optional[int]:
+    def timestamp(self) -> int | None:
         """Epoch milliseconds"""
 
     @property
-    def timestamp_type(self) -> Optional[Literal[0, 1]]:
+    def timestamp_type(self) -> Literal[0, 1] | None:
         """CREATE_TIME(0) or APPEND_TIME(1)"""
 
     @property
-    def key(self) -> Optional[bytes]:
+    def key(self) -> bytes | None:
         """Bytes key or None"""
 
     @property
-    def value(self) -> Optional[bytes]:
+    def value(self) -> bytes | None:
         """Bytes value or None"""
 
     @property
@@ -270,4 +269,4 @@ class MemoryRecordsProtocol(Protocol):
     def has_next(self) -> bool: ...
     def next_batch(
         self,
-    ) -> Optional[Union[DefaultRecordBatchProtocol, LegacyRecordBatchProtocol]]: ...
+    ) -> DefaultRecordBatchProtocol | LegacyRecordBatchProtocol | None: ...

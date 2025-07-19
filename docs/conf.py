@@ -12,8 +12,8 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -32,7 +32,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 
-import re, os.path
+import os.path
+import re
+
 
 def get_release():
     regexp = re.compile(r"^__version__\W*=\W*(?P<quote>['\"])([\d.abrcdev]+)(?P=quote)")
@@ -44,8 +46,7 @@ def get_release():
             match = regexp.match(line)
             if match is not None:
                 return match.group(1)
-        else:
-            raise RuntimeError('Cannot find version in aiokafka/__init__.py')
+        raise RuntimeError('Cannot find version in aiokafka/__init__.py')
 
 
 def get_version(release):
@@ -115,9 +116,7 @@ exclude_patterns = ['_build']
 
 nitpicky = True
 nitpick_ignore = [
-    ("py:class", "Optional[~ KT]"),
     ("py:class", "KT"),
-    ("py:class", "Optional[~ VT]"),
     ("py:class", "VT"),
     ("py:class", "typing_extensions.Buffer"),
 ]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Generic, NamedTuple, Optional, TypeVar
+from typing import Generic, NamedTuple, TypeVar
 
 from aiokafka.errors import KafkaError
 
@@ -39,7 +39,7 @@ class BrokerMetadata(NamedTuple):
     port: int
     "The Kafka broker port"
 
-    rack: Optional[str]
+    rack: str | None
     """The rack of the broker, which is used to in rack aware partition
     assignment for fault tolerance.
     Examples: `RACK1`, `us-east-1d`. Default: None
@@ -63,7 +63,7 @@ class PartitionMetadata(NamedTuple):
     isr: list[int]
     "The ids of all brokers that contain in-sync replicas of the partition"
 
-    error: Optional[KafkaError]
+    error: KafkaError | None
     "A KafkaError object associated with the request for this partition metadata"
 
 
@@ -104,7 +104,7 @@ class RecordMetadata(NamedTuple):
     details on offsets.
     """
 
-    timestamp: Optional[int]
+    timestamp: int | None
     "Timestamp in millis, None for older Brokers"
 
     timestamp_type: int
@@ -116,7 +116,7 @@ class RecordMetadata(NamedTuple):
     If the broker set it's own timestamp, ``1`` will be returned (``LogAppendTime``).
     """
 
-    log_start_offset: Optional[int]
+    log_start_offset: int | None
     ""
 
 
@@ -141,13 +141,13 @@ class ConsumerRecord(Generic[KT, VT]):
     timestamp_type: int
     "The timestamp type of this record"
 
-    key: Optional[KT]
+    key: KT | None
     "The key (or `None` if no key is specified)"
 
-    value: Optional[VT]
+    value: VT | None
     "The value"
 
-    checksum: Optional[int]
+    checksum: int | None
     "Deprecated"
 
     serialized_key_size: int
@@ -162,4 +162,4 @@ class ConsumerRecord(Generic[KT, VT]):
 
 class OffsetAndTimestamp(NamedTuple):
     offset: int
-    timestamp: Optional[int]  # Only None if used with old broker version
+    timestamp: int | None  # Only None if used with old broker version

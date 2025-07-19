@@ -6,9 +6,7 @@ from asyncio import AbstractEventLoop
 from collections.abc import Awaitable, Coroutine
 from typing import (
     Any,
-    Optional,
     TypeVar,
-    Union,
     cast,
 )
 
@@ -34,13 +32,13 @@ def create_task(coro: Coroutine[Any, Any, T]) -> asyncio.Task[T]:
     return loop.create_task(coro)
 
 
-def create_future(loop: Optional[AbstractEventLoop] = None) -> asyncio.Future[T]:
+def create_future(loop: AbstractEventLoop | None = None) -> asyncio.Future[T]:
     if loop is None:
         loop = get_running_loop()
     return loop.create_future()
 
 
-async def wait_for(fut: Awaitable[T], timeout: Union[None, int, float] = None) -> T:
+async def wait_for(fut: Awaitable[T], timeout: None | int | float = None) -> T:
     # A replacement for buggy (since 3.8.6) `asyncio.wait_for()`
     # https://bugs.python.org/issue42130
     async with async_timeout.timeout(timeout):
@@ -59,7 +57,7 @@ def parse_kafka_version(api_version: str) -> tuple[int, int, int]:
 
 
 def commit_structure_validate(
-    offsets: dict[TopicPartition, Union[int, tuple[int, str], OffsetAndMetadata]],
+    offsets: dict[TopicPartition, int | tuple[int, str] | OffsetAndMetadata],
 ) -> dict[TopicPartition, OffsetAndMetadata]:
     # validate `offsets` structure
     if not offsets or not isinstance(offsets, dict):

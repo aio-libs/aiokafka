@@ -1,7 +1,6 @@
 from collections import defaultdict
-from collections.abc import Generator, Sequence
+from collections.abc import Callable, Generator, Sequence
 from random import randint, sample
-from typing import Callable, Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -29,8 +28,8 @@ def reset_sticky_assignor() -> Generator[None, None, None]:
 def create_cluster(
     mocker: MockerFixture,
     topics: set[str],
-    topics_partitions: Optional[set[int]] = None,
-    topic_partitions_lambda: Optional[Callable[[str], Optional[set[int]]]] = None,
+    topics_partitions: set[int] | None = None,
+    topic_partitions_lambda: Callable[[str], set[int] | None] | None = None,
 ) -> MagicMock:
     cluster = mocker.MagicMock()
     cluster.topics.return_value = topics
@@ -715,7 +714,7 @@ def test_stickiness(mocker: MockerFixture) -> None:
 
 
 def test_assignment_updated_for_deleted_topic(mocker: MockerFixture) -> None:
-    def topic_partitions(topic: str) -> Optional[set[int]]:
+    def topic_partitions(topic: str) -> set[int] | None:
         if topic == "t1":
             return {0}
         elif topic == "t3":

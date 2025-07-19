@@ -1,7 +1,7 @@
 from collections.abc import Generator
-from typing import Any, ClassVar, final
+from typing import Any, ClassVar, Literal, final
 
-from typing_extensions import Buffer, Literal, Never
+from typing_extensions import Buffer, Never
 
 from aiokafka.record._protocols import (
     LegacyRecordBatchBuilderProtocol,

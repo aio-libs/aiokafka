@@ -1,5 +1,4 @@
 from collections.abc import Iterable
-from typing import Optional
 
 from .api import Request, Response
 from .types import (
@@ -1392,7 +1391,7 @@ class DeleteRecordsRequest_v2(Request):
         self,
         topics: Iterable[tuple[str, Iterable[tuple[int, int]]]],
         timeout_ms: int,
-        tags: Optional[dict[int, bytes]] = None,
+        tags: dict[int, bytes] | None = None,
     ) -> None:
         super().__init__(
             [

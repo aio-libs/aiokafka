@@ -20,7 +20,7 @@
 # used to construct the correct class for Batch itself.
 
 import struct
-from typing import Optional, Union, final
+from typing import final
 
 from aiokafka.errors import CorruptRecordException
 from aiokafka.util import NO_EXTENSIONS
@@ -47,7 +47,7 @@ class _MemoryRecordsPy(MemoryRecordsProtocol):
         self._buffer = bytes_data
         self._pos: int = 0
         # We keep one slice ahead so `has_next` will return very fast
-        self._next_slice: Optional[memoryview] = None
+        self._next_slice: memoryview | None = None
         self._remaining_bytes = 0
         self._cache_next()
 
@@ -87,7 +87,7 @@ class _MemoryRecordsPy(MemoryRecordsProtocol):
     # NOTE: same cache for LOAD_FAST as above
     def next_batch(
         self, _min_slice: int = MIN_SLICE, _magic_offset: int = MAGIC_OFFSET
-    ) -> Optional[Union[DefaultRecordBatchProtocol, LegacyRecordBatchProtocol]]:
+    ) -> DefaultRecordBatchProtocol | LegacyRecordBatchProtocol | None:
         next_slice = self._next_slice
         if next_slice is None:
             return None

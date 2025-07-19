@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from os import PathLike
 from ssl import Purpose, SSLContext, create_default_context
-from typing import Callable, Union
 
 from typing_extensions import Buffer
 
@@ -12,14 +12,16 @@ log = logging.getLogger(__name__)
 
 def create_ssl_context(
     *,
-    cafile: Union[str, bytes, PathLike[str], PathLike[bytes], None] = None,
-    capath: Union[str, bytes, PathLike[str], PathLike[bytes], None] = None,
-    cadata: Union[str, Buffer, None] = None,
-    certfile: Union[str, bytes, PathLike[str], PathLike[bytes], None] = None,
-    keyfile: Union[str, bytes, PathLike[str], PathLike[bytes], None] = None,
-    password: Union[
-        Callable[[], Union[str, bytes, bytearray]], str, bytes, bytearray, None
-    ] = None,
+    cafile: str | bytes | PathLike[str] | PathLike[bytes] | None = None,
+    capath: str | bytes | PathLike[str] | PathLike[bytes] | None = None,
+    cadata: str | Buffer | None = None,
+    certfile: str | bytes | PathLike[str] | PathLike[bytes] | None = None,
+    keyfile: str | bytes | PathLike[str] | PathLike[bytes] | None = None,
+    password: Callable[[], str | bytes | bytearray]
+    | str
+    | bytes
+    | bytearray
+    | None = None,
 ) -> SSLContext:
     """
     Simple helper, that creates an :class:`~ssl.SSLContext` based on params similar to

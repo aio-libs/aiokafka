@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import Any, ClassVar, Union
+from typing import Any, ClassVar
 
 from typing_extensions import Self
 
@@ -29,7 +29,7 @@ class Struct:
         return self.SCHEMA.encode([self.__dict__[name] for name in self.SCHEMA.names])
 
     @classmethod
-    def decode(cls, data: Union[BytesIO, bytes]) -> Self:
+    def decode(cls, data: BytesIO | bytes) -> Self:
         if isinstance(data, bytes):
             data = BytesIO(data)
         return cls(*[field.decode(data) for field in cls.SCHEMA.fields])
@@ -41,7 +41,7 @@ class Struct:
 
     def __repr__(self) -> str:
         key_vals: list[str] = []
-        for name, field in zip(self.SCHEMA.names, self.SCHEMA.fields):
+        for name, field in zip(self.SCHEMA.names, self.SCHEMA.fields, strict=False):
             key_vals.append(f"{name}={field.repr(self.__dict__[name])}")
         return self.__class__.__name__ + "(" + ", ".join(key_vals) + ")"
 

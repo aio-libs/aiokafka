@@ -1,9 +1,8 @@
 import struct
-from typing import Optional
+from typing import Literal
 from unittest import mock
 
 import pytest
-from typing_extensions import Literal
 
 import aiokafka.codec
 from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
@@ -23,8 +22,8 @@ from aiokafka.record.legacy_records import LegacyRecordBatch, LegacyRecordBatchB
 )
 def test_read_write_serde_v0_v1_no_compression(
     magic: Literal[0, 1],
-    key: Optional[bytes],
-    value: Optional[bytes],
+    key: bytes | None,
+    value: bytes | None,
     checksum: tuple[int, int],
 ) -> None:
     builder = LegacyRecordBatchBuilder(

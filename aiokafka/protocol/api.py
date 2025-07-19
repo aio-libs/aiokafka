@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 from io import BytesIO
-from typing import Any, ClassVar, Optional, Union
+from typing import Any, ClassVar
 
 from .struct import Struct
 from .types import Array, Int16, Int32, Schema, String, TaggedFields
@@ -39,7 +39,7 @@ class RequestHeader_v1(Struct):
         request: Request,
         correlation_id: int = 0,
         client_id: str = "aiokafka",
-        tags: Optional[dict[int, bytes]] = None,
+        tags: dict[int, bytes] | None = None,
     ):
         super().__init__(
             request.API_KEY, request.API_VERSION, correlation_id, client_id, tags or {}
@@ -91,7 +91,7 @@ class Request(Struct, metaclass=abc.ABCMeta):
 
     def build_request_header(
         self, correlation_id: int, client_id: str
-    ) -> Union[RequestHeader_v0, RequestHeader_v1]:
+    ) -> RequestHeader_v0 | RequestHeader_v1:
         if self.FLEXIBLE_VERSION:
             return RequestHeader_v1(
                 self, correlation_id=correlation_id, client_id=client_id
@@ -101,8 +101,8 @@ class Request(Struct, metaclass=abc.ABCMeta):
         )
 
     def parse_response_header(
-        self, read_buffer: Union[BytesIO, bytes]
-    ) -> Union[ResponseHeader_v0, ResponseHeader_v1]:
+        self, read_buffer: BytesIO | bytes
+    ) -> ResponseHeader_v0 | ResponseHeader_v1:
         if self.FLEXIBLE_VERSION:
             return ResponseHeader_v1.decode(read_buffer)
         return ResponseHeader_v0.decode(read_buffer)
@@ -128,9 +128,9 @@ class Response(Struct, metaclass=abc.ABCMeta):
         return _to_object(self.SCHEMA, self)
 
 
-def _to_object(schema: Schema, data: Union[Struct, dict[int, Any]]) -> dict[str, Any]:
+def _to_object(schema: Schema, data: Struct | dict[int, Any]) -> dict[str, Any]:
     obj: dict[str, Any] = {}
-    for idx, (name, _type) in enumerate(zip(schema.names, schema.fields)):
+    for idx, (name, _type) in enumerate(zip(schema.names, schema.fields, strict=False)):
         if isinstance(data, Struct):
             val = data.get_item(name)
         else:
