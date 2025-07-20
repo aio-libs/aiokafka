@@ -282,7 +282,7 @@ def test_unsupported_yet_codec() -> None:
     compression_type = DefaultRecordBatch.CODEC_MASK  # It doesn't exist
     builder = DefaultRecordBatchBuilder(
         magic=2,
-        compression_type=compression_type,  # type: ignore[arg-type]
+        compression_type=compression_type,
         is_transactional=0,
         producer_id=-1,
         producer_epoch=-1,

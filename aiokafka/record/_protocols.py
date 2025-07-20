@@ -11,23 +11,12 @@ from typing import (
 
 from typing_extensions import Never
 
-from ._types import (
-    CodecGzipT,
-    CodecLz4T,
-    CodecMaskT,
-    CodecNoneT,
-    CodecSnappyT,
-    CodecZstdT,
-    DefaultCompressionTypeT,
-    LegacyCompressionTypeT,
-)
-
 
 class DefaultRecordBatchBuilderProtocol(Protocol):
     def __init__(
         self,
         magic: int,
-        compression_type: DefaultCompressionTypeT,
+        compression_type: int,
         is_transactional: int,
         producer_id: int,
         producer_epoch: int,
@@ -90,12 +79,12 @@ class DefaultRecordMetadataProtocol(Protocol):
 
 
 class DefaultRecordBatchProtocol(Iterator["DefaultRecordProtocol"], Protocol):
-    CODEC_MASK: ClassVar[CodecMaskT]
-    CODEC_NONE: ClassVar[CodecNoneT]
-    CODEC_GZIP: ClassVar[CodecGzipT]
-    CODEC_SNAPPY: ClassVar[CodecSnappyT]
-    CODEC_LZ4: ClassVar[CodecLz4T]
-    CODEC_ZSTD: ClassVar[CodecZstdT]
+    CODEC_MASK: ClassVar[int]
+    CODEC_NONE: ClassVar[int]
+    CODEC_GZIP: ClassVar[int]
+    CODEC_SNAPPY: ClassVar[int]
+    CODEC_LZ4: ClassVar[int]
+    CODEC_ZSTD: ClassVar[int]
 
     def __init__(self, buffer: bytes | bytearray | memoryview) -> None: ...
     @property
@@ -170,7 +159,7 @@ class LegacyRecordBatchBuilderProtocol(Protocol):
     def __init__(
         self,
         magic: Literal[0, 1],
-        compression_type: LegacyCompressionTypeT,
+        compression_type: int,
         batch_size: int,
     ) -> None: ...
     def append(
@@ -213,10 +202,10 @@ class LegacyRecordMetadataProtocol(Protocol):
 
 
 class LegacyRecordBatchProtocol(Iterable["LegacyRecordProtocol"], Protocol):
-    CODEC_MASK: ClassVar[CodecMaskT]
-    CODEC_GZIP: ClassVar[CodecGzipT]
-    CODEC_SNAPPY: ClassVar[CodecSnappyT]
-    CODEC_LZ4: ClassVar[CodecLz4T]
+    CODEC_MASK: ClassVar[int]
+    CODEC_GZIP: ClassVar[int]
+    CODEC_SNAPPY: ClassVar[int]
+    CODEC_LZ4: ClassVar[int]
 
     is_control_batch: bool
     is_transactional: bool

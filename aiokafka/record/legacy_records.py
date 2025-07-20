@@ -7,7 +7,7 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from typing import Any, Literal, final
 
-from typing_extensions import Never, TypeIs, assert_never
+from typing_extensions import Never
 
 import aiokafka.codec as codecs
 from aiokafka.codec import (
@@ -26,13 +26,6 @@ from ._protocols import (
     LegacyRecordBatchProtocol,
     LegacyRecordMetadataProtocol,
     LegacyRecordProtocol,
-)
-from ._types import (
-    CodecGzipT,
-    CodecLz4T,
-    CodecMaskT,
-    CodecSnappyT,
-    LegacyCompressionTypeT,
 )
 
 
@@ -85,18 +78,16 @@ class LegacyRecordBase:
     KEY_OFFSET_V1 = HEADER_STRUCT_V1.size
     KEY_LENGTH = VALUE_LENGTH = struct.calcsize(">i")  # Bytes length is Int32
 
-    CODEC_MASK: CodecMaskT = 0x07
-    CODEC_GZIP: CodecGzipT = 0x01
-    CODEC_SNAPPY: CodecSnappyT = 0x02
-    CODEC_LZ4: CodecLz4T = 0x03
+    CODEC_MASK = 0x07
+    CODEC_GZIP = 0x01
+    CODEC_SNAPPY = 0x02
+    CODEC_LZ4 = 0x03
     TIMESTAMP_TYPE_MASK = 0x08
 
     LOG_APPEND_TIME = 1
     CREATE_TIME = 0
 
-    def _assert_has_codec(
-        self, compression_type: int
-    ) -> TypeIs[CodecGzipT | CodecSnappyT | CodecLz4T]:
+    def _assert_has_codec(self, compression_type: int) -> bool:
         if compression_type == self.CODEC_GZIP:
             checker, name = codecs.has_gzip, "gzip"
         elif compression_type == self.CODEC_SNAPPY:
@@ -189,7 +180,8 @@ class _LegacyRecordBatchPy(LegacyRecordBase, LegacyRecordBatchProtocol):
             else:
                 uncompressed = lz4_decode(data.tobytes())
         else:
-            assert_never(compression_type)
+            # Must not be possible
+            raise RuntimeError(f"Invalid compression codec {compression_type:#04x}")
         return uncompressed
 
     def _read_header(self, pos: int) -> tuple[int, int, int, int, int, int | None]:
@@ -323,7 +315,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase, LegacyRecordBatchBuilderProt
     def __init__(
         self,
         magic: Literal[0, 1],
-        compression_type: LegacyCompressionTypeT,
+        compression_type: int,
         batch_size: int,
     ) -> None:
         assert magic in [0, 1]
@@ -477,7 +469,10 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase, LegacyRecordBatchBuilderProt
                     compressed = lz4_encode(bytes(buf))
 
             else:
-                assert_never(self._compression_type)
+                # Must not be possible
+                raise RuntimeError(
+                    f"Invalid compression codec {self._compression_type:#04x}"
+                )
             compressed_size = len(compressed)
             size = self._size_in_bytes(key_size=0, value_size=compressed_size)
             if size > len(self._buffer):
