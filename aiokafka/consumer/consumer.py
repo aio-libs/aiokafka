@@ -260,6 +260,7 @@ class AIOKafkaConsumer:
         exclude_internal_topics=True,
         connections_max_idle_ms=540000,
         isolation_level="read_uncommitted",
+        rack_id="",
         sasl_mechanism="PLAIN",
         sasl_plain_password=None,
         sasl_plain_username=None,
@@ -324,6 +325,7 @@ class AIOKafkaConsumer:
         self._max_poll_records = max_poll_records
         self._consumer_timeout = consumer_timeout_ms / 1000
         self._isolation_level = isolation_level
+        self._rack_id = rack_id
         self._rebalance_timeout_ms = rebalance_timeout_ms
         self._max_poll_interval_ms = max_poll_interval_ms
 
@@ -397,6 +399,7 @@ class AIOKafkaConsumer:
             retry_backoff_ms=self._retry_backoff_ms,
             auto_offset_reset=self._auto_offset_reset,
             isolation_level=self._isolation_level,
+            rack_id=self._rack_id,
         )
 
         if self._group_id is not None:
