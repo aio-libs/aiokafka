@@ -5,6 +5,13 @@ Changelog
 0.13.0 (????-??-??)
 ===================
 
+New features:
+
+* Allow SASL Connections to Periodically Re-Authenticate (`KIP-368`_) (pr #1105 by @kprzybyla)
+
+.. _KIP-368: https://cwiki.apache.org/confluence/display/KAFKA/KIP-368%3A+Allow+SASL+Connections+to+Periodically+Re-Authenticate
+
+
 Improved Documentation:
 
 * Fix incomplete documentation for `AIOKafkaConsumer.offset_for_times``
