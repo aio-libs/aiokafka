@@ -336,6 +336,7 @@ class AIOKafkaConsumer:
         if loop.get_debug():
             self._source_traceback = traceback.extract_stack(sys._getframe(1))
         self._closed = False
+        self._started: bool = False
 
         if topics:
             topics = self._validate_topics(topics)
@@ -446,6 +447,11 @@ class AIOKafkaConsumer:
                 await self._client.force_metadata_update()
                 self._coordinator.assign_all_partitions(check_unknown=True)
 
+        self._started = True
+
+    def _assert_started(self):
+        assert self._started, "The consumer needs to start() before it can be used"
+
     async def _wait_topics(self):
         if self._subscription.subscription is not None:
             for topic in self._subscription.subscription.topics:
@@ -510,6 +516,7 @@ class AIOKafkaConsumer:
         * Commit last consumed message if autocommit enabled
         * Leave group if used Consumer Groups
         """
+        self._assert_started()
         if self._closed:
             return
         log.debug("Closing the KafkaConsumer.")
@@ -575,6 +582,7 @@ class AIOKafkaConsumer:
 
         .. _kafka-python: https://github.com/dpkp/kafka-python
         """
+        self._assert_started()
         if self._group_id is None:
             raise IllegalOperation("Requires group_id")
 
@@ -615,6 +623,7 @@ class AIOKafkaConsumer:
         Raises:
             IllegalOperation: If used with ``group_id == None``
         """
+        self._assert_started()
         if self._group_id is None:
             raise IllegalOperation("Requires group_id")
 
@@ -633,6 +642,7 @@ class AIOKafkaConsumer:
         Returns:
             set: topics
         """
+        self._assert_started()
         cluster = await self._client.fetch_all_metadata()
         return cluster.topics()
 
@@ -669,6 +679,7 @@ class AIOKafkaConsumer:
             :exc:`~aiokafka.errors.IllegalStateError` in case of unassigned
             partition
         """
+        self._assert_started()
         while True:
             if not self._subscription.is_assigned(partition):
                 raise IllegalStateError(f"Partition {partition} is not assigned")
@@ -799,6 +810,7 @@ class AIOKafkaConsumer:
         .. versionadded:: 0.3.0
 
         """
+        self._assert_started()
         if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition instances")
 
@@ -839,6 +851,7 @@ class AIOKafkaConsumer:
         .. versionadded:: 0.3.0
 
         """
+        self._assert_started()
         if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition instances")
 
@@ -883,6 +896,7 @@ class AIOKafkaConsumer:
             :exc:`~aiokafka.errors.IllegalStateError` in case of unassigned
             partition
         """
+        self._assert_started()
         if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition instances")
 
@@ -939,6 +953,7 @@ class AIOKafkaConsumer:
         .. versionadded:: 0.3.0
 
         """
+        self._assert_started()
         if self._client.api_version <= (0, 10, 0):
             raise UnsupportedVersionError(
                 "offsets_for_times API not supported"
@@ -981,6 +996,7 @@ class AIOKafkaConsumer:
         .. versionadded:: 0.3.0
 
         """
+        self._assert_started()
         if self._client.api_version <= (0, 10, 0):
             raise UnsupportedVersionError(
                 "offsets_for_times API not supported"
@@ -1018,6 +1034,7 @@ class AIOKafkaConsumer:
         .. versionadded:: 0.3.0
 
         """
+        self._assert_started()
         if self._client.api_version <= (0, 10, 0):
             raise UnsupportedVersionError(
                 "offsets_for_times API not supported"
@@ -1149,6 +1166,7 @@ class AIOKafkaConsumer:
                 print(message.offset, message.key, message.value)
 
         """
+        self._assert_started()
         assert all(isinstance(k, TopicPartition) for k in partitions)
         if self._closed:
             raise ConsumerStoppedError()
@@ -1196,6 +1214,7 @@ class AIOKafkaConsumer:
                     print(message.offset, message.key, message.value)
 
         """
+        self._assert_started()
         assert all(isinstance(k, TopicPartition) for k in partitions)
         if self._closed:
             raise ConsumerStoppedError()
