@@ -255,7 +255,7 @@ def test_unsupported_yet_codec() -> None:
     compression_type = LegacyRecordBatch.CODEC_MASK  # It doesn't exist
     builder = LegacyRecordBatchBuilder(
         magic=0,
-        compression_type=compression_type,  # type: ignore[arg-type]
+        compression_type=compression_type,
         batch_size=1024,
     )
     with pytest.raises(UnsupportedCodecError):
