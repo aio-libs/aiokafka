@@ -44,6 +44,9 @@ DEFAULT_KAFKA_PORT = 9092
 
 READER_LIMIT = 2**16
 SASL_QOP_AUTH = 1
+SASL_REQUEST_API_KEYS = frozenset(
+    request.API_KEY for request in (*SaslHandShakeRequest, *SaslAuthenticateRequest)
+)
 
 
 class CloseReason(IntEnum):
@@ -116,6 +119,24 @@ async def create_conn(
     return conn
 
 
+def calculate_sasl_reauthentication_time(session_lifetime_ms: int) -> int:
+    """
+    Calculates the SASL session re-authentication time following
+    the Java Kafka implementation from SaslClientAuthenticator.java
+    ReauthInfo#setAuthenticationEndAndSessionReauthenticationTimes.
+
+    The re-authentication factor is calculated by choosing random value
+    between 0.85 and 0.95, which accounts for both network latency and clock
+    drift as well as potential jitter which may cause re-authentication storm
+    across many channels simultaneously.
+    """
+
+    reauthentication_time_factor: float = random.uniform(0.85, 0.95)
+    expiration_time: float = (session_lifetime_ms * reauthentication_time_factor) / 1000
+
+    return int(expiration_time)
+
+
 class AIOKafkaProtocol(asyncio.StreamReaderProtocol):
     def __init__(self, closed_fut, *args, loop, **kw):
         self._closed_fut = closed_fut
@@ -184,6 +205,9 @@ class AIOKafkaConnection:
         self._sasl_kerberos_service_name = sasl_kerberos_service_name
         self._sasl_kerberos_domain_name = sasl_kerberos_domain_name
         self._sasl_oauth_token_provider = sasl_oauth_token_provider
+        self._sasl_reauthentication_task = None
+        self._sasl_reauthentication_done = asyncio.Event()
+        self._sasl_reauthentication_done.set()
 
         # Version hint is the version determined by initial client bootstrap
         self._version_hint = version_hint
@@ -358,6 +382,16 @@ class AIOKafkaConnection:
                     raise exc
                 auth_bytes = resp.sasl_auth_bytes
 
+                if (
+                    hasattr(resp, "session_lifetime_ms")
+                    and resp.session_lifetime_ms != 0
+                ):
+                    self._sasl_reauthentication_task = (
+                        self._create_sasl_reauthentication_task(
+                            resp.session_lifetime_ms
+                        )
+                    )
+
         if self._sasl_mechanism == "GSSAPI":
             log.info("Authenticated as %s via GSSAPI", self.sasl_principal)
         elif self._sasl_mechanism == "OAUTHBEARER":
@@ -368,6 +402,69 @@ class AIOKafkaConnection:
                 self._sasl_plain_username,
                 self._sasl_mechanism,
             )
+
+    def _create_sasl_reauthentication_task(
+        self, session_lifetime_ms: int
+    ) -> asyncio.Task:
+        self_ref = weakref.ref(self)
+        timeout = calculate_sasl_reauthentication_time(session_lifetime_ms)
+
+        log.info(
+            "SASL re-authentication required after %ds for connection %s:%s",
+            timeout,
+            self._host,
+            self._port,
+        )
+
+        sasl_reauthentication_task = create_task(
+            self._sasl_reauthentication(self_ref, timeout)
+        )
+        sasl_reauthentication_task.add_done_callback(
+            functools.partial(self._on_sasl_reauthentication_task_error, self_ref)
+        )
+
+        return sasl_reauthentication_task
+
+    @staticmethod
+    async def _sasl_reauthentication(
+        self_ref: weakref.ReferenceType["AIOKafkaConnection"],
+        sasl_reauthentication_time: int,
+    ) -> None:
+        self = self_ref()
+
+        if self is None:
+            return
+
+        await asyncio.sleep(sasl_reauthentication_time)
+        self._sasl_reauthentication_done.clear()
+
+        await self._do_sasl_handshake()
+        self._sasl_reauthentication_done.set()
+
+        log.info(
+            "SASL re-authentication complete for connection %s:%s",
+            self._host,
+            self._port,
+        )
+
+    @staticmethod
+    def _on_sasl_reauthentication_task_error(
+        self_ref: weakref.ReferenceType["AIOKafkaConnection"],
+        sasl_reauthentication_task: asyncio.Task,
+    ) -> None:
+        if sasl_reauthentication_task.cancelled():
+            return
+
+        try:
+            sasl_reauthentication_task.result()
+        except BaseException as exc:
+            if not isinstance(exc, (OSError, EOFError, ConnectionError)):
+                log.exception("Unexpected exception in AIOKafkaConnection")
+
+            self = self_ref()
+
+            if self is not None:
+                self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
 
     def authenticator_plain(self):
         return SaslPlainAuthenticator(
@@ -458,6 +555,18 @@ class AIOKafkaConnection:
                 f"No connection to broker at {self._host}:{self._port}"
             )
 
+        if (
+            self._sasl_reauthentication_done.is_set()
+            or request.API_KEY in SASL_REQUEST_API_KEYS
+        ):
+            return self._send(request=request, expect_response=expect_response)
+
+        return self._send_after_sasl_reauthentication(
+            request=request,
+            expect_response=expect_response,
+        )
+
+    def _send(self, request, expect_response=True):
         correlation_id = self._next_correlation_id()
         header = request.build_request_header(
             correlation_id=correlation_id, client_id=self._client_id
@@ -481,6 +590,11 @@ class AIOKafkaConnection:
             (correlation_id, request, fut),
         )
         return wait_for(fut, self._request_timeout)
+
+    async def _send_after_sasl_reauthentication(self, request, expect_response):
+        await self._sasl_reauthentication_done.wait()
+
+        return await self._send(request=request, expect_response=expect_response)
 
     def _send_sasl_token(self, payload, expect_response=True):
         if self._writer is None:
@@ -529,6 +643,13 @@ class AIOKafkaConnection:
                 self._on_close_cb = None
         if self._idle_handle is not None:
             self._idle_handle.cancel()
+
+        if (
+            self._sasl_reauthentication_task is not None
+            and not self._sasl_reauthentication_task.done()
+        ):
+            self._sasl_reauthentication_task.cancel()
+            self._sasl_reauthentication_task = None
 
         # transport.close() will close socket, but not right ahead. Return
         # a future in case we need to wait on it.
