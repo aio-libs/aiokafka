@@ -26,6 +26,7 @@ from aiokafka.errors import (
     UnknownTopicOrPartitionError,
 )
 from aiokafka.protocol.fetch import FetchRequest_v0 as FetchRequest
+from aiokafka.protocol.fetch import FetchRequest_v3, FetchRequest_v11
 from aiokafka.protocol.fetch import FetchResponse_v0 as FetchResponse
 from aiokafka.protocol.offset import OffsetResponse
 from aiokafka.record.default_records import (
@@ -599,3 +600,43 @@ class TestFetcher(unittest.TestCase):
         # Since isolation_level is READ_COMMITTED, no consumer records are
         # expected to be returned here.
         self.assertEqual(len(list(partition_recs)), 0)
+
+    @run_until_complete
+    async def test_fetcher_request_class_and_session_params(self):
+        class DummyClient:
+            def __init__(self, api_version):
+                self.api_version = api_version
+                self._loop = get_running_loop()
+
+        subs = SubscriptionState()
+
+        # Test new threshold for rack_id support (API_VERSION 11)
+        client = DummyClient((2, 4, 0))
+        fetcher = Fetcher(
+            client,
+            subs,
+            session_id=10,
+            session_epoch=20,
+            forgotten_topics_data=[("t", [1])],
+            rack_id="rack1",
+        )
+        # Cancel background fetch task
+        fetcher._fetch_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await fetcher._fetch_task
+        # Parameters stored correctly
+        self.assertEqual(fetcher._session_id, 10)
+        self.assertEqual(fetcher._session_epoch, 20)
+        self.assertEqual(fetcher._forgotten_topics_data, [("t", [1])])
+        self.assertEqual(fetcher._rack_id, "rack1")
+        # Request class selected correctly
+        self.assertIs(fetcher._fetch_request_class, FetchRequest_v11)
+
+        # Test legacy threshold (API_VERSION 3)
+        client2 = DummyClient((0, 10, 1))
+        fetcher2 = Fetcher(client2, subs)
+        fetcher2._fetch_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await fetcher2._fetch_task
+        self.assertEqual(fetcher2._fetch_request_class.API_VERSION, 3)
+        self.assertIs(fetcher2._fetch_request_class, FetchRequest_v3)
