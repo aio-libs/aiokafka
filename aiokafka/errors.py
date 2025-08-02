@@ -854,6 +854,26 @@ class ListenerNotFound(BrokerResponseError):
         " listener on which metadata request was processed"
     )
 
+class FencedLeaderEpochError(BrokerResponseError):
+    errno = 74
+    message = "FENCED_LEADER_EPOCH"
+    description = (
+        "The leader epoch in the request is smaller than the epoch on "
+        "the broker. Refresh metadata and retry."
+    )
+    retriable = True
+    invalid_metadata = True
+
+
+class UnknownLeaderEpochError(BrokerResponseError):
+    errno = 75
+    message = "UNKNOWN_LEADER_EPOCH"
+    description = (
+        "The leader epoch in the request is newer or unknown to the broker. "
+        "Refresh metadata and retry."
+    )
+    retriable = True
+    invalid_metadata = True
 
 class MemberIdRequired(BrokerResponseError):
     errno = 79
