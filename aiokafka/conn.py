@@ -458,6 +458,12 @@ class AIOKafkaConnection:
                 f"No connection to broker at {self._host}:{self._port}"
             )
 
+        if self._writer.is_closing():
+            self.close(reason=CloseReason.CONNECTION_BROKEN)
+            raise Errors.KafkaConnectionError(
+                f"Connection at {self._host}:{self._port} is closing"
+            )
+
         correlation_id = self._next_correlation_id()
         header = request.build_request_header(
             correlation_id=correlation_id, client_id=self._client_id
