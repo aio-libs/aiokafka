@@ -10,7 +10,7 @@ Improved Documentation:
 * Fix incomplete documentation for `AIOKafkaConsumer.offset_for_times``
   (pr #1068 by @jzvandenoever)
 * Fix Java Client API reference (pr #1069 by @emmanuel-ferdman)
-
+* Include "start" in the try/finally in docs (pr #1128 by @vmaurin)
 
 Bugfixes:
 

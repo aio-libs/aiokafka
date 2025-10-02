@@ -509,6 +509,7 @@ class AIOKafkaConsumer:
 
         * Commit last consumed message if autocommit enabled
         * Leave group if used Consumer Groups
+        * Close the underlying Kafka client
         """
         if self._closed:
             return

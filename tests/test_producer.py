@@ -147,8 +147,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         loop = asyncio.new_event_loop()
         with pytest.deprecated_call():
             producer = AIOKafkaProducer(bootstrap_servers=self.hosts, loop=loop)
-        loop.run_until_complete(producer.start())
         try:
+            loop.run_until_complete(producer.start())
             future = loop.run_until_complete(
                 producer.send(self.topic, b"hello, Kafka!", partition=0)
             )
