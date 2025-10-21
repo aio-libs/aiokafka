@@ -25,6 +25,38 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert metadata.topics is not None
         assert len(metadata.brokers) == 1
 
+    @kafka_versions(">=0.10.0.0")
+    @run_until_complete
+    async def test_context_manager(self):
+        async with AIOKafkaAdminClient(bootstrap_servers=self.hosts) as admin:
+            assert admin._started
+
+            # Arbitrary testing
+            metadata = await admin._get_cluster_metadata()
+            assert metadata.brokers is not None
+            assert metadata.topics is not None
+            assert len(metadata.brokers) == 1
+
+        assert admin._closed
+
+        # Test error case too
+        class FakeError:
+            pass
+
+        with pytest.raises(FakeError):
+            async with AIOKafkaAdminClient(bootstrap_servers=self.hosts) as admin:
+                assert admin._started
+
+                # Arbitrary testing
+                metadata = await admin._get_cluster_metadata()
+                assert metadata.brokers is not None
+                assert metadata.topics is not None
+                assert len(metadata.brokers) == 1
+
+                raise FakeError
+
+        assert admin._closed
+
     @kafka_versions(">=0.10.1.0")
     @run_until_complete
     async def test_create_topics(self):

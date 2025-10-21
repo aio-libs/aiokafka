@@ -3,9 +3,11 @@ import logging
 from collections import defaultdict
 from collections.abc import Sequence
 from ssl import SSLContext
+from types import TracebackType
 from typing import Any
 
 import async_timeout
+from typing_extensions import Self
 
 from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient
@@ -159,6 +161,18 @@ class AIOKafkaAdminClient:
         await self._get_version_info()
         log.debug("AIOKafkaAdminClient started")
         self._started = True
+
+    async def __aenter__(self) -> Self:
+        await self.start()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        await self.close()
 
     def _matching_api_version(self, operation: Sequence[type[Request]]) -> int:
         """Find the latest version of the protocol operation
