@@ -4,6 +4,7 @@ import re
 import sys
 import traceback
 import warnings
+from contextlib import AsyncExitStack
 
 from aiokafka import __version__
 from aiokafka.abc import ConsumerRebalanceListener
@@ -335,7 +336,6 @@ class AIOKafkaConsumer:
 
         if loop.get_debug():
             self._source_traceback = traceback.extract_stack(sys._getframe(1))
-        self._closed = False
 
         if topics:
             topics = self._validate_topics(topics)
@@ -368,83 +368,94 @@ class AIOKafkaConsumer:
             self._loop is get_running_loop()
         ), "Please create objects with the same loop as running with"
         assert self._fetcher is None, "Did you call `start` twice?"
-        await self._client.bootstrap()
-        await self._wait_topics()
 
-        if self._client.api_version < (0, 9):
-            raise ValueError(f"Unsupported Kafka version: {self._client.api_version}")
+        async with AsyncExitStack() as stack:
+            await self._client.bootstrap()
+            stack.push_async_callback(self._client.close)
+            await self._wait_topics()
 
-        if (
-            self._isolation_level == "read_committed"
-            and self._client.api_version < (0, 11)  # fmt: skip
-        ):
-            raise UnsupportedVersionError(
-                "`read_committed` isolation_level available only for Brokers "
-                "0.11 and above"
-            )
-
-        self._fetcher = Fetcher(
-            self._client,
-            self._subscription,
-            key_deserializer=self._key_deserializer,
-            value_deserializer=self._value_deserializer,
-            fetch_min_bytes=self._fetch_min_bytes,
-            fetch_max_bytes=self._fetch_max_bytes,
-            fetch_max_wait_ms=self._fetch_max_wait_ms,
-            max_partition_fetch_bytes=self._max_partition_fetch_bytes,
-            check_crcs=self._check_crcs,
-            fetcher_timeout=self._consumer_timeout,
-            retry_backoff_ms=self._retry_backoff_ms,
-            auto_offset_reset=self._auto_offset_reset,
-            isolation_level=self._isolation_level,
-        )
-
-        if self._group_id is not None:
-            # using group coordinator for automatic partitions assignment
-            self._coordinator = GroupCoordinator(
-                self._client,
-                self._subscription,
-                group_id=self._group_id,
-                group_instance_id=self._group_instance_id,
-                heartbeat_interval_ms=self._heartbeat_interval_ms,
-                session_timeout_ms=self._session_timeout_ms,
-                retry_backoff_ms=self._retry_backoff_ms,
-                enable_auto_commit=self._enable_auto_commit,
-                auto_commit_interval_ms=self._auto_commit_interval_ms,
-                assignors=self._partition_assignment_strategy,
-                exclude_internal_topics=self._exclude_internal_topics,
-                rebalance_timeout_ms=self._rebalance_timeout_ms,
-                max_poll_interval_ms=self._max_poll_interval_ms,
-            )
-            if self._subscription.subscription is not None:
-                if self._subscription.partitions_auto_assigned():
-                    # Either we passed `topics` to constructor or `subscribe`
-                    # was called before `start`
-                    await self._subscription.wait_for_assignment()
-                else:
-                    # `assign` was called before `start`. We did not start
-                    # this task on that call, as coordinator was yet to be
-                    # created
-                    self._coordinator.start_commit_offsets_refresh_task(
-                        self._subscription.subscription.assignment
-                    )
-        else:
-            # Using a simple assignment coordinator for reassignment on
-            # metadata changes
-            self._coordinator = NoGroupCoordinator(
-                self._client,
-                self._subscription,
-                exclude_internal_topics=self._exclude_internal_topics,
-            )
+            if self._client.api_version < (0, 9):
+                raise ValueError(
+                    f"Unsupported Kafka version: {self._client.api_version}"
+                )
 
             if (
-                self._subscription.subscription is not None
-                and self._subscription.partitions_auto_assigned()
+                self._isolation_level == "read_committed"
+                and self._client.api_version < (0, 11)  # fmt: skip
             ):
-                # Either we passed `topics` to constructor or `subscribe`
-                # was called before `start`
-                await self._client.force_metadata_update()
-                self._coordinator.assign_all_partitions(check_unknown=True)
+                raise UnsupportedVersionError(
+                    "`read_committed` isolation_level available only for Brokers "
+                    "0.11 and above"
+                )
+
+            self._fetcher = Fetcher(
+                self._client,
+                self._subscription,
+                key_deserializer=self._key_deserializer,
+                value_deserializer=self._value_deserializer,
+                fetch_min_bytes=self._fetch_min_bytes,
+                fetch_max_bytes=self._fetch_max_bytes,
+                fetch_max_wait_ms=self._fetch_max_wait_ms,
+                max_partition_fetch_bytes=self._max_partition_fetch_bytes,
+                check_crcs=self._check_crcs,
+                fetcher_timeout=self._consumer_timeout,
+                retry_backoff_ms=self._retry_backoff_ms,
+                auto_offset_reset=self._auto_offset_reset,
+                isolation_level=self._isolation_level,
+            )
+            stack.push_async_callback(self._fetcher.close)
+
+            if self._group_id is not None:
+                # using group coordinator for automatic partitions assignment
+                self._coordinator = GroupCoordinator(
+                    self._client,
+                    self._subscription,
+                    group_id=self._group_id,
+                    group_instance_id=self._group_instance_id,
+                    heartbeat_interval_ms=self._heartbeat_interval_ms,
+                    session_timeout_ms=self._session_timeout_ms,
+                    retry_backoff_ms=self._retry_backoff_ms,
+                    enable_auto_commit=self._enable_auto_commit,
+                    auto_commit_interval_ms=self._auto_commit_interval_ms,
+                    assignors=self._partition_assignment_strategy,
+                    exclude_internal_topics=self._exclude_internal_topics,
+                    rebalance_timeout_ms=self._rebalance_timeout_ms,
+                    max_poll_interval_ms=self._max_poll_interval_ms,
+                )
+                stack.push_async_callback(self._coordinator.close)
+
+                if self._subscription.subscription is not None:
+                    if self._subscription.partitions_auto_assigned():
+                        # Either we passed `topics` to constructor or `subscribe`
+                        # was called before `start`
+                        await self._subscription.wait_for_assignment()
+                    else:
+                        # `assign` was called before `start`. We did not start
+                        # this task on that call, as coordinator was yet to be
+                        # created
+                        self._coordinator.start_commit_offsets_refresh_task(
+                            self._subscription.subscription.assignment
+                        )
+            else:
+                # Using a simple assignment coordinator for reassignment on
+                # metadata changes
+                self._coordinator = NoGroupCoordinator(
+                    self._client,
+                    self._subscription,
+                    exclude_internal_topics=self._exclude_internal_topics,
+                )
+                stack.push_async_callback(self._coordinator.close)
+
+                if (
+                    self._subscription.subscription is not None
+                    and self._subscription.partitions_auto_assigned()
+                ):
+                    # Either we passed `topics` to constructor or `subscribe`
+                    # was called before `start`
+                    await self._client.force_metadata_update()
+                    self._coordinator.assign_all_partitions(check_unknown=True)
+            self._exit_stack = stack.pop_all()
+        self._closed = False
 
     async def _wait_topics(self):
         if self._subscription.subscription is not None:
@@ -514,11 +525,7 @@ class AIOKafkaConsumer:
             return
         log.debug("Closing the KafkaConsumer.")
         self._closed = True
-        if self._coordinator:
-            await self._coordinator.close()
-        if self._fetcher:
-            await self._fetcher.close()
-        await self._client.close()
+        await self._exit_stack.aclose()
         log.debug("The KafkaConsumer has closed.")
 
     async def commit(self, offsets=None):

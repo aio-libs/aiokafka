@@ -3,6 +3,7 @@ import logging
 import sys
 import traceback
 import warnings
+from contextlib import AsyncExitStack
 
 from aiokafka.client import AIOKafkaClient
 from aiokafka.codec import has_gzip, has_lz4, has_snappy, has_zstd
@@ -324,8 +325,6 @@ class AIOKafkaProducer:
             request_timeout_ms=request_timeout_ms,
         )
 
-        self._closed = False
-
     # Warn if producer was not closed properly
     # We don't attempt to close the Consumer, as __del__ is synchronous
     def __del__(self, _warnings=warnings):
@@ -349,26 +348,32 @@ class AIOKafkaProducer:
             self._loop is get_running_loop()
         ), "Please create objects with the same loop as running with"
         log.debug("Starting the Kafka producer")  # trace
-        await self.client.bootstrap()
+        async with AsyncExitStack() as stack:
+            await self.client.bootstrap()
+            stack.push_async_callback(self.client.close)
 
-        if self._compression_type == "lz4":
-            assert self.client.api_version >= (0, 8, 2), (
-                "LZ4 Requires >= Kafka 0.8.2 Brokers"
-            )  # fmt: skip
-        elif self._compression_type == "zstd":
-            assert self.client.api_version >= (2, 1, 0), (
-                "Zstd Requires >= Kafka 2.1.0 Brokers"
-            )  # fmt: skip
+            if self._compression_type == "lz4":
+                assert self.client.api_version >= (0, 8, 2), (
+                    "LZ4 Requires >= Kafka 0.8.2 Brokers"
+                )  # fmt: skip
+            elif self._compression_type == "zstd":
+                assert self.client.api_version >= (2, 1, 0), (
+                    "Zstd Requires >= Kafka 2.1.0 Brokers"
+                )  # fmt: skip
 
-        if self._txn_manager is not None and self.client.api_version < (0, 11):
-            raise UnsupportedVersionError(
-                "Idempotent producer available only for Broker version 0.11"
-                " and above"
-            )
+            if self._txn_manager is not None and self.client.api_version < (0, 11):
+                raise UnsupportedVersionError(
+                    "Idempotent producer available only for Broker version 0.11"
+                    " and above"
+                )
 
-        await self._sender.start()
-        self._message_accumulator.set_api_version(self.client.api_version)
-        self._producer_magic = 0 if self.client.api_version < (0, 10) else 1
+            await self._sender.start()
+            stack.push_async_callback(self._sender.close)
+
+            self._message_accumulator.set_api_version(self.client.api_version)
+            self._producer_magic = 0 if self.client.api_version < (0, 10) else 1
+            self._exit_stack = stack.pop_all()
+        self._closed = False
         log.debug("Kafka producer started")
 
     async def flush(self):
@@ -379,6 +384,7 @@ class AIOKafkaProducer:
         """Flush all pending data and close all connections to kafka cluster"""
         if self._closed:
             return
+        log.debug("Closing the KafkaProducer.")
         self._closed = True
 
         # If the sender task is down there is no way for accumulator to flush
@@ -391,9 +397,7 @@ class AIOKafkaProducer:
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
-            await self._sender.close()
-
-        await self.client.close()
+        await self._exit_stack.aclose()
         log.debug("The Kafka producer has closed.")
 
     async def partitions_for(self, topic):
