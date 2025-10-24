@@ -16,6 +16,8 @@ Bugfixes:
 
 * Make KafkaStorageError retriable after metadata refresh like in other
   implementations (pr #1115 by @omerhadari)
+* Fix producer and consumer requiring closing after `start` or `__aenter__` raise an exception.
+  (issue #1130, pr #1131 by @calgray)
 
 
 Misc:

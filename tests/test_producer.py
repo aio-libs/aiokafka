@@ -2,6 +2,7 @@ import asyncio
 import gc
 import json
 import time
+import warnings
 import weakref
 from unittest import mock
 
@@ -178,6 +179,25 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 await producer.send(self.topic, b"value", key=b"KEY")
                 raise ValueError()
         assert producer._closed
+
+    @run_until_complete
+    async def test_producer_context_manager_start_error(self):
+        for target in [
+            "aiokafka.producer.producer.AIOKafkaClient.bootstrap",
+            "aiokafka.producer.producer.Sender.start",
+        ]:
+            producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
+
+            # make producer.start() raise
+            with mock.patch(target, side_effect=RuntimeError("error")):
+                with self.assertRaises(RuntimeError):
+                    async with producer:
+                        self.fail(f"{target} did not raise")
+
+            # should not require calling producer.close()
+            with warnings.catch_warnings(record=True) as w:
+                del producer
+                self.assertEqual(len(w), 0, f"Unexpected warnings: {w}")
 
     @run_until_complete
     async def test_producer_send_noack(self):
