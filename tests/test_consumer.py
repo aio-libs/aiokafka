@@ -2,6 +2,7 @@ import asyncio
 import gc
 import json
 import time
+import warnings
 from contextlib import contextmanager
 from unittest import mock
 
@@ -187,6 +188,36 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.assert_message_count(messages, 10)
                 raise ValueError
         assert consumer._closed
+
+    @run_until_complete
+    async def test_consumer_context_manager_start_error(self):
+        for target, group_id in [
+            ("aiokafka.consumer.consumer.AIOKafkaClient.bootstrap", None),
+            ("aiokafka.consumer.consumer.Fetcher.__init__", None),
+            ("aiokafka.consumer.consumer.NoGroupCoordinator.__init__", None),
+            (
+                "aiokafka.consumer.consumer.GroupCoordinator.__init__",
+                f"group-{self.id()}",
+            ),
+        ]:
+            consumer = AIOKafkaConsumer(
+                self.topic,
+                group_id=group_id,
+                bootstrap_servers=self.hosts,
+                enable_auto_commit=False,
+                auto_offset_reset="earliest",
+            )
+
+            # make consumer.start() raise
+            with mock.patch(target, side_effect=RuntimeError("error")):
+                with self.assertRaises(RuntimeError):
+                    async with consumer:
+                        self.fail(f"{target} did not raise")
+
+            # should not require calling consumer.close()
+            with warnings.catch_warnings(record=True) as w:
+                del consumer
+                self.assertEqual(len(w), 0, f"{target} got unexpected warnings: {w}")
 
     @run_until_complete
     async def test_consumer_api_version(self):
