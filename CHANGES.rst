@@ -22,6 +22,9 @@ Bugfixes:
 
 * Make KafkaStorageError retriable after metadata refresh like in other
   implementations (pr #1115 by @omerhadari)
+* Ensure the transaction coordinator is refreshed after broker fail‑over,
+  so transactional producers resume once a new coordinator is elected.
+  (pr #1135 by @vmaurin)
 
 
 Misc:

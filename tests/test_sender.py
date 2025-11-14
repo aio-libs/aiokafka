@@ -11,6 +11,7 @@ from aiokafka.errors import (
     InvalidProducerIdMapping,
     InvalidTxnState,
     KafkaError,
+    NodeNotReadyError,
     NoError,
     NotCoordinatorError,
     OperationNotAttempted,
@@ -204,17 +205,19 @@ class TestSender(KafkaIntegrationTestCase):
 
         mock_handler = MockHandler(sender)
         mock_handler.handle_response = mock.Mock(return_value=0.1)
+        mock_handler.handle_error = mock.Mock(return_value=0.1)
         success = await mock_handler.do(node_id=0)
         self.assertFalse(success)
 
         MockHandler.return_value = None
         mock_handler.handle_response = mock.Mock(return_value=None)
+        mock_handler.handle_error = mock.Mock(return_value=0.1)
         success = await mock_handler.do(node_id=0)
         self.assertTrue(success)
 
         loop = get_running_loop()
         time = loop.time()
-        sender.client.send = mock.Mock(side_effect=UnknownError())
+        sender.client.send = mock.Mock(side_effect=NodeNotReadyError())
         success = await mock_handler.do(node_id=0)
         self.assertFalse(success)
         self.assertAlmostEqual(loop.time() - time, 0.1, 1)
@@ -277,6 +280,12 @@ class TestSender(KafkaIntegrationTestCase):
                 self.assertEqual(sender._txn_manager.producer_epoch, -1)
 
                 mocked.assert_called_with(CoordinationType.TRANSACTION)
+
+        # Handle node error
+        with mock.patch.object(sender, "_coordinator_dead") as mocked:
+            backoff = init_handler.handle_error()
+            self.assertEqual(backoff, 0.1)
+            mocked.assert_called_with(CoordinationType.TRANSACTION)
 
         # Not coordination errors
         for error_cls in [CoordinatorLoadInProgressError, ConcurrentTransactions]:
@@ -408,6 +417,12 @@ class TestSender(KafkaIntegrationTestCase):
                 tm.partition_added.assert_not_called()
                 mocked.assert_called_with(CoordinationType.TRANSACTION)
 
+        # Handle node error
+        with mock.patch.object(sender, "_coordinator_dead") as mocked:
+            backoff = add_handler.handle_error()
+            self.assertEqual(backoff, 0.1)
+            mocked.assert_called_with(CoordinationType.TRANSACTION)
+
         # Special case for ConcurrentTransactions
         resp = create_response(ConcurrentTransactions)
         backoff = add_handler.handle_response(resp)
@@ -517,6 +532,12 @@ class TestSender(KafkaIntegrationTestCase):
                 self.assertEqual(backoff, 0.1)
                 tm.consumer_group_added.assert_not_called()
                 mocked.assert_called_with(CoordinationType.TRANSACTION)
+
+        # Handle node error
+        with mock.patch.object(sender, "_coordinator_dead") as mocked:
+            backoff = add_handler.handle_error()
+            self.assertEqual(backoff, 0.1)
+            mocked.assert_called_with(CoordinationType.TRANSACTION)
 
         # Not coordination retriable errors
         for error_cls in [CoordinatorLoadInProgressError, ConcurrentTransactions]:
@@ -638,6 +659,12 @@ class TestSender(KafkaIntegrationTestCase):
                 tm.offset_committed.assert_not_called()
                 mocked.assert_called_with(CoordinationType.GROUP)
 
+        # Handle node error
+        with mock.patch.object(sender, "_coordinator_dead") as mocked:
+            backoff = add_handler.handle_error()
+            self.assertEqual(backoff, 0.1)
+            mocked.assert_called_with(CoordinationType.GROUP)
+
         # Not coordination retriable errors
         for error_cls in [CoordinatorLoadInProgressError, UnknownTopicOrPartitionError]:
             resp = create_response(error_cls)
@@ -722,6 +749,12 @@ class TestSender(KafkaIntegrationTestCase):
                 self.assertEqual(backoff, 0.1)
                 tm.complete_transaction.assert_not_called()
                 mocked.assert_called_with(CoordinationType.TRANSACTION)
+
+        # Handle node error
+        with mock.patch.object(sender, "_coordinator_dead") as mocked:
+            backoff = add_handler.handle_error()
+            self.assertEqual(backoff, 0.1)
+            mocked.assert_called_with(CoordinationType.TRANSACTION)
 
         # Not coordination retriable errors
         for error_cls in [CoordinatorLoadInProgressError, ConcurrentTransactions]:
