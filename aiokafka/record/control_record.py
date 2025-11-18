@@ -8,7 +8,7 @@ _SCHEMA = struct.Struct(">HH")
 
 @dataclass(frozen=True)
 class ControlRecord:
-    __slots__ = ("version", "type_")
+    __slots__ = ("type_", "version")
 
     version: int
     type_: int

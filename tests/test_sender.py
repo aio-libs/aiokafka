@@ -34,18 +34,18 @@ from aiokafka.producer.sender import (
 )
 from aiokafka.producer.transaction_manager import TransactionManager, TransactionState
 from aiokafka.protocol.metadata import MetadataRequest
-from aiokafka.protocol.produce import ProduceRequest, ProduceResponse
+from aiokafka.protocol.produce import ProduceRequest, ProduceResponse_v4
 from aiokafka.protocol.transaction import (
     AddOffsetsToTxnRequest,
-    AddOffsetsToTxnResponse,
+    AddOffsetsToTxnResponse_v0,
     AddPartitionsToTxnRequest,
-    AddPartitionsToTxnResponse,
+    AddPartitionsToTxnResponse_v0,
     EndTxnRequest,
-    EndTxnResponse,
+    EndTxnResponse_v0,
     InitProducerIdRequest,
-    InitProducerIdResponse,
+    InitProducerIdResponse_v0,
     TxnOffsetCommitRequest,
-    TxnOffsetCommitResponse,
+    TxnOffsetCommitResponse_v0,
 )
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.util import get_running_loop
@@ -57,7 +57,9 @@ LOG_APPEND_TIME = 1
 
 class TestSender(KafkaIntegrationTestCase):
     async def _setup_sender(self, no_init=False):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         self.add_cleanup(client.close)
         await self.wait_topic(client, self.topic)
@@ -65,7 +67,7 @@ class TestSender(KafkaIntegrationTestCase):
         tm = TransactionManager("test_tid", 30000)
         if not no_init:
             tm.set_pid_and_epoch(120, 22)
-        ma = MessageAccumulator(client.cluster, 1000, 0, 30)
+        ma = MessageAccumulator(client.cluster, 1000, 0, 30, False)
         sender = Sender(
             client,
             acks=-1,
@@ -200,7 +202,7 @@ class TestSender(KafkaIntegrationTestCase):
 
         class MockHandler(BaseHandler):
             def create_request(self):
-                return MetadataRequest[0]([])
+                return MetadataRequest([])
 
         mock_handler = MockHandler(sender)
         mock_handler.handle_response = mock.Mock(return_value=0.1)
@@ -225,8 +227,10 @@ class TestSender(KafkaIntegrationTestCase):
         init_handler = InitPIDHandler(sender)
 
         # Form request
-        req = init_handler.create_request()
-        self.assertEqual(req.API_KEY, InitProducerIdRequest[0].API_KEY)
+        req = init_handler.create_request().prepare(
+            {InitProducerIdRequest.API_KEY: (0, 0)}
+        )
+        self.assertEqual(req.API_KEY, InitProducerIdRequest.API_KEY)
         self.assertEqual(req.API_VERSION, 0)
         self.assertEqual(req.transactional_id, "test_tid")
         self.assertEqual(req.transaction_timeout_ms, 30000)
@@ -239,7 +243,7 @@ class TestSender(KafkaIntegrationTestCase):
         # Handle response
         self.assertEqual(sender._txn_manager.producer_id, -1)
         self.assertEqual(sender._txn_manager.producer_epoch, -1)
-        cls = InitProducerIdResponse[0]
+        cls = InitProducerIdResponse_v0
         resp = cls(
             throttle_time_ms=300,
             error_code=NoError.errno,
@@ -262,7 +266,7 @@ class TestSender(KafkaIntegrationTestCase):
         # Handle coordination errors
         for error_cls in [CoordinatorNotAvailableError, NotCoordinatorError]:
             with mock.patch.object(sender, "_coordinator_dead") as mocked:
-                cls = InitProducerIdResponse[0]
+                cls = InitProducerIdResponse_v0
                 resp = cls(
                     throttle_time_ms=300,
                     error_code=error_cls.errno,
@@ -278,7 +282,7 @@ class TestSender(KafkaIntegrationTestCase):
 
         # Not coordination errors
         for error_cls in [CoordinatorLoadInProgressError, ConcurrentTransactions]:
-            cls = InitProducerIdResponse[0]
+            cls = InitProducerIdResponse_v0
             resp = cls(
                 throttle_time_ms=300,
                 error_code=error_cls.errno,
@@ -291,7 +295,7 @@ class TestSender(KafkaIntegrationTestCase):
             self.assertEqual(sender._txn_manager.producer_epoch, -1)
 
         # Handle unknown error
-        cls = InitProducerIdResponse[0]
+        cls = InitProducerIdResponse_v0
         resp = cls(
             throttle_time_ms=300,
             error_code=UnknownError.errno,
@@ -313,8 +317,10 @@ class TestSender(KafkaIntegrationTestCase):
         ]
         add_handler = AddPartitionsToTxnHandler(sender, tps)
 
-        req = add_handler.create_request()
-        self.assertEqual(req.API_KEY, AddPartitionsToTxnRequest[0].API_KEY)
+        req = add_handler.create_request().prepare(
+            {AddPartitionsToTxnRequest.API_KEY: (0, 0)}
+        )
+        self.assertEqual(req.API_KEY, AddPartitionsToTxnRequest.API_KEY)
         self.assertEqual(req.API_VERSION, 0)
         self.assertEqual(req.transactional_id, "test_tid")
         self.assertEqual(req.producer_id, 120)
@@ -336,7 +342,7 @@ class TestSender(KafkaIntegrationTestCase):
         tm.partition_added = mock.Mock()
 
         # Handle response
-        cls = AddPartitionsToTxnResponse[0]
+        cls = AddPartitionsToTxnResponse_v0
         resp = cls(
             throttle_time_ms=300,
             errors=[
@@ -374,7 +380,7 @@ class TestSender(KafkaIntegrationTestCase):
         tm.partition_added = mock.Mock()
 
         def create_response(error_type):
-            cls = AddPartitionsToTxnResponse[0]
+            cls = AddPartitionsToTxnResponse_v0
             resp = cls(
                 throttle_time_ms=300,
                 errors=[
@@ -468,8 +474,10 @@ class TestSender(KafkaIntegrationTestCase):
         sender = await self._setup_sender()
         add_handler = AddOffsetsToTxnHandler(sender, "some_group")
 
-        req = add_handler.create_request()
-        self.assertEqual(req.API_KEY, AddOffsetsToTxnRequest[0].API_KEY)
+        req = add_handler.create_request().prepare(
+            {AddOffsetsToTxnRequest.API_KEY: (0, 0)}
+        )
+        self.assertEqual(req.API_KEY, AddOffsetsToTxnRequest.API_KEY)
         self.assertEqual(req.API_VERSION, 0)
         self.assertEqual(req.transactional_id, "test_tid")
         self.assertEqual(req.producer_id, 120)
@@ -484,7 +492,7 @@ class TestSender(KafkaIntegrationTestCase):
         tm.consumer_group_added = mock.Mock()
 
         # Handle response
-        cls = AddOffsetsToTxnResponse[0]
+        cls = AddOffsetsToTxnResponse_v0
         resp = cls(throttle_time_ms=300, error_code=NoError.errno)
         backoff = add_handler.handle_response(resp)
         self.assertIsNone(backoff)
@@ -499,7 +507,7 @@ class TestSender(KafkaIntegrationTestCase):
         tm.consumer_group_added = mock.Mock()
 
         def create_response(error_type):
-            cls = AddOffsetsToTxnResponse[0]
+            cls = AddOffsetsToTxnResponse_v0
             resp = cls(throttle_time_ms=300, error_code=error_type.errno)
             return resp
 
@@ -561,8 +569,10 @@ class TestSender(KafkaIntegrationTestCase):
         }
         add_handler = TxnOffsetCommitHandler(sender, offsets, "some_group")
 
-        req = add_handler.create_request()
-        self.assertEqual(req.API_KEY, TxnOffsetCommitRequest[0].API_KEY)
+        req = add_handler.create_request().prepare(
+            {TxnOffsetCommitRequest.API_KEY: (0, 0)}
+        )
+        self.assertEqual(req.API_KEY, TxnOffsetCommitRequest.API_KEY)
         self.assertEqual(req.API_VERSION, 0)
         self.assertEqual(req.transactional_id, "test_tid")
         self.assertEqual(req.group_id, "some_group")
@@ -582,7 +592,7 @@ class TestSender(KafkaIntegrationTestCase):
         tm.offset_committed = mock.Mock()
 
         # Handle response
-        cls = TxnOffsetCommitResponse[0]
+        cls = TxnOffsetCommitResponse_v0
         resp = cls(
             throttle_time_ms=300,
             errors=[("topic", [(0, NoError.errno), (1, NoError.errno)])],
@@ -610,7 +620,7 @@ class TestSender(KafkaIntegrationTestCase):
         tm.offset_committed = mock.Mock()
 
         def create_response(error_type):
-            cls = TxnOffsetCommitResponse[0]
+            cls = TxnOffsetCommitResponse_v0
             resp = cls(
                 throttle_time_ms=300,
                 errors=[("topic", [(0, error_type.errno), (1, error_type.errno)])],
@@ -672,8 +682,8 @@ class TestSender(KafkaIntegrationTestCase):
         sender = await self._setup_sender()
         add_handler = EndTxnHandler(sender, 0)
 
-        req = add_handler.create_request()
-        self.assertEqual(req.API_KEY, EndTxnRequest[0].API_KEY)
+        req = add_handler.create_request().prepare({EndTxnRequest.API_KEY: (0, 0)})
+        self.assertEqual(req.API_KEY, EndTxnRequest.API_KEY)
         self.assertEqual(req.API_VERSION, 0)
         self.assertEqual(req.transactional_id, "test_tid")
         self.assertEqual(req.producer_id, 120)
@@ -688,7 +698,7 @@ class TestSender(KafkaIntegrationTestCase):
         tm.complete_transaction = mock.Mock()
 
         # Handle response
-        cls = EndTxnResponse[0]
+        cls = EndTxnResponse_v0
         resp = cls(throttle_time_ms=300, error_code=NoError.errno)
         backoff = add_handler.handle_response(resp)
         self.assertIsNone(backoff)
@@ -702,7 +712,7 @@ class TestSender(KafkaIntegrationTestCase):
         tm.complete_transaction = mock.Mock()
 
         def create_response(error_type):
-            cls = EndTxnResponse[0]
+            cls = EndTxnResponse_v0
             resp = cls(throttle_time_ms=300, error_code=error_type.errno)
             return resp
 
@@ -748,8 +758,8 @@ class TestSender(KafkaIntegrationTestCase):
         batch_mock.get_data_buffer = mock.Mock(return_value=b"123")
         send_handler = SendProduceReqHandler(sender, {tp: batch_mock})
 
-        req = send_handler.create_request()
-        self.assertEqual(req.API_KEY, ProduceRequest[0].API_KEY)
+        req = send_handler.create_request().prepare({ProduceRequest.API_KEY: (0, 4)})
+        self.assertEqual(req.API_KEY, ProduceRequest.API_KEY)
         if req.API_VERSION > 2:
             self.assertEqual(req.transactional_id, "test_tid")
         self.assertEqual(req.required_acks, -1)
@@ -764,7 +774,7 @@ class TestSender(KafkaIntegrationTestCase):
         send_handler = SendProduceReqHandler(sender, {tp: batch_mock})
 
         def create_response(error_type):
-            cls = ProduceResponse[4]
+            cls = ProduceResponse_v4
             resp = cls(
                 throttle_time_ms=300,
                 topics=[
@@ -792,7 +802,7 @@ class TestSender(KafkaIntegrationTestCase):
         send_handler = SendProduceReqHandler(sender, {tp: batch_mock})
 
         def create_response(error_type):
-            cls = ProduceResponse[4]
+            cls = ProduceResponse_v4
             resp = cls(
                 throttle_time_ms=300,
                 topics=[("my_topic", [(0, error_type.errno, 0, -1)])],

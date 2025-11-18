@@ -25,11 +25,11 @@ def random_bytes(length):
     return bytes(buffer)
 
 
-def prepare(magic: int):
+def prepare(legacy_protocol: LegacyProtocol):
     samples = []
     for _ in range(BATCH_SAMPLES):
         batch = BatchBuilder(
-            magic, batch_size=DEFAULT_BATCH_SIZE, compression_type=0)
+            legacy_protocol, batch_size=DEFAULT_BATCH_SIZE, compression_type=0)
         for offset in range(MESSAGES_PER_BATCH):
             size = batch.append(
                 timestamp=None,  # random.randint(*TIMESTAMP_RANGE)
@@ -50,10 +50,10 @@ def finalize(results):
     print(hash_val, file=open(os.devnull, "w"))
 
 
-def func(loops: int, magic: int):
+def func(loops: int, legacy_protocol: LegacyProtocol):
     # Jit can optimize out the whole function if the result is the same each
     # time, so we need some randomized input data )
-    precomputed_samples = prepare(magic)
+    precomputed_samples = prepare(legacy_protocol)
     results = []
 
     # Main benchmark code.
@@ -74,6 +74,5 @@ def func(loops: int, magic: int):
 
 
 runner = perf.Runner()
-runner.bench_time_func('batch_read_v0', func, 0)
-runner.bench_time_func('batch_read_v1', func, 1)
-runner.bench_time_func('batch_read_v2', func, 2)
+runner.bench_time_func('batch_read_v0', func, True)
+runner.bench_time_func('batch_read_v2', func, False)

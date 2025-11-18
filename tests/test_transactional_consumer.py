@@ -1,9 +1,6 @@
 import asyncio
 
 from aiokafka.consumer import AIOKafkaConsumer
-from aiokafka.errors import (
-    UnsupportedVersionError,
-)
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.structs import TopicPartition
 from aiokafka.util import create_task
@@ -12,17 +9,6 @@ from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_compl
 
 
 class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
-    @kafka_versions("<0.11.0")
-    @run_until_complete
-    async def test_consumer_transactions_not_supported(self):
-        consumer = AIOKafkaConsumer(
-            bootstrap_servers=self.hosts,
-            isolation_level="read_committed",
-        )
-        with self.assertRaises(UnsupportedVersionError):
-            await consumer.start()
-        await consumer.stop()
-
     @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_consumer_transactional_commit(self):

@@ -3,8 +3,8 @@ import struct
 
 import pytest
 
-from aiokafka.protocol.api import Request, RequestHeader_v0, Response
-from aiokafka.protocol.commit import GroupCoordinatorRequest_v0
+from aiokafka.protocol.api import RequestHeader_v0, RequestStruct, Response
+from aiokafka.protocol.coordination import FindCoordinatorRequest_v0
 from aiokafka.protocol.fetch import FetchRequest_v0, FetchResponse_v0
 from aiokafka.protocol.message import Message, MessageSet, PartialMessage
 from aiokafka.protocol.metadata import MetadataRequest_v0
@@ -191,7 +191,7 @@ def test_encode_message_header() -> None:
         ]
     )
 
-    req = GroupCoordinatorRequest_v0("foo")
+    req = FindCoordinatorRequest_v0("foo")
     header = RequestHeader_v0(req, correlation_id=4, client_id="client3")
     assert header.encode() == expect
 
@@ -359,15 +359,15 @@ def test_compact_data_structs() -> None:
 
 attr_names = [
     n
-    for n in dir(Request)
-    if isinstance(getattr(Request, n), property)
-    and getattr(Request, n).__isabstractmethod__ is True
+    for n in dir(RequestStruct)
+    if isinstance(getattr(RequestStruct, n), property)
+    and getattr(RequestStruct, n).__isabstractmethod__ is True
 ]
 
 
-@pytest.mark.parametrize("klass", Request.__subclasses__())
+@pytest.mark.parametrize("klass", RequestStruct.__subclasses__())
 @pytest.mark.parametrize("attr_name", attr_names)
-def test_request_type_conformance(klass: type[Request], attr_name: str) -> None:
+def test_request_type_conformance(klass: type[RequestStruct], attr_name: str) -> None:
     assert hasattr(klass, attr_name)
 
 

@@ -1,4 +1,6 @@
-from .api import Request, Response
+from aiokafka.errors import IncompatibleBrokerVersion
+
+from .api import Request, RequestStruct, Response
 from .types import Array, Bytes, Int8, Int16, Int32, Int64, Schema, String
 
 
@@ -215,7 +217,7 @@ class FetchResponse_v11(Response):
     )
 
 
-class FetchRequest_v0(Request):
+class FetchRequest_v0(RequestStruct):
     API_KEY = 1
     API_VERSION = 0
     RESPONSE_TYPE = FetchResponse_v0
@@ -240,21 +242,21 @@ class FetchRequest_v0(Request):
     min_bytes: int | None
 
 
-class FetchRequest_v1(Request):
+class FetchRequest_v1(RequestStruct):
     API_KEY = 1
     API_VERSION = 1
     RESPONSE_TYPE = FetchResponse_v1
     SCHEMA = FetchRequest_v0.SCHEMA
 
 
-class FetchRequest_v2(Request):
+class FetchRequest_v2(RequestStruct):
     API_KEY = 1
     API_VERSION = 2
     RESPONSE_TYPE = FetchResponse_v2
     SCHEMA = FetchRequest_v1.SCHEMA
 
 
-class FetchRequest_v3(Request):
+class FetchRequest_v3(RequestStruct):
     API_KEY = 1
     API_VERSION = 3
     RESPONSE_TYPE = FetchResponse_v3
@@ -278,7 +280,7 @@ class FetchRequest_v3(Request):
     )
 
 
-class FetchRequest_v4(Request):
+class FetchRequest_v4(RequestStruct):
     # Adds isolation_level field
     API_KEY = 1
     API_VERSION = 4
@@ -304,7 +306,7 @@ class FetchRequest_v4(Request):
     )
 
 
-class FetchRequest_v5(Request):
+class FetchRequest_v5(RequestStruct):
     # This may only be used in broker-broker api calls
     API_KEY = 1
     API_VERSION = 5
@@ -333,7 +335,7 @@ class FetchRequest_v5(Request):
     )
 
 
-class FetchRequest_v6(Request):
+class FetchRequest_v6(RequestStruct):
     """
     The body of FETCH_REQUEST_V6 is the same as FETCH_REQUEST_V5. The version number is
     bumped up to indicate that the client supports KafkaStorageException. The
@@ -347,7 +349,7 @@ class FetchRequest_v6(Request):
     SCHEMA = FetchRequest_v5.SCHEMA
 
 
-class FetchRequest_v7(Request):
+class FetchRequest_v7(RequestStruct):
     """
     Add incremental fetch requests
     """
@@ -385,7 +387,7 @@ class FetchRequest_v7(Request):
     )
 
 
-class FetchRequest_v8(Request):
+class FetchRequest_v8(RequestStruct):
     """
     bump used to indicate that on quota violation brokers send out responses before
     throttling.
@@ -397,7 +399,7 @@ class FetchRequest_v8(Request):
     SCHEMA = FetchRequest_v7.SCHEMA
 
 
-class FetchRequest_v9(Request):
+class FetchRequest_v9(RequestStruct):
     """
     adds the current leader epoch (see KIP-320)
     """
@@ -439,7 +441,7 @@ class FetchRequest_v9(Request):
     )
 
 
-class FetchRequest_v10(Request):
+class FetchRequest_v10(RequestStruct):
     """
     bumped up to indicate ZStandard capability. (see KIP-110)
     """
@@ -450,7 +452,7 @@ class FetchRequest_v10(Request):
     SCHEMA = FetchRequest_v9.SCHEMA
 
 
-class FetchRequest_v11(Request):
+class FetchRequest_v11(RequestStruct):
     """
     added rack ID to support read from followers (KIP-392)
     """
@@ -490,31 +492,70 @@ class FetchRequest_v11(Request):
     )
 
 
-FetchRequest = [
-    FetchRequest_v0,
-    FetchRequest_v1,
-    FetchRequest_v2,
-    FetchRequest_v3,
-    FetchRequest_v4,
-    FetchRequest_v5,
-    FetchRequest_v6,
-    FetchRequest_v7,
-    FetchRequest_v8,
-    FetchRequest_v9,
-    FetchRequest_v10,
-    FetchRequest_v11,
-]
-FetchResponse = [
-    FetchResponse_v0,
-    FetchResponse_v1,
-    FetchResponse_v2,
-    FetchResponse_v3,
-    FetchResponse_v4,
-    FetchResponse_v5,
-    FetchResponse_v6,
-    FetchResponse_v7,
-    FetchResponse_v8,
-    FetchResponse_v9,
-    FetchResponse_v10,
-    FetchResponse_v11,
-]
+class FetchRequest(Request):
+    API_KEY = 1
+    CLASSES = [
+        FetchRequest_v1,
+        FetchRequest_v2,
+        FetchRequest_v3,
+        FetchRequest_v4,
+        # After v4 is not implemented yet
+        # FetchRequest_v5,
+        # FetchRequest_v6,
+        # FetchRequest_v7,
+        # FetchRequest_v8,
+        # FetchRequest_v9,
+        # FetchRequest_v10,
+        # FetchRequest_v11,
+    ]
+    ALLOW_UNKNOWN_API_VERSION = True
+
+    def __init__(
+        self,
+        max_wait_time: int,
+        min_bytes: int,
+        max_bytes: int,
+        isolation_level: int,
+        topics: list[tuple[str, list[tuple[int, int, int]]]],
+    ):
+        self._max_wait_ms = max_wait_time
+        self._min_bytes = min_bytes
+        self._max_bytes = max_bytes
+        self._isolation_level = isolation_level
+        self._topics = topics
+
+    @property
+    def topics(self) -> list[tuple[str, list[tuple[int, int, int]]]]:
+        return self._topics
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        if request_struct_class.API_VERSION > 3:
+            return request_struct_class(
+                -1,  # replica_id
+                self._max_wait_ms,
+                self._min_bytes,
+                self._max_bytes,
+                self._isolation_level,
+                self._topics,
+            )
+
+        if self._isolation_level:
+            raise IncompatibleBrokerVersion(
+                "isolation_level requires FetchRequest >= v4"
+            )
+
+        if request_struct_class.API_VERSION == 3:
+            return request_struct_class(
+                -1,  # replica_id
+                self._max_wait_ms,
+                self._min_bytes,
+                self._max_bytes,
+                self._topics,
+            )
+
+        return request_struct_class(
+            -1,  # replica_id
+            self._max_wait_ms,
+            self._min_bytes,
+            self._topics,
+        )

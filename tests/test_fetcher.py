@@ -27,7 +27,7 @@ from aiokafka.errors import (
 )
 from aiokafka.protocol.fetch import FetchRequest_v0 as FetchRequest
 from aiokafka.protocol.fetch import FetchResponse_v0 as FetchResponse
-from aiokafka.protocol.offset import OffsetResponse
+from aiokafka.protocol.offset import OffsetResponse_v1
 from aiokafka.record.default_records import (
     # NB: test_solitary_abort_marker relies on implementation details
     _DefaultRecordBatchBuilderPy as DefaultRecordBatchBuilder,
@@ -485,7 +485,6 @@ class TestFetcher(unittest.TestCase):
         client._maybe_wait_metadata.side_effect = _maybe_wait_metadata
         client.cluster.leader_for_partition = mock.MagicMock()
         client.cluster.leader_for_partition.return_value = 0
-        client._api_version = (0, 10, 1)
 
         subscriptions = SubscriptionState()
         fetcher = Fetcher(client, subscriptions)
@@ -503,7 +502,7 @@ class TestFetcher(unittest.TestCase):
         with mock.patch.object(client, "send") as mocked:
 
             async def mock_send(node_id, request):
-                return OffsetResponse[1](
+                return OffsetResponse_v1(
                     [("topic", [(0, 43, -1, -1)]), ("topic", [(1, 0, 1000, 9999)])]
                 )
 
@@ -520,7 +519,7 @@ class TestFetcher(unittest.TestCase):
         with mock.patch.object(client, "send") as mocked:
 
             async def mock_send(node_id, request):
-                return OffsetResponse[1](
+                return OffsetResponse_v1(
                     [
                         ("topic", [(0, 6, -1, -1)]),
                     ]
@@ -534,7 +533,7 @@ class TestFetcher(unittest.TestCase):
         with mock.patch.object(client, "send") as mocked:
 
             async def mock_send(node_id, request):
-                return OffsetResponse[1](
+                return OffsetResponse_v1(
                     [
                         ("topic", [(0, 3, -1, -1)]),
                     ]

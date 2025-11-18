@@ -12,19 +12,19 @@ from aiokafka.consumer.group_coordinator import (
     NoGroupCoordinator,
 )
 from aiokafka.consumer.subscription_state import SubscriptionState
-from aiokafka.protocol.commit import OffsetCommitRequest, OffsetCommitResponse_v2
-from aiokafka.protocol.commit import OffsetFetchRequest_v1 as OffsetFetchRequest
-from aiokafka.protocol.group import (
-    HeartbeatRequest_v0 as HeartbeatRequest,
+from aiokafka.protocol.commit import (
+    OffsetCommitRequest,
+    OffsetCommitResponse_v2,
+    OffsetFetchRequest,
+    OffsetFetchResponse_v0,
 )
 from aiokafka.protocol.group import (
-    JoinGroupRequest_v0 as JoinGroupRequest,
-)
-from aiokafka.protocol.group import (
-    LeaveGroupRequest_v0 as LeaveGroupRequest,
-)
-from aiokafka.protocol.group import (
-    SyncGroupResponse_v0 as SyncGroupResponse,
+    HeartbeatRequest,
+    HeartbeatResponse_v0,
+    JoinGroupRequest,
+    JoinGroupResponse_v0,
+    LeaveGroupRequest,
+    SyncGroupResponse_v0,
 )
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.util import create_future, create_task, get_running_loop
@@ -53,7 +53,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_coordinator_workflow(self):
         # Check if 2 coordinators will coordinate rebalances correctly
 
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         await self.wait_topic(client, "topic1")
         await self.wait_topic(client, "topic2")
@@ -87,7 +89,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         )
 
         # Check if adding an additional coordinator will rebalance correctly
-        client2 = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client2 = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client2.bootstrap()
         subscription2 = SubscriptionState()
         subscription2.subscribe(topics={"topic1", "topic2"})
@@ -124,7 +128,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_failed_group_join(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         await self.wait_topic(client, "topic1")
         self.add_cleanup(client.close)
@@ -160,11 +166,10 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         mocked = mock.MagicMock()
         coordinator._client = mocked
-        coordinator._client.api_version = (0, 10, 1)
         error_type = Errors.NoError
 
         async def send(*agrs, **kw):
-            resp = JoinGroupRequest.RESPONSE_TYPE(
+            resp = JoinGroupResponse_v0(
                 error_code=error_type.errno,
                 generation_id=-1,  # generation_id
                 group_protocol="roundrobin",
@@ -244,7 +249,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_failed_sync_group(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         subscription = SubscriptionState()
         subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
@@ -271,12 +278,11 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         mocked = mock.MagicMock()
         coordinator._client = mocked
-        coordinator._client.api_version = (0, 10, 1)
         subsc = subscription.subscription
         error_type = None
 
         async def send(*agrs, **kw):
-            resp = SyncGroupResponse(
+            resp = SyncGroupResponse_v0(
                 error_code=error_type.errno, member_assignment=b"123"
             )
             return resp
@@ -362,7 +368,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_subscribe_pattern(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
 
         test_listener = RebalanceListenerForTest()
@@ -397,7 +405,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_commit_failed_scenarios(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         await self.wait_topic(client, "topic1")
         subscription = SubscriptionState()
@@ -419,7 +429,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             commit_error = None
 
             async def mock_send_req(request):
-                if request.API_KEY == OffsetCommitRequest[0].API_KEY:
+                if request.API_KEY == OffsetCommitRequest.API_KEY:
                     if isinstance(commit_error, list):
                         error_code = commit_error.pop(0).errno
                     else:
@@ -511,7 +521,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_fetchoffsets_failed_scenarios(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         await self.wait_topic(client, "topic1")
         subscription = SubscriptionState()
@@ -538,7 +550,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                     else:
                         offset = -1
                     resp_topics = [("topic1", [(0, offset, "", error_code)])]
-                    return request.RESPONSE_TYPE(resp_topics)
+                    return OffsetFetchResponse_v0(resp_topics)
                 return await _orig_send_req(request)
 
             mocked.side_effect = mock_send_req
@@ -591,6 +603,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(
             metadata_max_age_ms=2000,
             bootstrap_servers=self.hosts,
+            legacy_protocol=self.legacy_protocol,
         )
         await client.bootstrap()
         await self.wait_topic(client, "topic1")
@@ -632,7 +645,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_coordinator_subscription_append_on_rebalance(self):
         # same as above, but with adding topics instead of replacing them
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         await self.wait_topic(client, "topic1")
         await self.wait_topic(client, "topic2")
@@ -675,13 +690,17 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         # fails to arrive before leader performed assignment
 
         # Just ensure topics are created
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         await self.wait_topic(client, "topic1")
         await self.wait_topic(client, "topic2")
         await client.close()
 
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         self.add_cleanup(client.close)
         subscription = SubscriptionState()
@@ -728,7 +747,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_coordinator_metadata_change_by_broker(self):
         # Issue #108. We can have a misleading metadata change, that will
         # trigger additional rebalance
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         await self.wait_topic(client, "topic1")
         await self.wait_topic(client, "topic2")
@@ -770,7 +791,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_coordinator_ensure_active_group_on_expired_membership(self):
         # Do not fail group join if group membership has expired (ie autocommit
         # fails on join prepare)
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         await self.wait_topic(client, "topic1")
         subscription = SubscriptionState()
@@ -797,7 +820,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         with mock.patch.object(coordinator, "_send_req") as mocked:
 
             async def mock_send_req(request):
-                if request.API_KEY == OffsetCommitRequest[0].API_KEY:
+                if request.API_KEY == OffsetCommitRequest.API_KEY:
                     return OffsetCommitResponse_v2(resp_topics)
                 return await _orig_send_req(request)
 
@@ -814,7 +837,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_coordinator__send_req(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         self.add_cleanup(client.close)
         subscription = SubscriptionState()
@@ -828,7 +853,13 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         )
         self.add_cleanup(coordinator.close)
 
-        request = OffsetCommitRequest[2](topics=[])
+        request = OffsetCommitRequest(
+            coordinator.group_id,
+            OffsetCommitRequest.DEFAULT_GENERATION_ID,
+            JoinGroupRequest.UNKNOWN_MEMBER_ID,
+            OffsetCommitRequest.DEFAULT_RETENTION_TIME,
+            [],
+        )
 
         # We did not call ensure_coordinator_known yet
         with self.assertRaises(Errors.GroupCoordinatorNotAvailableError):
@@ -851,7 +882,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_coordinator_close(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         self.add_cleanup(client.close)
         subscription = SubscriptionState()
@@ -887,7 +920,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_coordinator_close_autocommit(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         self.add_cleanup(client.close)
         subscription = SubscriptionState()
@@ -921,7 +956,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_coordinator_ensure_coordinator_known(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         subscription = SubscriptionState()
         subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
@@ -991,7 +1028,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_coordinator__do_heartbeat(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         subscription = SubscriptionState()
         subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
@@ -1018,7 +1057,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                     error_code = heartbeat_error.pop(0).errno
                 else:
                     error_code = heartbeat_error.errno
-                return HeartbeatRequest.RESPONSE_TYPE(error_code)
+                return HeartbeatResponse_v0(error_code)
             return await _orig_send_req(request)
 
         mocked.side_effect = mock_send_req
@@ -1072,7 +1111,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_coordinator__heartbeat_routine(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         subscription = SubscriptionState()
         subscription.subscribe(topics={"topic1"})
         coordinator = GroupCoordinator(
@@ -1139,7 +1180,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_coordinator__maybe_refresh_commit_offsets(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         subscription = SubscriptionState()
         tp = TopicPartition("topic1", 0)
         coordinator = GroupCoordinator(
@@ -1202,7 +1245,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_coordinator__maybe_do_autocommit(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         subscription = SubscriptionState()
         tp = TopicPartition("topic1", 0)
         coordinator = GroupCoordinator(
@@ -1281,7 +1326,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_coordinator__coordination_routine(self):
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         subscription = SubscriptionState()
         tp = TopicPartition("topic1", 0)
         coordinator = GroupCoordinator(
@@ -1444,7 +1491,9 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
     async def test_no_group_subscribe_during_metadata_update(self):
         # Issue #536. During metadata update we can't assume the subscription
         # did not change. We should handle the case by refreshing meta again.
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        client = AIOKafkaClient(
+            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
+        )
         await client.bootstrap()
         await self.wait_topic(client, "topic1")
         await self.wait_topic(client, "topic2")

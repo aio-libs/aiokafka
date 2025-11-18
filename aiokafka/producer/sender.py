@@ -11,6 +11,7 @@ from aiokafka.errors import (
     CoordinatorNotAvailableError,
     DuplicateSequenceNumber,
     GroupAuthorizationFailedError,
+    IncompatibleBrokerVersion,
     InvalidProducerEpoch,
     InvalidProducerIdMapping,
     InvalidTxnState,
@@ -400,6 +401,8 @@ class BaseHandler:
         req = self.create_request()
         try:
             resp = await self._sender.client.send(node_id, req, group=self.group)
+        except IncompatibleBrokerVersion:
+            raise
         except KafkaError as err:
             log.warning("Could not send %r: %r", req.__class__, err)
             await asyncio.sleep(self._default_backoff)
@@ -422,7 +425,7 @@ class BaseHandler:
 class InitPIDHandler(BaseHandler):
     def create_request(self):
         txn_manager = self._sender._txn_manager
-        return InitProducerIdRequest[0](
+        return InitProducerIdRequest(
             transactional_id=txn_manager.transactional_id,
             transaction_timeout_ms=txn_manager.transaction_timeout_ms,
         )
@@ -474,7 +477,7 @@ class AddPartitionsToTxnHandler(BaseHandler):
         for tp in self._tps:
             partition_data[tp.topic].append(tp.partition)
 
-        req = AddPartitionsToTxnRequest[0](
+        req = AddPartitionsToTxnRequest(
             transactional_id=txn_manager.transactional_id,
             producer_id=txn_manager.producer_id,
             producer_epoch=txn_manager.producer_epoch,
@@ -551,7 +554,7 @@ class AddOffsetsToTxnHandler(BaseHandler):
     def create_request(self):
         txn_manager = self._sender._txn_manager
 
-        req = AddOffsetsToTxnRequest[0](
+        req = AddOffsetsToTxnRequest(
             transactional_id=txn_manager.transactional_id,
             producer_id=txn_manager.producer_id,
             producer_epoch=txn_manager.producer_epoch,
@@ -614,7 +617,7 @@ class TxnOffsetCommitHandler(BaseHandler):
                 (tp.partition, offset.offset, offset.metadata),
             )
 
-        req = TxnOffsetCommitRequest[0](
+        req = TxnOffsetCommitRequest(
             transactional_id=txn_manager.transactional_id,
             group_id=self._group_id,
             producer_id=txn_manager.producer_id,
@@ -684,7 +687,7 @@ class EndTxnHandler(BaseHandler):
 
     def create_request(self):
         txn_manager = self._sender._txn_manager
-        req = EndTxnRequest[0](
+        req = EndTxnRequest(
             transactional_id=txn_manager.transactional_id,
             producer_id=txn_manager.producer_id,
             producer_epoch=txn_manager.producer_epoch,
@@ -737,31 +740,13 @@ class SendProduceReqHandler(BaseHandler):
                 (tp.partition, batch.get_data_buffer()),
             )
 
-        if self._client.api_version >= (2, 1):
-            version = 7
-        elif self._client.api_version >= (2, 0):
-            version = 6
-        elif self._client.api_version >= (1, 1):
-            version = 5
-        elif self._client.api_version >= (1, 0):
-            version = 4
-        elif self._client.api_version >= (0, 11):
-            version = 3
-        elif self._client.api_version >= (0, 10):
-            version = 2
-        elif self._client.api_version == (0, 9):
-            version = 1
-        else:
-            version = 0
-
         kwargs = {}
-        if version >= 3:
-            if self._sender._txn_manager is not None:
-                kwargs["transactional_id"] = self._sender._txn_manager.transactional_id
-            else:
-                kwargs["transactional_id"] = None
+        if self._sender._txn_manager is not None:
+            kwargs["transactional_id"] = self._sender._txn_manager.transactional_id
+        else:
+            kwargs["transactional_id"] = None
 
-        request = ProduceRequest[version](
+        request = ProduceRequest(
             required_acks=self._sender._acks,
             timeout=self._sender._request_timeout_ms,
             topics=list(topics.items()),

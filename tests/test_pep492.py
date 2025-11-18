@@ -1,5 +1,6 @@
 import asyncio
 
+from aiokafka.conn import LegacyProtocol
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import ConsumerStoppedError, NoOffsetForPartitionError
 from aiokafka.util import create_task
@@ -17,6 +18,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
             self.topic,
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest",
+            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
@@ -44,7 +46,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest",
             max_partition_fetch_bytes=4000,
-            api_version="0.9",
+            legacy_protocol=LegacyProtocol.LEGACY_0_9,
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
@@ -72,6 +74,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
             self.topic,
             bootstrap_servers=self.hosts,
             auto_offset_reset="none",
+            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
@@ -86,6 +89,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
             self.topic,
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest",
+            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)

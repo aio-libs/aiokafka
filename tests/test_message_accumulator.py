@@ -26,7 +26,7 @@ class TestMessageAccumulator(unittest.TestCase):
     @run_until_complete
     async def test_basic(self):
         cluster = ClusterMetadata(metadata_max_age_ms=10000)
-        ma = MessageAccumulator(cluster, 1000, 0, 30)
+        ma = MessageAccumulator(cluster, 1000, 0, 30, False)
         data_waiter = ma.data_waiter()
         done, _ = await asyncio.wait([data_waiter], timeout=0.2)
         self.assertFalse(bool(done))  # no data in accumulator yet...
@@ -122,7 +122,7 @@ class TestMessageAccumulator(unittest.TestCase):
         cluster.leader_for_partition = mock.MagicMock()
         cluster.leader_for_partition.side_effect = mocked_leader_for_partition
 
-        ma = MessageAccumulator(cluster, 1000, 0, 1)
+        ma = MessageAccumulator(cluster, 1000, 0, 1, False)
         fut1 = await ma.add_message(tp2, None, b"msg for tp@2", timeout=2)
         fut2 = await ma.add_message(tp3, None, b"msg for tp@3", timeout=2)
         await ma.add_message(tp1, None, b"0123456789" * 70, timeout=2)
@@ -174,12 +174,11 @@ class TestMessageAccumulator(unittest.TestCase):
         batches[0][tp0].done(base_offset=21)  # no error in this case
 
     def test_message_batch_builder_basic(self):
-        magic = 0
         batch_size = 1000
         msg_count = 3
         key = b"test key"
         value = b"test value"
-        builder = BatchBuilder(magic, batch_size, 0, is_transactional=False)
+        builder = BatchBuilder(True, batch_size, 0, is_transactional=False)
         self.assertEqual(builder._relative_offset, 0)
         self.assertIsNone(builder._buffer)
         self.assertFalse(builder._closed)
@@ -227,7 +226,7 @@ class TestMessageAccumulator(unittest.TestCase):
         cluster.leader_for_partition = mock.MagicMock()
         cluster.leader_for_partition.side_effect = mocked_leader_for_partition
 
-        ma = MessageAccumulator(cluster, 1000, 0, 1)
+        ma = MessageAccumulator(cluster, 1000, 0, 1, False)
         builder0 = ma.create_builder()
         builder1_1 = ma.create_builder()
         builder1_2 = ma.create_builder()
@@ -270,7 +269,7 @@ class TestMessageAccumulator(unittest.TestCase):
         cluster.leader_for_partition = mock.MagicMock()
         cluster.leader_for_partition.side_effect = mocked_leader_for_partition
 
-        ma = MessageAccumulator(cluster, 1000, 0, 1)
+        ma = MessageAccumulator(cluster, 1000, 0, 1, False)
         fut1 = await ma.add_message(tp0, b"key", b"value", timeout=2)
 
         # Drain and Reenqueu

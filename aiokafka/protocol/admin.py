@@ -1,6 +1,9 @@
 from collections.abc import Iterable
+from typing import Any
 
-from .api import Request, Response
+from aiokafka.errors import IncompatibleBrokerVersion
+
+from .api import Request, RequestStruct, Response
 from .types import (
     Array,
     Boolean,
@@ -49,37 +52,34 @@ class ApiVersionResponse_v2(Response):
     SCHEMA = ApiVersionResponse_v1.SCHEMA
 
 
-class ApiVersionRequest_v0(Request):
+class ApiVersionRequest_v0(RequestStruct):
     API_KEY = 18
     API_VERSION = 0
     RESPONSE_TYPE = ApiVersionResponse_v0
     SCHEMA = Schema()
 
 
-class ApiVersionRequest_v1(Request):
+class ApiVersionRequest_v1(RequestStruct):
     API_KEY = 18
     API_VERSION = 1
     RESPONSE_TYPE = ApiVersionResponse_v1
     SCHEMA = ApiVersionRequest_v0.SCHEMA
 
 
-class ApiVersionRequest_v2(Request):
+class ApiVersionRequest_v2(RequestStruct):
     API_KEY = 18
     API_VERSION = 2
     RESPONSE_TYPE = ApiVersionResponse_v1
     SCHEMA = ApiVersionRequest_v0.SCHEMA
 
 
-ApiVersionRequest = [
-    ApiVersionRequest_v0,
-    ApiVersionRequest_v1,
-    ApiVersionRequest_v2,
-]
-ApiVersionResponse = [
-    ApiVersionResponse_v0,
-    ApiVersionResponse_v1,
-    ApiVersionResponse_v2,
-]
+class ApiVersionRequest(Request):
+    API_KEY = 18
+    CLASSES = [ApiVersionRequest_v0, ApiVersionRequest_v1, ApiVersionRequest_v2]
+    ALLOW_UNKNOWN_API_VERSION = True
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        return request_struct_class()
 
 
 class CreateTopicsResponse_v0(Response):
@@ -127,7 +127,7 @@ class CreateTopicsResponse_v3(Response):
     SCHEMA = CreateTopicsResponse_v2.SCHEMA
 
 
-class CreateTopicsRequest_v0(Request):
+class CreateTopicsRequest_v0(RequestStruct):
     API_KEY = 19
     API_VERSION = 0
     RESPONSE_TYPE = CreateTopicsResponse_v0
@@ -155,7 +155,7 @@ class CreateTopicsRequest_v0(Request):
     )
 
 
-class CreateTopicsRequest_v1(Request):
+class CreateTopicsRequest_v1(RequestStruct):
     API_KEY = 19
     API_VERSION = 1
     RESPONSE_TYPE = CreateTopicsResponse_v1
@@ -184,32 +184,54 @@ class CreateTopicsRequest_v1(Request):
     )
 
 
-class CreateTopicsRequest_v2(Request):
+class CreateTopicsRequest_v2(RequestStruct):
     API_KEY = 19
     API_VERSION = 2
     RESPONSE_TYPE = CreateTopicsResponse_v2
     SCHEMA = CreateTopicsRequest_v1.SCHEMA
 
 
-class CreateTopicsRequest_v3(Request):
+class CreateTopicsRequest_v3(RequestStruct):
     API_KEY = 19
     API_VERSION = 3
     RESPONSE_TYPE = CreateTopicsResponse_v3
     SCHEMA = CreateTopicsRequest_v1.SCHEMA
 
 
-CreateTopicsRequest = [
-    CreateTopicsRequest_v0,
-    CreateTopicsRequest_v1,
-    CreateTopicsRequest_v2,
-    CreateTopicsRequest_v3,
-]
-CreateTopicsResponse = [
-    CreateTopicsResponse_v0,
-    CreateTopicsResponse_v1,
-    CreateTopicsResponse_v2,
-    CreateTopicsResponse_v3,
-]
+class CreateTopicsRequest(Request):
+    API_KEY = 19
+    CLASSES = [
+        CreateTopicsRequest_v0,
+        CreateTopicsRequest_v1,
+        CreateTopicsRequest_v2,
+        CreateTopicsRequest_v3,
+    ]
+
+    def __init__(
+        self,
+        create_topic_requests: list[tuple[Any]],
+        timeout: int | None,
+        validate_only: bool,
+    ):
+        self.create_topic_requests = create_topic_requests
+        self.timeout = timeout
+        self.validate_only = validate_only
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        if request_struct_class.API_VERSION == 0:
+            if self.validate_only:
+                raise IncompatibleBrokerVersion(
+                    "validate_only requires CreateTopicsRequest >= v1"
+                )
+            return request_struct_class(
+                create_topic_requests=self.create_topic_requests,
+                timeout=self.timeout,
+            )
+        return request_struct_class(
+            create_topic_requests=self.create_topic_requests,
+            timeout=self.timeout,
+            validate_only=self.validate_only,
+        )
 
 
 class DeleteTopicsResponse_v0(Response):
@@ -241,46 +263,49 @@ class DeleteTopicsResponse_v3(Response):
     SCHEMA = DeleteTopicsResponse_v1.SCHEMA
 
 
-class DeleteTopicsRequest_v0(Request):
+class DeleteTopicsRequest_v0(RequestStruct):
     API_KEY = 20
     API_VERSION = 0
     RESPONSE_TYPE = DeleteTopicsResponse_v0
     SCHEMA = Schema(("topics", Array(String("utf-8"))), ("timeout", Int32))
 
 
-class DeleteTopicsRequest_v1(Request):
+class DeleteTopicsRequest_v1(RequestStruct):
     API_KEY = 20
     API_VERSION = 1
     RESPONSE_TYPE = DeleteTopicsResponse_v1
     SCHEMA = DeleteTopicsRequest_v0.SCHEMA
 
 
-class DeleteTopicsRequest_v2(Request):
+class DeleteTopicsRequest_v2(RequestStruct):
     API_KEY = 20
     API_VERSION = 2
     RESPONSE_TYPE = DeleteTopicsResponse_v2
     SCHEMA = DeleteTopicsRequest_v0.SCHEMA
 
 
-class DeleteTopicsRequest_v3(Request):
+class DeleteTopicsRequest_v3(RequestStruct):
     API_KEY = 20
     API_VERSION = 3
     RESPONSE_TYPE = DeleteTopicsResponse_v3
     SCHEMA = DeleteTopicsRequest_v0.SCHEMA
 
 
-DeleteTopicsRequest = [
-    DeleteTopicsRequest_v0,
-    DeleteTopicsRequest_v1,
-    DeleteTopicsRequest_v2,
-    DeleteTopicsRequest_v3,
-]
-DeleteTopicsResponse = [
-    DeleteTopicsResponse_v0,
-    DeleteTopicsResponse_v1,
-    DeleteTopicsResponse_v2,
-    DeleteTopicsResponse_v3,
-]
+class DeleteTopicsRequest(Request):
+    API_KEY = 20
+    CLASSES = [
+        DeleteTopicsRequest_v0,
+        DeleteTopicsRequest_v1,
+        DeleteTopicsRequest_v2,
+        DeleteTopicsRequest_v3,
+    ]
+
+    def __init__(self, topics: list[str], timeout: int):
+        self._topics = topics
+        self._timeout = timeout
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        return request_struct_class(self._topics, self._timeout)
 
 
 class ListGroupsResponse_v0(Response):
@@ -314,37 +339,37 @@ class ListGroupsResponse_v2(Response):
     SCHEMA = ListGroupsResponse_v1.SCHEMA
 
 
-class ListGroupsRequest_v0(Request):
+class ListGroupsRequest_v0(RequestStruct):
     API_KEY = 16
     API_VERSION = 0
     RESPONSE_TYPE = ListGroupsResponse_v0
     SCHEMA = Schema()
 
 
-class ListGroupsRequest_v1(Request):
+class ListGroupsRequest_v1(RequestStruct):
     API_KEY = 16
     API_VERSION = 1
     RESPONSE_TYPE = ListGroupsResponse_v1
     SCHEMA = ListGroupsRequest_v0.SCHEMA
 
 
-class ListGroupsRequest_v2(Request):
+class ListGroupsRequest_v2(RequestStruct):
     API_KEY = 16
     API_VERSION = 1
     RESPONSE_TYPE = ListGroupsResponse_v2
     SCHEMA = ListGroupsRequest_v0.SCHEMA
 
 
-ListGroupsRequest = [
-    ListGroupsRequest_v0,
-    ListGroupsRequest_v1,
-    ListGroupsRequest_v2,
-]
-ListGroupsResponse = [
-    ListGroupsResponse_v0,
-    ListGroupsResponse_v1,
-    ListGroupsResponse_v2,
-]
+class ListGroupsRequest(Request):
+    API_KEY = 16
+    CLASSES = [
+        ListGroupsRequest_v0,
+        ListGroupsRequest_v1,
+        ListGroupsRequest_v2,
+    ]
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        return request_struct_class()
 
 
 class DescribeGroupsResponse_v0(Response):
@@ -437,28 +462,28 @@ class DescribeGroupsResponse_v3(Response):
     )
 
 
-class DescribeGroupsRequest_v0(Request):
+class DescribeGroupsRequest_v0(RequestStruct):
     API_KEY = 15
     API_VERSION = 0
     RESPONSE_TYPE = DescribeGroupsResponse_v0
     SCHEMA = Schema(("groups", Array(String("utf-8"))))
 
 
-class DescribeGroupsRequest_v1(Request):
+class DescribeGroupsRequest_v1(RequestStruct):
     API_KEY = 15
     API_VERSION = 1
     RESPONSE_TYPE = DescribeGroupsResponse_v1
     SCHEMA = DescribeGroupsRequest_v0.SCHEMA
 
 
-class DescribeGroupsRequest_v2(Request):
+class DescribeGroupsRequest_v2(RequestStruct):
     API_KEY = 15
     API_VERSION = 2
     RESPONSE_TYPE = DescribeGroupsResponse_v2
     SCHEMA = DescribeGroupsRequest_v0.SCHEMA
 
 
-class DescribeGroupsRequest_v3(Request):
+class DescribeGroupsRequest_v3(RequestStruct):
     API_KEY = 15
     API_VERSION = 3
     RESPONSE_TYPE = DescribeGroupsResponse_v2
@@ -467,18 +492,27 @@ class DescribeGroupsRequest_v3(Request):
     )
 
 
-DescribeGroupsRequest = [
-    DescribeGroupsRequest_v0,
-    DescribeGroupsRequest_v1,
-    DescribeGroupsRequest_v2,
-    DescribeGroupsRequest_v3,
-]
-DescribeGroupsResponse = [
-    DescribeGroupsResponse_v0,
-    DescribeGroupsResponse_v1,
-    DescribeGroupsResponse_v2,
-    DescribeGroupsResponse_v3,
-]
+class DescribeGroupsRequest(Request):
+    API_KEY = 15
+    CLASSES = [
+        DescribeGroupsRequest_v0,
+        DescribeGroupsRequest_v1,
+        DescribeGroupsRequest_v2,
+        DescribeGroupsRequest_v3,
+    ]
+
+    def __init__(self, groups: list[str], include_authorized_operations: bool = False):
+        self._groups = groups
+        self._include_authorized_operations = include_authorized_operations
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        if request_struct_class.API_VERSION < 3:
+            if self._include_authorized_operations:
+                raise IncompatibleBrokerVersion(
+                    "include_authorized_operations requires DescribeGroupsRequest >= v3"
+                )
+            return request_struct_class(self._groups)
+        return request_struct_class(self._groups, self._include_authorized_operations)
 
 
 class SaslHandShakeResponse_v0(Response):
@@ -495,22 +529,32 @@ class SaslHandShakeResponse_v1(Response):
     SCHEMA = SaslHandShakeResponse_v0.SCHEMA
 
 
-class SaslHandShakeRequest_v0(Request):
+class SaslHandShakeRequest_v0(RequestStruct):
     API_KEY = 17
     API_VERSION = 0
     RESPONSE_TYPE = SaslHandShakeResponse_v0
     SCHEMA = Schema(("mechanism", String("utf-8")))
 
 
-class SaslHandShakeRequest_v1(Request):
+class SaslHandShakeRequest_v1(RequestStruct):
     API_KEY = 17
     API_VERSION = 1
     RESPONSE_TYPE = SaslHandShakeResponse_v1
     SCHEMA = SaslHandShakeRequest_v0.SCHEMA
 
 
-SaslHandShakeRequest = [SaslHandShakeRequest_v0, SaslHandShakeRequest_v1]
-SaslHandShakeResponse = [SaslHandShakeResponse_v0, SaslHandShakeResponse_v1]
+class SaslHandShakeRequest(Request):
+    API_KEY = 17
+    CLASSES = [
+        SaslHandShakeRequest_v0,
+        SaslHandShakeRequest_v1,
+    ]
+
+    def __init__(self, mechanism: str):
+        self._mechanism = mechanism
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        return request_struct_class(self._mechanism)
 
 
 class DescribeAclsResponse_v0(Response):
@@ -572,7 +616,7 @@ class DescribeAclsResponse_v2(Response):
     SCHEMA = DescribeAclsResponse_v1.SCHEMA
 
 
-class DescribeAclsRequest_v0(Request):
+class DescribeAclsRequest_v0(RequestStruct):
     API_KEY = 29
     API_VERSION = 0
     RESPONSE_TYPE = DescribeAclsResponse_v0
@@ -586,7 +630,7 @@ class DescribeAclsRequest_v0(Request):
     )
 
 
-class DescribeAclsRequest_v1(Request):
+class DescribeAclsRequest_v1(RequestStruct):
     API_KEY = 29
     API_VERSION = 1
     RESPONSE_TYPE = DescribeAclsResponse_v1
@@ -601,7 +645,7 @@ class DescribeAclsRequest_v1(Request):
     )
 
 
-class DescribeAclsRequest_v2(Request):
+class DescribeAclsRequest_v2(RequestStruct):
     """
     Enable flexible version
     """
@@ -612,8 +656,47 @@ class DescribeAclsRequest_v2(Request):
     SCHEMA = DescribeAclsRequest_v1.SCHEMA
 
 
-DescribeAclsRequest = [DescribeAclsRequest_v0, DescribeAclsRequest_v1]
-DescribeAclsResponse = [DescribeAclsResponse_v0, DescribeAclsResponse_v1]
+class DescribeAclsRequest(Request):
+    API_KEY = 29
+    CLASSES = [DescribeAclsRequest_v0, DescribeAclsRequest_v1]
+
+    def __init__(
+        self,
+        resource_type: int,
+        resource_name: str,
+        resource_pattern_type_filter: int,
+        principal: str,
+        host: str,
+        operation: int,
+        permission_type: int,
+    ):
+        self._resource_type = resource_type
+        self._resource_name = resource_name
+        self._resource_pattern_type_filter = resource_pattern_type_filter
+        self._principal = principal
+        self._host = host
+        self._operation = operation
+        self._permission_type = permission_type
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        if request_struct_class.API_VERSION < 1:
+            return request_struct_class(
+                self._resource_type,
+                self._resource_name,
+                self._principal,
+                self._host,
+                self._operation,
+                self._permission_type,
+            )
+        return request_struct_class(
+            self._resource_type,
+            self._resource_name,
+            self._resource_pattern_type_filter,
+            self._principal,
+            self._host,
+            self._operation,
+            self._permission_type,
+        )
 
 
 class CreateAclsResponse_v0(Response):
@@ -634,7 +717,7 @@ class CreateAclsResponse_v1(Response):
     SCHEMA = CreateAclsResponse_v0.SCHEMA
 
 
-class CreateAclsRequest_v0(Request):
+class CreateAclsRequest_v0(RequestStruct):
     API_KEY = 30
     API_VERSION = 0
     RESPONSE_TYPE = CreateAclsResponse_v0
@@ -653,7 +736,7 @@ class CreateAclsRequest_v0(Request):
     )
 
 
-class CreateAclsRequest_v1(Request):
+class CreateAclsRequest_v1(RequestStruct):
     API_KEY = 30
     API_VERSION = 1
     RESPONSE_TYPE = CreateAclsResponse_v1
@@ -673,8 +756,55 @@ class CreateAclsRequest_v1(Request):
     )
 
 
-CreateAclsRequest = [CreateAclsRequest_v0, CreateAclsRequest_v1]
-CreateAclsResponse = [CreateAclsResponse_v0, CreateAclsResponse_v1]
+class CreateAclsRequest(Request):
+    API_KEY = 30
+    CLASSES = [CreateAclsRequest_v0, CreateAclsRequest_v1]
+
+    def __init__(
+        self,
+        resource_type: int,
+        resource_name: str,
+        resource_pattern_type_filter: int,
+        principal: str,
+        host: str,
+        operation: int,
+        permission_type: int,
+    ):
+        self._resource_type = resource_type
+        self._resource_name = resource_name
+        self._resource_pattern_type_filter = resource_pattern_type_filter
+        self._principal = principal
+        self._host = host
+        self._operation = operation
+        self._permission_type = permission_type
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        if request_struct_class.API_VERSION < 1:
+            return request_struct_class(
+                [
+                    (
+                        self._resource_type,
+                        self._resource_name,
+                        self._principal,
+                        self._host,
+                        self._operation,
+                        self._permission_type,
+                    )
+                ]
+            )
+        return request_struct_class(
+            [
+                (
+                    self._resource_type,
+                    self._resource_name,
+                    self._resource_pattern_type_filter,
+                    self._principal,
+                    self._host,
+                    self._operation,
+                    self._permission_type,
+                )
+            ]
+        )
 
 
 class DeleteAclsResponse_v0(Response):
@@ -734,7 +864,7 @@ class DeleteAclsResponse_v1(Response):
     )
 
 
-class DeleteAclsRequest_v0(Request):
+class DeleteAclsRequest_v0(RequestStruct):
     API_KEY = 31
     API_VERSION = 0
     RESPONSE_TYPE = DeleteAclsResponse_v0
@@ -753,7 +883,7 @@ class DeleteAclsRequest_v0(Request):
     )
 
 
-class DeleteAclsRequest_v1(Request):
+class DeleteAclsRequest_v1(RequestStruct):
     API_KEY = 31
     API_VERSION = 1
     RESPONSE_TYPE = DeleteAclsResponse_v1
@@ -773,8 +903,55 @@ class DeleteAclsRequest_v1(Request):
     )
 
 
-DeleteAclsRequest = [DeleteAclsRequest_v0, DeleteAclsRequest_v1]
-DeleteAclsResponse = [DeleteAclsResponse_v0, DeleteAclsResponse_v1]
+class DeleteAclsRequest(Request):
+    API_KEY = 31
+    CLASSES = [DeleteAclsRequest_v0, DeleteAclsRequest_v1]
+
+    def __init__(
+        self,
+        resource_type: int,
+        resource_name: str,
+        resource_pattern_type_filter: int,
+        principal: str,
+        host: str,
+        operation: int,
+        permission_type: int,
+    ):
+        self._resource_type = resource_type
+        self._resource_name = resource_name
+        self._resource_pattern_type_filter = resource_pattern_type_filter
+        self._principal = principal
+        self._host = host
+        self._operation = operation
+        self._permission_type = permission_type
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        if request_struct_class.API_VERSION < 1:
+            return request_struct_class(
+                [
+                    (
+                        self._resource_type,
+                        self._resource_name,
+                        self._principal,
+                        self._host,
+                        self._operation,
+                        self._permission_type,
+                    )
+                ]
+            )
+        return request_struct_class(
+            [
+                (
+                    self._resource_type,
+                    self._resource_name,
+                    self._resource_pattern_type_filter,
+                    self._principal,
+                    self._host,
+                    self._operation,
+                    self._permission_type,
+                )
+            ]
+        )
 
 
 class AlterConfigsResponse_v0(Response):
@@ -800,7 +977,7 @@ class AlterConfigsResponse_v1(Response):
     SCHEMA = AlterConfigsResponse_v0.SCHEMA
 
 
-class AlterConfigsRequest_v0(Request):
+class AlterConfigsRequest_v0(RequestStruct):
     API_KEY = 33
     API_VERSION = 0
     RESPONSE_TYPE = AlterConfigsResponse_v0
@@ -823,15 +1000,25 @@ class AlterConfigsRequest_v0(Request):
     )
 
 
-class AlterConfigsRequest_v1(Request):
+class AlterConfigsRequest_v1(RequestStruct):
     API_KEY = 33
     API_VERSION = 1
     RESPONSE_TYPE = AlterConfigsResponse_v1
     SCHEMA = AlterConfigsRequest_v0.SCHEMA
 
 
-AlterConfigsRequest = [AlterConfigsRequest_v0, AlterConfigsRequest_v1]
-AlterConfigsResponse = [AlterConfigsResponse_v0, AlterConfigsRequest_v1]
+class AlterConfigsRequest(Request):
+    API_KEY = 33
+    CLASSES = [AlterConfigsRequest_v0, AlterConfigsRequest_v1]
+
+    def __init__(
+        self, resources: dict[int, Any] | list[Any], validate_only: bool = False
+    ):
+        self._resources = resources
+        self._validate_only = validate_only
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        return request_struct_class(self._resources, self._validate_only)
 
 
 class DescribeConfigsResponse_v0(Response):
@@ -931,7 +1118,7 @@ class DescribeConfigsResponse_v2(Response):
     )
 
 
-class DescribeConfigsRequest_v0(Request):
+class DescribeConfigsRequest_v0(RequestStruct):
     API_KEY = 32
     API_VERSION = 0
     RESPONSE_TYPE = DescribeConfigsResponse_v0
@@ -947,7 +1134,7 @@ class DescribeConfigsRequest_v0(Request):
     )
 
 
-class DescribeConfigsRequest_v1(Request):
+class DescribeConfigsRequest_v1(RequestStruct):
     API_KEY = 32
     API_VERSION = 1
     RESPONSE_TYPE = DescribeConfigsResponse_v1
@@ -964,23 +1151,35 @@ class DescribeConfigsRequest_v1(Request):
     )
 
 
-class DescribeConfigsRequest_v2(Request):
+class DescribeConfigsRequest_v2(RequestStruct):
     API_KEY = 32
     API_VERSION = 2
     RESPONSE_TYPE = DescribeConfigsResponse_v2
     SCHEMA = DescribeConfigsRequest_v1.SCHEMA
 
 
-DescribeConfigsRequest = [
-    DescribeConfigsRequest_v0,
-    DescribeConfigsRequest_v1,
-    DescribeConfigsRequest_v2,
-]
-DescribeConfigsResponse = [
-    DescribeConfigsResponse_v0,
-    DescribeConfigsResponse_v1,
-    DescribeConfigsResponse_v2,
-]
+class DescribeConfigsRequest(Request):
+    API_KEY = 32
+    CLASSES = [
+        DescribeConfigsRequest_v0,
+        DescribeConfigsRequest_v1,
+        DescribeConfigsRequest_v2,
+    ]
+
+    def __init__(
+        self, resources: dict[int, Any] | list[Any], include_synonyms: bool = False
+    ):
+        self._resources = resources
+        self._include_synonyms = include_synonyms
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        if request_struct_class.API_VERSION < 1:
+            if self._include_synonyms:
+                raise IncompatibleBrokerVersion(
+                    "include_synonyms requires DescribeConfigsRequest >= v1"
+                )
+            return request_struct_class(self._resources)
+        return request_struct_class(self._resources, self._include_synonyms)
 
 
 class SaslAuthenticateResponse_v0(Response):
@@ -1004,28 +1203,32 @@ class SaslAuthenticateResponse_v1(Response):
     )
 
 
-class SaslAuthenticateRequest_v0(Request):
+class SaslAuthenticateRequest_v0(RequestStruct):
     API_KEY = 36
     API_VERSION = 0
     RESPONSE_TYPE = SaslAuthenticateResponse_v0
     SCHEMA = Schema(("sasl_auth_bytes", Bytes))
 
 
-class SaslAuthenticateRequest_v1(Request):
+class SaslAuthenticateRequest_v1(RequestStruct):
     API_KEY = 36
     API_VERSION = 1
     RESPONSE_TYPE = SaslAuthenticateResponse_v1
     SCHEMA = SaslAuthenticateRequest_v0.SCHEMA
 
 
-SaslAuthenticateRequest = [
-    SaslAuthenticateRequest_v0,
-    SaslAuthenticateRequest_v1,
-]
-SaslAuthenticateResponse = [
-    SaslAuthenticateResponse_v0,
-    SaslAuthenticateResponse_v1,
-]
+class SaslAuthenticateRequest(Request):
+    API_KEY = 36
+    CLASSES = [
+        SaslAuthenticateRequest_v0,
+        SaslAuthenticateRequest_v1,
+    ]
+
+    def __init__(self, payload: Any):
+        self._payload = payload
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        return request_struct_class(self._payload)
 
 
 class CreatePartitionsResponse_v0(Response):
@@ -1050,7 +1253,7 @@ class CreatePartitionsResponse_v1(Response):
     SCHEMA = CreatePartitionsResponse_v0.SCHEMA
 
 
-class CreatePartitionsRequest_v0(Request):
+class CreatePartitionsRequest_v0(RequestStruct):
     API_KEY = 37
     API_VERSION = 0
     RESPONSE_TYPE = CreatePartitionsResponse_v0
@@ -1070,21 +1273,34 @@ class CreatePartitionsRequest_v0(Request):
     )
 
 
-class CreatePartitionsRequest_v1(Request):
+class CreatePartitionsRequest_v1(RequestStruct):
     API_KEY = 37
     API_VERSION = 1
     SCHEMA = CreatePartitionsRequest_v0.SCHEMA
     RESPONSE_TYPE = CreatePartitionsResponse_v1
 
 
-CreatePartitionsRequest = [
-    CreatePartitionsRequest_v0,
-    CreatePartitionsRequest_v1,
-]
-CreatePartitionsResponse = [
-    CreatePartitionsResponse_v0,
-    CreatePartitionsResponse_v1,
-]
+class CreatePartitionsRequest(Request):
+    API_KEY = 37
+    CLASSES = [
+        CreatePartitionsRequest_v0,
+        CreatePartitionsRequest_v1,
+    ]
+
+    def __init__(
+        self,
+        topic_partitions: list[tuple[str, tuple[int, list[int]]]],
+        timeout: int,
+        validate_only: bool,
+    ):
+        self._topic_partitions = topic_partitions
+        self._timeout = timeout
+        self._validate_only = validate_only
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        return request_struct_class(
+            self._topic_partitions, self._timeout, self._validate_only
+        )
 
 
 class DeleteGroupsResponse_v0(Response):
@@ -1102,23 +1318,29 @@ class DeleteGroupsResponse_v1(Response):
     SCHEMA = DeleteGroupsResponse_v0.SCHEMA
 
 
-class DeleteGroupsRequest_v0(Request):
+class DeleteGroupsRequest_v0(RequestStruct):
     API_KEY = 42
     API_VERSION = 0
     RESPONSE_TYPE = DeleteGroupsResponse_v0
     SCHEMA = Schema(("groups_names", Array(String("utf-8"))))
 
 
-class DeleteGroupsRequest_v1(Request):
+class DeleteGroupsRequest_v1(RequestStruct):
     API_KEY = 42
     API_VERSION = 1
     RESPONSE_TYPE = DeleteGroupsResponse_v1
     SCHEMA = DeleteGroupsRequest_v0.SCHEMA
 
 
-DeleteGroupsRequest = [DeleteGroupsRequest_v0, DeleteGroupsRequest_v1]
+class DeleteGroupsRequest(Request):
+    API_KEY = 42
+    CLASSES = [DeleteGroupsRequest_v0, DeleteGroupsRequest_v1]
 
-DeleteGroupsResponse = [DeleteGroupsResponse_v0, DeleteGroupsResponse_v1]
+    def __init__(self, group_names: list[str]):
+        self._group_names = group_names
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        return request_struct_class(self._group_names)
 
 
 class DescribeClientQuotasResponse_v0(Response):
@@ -1144,7 +1366,7 @@ class DescribeClientQuotasResponse_v0(Response):
     )
 
 
-class DescribeClientQuotasRequest_v0(Request):
+class DescribeClientQuotasRequest_v0(RequestStruct):
     API_KEY = 48
     API_VERSION = 0
     RESPONSE_TYPE = DescribeClientQuotasResponse_v0
@@ -1161,13 +1383,18 @@ class DescribeClientQuotasRequest_v0(Request):
     )
 
 
-DescribeClientQuotasRequest = [
-    DescribeClientQuotasRequest_v0,
-]
+class DescribeClientQuotasRequest(Request):
+    API_KEY = 48
+    CLASSES = [
+        DescribeClientQuotasRequest_v0,
+    ]
 
-DescribeClientQuotasResponse = [
-    DescribeClientQuotasResponse_v0,
-]
+    def __init__(self, components: list[tuple[str, int, str]], strict: bool):
+        self._components = components
+        self._strict = strict
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        return request_struct_class(self._components, self._strict)
 
 
 class AlterPartitionReassignmentsResponse_v0(Response):
@@ -1197,7 +1424,7 @@ class AlterPartitionReassignmentsResponse_v0(Response):
     )
 
 
-class AlterPartitionReassignmentsRequest_v0(Request):
+class AlterPartitionReassignmentsRequest_v0(RequestStruct):
     FLEXIBLE_VERSION = True
     API_KEY = 45
     API_VERSION = 0
@@ -1223,9 +1450,22 @@ class AlterPartitionReassignmentsRequest_v0(Request):
     )
 
 
-AlterPartitionReassignmentsRequest = [AlterPartitionReassignmentsRequest_v0]
+class AlterPartitionReassignmentsRequest(Request):
+    API_KEY = 45
+    CLASSES = [AlterPartitionReassignmentsRequest_v0]
 
-AlterPartitionReassignmentsResponse = [AlterPartitionReassignmentsResponse_v0]
+    def __init__(
+        self,
+        timeout_ms: int,
+        topics: list[tuple[str, tuple[int, list[int], TaggedFields], TaggedFields]],
+        tags: TaggedFields,
+    ):
+        self._timeout_ms = timeout_ms
+        self._topics = topics
+        self._tags = tags
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        return request_struct_class(self._timeout_ms, self._topics, self._tags)
 
 
 class ListPartitionReassignmentsResponse_v0(Response):
@@ -1256,7 +1496,7 @@ class ListPartitionReassignmentsResponse_v0(Response):
     )
 
 
-class ListPartitionReassignmentsRequest_v0(Request):
+class ListPartitionReassignmentsRequest_v0(RequestStruct):
     FLEXIBLE_VERSION = True
     API_KEY = 46
     API_VERSION = 0
@@ -1275,9 +1515,22 @@ class ListPartitionReassignmentsRequest_v0(Request):
     )
 
 
-ListPartitionReassignmentsRequest = [ListPartitionReassignmentsRequest_v0]
+class ListPartitionReassignmentsRequest(Request):
+    API_KEY = 46
+    CLASSES = [ListPartitionReassignmentsRequest_v0]
 
-ListPartitionReassignmentsResponse = [ListPartitionReassignmentsResponse_v0]
+    def __init__(
+        self,
+        timeout_ms: int,
+        topics: list[tuple[str, tuple[int, list[int], TaggedFields], TaggedFields]],
+        tags: TaggedFields,
+    ):
+        self._timeout_ms = timeout_ms
+        self._topics = topics
+        self._tags = tags
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        return request_struct_class(self._timeout_ms, self._topics, self._tags)
 
 
 class DeleteRecordsResponse_v0(Response):
@@ -1333,7 +1586,7 @@ class DeleteRecordsResponse_v2(Response):
     )
 
 
-class DeleteRecordsRequest_v0(Request):
+class DeleteRecordsRequest_v0(RequestStruct):
     API_KEY = 21
     API_VERSION = 0
     RESPONSE_TYPE = DeleteRecordsResponse_v0
@@ -1355,14 +1608,14 @@ class DeleteRecordsRequest_v0(Request):
     )
 
 
-class DeleteRecordsRequest_v1(Request):
+class DeleteRecordsRequest_v1(RequestStruct):
     API_KEY = 21
     API_VERSION = 1
     RESPONSE_TYPE = DeleteRecordsResponse_v1
     SCHEMA = DeleteRecordsRequest_v0.SCHEMA
 
 
-class DeleteRecordsRequest_v2(Request):
+class DeleteRecordsRequest_v2(RequestStruct):
     API_KEY = 21
     API_VERSION = 2
     FLEXIBLE_VERSION = True
@@ -1387,13 +1640,43 @@ class DeleteRecordsRequest_v2(Request):
         ("tags", TaggedFields),
     )
 
+
+class DeleteRecordsRequest(Request):
+    API_KEY = 21
+    CLASSES = [
+        DeleteRecordsRequest_v0,
+        DeleteRecordsRequest_v1,
+        DeleteRecordsRequest_v2,
+    ]
+
     def __init__(
         self,
         topics: Iterable[tuple[str, Iterable[tuple[int, int]]]],
         timeout_ms: int,
         tags: dict[int, bytes] | None = None,
     ) -> None:
-        super().__init__(
+        self._topics = topics
+        self._timeout_ms = timeout_ms
+        self._tags = tags
+
+    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+        if request_struct_class.API_VERSION < 2:
+            if self._tags is not None:
+                raise IncompatibleBrokerVersion(
+                    "tags requires DeleteRecordsRequest >= v2"
+                )
+
+            return request_struct_class(
+                [
+                    (
+                        topic,
+                        list(partitions),
+                    )
+                    for (topic, partitions) in self._topics
+                ],
+                self._timeout_ms,
+            )
+        return request_struct_class(
             [
                 (
                     topic,
@@ -1403,21 +1686,8 @@ class DeleteRecordsRequest_v2(Request):
                     ],
                     {},
                 )
-                for (topic, partitions) in topics
+                for (topic, partitions) in self._topics
             ],
-            timeout_ms,
-            tags or {},
+            self._timeout_ms,
+            self._tags or {},
         )
-
-
-DeleteRecordsRequest = [
-    DeleteRecordsRequest_v0,
-    DeleteRecordsRequest_v1,
-    DeleteRecordsRequest_v2,
-]
-
-DeleteRecordsResponse = [
-    DeleteRecordsResponse_v0,
-    DeleteRecordsResponse_v1,
-    DeleteRecordsResponse_v2,
-]

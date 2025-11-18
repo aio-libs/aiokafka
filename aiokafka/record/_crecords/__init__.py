@@ -28,17 +28,17 @@ from .memory_records import (
 )
 
 __all__ = [
+    "DefaultRecord",
+    "DefaultRecordBatch",
+    "DefaultRecordBatchBuilder",
+    "DefaultRecordMetadata",
+    "LegacyRecord",
+    "LegacyRecordBatch",
+    "LegacyRecordBatchBuilder",
+    "LegacyRecordMetadata",
+    "MemoryRecords",
+    "crc32c_cython",
     "decode_varint_cython",
     "encode_varint_cython",
     "size_of_varint_cython",
-    "crc32c_cython",
-    "MemoryRecords",
-    "LegacyRecordBatch",
-    "LegacyRecord",
-    "LegacyRecordBatchBuilder",
-    "LegacyRecordMetadata",
-    "DefaultRecordBatch",
-    "DefaultRecord",
-    "DefaultRecordBatchBuilder",
-    "DefaultRecordMetadata",
 ]

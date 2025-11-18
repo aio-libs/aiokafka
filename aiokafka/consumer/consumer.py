@@ -14,7 +14,6 @@ from aiokafka.errors import (
     IllegalOperation,
     IllegalStateError,
     RecordTooLargeError,
-    UnsupportedVersionError,
 )
 from aiokafka.structs import ConsumerRecord, TopicPartition
 from aiokafka.util import commit_structure_validate, get_running_loop
@@ -163,10 +162,6 @@ class AIOKafkaConsumer:
         consumer_timeout_ms (int): maximum wait timeout for background fetching
             routine. Mostly defines how fast the system will see rebalance and
             request new data for new partitions. Default: 200
-        api_version (str): specify which kafka API version to use.
-            :class:`AIOKafkaConsumer` supports Kafka API versions >=0.9 only.
-            If set to ``auto``, will attempt to infer the broker version by
-            probing various APIs. Default: ``auto``
         security_protocol (str): Protocol used to communicate with brokers.
             Valid values are: ``PLAINTEXT``, ``SSL``, ``SASL_PLAINTEXT``,
             ``SASL_SSL``. Default: ``PLAINTEXT``.
@@ -216,6 +211,8 @@ class AIOKafkaConsumer:
         sasl_oauth_token_provider (~aiokafka.abc.AbstractTokenProvider):
             OAuthBearer token provider instance.
             Default: None
+        legacy_protocol (str): Specify if legacy protocol should for
+            Old broker versions <=0.10. Default: None
 
     Note:
         Many configuration parameters are taken from Java Client:
@@ -256,7 +253,6 @@ class AIOKafkaConsumer:
         max_poll_records=None,
         ssl_context=None,
         security_protocol="PLAINTEXT",
-        api_version="auto",
         exclude_internal_topics=True,
         connections_max_idle_ms=540000,
         isolation_level="read_uncommitted",
@@ -266,6 +262,7 @@ class AIOKafkaConsumer:
         sasl_kerberos_service_name="kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
+        legacy_protocol=None,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -292,7 +289,6 @@ class AIOKafkaConsumer:
             metadata_max_age_ms=metadata_max_age_ms,
             request_timeout_ms=request_timeout_ms,
             retry_backoff_ms=retry_backoff_ms,
-            api_version=api_version,
             ssl_context=ssl_context,
             security_protocol=security_protocol,
             connections_max_idle_ms=connections_max_idle_ms,
@@ -302,6 +298,7 @@ class AIOKafkaConsumer:
             sasl_kerberos_service_name=sasl_kerberos_service_name,
             sasl_kerberos_domain_name=sasl_kerberos_domain_name,
             sasl_oauth_token_provider=sasl_oauth_token_provider,
+            legacy_protocol=legacy_protocol,
         )
 
         self._group_id = group_id
@@ -370,18 +367,6 @@ class AIOKafkaConsumer:
         assert self._fetcher is None, "Did you call `start` twice?"
         await self._client.bootstrap()
         await self._wait_topics()
-
-        if self._client.api_version < (0, 9):
-            raise ValueError(f"Unsupported Kafka version: {self._client.api_version}")
-
-        if (
-            self._isolation_level == "read_committed"
-            and self._client.api_version < (0, 11)  # fmt: skip
-        ):
-            raise UnsupportedVersionError(
-                "`read_committed` isolation_level available only for Brokers "
-                "0.11 and above"
-            )
 
         self._fetcher = Fetcher(
             self._client,
@@ -939,11 +924,6 @@ class AIOKafkaConsumer:
         .. versionadded:: 0.3.0
 
         """
-        if self._client.api_version <= (0, 10, 0):
-            raise UnsupportedVersionError(
-                "offsets_for_times API not supported"
-                f" for cluster version {self._client.api_version}"
-            )
         for tp, ts in timestamps.items():
             timestamps[tp] = int(ts)
             if ts < 0:
@@ -981,11 +961,6 @@ class AIOKafkaConsumer:
         .. versionadded:: 0.3.0
 
         """
-        if self._client.api_version <= (0, 10, 0):
-            raise UnsupportedVersionError(
-                "offsets_for_times API not supported"
-                f" for cluster version {self._client.api_version}"
-            )
         offsets = await self._fetcher.beginning_offsets(
             partitions, self._request_timeout_ms
         )
@@ -1018,11 +993,6 @@ class AIOKafkaConsumer:
         .. versionadded:: 0.3.0
 
         """
-        if self._client.api_version <= (0, 10, 0):
-            raise UnsupportedVersionError(
-                "offsets_for_times API not supported"
-                f" for cluster version {self._client.api_version}"
-            )
         offsets = await self._fetcher.end_offsets(partitions, self._request_timeout_ms)
         return offsets
 

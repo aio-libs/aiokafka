@@ -9,13 +9,10 @@ from aiokafka.client import ConnectionGroup, CoordinationType
 from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from aiokafka.coordinator.protocol import ConsumerProtocol
 from aiokafka.protocol.api import Response
-from aiokafka.protocol.commit import OffsetCommitRequest_v2 as OffsetCommitRequest
-from aiokafka.protocol.commit import OffsetFetchRequest_v1 as OffsetFetchRequest
+from aiokafka.protocol.commit import OffsetCommitRequest, OffsetFetchRequest
 from aiokafka.protocol.group import (
     HeartbeatRequest,
     JoinGroupRequest,
-    JoinGroupResponse,
-    JoinGroupResponse_v5,
     LeaveGroupRequest,
     SyncGroupRequest,
 )
@@ -262,7 +259,7 @@ class GroupCoordinator(BaseCoordinator):
         self._auto_commit_interval_ms = auto_commit_interval_ms
 
         self.generation = OffsetCommitRequest.DEFAULT_GENERATION_ID
-        self.member_id = JoinGroupRequest[0].UNKNOWN_MEMBER_ID
+        self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
         self.group_id = group_id
         self._group_instance_id = group_instance_id
         self.coordinator_id = None
@@ -380,8 +377,7 @@ class GroupCoordinator(BaseCoordinator):
             # attempt any resending if the request fails or times out.
             # Note: do not send this leave request if we are running in static
             # partition assignment mode (when group_instance_id has been set).
-            version = 0 if self._client.api_version < (0, 11, 0) else 1
-            request = LeaveGroupRequest[version](self.group_id, self.member_id)
+            request = LeaveGroupRequest(self.group_id, self.member_id)
             try:
                 await self._send_req(request)
             except Errors.KafkaError as err:
@@ -438,15 +434,10 @@ class GroupCoordinator(BaseCoordinator):
         member_metadata = {}
         all_subscribed_topics = set()
         for member in members:
-            if isinstance(response, JoinGroupResponse_v5):
+            if response.API_VERSION == 5:
                 member_id, group_instance_id, metadata_bytes = member
-            elif isinstance(
-                response,
-                JoinGroupResponse[0] | JoinGroupResponse[1] | JoinGroupResponse[2],
-            ):
-                member_id, metadata_bytes = member
             else:
-                raise RuntimeError("unknown protocol returned from assignment")  # noqa: TRY004
+                member_id, metadata_bytes = member
             metadata = ConsumerProtocol.METADATA.decode(metadata_bytes)
             member_metadata[member_id] = metadata
             all_subscribed_topics.update(metadata.subscription)
@@ -541,7 +532,7 @@ class GroupCoordinator(BaseCoordinator):
         need to re-join the group.
         """
         self.generation = OffsetCommitRequest.DEFAULT_GENERATION_ID
-        self.member_id = JoinGroupRequest[0].UNKNOWN_MEMBER_ID
+        self.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
         self.request_rejoin()
 
     def request_rejoin(self):
@@ -768,7 +759,7 @@ class GroupCoordinator(BaseCoordinator):
 
         # There is no point to heartbeat after Broker stopped recognizing
         # this consumer, so we stop after resetting generation.
-        while self.member_id != JoinGroupRequest[0].UNKNOWN_MEMBER_ID:
+        while self.member_id != JoinGroupRequest.UNKNOWN_MEMBER_ID:
             try:
                 await asyncio.sleep(sleep_time)
                 await self.ensure_coordinator_known()
@@ -806,10 +797,7 @@ class GroupCoordinator(BaseCoordinator):
         log.debug("Stopping heartbeat task")
 
     async def _do_heartbeat(self):
-        version = 0 if self._client.api_version < (0, 11, 0) else 1
-        request = HeartbeatRequest[version](
-            self.group_id, self.generation, self.member_id
-        )
+        request = HeartbeatRequest(self.group_id, self.generation, self.member_id)
         log.debug(
             "Heartbeat: %s[%s] %s", self.group_id, self.generation, self.member_id
         )
@@ -937,8 +925,7 @@ class GroupCoordinator(BaseCoordinator):
 
         if not subscription.active:
             log.debug(
-                "Subscription changed during rebalance from %s to %s. "
-                "Rejoining group.",
+                "Subscription changed during rebalance from %s to %s. Rejoining group.",
                 subscription.topics,
                 self._subscription.topics,
             )
@@ -1264,7 +1251,6 @@ class CoordinatorGroupRebalance:
         self._assignors = assignors
         self._session_timeout_ms = session_timeout_ms
         self._retry_backoff_ms = retry_backoff_ms
-        self._api_version = self._coordinator._client.api_version
         self._rebalance_timeout_ms = self._coordinator._rebalance_timeout_ms
 
     async def perform_group_join(self):
@@ -1291,42 +1277,15 @@ class CoordinatorGroupRebalance:
             while try_join:
                 try_join = False
 
-                if self._api_version < (0, 10, 1):
-                    request = JoinGroupRequest[0](
-                        self.group_id,
-                        self._session_timeout_ms,
-                        self._coordinator.member_id,
-                        ConsumerProtocol.PROTOCOL_TYPE,
-                        metadata_list,
-                    )
-                elif self._api_version < (0, 11, 0):
-                    request = JoinGroupRequest[1](
-                        self.group_id,
-                        self._session_timeout_ms,
-                        self._rebalance_timeout_ms,
-                        self._coordinator.member_id,
-                        ConsumerProtocol.PROTOCOL_TYPE,
-                        metadata_list,
-                    )
-                elif self._api_version < (2, 3, 0):
-                    request = JoinGroupRequest[2](
-                        self.group_id,
-                        self._session_timeout_ms,
-                        self._rebalance_timeout_ms,
-                        self._coordinator.member_id,
-                        ConsumerProtocol.PROTOCOL_TYPE,
-                        metadata_list,
-                    )
-                else:
-                    request = JoinGroupRequest[3](
-                        self.group_id,
-                        self._session_timeout_ms,
-                        self._rebalance_timeout_ms,
-                        self._coordinator.member_id,
-                        self._coordinator._group_instance_id,
-                        ConsumerProtocol.PROTOCOL_TYPE,
-                        metadata_list,
-                    )
+                request = JoinGroupRequest(
+                    self.group_id,
+                    self._session_timeout_ms,
+                    self._rebalance_timeout_ms,
+                    self._coordinator.member_id,
+                    self._coordinator._group_instance_id,
+                    ConsumerProtocol.PROTOCOL_TYPE,
+                    metadata_list,
+                )
 
                 # create the request for the coordinator
                 log.debug(
@@ -1364,8 +1323,7 @@ class CoordinatorGroupRebalance:
 
             if response.leader_id == response.member_id:
                 log.info(
-                    "Elected group leader -- performing partition"
-                    " assignments using %s",
+                    "Elected group leader -- performing partition assignments using %s",
                     protocol,
                 )
                 assignment_bytes = await self._on_join_leader(response)
@@ -1424,22 +1382,13 @@ class CoordinatorGroupRebalance:
 
     async def _on_join_follower(self):
         # send follower's sync group with an empty assignment
-        if self._api_version < (2, 3, 0):
-            version = 0 if self._api_version < (0, 11, 0) else 1
-            request = SyncGroupRequest[version](
-                self.group_id,
-                self._coordinator.generation,
-                self._coordinator.member_id,
-                [],
-            )
-        else:
-            request = SyncGroupRequest[2](
-                self.group_id,
-                self._coordinator.generation,
-                self._coordinator.member_id,
-                self._coordinator._group_instance_id,
-                [],
-            )
+        request = SyncGroupRequest(
+            self.group_id,
+            self._coordinator.generation,
+            self._coordinator.member_id,
+            self._coordinator._group_instance_id,
+            [],
+        )
         log.debug(
             "Sending follower SyncGroup for group %s to coordinator %s: %s",
             self.group_id,
@@ -1470,22 +1419,13 @@ class CoordinatorGroupRebalance:
                 assignment = assignment.encode()
             assignment_req.append((member_id, assignment))
 
-        if self._api_version < (2, 3, 0):
-            version = 0 if self._api_version < (0, 11, 0) else 1
-            request = SyncGroupRequest[version](
-                self.group_id,
-                self._coordinator.generation,
-                self._coordinator.member_id,
-                assignment_req,
-            )
-        else:
-            request = SyncGroupRequest[2](
-                self.group_id,
-                self._coordinator.generation,
-                self._coordinator.member_id,
-                self._coordinator._group_instance_id,
-                assignment_req,
-            )
+        request = SyncGroupRequest(
+            self.group_id,
+            self._coordinator.generation,
+            self._coordinator.member_id,
+            self._coordinator._group_instance_id,
+            assignment_req,
+        )
 
         log.debug(
             "Sending leader SyncGroup for group %s to coordinator %s: %s",

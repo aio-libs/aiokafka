@@ -16,23 +16,14 @@ from aiokafka.errors import (
     RequestTimedOutError,
     StaleMetadata,
     UnknownTopicOrPartitionError,
-    UnrecognizedBrokerVersion,
 )
-from aiokafka.protocol.admin import (
-    DescribeAclsRequest_v2,
-    DescribeClientQuotasRequest_v0,
-)
-from aiokafka.protocol.commit import OffsetFetchRequest
 from aiokafka.protocol.coordination import FindCoordinatorRequest
-from aiokafka.protocol.fetch import FetchRequest
 from aiokafka.protocol.metadata import MetadataRequest
-from aiokafka.protocol.offset import OffsetRequest
 from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.util import (
     create_future,
     create_task,
     get_running_loop,
-    parse_kafka_version,
 )
 
 __all__ = ["AIOKafkaClient"]
@@ -74,10 +65,6 @@ class AIOKafkaClient:
             new brokers or partitions. Default: 300000
         retry_backoff_ms (int): Milliseconds to backoff when retrying on
             errors. Default: 100.
-        api_version (str): specify which kafka API version to use.
-            AIOKafka supports Kafka API versions >=0.9 only.
-            If set to 'auto', will attempt to infer the broker version by
-            probing various APIs. Default: auto
         security_protocol (str): Protocol used to communicate with brokers.
             Valid values are: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL.
             Default: PLAINTEXT.
@@ -87,6 +74,8 @@ class AIOKafkaClient:
         connections_max_idle_ms (int): Close idle connections after the number
             of milliseconds specified by this config. Specifying `None` will
             disable idle checks. Default: 540000 (9 minutes).
+        legacy_protocol (str): Specify if legacy protocol should for
+            Old broker versions <=0.10. Default: None
     """
 
     def __init__(
@@ -100,7 +89,6 @@ class AIOKafkaClient:
         retry_backoff_ms=100,
         ssl_context=None,
         security_protocol="PLAINTEXT",
-        api_version="auto",
         connections_max_idle_ms=540000,
         sasl_mechanism="PLAIN",
         sasl_plain_username=None,
@@ -108,6 +96,7 @@ class AIOKafkaClient:
         sasl_kerberos_service_name="kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
+        legacy_protocol=None,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -142,9 +131,6 @@ class AIOKafkaClient:
         self._client_id = client_id
         self._metadata_max_age_ms = metadata_max_age_ms
         self._request_timeout_ms = request_timeout_ms
-        if api_version != "auto":
-            api_version = parse_kafka_version(api_version)
-        self._api_version = api_version
         self._security_protocol = security_protocol
         self._ssl_context = ssl_context
         self._retry_backoff = retry_backoff_ms / 1000
@@ -155,6 +141,7 @@ class AIOKafkaClient:
         self._sasl_kerberos_service_name = sasl_kerberos_service_name
         self._sasl_kerberos_domain_name = sasl_kerberos_domain_name
         self._sasl_oauth_token_provider = sasl_oauth_token_provider
+        self._legacy_protocol = legacy_protocol
 
         self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
 
@@ -175,13 +162,6 @@ class AIOKafkaClient:
 
     def __repr__(self):
         return f"<AIOKafkaClient client_id={self._client_id}>"
-
-    @property
-    def api_version(self):
-        if type(self._api_version) is tuple:
-            return self._api_version
-        # unknown api version, return minimal supported version
-        return (0, 9, 0)
 
     @property
     def hosts(self):
@@ -206,15 +186,6 @@ class AIOKafkaClient:
         assert (
             self._loop is get_running_loop()
         ), "Please create objects with the same loop as running with"
-        # using request v0 for bootstrap if not sure v1 is available
-        if self._api_version == "auto" or self._api_version < (0, 10):
-            metadata_request = MetadataRequest[0]([])
-        else:
-            metadata_request = MetadataRequest[1]([])
-
-        version_hint = None
-        if self._api_version != "auto":
-            version_hint = self._api_version
 
         for host, port, _ in self.hosts:
             log.debug("Attempting to bootstrap via node at %s:%s", host, port)
@@ -234,14 +205,14 @@ class AIOKafkaClient:
                     sasl_kerberos_service_name=self._sasl_kerberos_service_name,
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     sasl_oauth_token_provider=self._sasl_oauth_token_provider,
-                    version_hint=version_hint,
+                    legacy_protocol=self._legacy_protocol,
                 )
-            except (OSError, asyncio.TimeoutError) as err:
+            except (OSError, KafkaError, asyncio.TimeoutError) as err:
                 log.error('Unable connect to "%s:%s": %s', host, port, err)
                 continue
 
             try:
-                metadata = await bootstrap_conn.send(metadata_request)
+                metadata = await bootstrap_conn.send(MetadataRequest([]))
             except (KafkaError, asyncio.TimeoutError) as err:
                 log.warning(
                     'Unable to request metadata from "%s:%s": %s', host, port, err
@@ -264,10 +235,6 @@ class AIOKafkaClient:
             break
         else:
             raise KafkaConnectionError(f"Unable to bootstrap from {self.hosts}")
-
-        # detect api version if need
-        if self._api_version == "auto":
-            self._api_version = await self.check_version()
 
         if self._sync_task is None:
             # starting metadata synchronizer task
@@ -311,11 +278,7 @@ class AIOKafkaClient:
 
     async def _metadata_update(self, cluster_metadata, topics):
         assert isinstance(cluster_metadata, ClusterMetadata)
-        topics = list(topics)
-        version_id = 0 if self.api_version < (0, 10) else 1
-        if version_id == 1 and not topics:
-            topics = None
-        metadata_request = MetadataRequest[version_id](topics)
+        metadata_request = MetadataRequest(list(topics) if topics else None)
         nodeids = [b.nodeId for b in self.cluster.brokers()]
         bootstrap_id = ("bootstrap", ConnectionGroup.DEFAULT)
         if bootstrap_id in self._conns:
@@ -375,7 +338,7 @@ class AIOKafkaClient:
 
     async def fetch_all_metadata(self):
         cluster_md = ClusterMetadata(metadata_max_age_ms=self._metadata_max_age_ms)
-        updated = await self._metadata_update(cluster_md, [])
+        updated = await self._metadata_update(cluster_md, None)
         if not updated:
             raise KafkaError("Unable to get cluster metadata over all known brokers")
         return cluster_md
@@ -450,10 +413,6 @@ class AIOKafkaClient:
                 if conn_id in self._conns:
                     return self._conns[conn_id]
 
-                version_hint = self._api_version
-                if version_hint == "auto" or no_hint:
-                    version_hint = None
-
                 self._conns[conn_id] = await create_conn(
                     broker.host,
                     broker.port,
@@ -469,7 +428,7 @@ class AIOKafkaClient:
                     sasl_kerberos_service_name=self._sasl_kerberos_service_name,
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     sasl_oauth_token_provider=self._sasl_oauth_token_provider,
-                    version_hint=version_hint,
+                    legacy_protocol=self._legacy_protocol,
                 )
         except (OSError, asyncio.TimeoutError, KafkaError) as err:
             log.error("Unable connect to node with id %s: %s", node_id, err)
@@ -490,7 +449,7 @@ class AIOKafkaClient:
 
         Arguments:
             node_id (int): destination node
-            request (Struct): request object (not-encoded)
+            request (Request): request to send
 
         Raises:
             aiokafka.errors.RequestTimedOutError
@@ -509,7 +468,7 @@ class AIOKafkaClient:
 
         # Every request gets a response, except one special case:
         expect_response = True
-        if isinstance(request, tuple(ProduceRequest)) and request.required_acks == 0:
+        if isinstance(request, ProduceRequest) and request.required_acks == 0:
             expect_response = False
 
         future = self._conns[(node_id, group)].send(
@@ -523,104 +482,6 @@ class AIOKafkaClient:
             raise RequestTimedOutError() from exc
         else:
             return result
-
-    async def check_version(self, node_id=None):
-        """Attempt to guess the broker version"""
-        if node_id is None:
-            default_group_conns = [
-                n_id
-                for (n_id, group) in self._conns
-                if group == ConnectionGroup.DEFAULT
-            ]
-            if default_group_conns:
-                node_id = default_group_conns[0]
-            else:
-                assert self.cluster.brokers(), "no brokers in metadata"
-                node_id = next(iter(self.cluster.brokers())).nodeId
-
-        from aiokafka.protocol.admin import ApiVersionRequest_v0, ListGroupsRequest_v0
-        from aiokafka.protocol.commit import (
-            GroupCoordinatorRequest_v0,
-            OffsetFetchRequest_v0,
-        )
-        from aiokafka.protocol.metadata import MetadataRequest_v0
-
-        test_cases = [
-            ((0, 10), ApiVersionRequest_v0()),
-            ((0, 9), ListGroupsRequest_v0()),
-            ((0, 8, 2), GroupCoordinatorRequest_v0("aiokafka-default-group")),
-            ((0, 8, 1), OffsetFetchRequest_v0("aiokafka-default-group", [])),
-            ((0, 8, 0), MetadataRequest_v0([])),
-        ]
-
-        # kafka kills the connection when it does not recognize an API request
-        # so we can send a test request and then follow immediately with a
-        # vanilla MetadataRequest. If the server did not recognize the first
-        # request, both will be failed with a ConnectionError that wraps
-        # socket.error (32, 54, or 104)
-        conn = await self._get_conn(node_id, no_hint=True)
-        if conn is None:
-            raise KafkaConnectionError(f"No connection to node with id {node_id}")
-        for version, request in test_cases:
-            try:
-                if not conn.connected():
-                    await conn.connect()
-                assert conn, f"no connection to node with id {node_id}"
-                # request can be ignored by Kafka broker,
-                # so we send metadata request and wait response
-                task = create_task(conn.send(request))
-                await asyncio.wait([task], timeout=0.1)
-                # metadata request can be cancelled in case
-                # of invalid correlationIds order
-                with contextlib.suppress(KafkaError):
-                    await conn.send(MetadataRequest_v0([]))
-                response = await task
-            except KafkaError:  # noqa: PERF203
-                continue
-            else:
-                # To avoid having a connection in undefined state
-                if node_id != "bootstrap" and conn.connected():
-                    conn.close()
-                if isinstance(request, ApiVersionRequest_v0):
-                    # Starting from 0.10 kafka broker we determine version
-                    # by looking at ApiVersionResponse
-                    return self._check_api_version_response(response)
-                return version
-
-        raise UnrecognizedBrokerVersion()
-
-    def _check_api_version_response(self, response):
-        # The logic here is to check the list of supported request versions
-        # in descending order. As soon as we find one that works, return it
-        test_cases = [
-            # format (<broker version>, <needed struct>)
-            ((2, 6, 0), DescribeClientQuotasRequest_v0),
-            ((2, 5, 0), DescribeAclsRequest_v2),
-            ((2, 4, 0), ProduceRequest[8]),
-            ((2, 3, 0), FetchRequest[11]),
-            ((2, 2, 0), OffsetRequest[5]),
-            ((2, 1, 0), FetchRequest[10]),
-            ((2, 0, 0), FetchRequest[8]),
-            ((1, 1, 0), FetchRequest[7]),
-            ((1, 0, 0), MetadataRequest[5]),
-            ((0, 11, 0), MetadataRequest[4]),
-            ((0, 10, 2), OffsetFetchRequest[2]),
-            ((0, 10, 1), MetadataRequest[2]),
-        ]
-
-        error_type = Errors.for_code(response.error_code)
-        assert error_type is Errors.NoError, "API version check failed"
-        max_versions = {
-            api_key: max_version for api_key, _, max_version in response.api_versions
-        }
-        # Get the best match of test cases
-        for broker_version, struct in test_cases:
-            if max_versions.get(struct.API_KEY, -1) >= struct.API_VERSION:
-                return broker_version
-
-        # We know that ApiVersionResponse is only supported in 0.10+
-        # so if all else fails, choose that
-        return (0, 10, 0)
 
     async def _wait_on_metadata(self, topic):
         """
@@ -676,15 +537,7 @@ class AIOKafkaClient:
             node_id,
         )
 
-        if self.api_version > (0, 11):
-            request = FindCoordinatorRequest[1](coordinator_key, coordinator_type)
-        else:
-            # Group coordination only
-            assert (
-                coordinator_type == CoordinationType.GROUP
-            ), "No transactions for older brokers"
-            request = FindCoordinatorRequest[0](coordinator_key)
-
+        request = FindCoordinatorRequest(coordinator_key, coordinator_type)
         resp = await self.send(node_id, request)
         log.debug("Received group coordinator response %s", resp)
         error_type = Errors.for_code(resp.error_code)

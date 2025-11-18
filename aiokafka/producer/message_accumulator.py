@@ -4,6 +4,7 @@ import copy
 import time
 from collections.abc import Sequence
 
+from aiokafka.conn import LegacyProtocol
 from aiokafka.errors import (
     KafkaTimeoutError,
     LeaderNotAvailableError,
@@ -19,7 +20,7 @@ from aiokafka.util import create_future, get_running_loop
 class BatchBuilder:
     def __init__(
         self,
-        magic,
+        legacy_protocol,
         batch_size,
         compression_type,
         *,
@@ -27,14 +28,16 @@ class BatchBuilder:
         key_serializer=None,
         value_serializer=None,
     ):
-        if magic < 2:
+        if legacy_protocol:
             assert not is_transactional
             self._builder = LegacyRecordBatchBuilder(
-                magic, compression_type, batch_size
+                0 if legacy_protocol == LegacyProtocol.LEGACY_0_9 else 1,
+                compression_type,
+                batch_size,
             )
         else:
             self._builder = DefaultRecordBatchBuilder(
-                magic,
+                2,
                 compression_type,
                 is_transactional=is_transactional,
                 producer_id=-1,
@@ -318,6 +321,7 @@ class MessageAccumulator:
         batch_size,
         compression_type,
         batch_ttl,
+        legacy_protocol,
         *,
         txn_manager=None,
         loop=None,
@@ -331,15 +335,12 @@ class MessageAccumulator:
         self._batch_size = batch_size
         self._compression_type = compression_type
         self._batch_ttl = batch_ttl
+        self._legacy_protocol = legacy_protocol
         self._wait_data_future = loop.create_future()
         self._closed = False
-        self._api_version = (0, 9)
         self._txn_manager = txn_manager
 
         self._exception = None  # Critical exception
-
-    def set_api_version(self, api_version):
-        self._api_version = api_version
 
     async def flush(self):
         waiters = [
@@ -500,13 +501,6 @@ class MessageAccumulator:
         return nodes, unknown_leaders_exist
 
     def create_builder(self, key_serializer=None, value_serializer=None):
-        if self._api_version >= (0, 11):
-            magic = 2
-        elif self._api_version >= (0, 10):
-            magic = 1
-        else:
-            magic = 0
-
         is_transactional = False
         if (
             self._txn_manager is not None
@@ -514,7 +508,7 @@ class MessageAccumulator:
         ):
             is_transactional = True
         return BatchBuilder(
-            magic,
+            self._legacy_protocol,
             self._batch_size,
             self._compression_type,
             is_transactional=is_transactional,
