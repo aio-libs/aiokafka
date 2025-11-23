@@ -289,7 +289,6 @@ class ProduceRequest(Request):
         # Not supported yet
         # ProduceRequest_v8,
     ]
-    ALLOW_UNKNOWN_API_VERSION = True
 
     def __init__(
         self,

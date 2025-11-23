@@ -4,7 +4,6 @@ import copy
 import time
 from collections.abc import Sequence
 
-from aiokafka.conn import LegacyProtocol
 from aiokafka.errors import (
     KafkaTimeoutError,
     LeaderNotAvailableError,
@@ -12,7 +11,6 @@ from aiokafka.errors import (
     ProducerClosed,
 )
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
-from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import RecordMetadata
 from aiokafka.util import create_future, get_running_loop
 
@@ -20,31 +18,22 @@ from aiokafka.util import create_future, get_running_loop
 class BatchBuilder:
     def __init__(
         self,
-        legacy_protocol,
         batch_size,
         compression_type,
         *,
-        is_transactional,
+        is_transactional=0,
         key_serializer=None,
         value_serializer=None,
     ):
-        if legacy_protocol:
-            assert not is_transactional
-            self._builder = LegacyRecordBatchBuilder(
-                0 if legacy_protocol == LegacyProtocol.LEGACY_0_9 else 1,
-                compression_type,
-                batch_size,
-            )
-        else:
-            self._builder = DefaultRecordBatchBuilder(
-                2,
-                compression_type,
-                is_transactional=is_transactional,
-                producer_id=-1,
-                producer_epoch=-1,
-                base_sequence=0,
-                batch_size=batch_size,
-            )
+        self._builder = DefaultRecordBatchBuilder(
+            2,
+            compression_type,
+            is_transactional=is_transactional,
+            producer_id=-1,
+            producer_epoch=-1,
+            base_sequence=0,
+            batch_size=batch_size,
+        )
         self._relative_offset = 0
         self._buffer = None
         self._closed = False
@@ -68,8 +57,7 @@ class BatchBuilder:
 
         Arguments:
             timestamp (float or None): epoch timestamp in seconds. If None,
-                the timestamp will be set to the current time. If submitting to
-                an 0.8.x or 0.9.x broker, the timestamp will be ignored.
+                the timestamp will be set to the current time.
             key (bytes or None): the message key. `key` and `value` may not
                 both be None.
             value (bytes or None): the message value. `key` and `value` may not
@@ -321,7 +309,6 @@ class MessageAccumulator:
         batch_size,
         compression_type,
         batch_ttl,
-        legacy_protocol,
         *,
         txn_manager=None,
         loop=None,
@@ -335,7 +322,6 @@ class MessageAccumulator:
         self._batch_size = batch_size
         self._compression_type = compression_type
         self._batch_ttl = batch_ttl
-        self._legacy_protocol = legacy_protocol
         self._wait_data_future = loop.create_future()
         self._closed = False
         self._txn_manager = txn_manager
@@ -508,7 +494,6 @@ class MessageAccumulator:
         ):
             is_transactional = True
         return BatchBuilder(
-            self._legacy_protocol,
             self._batch_size,
             self._compression_type,
             is_transactional=is_transactional,

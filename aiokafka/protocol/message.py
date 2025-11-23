@@ -16,7 +16,6 @@ from aiokafka.codec import (
     snappy_decode,
     zstd_decode,
 )
-from aiokafka.errors import UnsupportedCodecError
 
 from .struct import Struct
 from .types import Bytes, Int8, Int32, Int64, Schema, UInt32
@@ -221,13 +220,7 @@ class Message(Struct):
             raw_bytes = snappy_decode(self.value)
         elif codec == self.CODEC_LZ4:
             assert has_lz4(), "LZ4 decompression unsupported"
-            if self.magic == 0:
-                # https://issues.apache.org/jira/browse/KAFKA-3160
-                raise UnsupportedCodecError(
-                    "LZ4 is not supported for broker version 0.8/0.9"
-                )
-            else:
-                raw_bytes = lz4_decode(self.value)
+            raw_bytes = lz4_decode(self.value)
         elif codec == self.CODEC_ZSTD:
             assert has_zstd(), "ZSTD decompression unsupported"
             raw_bytes = zstd_decode(self.value)

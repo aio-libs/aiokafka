@@ -15,7 +15,7 @@ import traceback
 import uuid
 import warnings
 import weakref
-from enum import Enum, IntEnum
+from enum import IntEnum
 
 import async_timeout
 
@@ -34,7 +34,7 @@ try:
 except ImportError:
     gssapi = None
 
-__all__ = ["AIOKafkaConnection", "create_conn", "LegacyProtocol"]
+__all__ = ["AIOKafkaConnection", "create_conn"]
 
 log = logging.getLogger(__name__)
 
@@ -53,11 +53,6 @@ class CloseReason(IntEnum):
     AUTH_FAILURE = 5
 
 
-class LegacyProtocol(str, Enum):
-    LEGACY_0_9 = "0.9"
-    LEGACY_0_10 = "0.10"
-
-
 async def create_conn(
     host,
     port,
@@ -74,7 +69,6 @@ async def create_conn(
     sasl_kerberos_service_name="kafka",
     sasl_kerberos_domain_name=None,
     sasl_oauth_token_provider=None,
-    legacy_protocol=None,
 ):
     conn = AIOKafkaConnection(
         host,
@@ -91,7 +85,6 @@ async def create_conn(
         sasl_kerberos_service_name=sasl_kerberos_service_name,
         sasl_kerberos_domain_name=sasl_kerberos_domain_name,
         sasl_oauth_token_provider=sasl_oauth_token_provider,
-        legacy_protocol=legacy_protocol,
     )
     await conn.connect()
     return conn
@@ -131,7 +124,6 @@ class AIOKafkaConnection:
         sasl_kerberos_service_name="kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
-        legacy_protocol=None,
     ):
         loop = get_running_loop()
 
@@ -163,7 +155,6 @@ class AIOKafkaConnection:
         self._sasl_kerberos_service_name = sasl_kerberos_service_name
         self._sasl_kerberos_domain_name = sasl_kerberos_domain_name
         self._sasl_oauth_token_provider = sasl_oauth_token_provider
-        self._legacy_protocol = legacy_protocol
 
         self._versions = {}
 
@@ -236,12 +227,7 @@ class AIOKafkaConnection:
             self._idle_handle = loop.call_soon(self._idle_check, weakref.ref(self))
 
         try:
-            if self._legacy_protocol != LegacyProtocol.LEGACY_0_9:
-                # As mentioned in KIP-152, for old brokers (0.9) the first expected
-                # message is the GSSAPI authentication.
-                # By not doing any lookup, we will stick to using the earliest
-                # api versions supported in aiokafka
-                await self._do_version_lookup()
+            await self._do_version_lookup()
 
             if self._security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
                 await self._do_sasl_handshake()
@@ -263,29 +249,21 @@ class AIOKafkaConnection:
         self._versions = versions
 
     async def _do_sasl_handshake(self):
-        # NOTE: We will only fallback to v0.9 gssapi scheme if user explicitly
-        #       stated, that we should not perform SASL handshake
-        if self._legacy_protocol == LegacyProtocol.LEGACY_0_9:
-            handshake_response = None
-            assert self._sasl_mechanism == "GSSAPI", "Only GSSAPI supported for v0.9"
-        else:
-            handshake_response = await self.send(
-                SaslHandShakeRequest(self._sasl_mechanism)
-            )
-            error_type = Errors.for_code(handshake_response.error_code)
-            if error_type is not Errors.NoError:
-                error = error_type(self)
-                self.close(reason=CloseReason.AUTH_FAILURE, exc=error)
-                raise error
+        handshake_response = await self.send(SaslHandShakeRequest(self._sasl_mechanism))
+        error_type = Errors.for_code(handshake_response.error_code)
+        if error_type is not Errors.NoError:
+            error = error_type(self)
+            self.close(reason=CloseReason.AUTH_FAILURE, exc=error)
+            raise error
 
-            if self._sasl_mechanism not in handshake_response.enabled_mechanisms:
-                exc = Errors.UnsupportedSaslMechanismError(
-                    f"Kafka broker does not support {self._sasl_mechanism} sasl "
-                    "mechanism. Enabled mechanisms are: "
-                    f"{handshake_response.enabled_mechanisms}"
-                )
-                self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
-                raise exc
+        if self._sasl_mechanism not in handshake_response.enabled_mechanisms:
+            exc = Errors.UnsupportedSaslMechanismError(
+                f"Kafka broker does not support {self._sasl_mechanism} sasl "
+                "mechanism. Enabled mechanisms are: "
+                f"{handshake_response.enabled_mechanisms}"
+            )
+            self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
+            raise exc
 
         assert self._sasl_mechanism in (
             "PLAIN",

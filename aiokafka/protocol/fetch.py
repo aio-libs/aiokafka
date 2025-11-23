@@ -508,7 +508,6 @@ class FetchRequest(Request):
         # FetchRequest_v10,
         # FetchRequest_v11,
     ]
-    ALLOW_UNKNOWN_API_VERSION = True
 
     def __init__(
         self,

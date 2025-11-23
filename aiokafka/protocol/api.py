@@ -65,6 +65,30 @@ class ResponseHeader_v1(Struct):
 
 
 class Request(abc.ABC):
+    """
+    Base class for all the requests classes.
+    The aiokafka clients must use children classes of Request
+    in order to communicate with the brokers.
+    The correct API versions will be negotiated per connection
+    basis, so this class is acting as a builder for the final
+    RequestStruct sent over the wire.
+
+    When implementing a Request sub-class, you must accept all
+    the different attributes in the constructor, then eventually
+    raise a IncompatibleBrokerVersion exception if the negotiated
+    version doesn't allow some attributes to be sent.
+
+    Attributes
+    ----------
+    API_KEY : int
+        The unique API key identifying the request.
+    CLASSES : list[type[RequestStruct]]
+        The different versions supported for this request.
+    ALLOW_UNKNOWN_API_VERSION: bool
+        If true, the request could be used without knowing
+        the API version
+    """
+
     API_KEY: ClassVar[int]
     CLASSES: ClassVar[list[type[RequestStruct]]]
     ALLOW_UNKNOWN_API_VERSION: ClassVar[bool] = False
@@ -102,6 +126,23 @@ class Request(abc.ABC):
 
 
 class RequestStruct(Struct, metaclass=abc.ABCMeta):
+    """
+    Base structure for API requests.
+
+    Attributes
+    ----------
+    FLEXIBLE_VERSION : bool
+        Use request header with flexible tags
+    API_KEY : int
+        The unique API key identifying the request.
+    API_VERSION : int
+        Which API version the RequestStruct class is.
+    RESPONSE_TYPE : type[Response]
+        Class used to parse the response.
+    SCHEMA : Schema
+        An instance of Schema() representing the request structure.
+    """
+
     FLEXIBLE_VERSION: ClassVar[bool] = False
     API_KEY: ClassVar[int]
     API_VERSION: ClassVar[int]

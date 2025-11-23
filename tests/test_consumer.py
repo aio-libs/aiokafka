@@ -11,13 +11,12 @@ import pytest
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer, fetcher
-from aiokafka.consumer.fetcher import FetchRequest, RecordTooLargeError
+from aiokafka.consumer.fetcher import FetchRequest
 from aiokafka.errors import (
     ConsumerStoppedError,
     CorruptRecordException,
     IllegalOperation,
     IllegalStateError,
-    IncompatibleBrokerVersion,
     InvalidSessionTimeoutError,
     KafkaError,
     KafkaTimeoutError,
@@ -53,7 +52,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             enable_auto_commit=enable_auto_commit,
             auto_offset_reset=auto_offset_reset,
-            legacy_protocol=self.legacy_protocol,
             **kwargs,
         )
         await consumer.start()
@@ -130,10 +128,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         loop = asyncio.new_event_loop()
         with pytest.deprecated_call():
             consumer = AIOKafkaConsumer(
-                self.topic,
-                bootstrap_servers=self.hosts,
-                loop=loop,
-                legacy_protocol=self.legacy_protocol,
+                self.topic, bootstrap_servers=self.hosts, loop=loop
             )
         loop.run_until_complete(consumer.start())
         try:
@@ -155,7 +150,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
-            legacy_protocol=self.legacy_protocol,
         )
         async with consumer as con:
             assert con is consumer
@@ -175,7 +169,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
-            legacy_protocol=self.legacy_protocol,
         )
         with pytest.raises(ValueError):
             async with consumer as con:
@@ -192,11 +185,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_consumer_warn_unclosed(self):
-        consumer = AIOKafkaConsumer(
-            group_id=None,
-            bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
-        )
+        consumer = AIOKafkaConsumer(group_id=None, bootstrap_servers=self.hosts)
         await consumer.start()
 
         with self.silence_loop_exception_handler():
@@ -308,23 +297,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         actual_messages = {m.value for m in actual_messages}
         self.assertEqual(expected_messages, set(actual_messages))
 
-    @kafka_versions("<0.10.1")
-    @run_until_complete
-    async def test_too_large_messages_getone(self):
-        msgs = [
-            random_string(10),  # small one
-            random_string(50000),  # large one
-            random_string(50),  # another small one
-        ]
-        messages = await self.send_messages(0, msgs)
-
-        consumer = await self.consumer_factory(max_partition_fetch_bytes=4000)
-        m = await consumer.getone()
-        self.assertEqual(m.value, messages[0])
-
-        with self.assertRaises(RecordTooLargeError):
-            await consumer.getone()
-
     @kafka_versions(">=0.10.1")
     @run_until_complete
     async def test_large_messages_getone(self):
@@ -344,27 +316,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         m = await consumer.getone()
         self.assertEqual(m.value, messages[2])
-
-    @kafka_versions("<0.10.1")
-    @run_until_complete
-    async def test_too_large_messages_getmany(self):
-        msgs = [
-            random_string(10),  # small one
-            random_string(50000),  # large one
-            random_string(50),  # another small one
-        ]
-        messages = await self.send_messages(0, msgs)
-        tp = TopicPartition(self.topic, 0)
-
-        consumer = await self.consumer_factory(max_partition_fetch_bytes=4000)
-
-        # First fetch will get 1 small message and discard the large one
-        m = await consumer.getmany(timeout_ms=1000)
-        self.assertTrue(m)
-        self.assertEqual(m[tp][0].value, messages[0])
-
-        with self.assertRaises(RecordTooLargeError):
-            await consumer.getmany(timeout_ms=1000)
 
     @kafka_versions(">=0.10.1")
     @run_until_complete
@@ -456,7 +407,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest",
             enable_auto_commit=False,
-            legacy_protocol=self.legacy_protocol,
         )
         consumer.subscribe(pattern="topic-test_manual_subs*")
         await consumer.start()
@@ -483,7 +433,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest",
             enable_auto_commit=False,
-            legacy_protocol=self.legacy_protocol,
         )
         consumer.subscribe(topics=(self.topic,))
         await consumer.start()
@@ -513,9 +462,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     # TODO Use `@pytest.mark.parametrize()` after moving to pytest-asyncio
     async def _test_compress_decompress(self, compression_type):
         async with AIOKafkaProducer(
-            bootstrap_servers=self.hosts,
-            compression_type=compression_type,
-            legacy_protocol=self.legacy_protocol,
+            bootstrap_servers=self.hosts, compression_type=compression_type
         ) as producer:
             await self.wait_topic(producer.client, self.topic)
             msg1 = b"some-message" * 10
@@ -676,11 +623,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     async def test_consumer_seek_on_unassigned(self):
         tp0 = TopicPartition(self.topic, 0)
         tp1 = TopicPartition(self.topic, 1)
-        consumer = AIOKafkaConsumer(
-            group_id=None,
-            bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
-        )
+        consumer = AIOKafkaConsumer(group_id=None, bootstrap_servers=self.hosts)
         await consumer.start()
         self.add_cleanup(consumer.stop)
         consumer.assign([tp0])
@@ -719,7 +662,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest",
             enable_auto_commit=False,
-            legacy_protocol=self.legacy_protocol,
         )
         consumer.subscribe(topics=(self.topic,))
         await consumer.start()
@@ -734,9 +676,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_check_extended_message_record(self):
         s_time_ms = time.time() * 1000
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         await producer.start()
         await self.wait_topic(producer.client, self.topic)
         msg1 = b"some-message#1"
@@ -798,7 +738,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             auto_offset_reset="earliest",
             security_protocol="SSL",
             ssl_context=context,
-            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
@@ -816,7 +755,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.topic,
                 bootstrap_servers=self.hosts,
                 security_protocol="SOME",
-                legacy_protocol=self.legacy_protocol,
             )
         with self.assertRaisesRegex(
             ValueError, "`ssl_context` is mandatory if security_protocol=='SSL'"
@@ -826,14 +764,12 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 bootstrap_servers=self.hosts,
                 security_protocol="SSL",
                 ssl_context=None,
-                legacy_protocol=self.legacy_protocol,
             )
         with self.assertRaisesRegex(ValueError, "Incorrect isolation level READ_CCC"):
             consumer = AIOKafkaConsumer(
                 self.topic,
                 bootstrap_servers=self.hosts,
                 isolation_level="READ_CCC",
-                legacy_protocol=self.legacy_protocol,
             )
             self.add_cleanup(consumer.stop)
             await consumer.start()
@@ -845,7 +781,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.topic,
                 bootstrap_servers=self.hosts,
                 security_protocol="SASL_PLAINTEXT",
-                legacy_protocol=self.legacy_protocol,
             )
 
     @run_until_complete
@@ -879,7 +814,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(
             group_id=f"group-{self.id()}",
             bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
@@ -972,7 +906,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             enable_auto_commit=False,
             auto_offset_reset="earliest",
             heartbeat_interval_ms=100,
-            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
         await asyncio.sleep(0.2)
@@ -981,11 +914,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_consumer_wait_topic(self):
         topic = "some-test-topic-for-autocreate"
-        consumer = AIOKafkaConsumer(
-            topic,
-            bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
-        )
+        consumer = AIOKafkaConsumer(topic, bootstrap_servers=self.hosts)
         await consumer.start()
         self.add_cleanup(consumer.stop)
         consume_task = create_task(consumer.getone())
@@ -993,9 +922,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await asyncio.sleep(0.5)
         self.assertFalse(consume_task.done())
 
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         await producer.start()
         await producer.send(topic, b"test msg")
         await producer.stop()
@@ -1012,7 +939,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             group_id="some_group",
             fetch_max_wait_ms=50,
             auto_offset_reset="earliest",
-            legacy_protocol=self.legacy_protocol,
         )
         self.add_cleanup(consumer.stop)
         await consumer.start()
@@ -1024,9 +950,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(consumer.subscription(), set())
 
         # Now lets autocreate the topic by fetching metadata for it.
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         self.add_cleanup(producer.stop)
         await producer.start()
         my_topic = "some-autocreate-pattern-1"
@@ -1060,7 +984,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             group_id=None,
             fetch_max_wait_ms=50,
             auto_offset_reset="earliest",
-            legacy_protocol=self.legacy_protocol,
         )
         self.add_cleanup(consumer.stop)
         await consumer.start()
@@ -1072,9 +995,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(consumer.subscription(), set())
 
         # Now lets autocreate the topic by fetching metadata for it.
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         self.add_cleanup(producer.stop)
         await producer.start()
         my_topic = "no-group-pattern-1"
@@ -1105,9 +1026,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # will trigger a group rebalance and assign partitions
         pattern = "^another-autocreate-pattern-.*$"
         client = AIOKafkaClient(
-            bootstrap_servers=self.hosts,
-            client_id="test_autocreate",
-            legacy_protocol=self.legacy_protocol,
+            bootstrap_servers=self.hosts, client_id="test_autocreate"
         )
         await client.bootstrap()
         listener1 = StubRebalanceListener()
@@ -1117,7 +1036,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             metadata_max_age_ms=200,
             group_id="test-autocreate-rebalance",
             heartbeat_interval_ms=100,
-            legacy_protocol=self.legacy_protocol,
         )
         consumer1.subscribe(pattern=pattern, listener=listener1)
         await consumer1.start()
@@ -1126,7 +1044,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             metadata_max_age_ms=200,
             group_id="test-autocreate-rebalance",
             heartbeat_interval_ms=100,
-            legacy_protocol=self.legacy_protocol,
         )
         consumer2.subscribe(pattern=pattern, listener=listener2)
         await consumer2.start()
@@ -1220,7 +1137,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(
             bootstrap_servers=self.hosts,
             client_id="test_autocreate",
-            legacy_protocol=self.legacy_protocol,
         )
         await client.bootstrap()
         await client._wait_on_metadata(my_topic)
@@ -1234,7 +1150,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             group_id="some_group_1",
             auto_offset_reset="earliest",
             exclude_internal_topics=False,
-            legacy_protocol=self.legacy_protocol,
         )
         consumer.subscribe(pattern=pattern)
         await consumer.start()
@@ -1253,7 +1168,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             metadata_max_age_ms=200,
             group_id="offset_reset_group",
             auto_offset_reset="none",
-            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
@@ -1388,7 +1302,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
-            legacy_protocol=self.legacy_protocol,
         )
         listener1 = SimpleRebalanceListener(consumer1)
         consumer1.subscribe([self.topic], listener=listener1)
@@ -1410,7 +1323,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
-            legacy_protocol=self.legacy_protocol,
         )
         listener2 = SimpleRebalanceListener(consumer2)
         consumer2.subscribe([self.topic], listener=listener2)
@@ -1473,7 +1385,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
-            legacy_protocol=self.legacy_protocol,
         )
         listener = SimpleRebalanceListener(consumer)
         consumer.subscribe([self.topic], listener=listener)
@@ -1597,44 +1508,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             },
         )
 
-    @kafka_versions("<0.10.1")
-    @run_until_complete
-    async def test_kafka_consumer_offsets_old_brokers(self):
-        self.maxDiff = None
-        tp0 = TopicPartition(self.topic, 0)
-        tp1 = TopicPartition(self.topic, 1)
-
-        send_time = int(time.time() * 1000)
-        [msg1] = await self.send_messages(
-            0, [1], timestamp_ms=send_time, return_inst=True
-        )
-        [msg2] = await self.send_messages(
-            1, [1], timestamp_ms=send_time, return_inst=True
-        )
-
-        consumer = await self.consumer_factory()
-
-        with self.assertRaises(IncompatibleBrokerVersion):
-            await consumer.offsets_for_times({tp0: send_time, tp1: send_time})
-
-        offsets = await consumer.beginning_offsets([tp0, tp1])
-        self.assertEqual(
-            offsets,
-            {
-                tp0: msg1.offset,
-                tp1: msg2.offset,
-            },
-        )
-
-        offsets = await consumer.end_offsets([tp0, tp1])
-        self.assertEqual(
-            offsets,
-            {
-                tp0: msg1.offset + 1,
-                tp1: msg2.offset + 1,
-            },
-        )
-
     @kafka_versions(">=0.10.1")
     @run_until_complete
     async def test_kafka_consumer_offsets_errors(self):
@@ -1680,9 +1553,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     async def test_consumer_fast_unsubscribe(self):
         # Unsubscribe before coordination finishes
         consumer = AIOKafkaConsumer(
-            group_id="test_consumer_fast_unsubscribe",
-            bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
+            group_id="test_consumer_fast_unsubscribe", bootstrap_servers=self.hosts
         )
         await consumer.start()
         consumer.subscribe([self.topic])
@@ -1702,7 +1573,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             auto_offset_reset="earliest",
             group_id=f"group-{self.id()}",
             bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
         )
         tp = TopicPartition(self.topic, 0)
         consumer.assign([tp])
@@ -1723,7 +1593,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             auto_offset_reset="earliest",
             group_id=f"group-{self.id()}",
             bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
         )
         tp = TopicPartition(self.topic, 0)
         consumer.assign([tp])
@@ -1746,7 +1615,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             auto_offset_reset="earliest",
             group_id=None,
             bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
         )
         tp = TopicPartition(self.topic, 0)
         consumer.assign([tp])
@@ -1769,7 +1637,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             auto_offset_reset="earliest",
             group_id=None,
             bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
         )
         tp = TopicPartition(self.topic, 0)
         await consumer.start()
@@ -1796,7 +1663,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             session_timeout_ms=200,
             heartbeat_interval_ms=100,
-            legacy_protocol=self.legacy_protocol,
         )
         self.add_cleanup(consumer.stop)
         with self.assertRaises(InvalidSessionTimeoutError):
@@ -1887,7 +1753,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             key_serializer=serialize,
             value_serializer=serialize,
-            legacy_protocol=self.legacy_protocol,
         )
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -1913,7 +1778,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
             compression_type="gzip",
-            legacy_protocol=self.legacy_protocol,
         )
         await producer.start()
         self.add_cleanup(producer.stop)
@@ -1969,7 +1833,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             auto_offset_reset="earliest",
             group_id="group-" + self.id(),
             bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
@@ -2009,7 +1872,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             auto_offset_reset="earliest",
             group_id="group-" + self.id(),
             bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
@@ -2034,7 +1896,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             group_id="group-" + self.id(),
             bootstrap_servers=self.hosts,
             metadata_max_age_ms=500,
-            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)

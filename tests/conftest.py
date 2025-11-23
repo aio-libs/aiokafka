@@ -15,19 +15,12 @@ from aiokafka.record.default_records import (
     DefaultRecordBatchBuilder,
     _DefaultRecordBatchBuilderPy,
 )
-from aiokafka.record.legacy_records import (
-    LegacyRecordBatchBuilder,
-    _LegacyRecordBatchBuilderPy,
-)
 from aiokafka.util import NO_EXTENSIONS
 
 from ._testutil import wait_kafka
 
 if not NO_EXTENSIONS:
-    assert (
-        LegacyRecordBatchBuilder is not _LegacyRecordBatchBuilderPy
-        and DefaultRecordBatchBuilder is not _DefaultRecordBatchBuilderPy
-    ), (
+    assert DefaultRecordBatchBuilder is not _DefaultRecordBatchBuilderPy, (
         "Expected to run tests with C extension, but it was not imported. "
         "To run tests without a C extensions set env AIOKAFKA_NO_EXTENSIONS=1"
     )

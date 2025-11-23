@@ -11,7 +11,6 @@ from aiokafka.client import AIOKafkaClient
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import (
-    IncompatibleBrokerVersion,
     KafkaError,
     KafkaTimeoutError,
     LeaderNotAvailableError,
@@ -41,9 +40,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(ValueError):
             producer = AIOKafkaProducer(acks=122)
 
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         await producer.start()
         partitions = await producer.partitions_for("some_topic_name")
         self.assertEqual(len(partitions), 2)
@@ -53,9 +50,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_producer_warn_unclosed(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         producer_ref = weakref.ref(producer)
         await producer.start()
 
@@ -71,7 +66,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             request_timeout_ms=200,
             bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
         )
         await producer.start()
         with mock.patch.object(AIOKafkaClient, "_metadata_update") as mocked:
@@ -86,9 +80,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_producer_send(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         await producer.start()
         self.add_cleanup(producer.stop)
         with self.assertRaises(TypeError):
@@ -118,11 +110,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     def test_create_producer_no_running_loop(self):
         loop = asyncio.new_event_loop()
         with pytest.deprecated_call():
-            producer = AIOKafkaProducer(
-                bootstrap_servers=self.hosts,
-                loop=loop,
-                legacy_protocol=self.legacy_protocol,
-            )
+            producer = AIOKafkaProducer(bootstrap_servers=self.hosts, loop=loop)
         loop.run_until_complete(producer.start())
         try:
             future = loop.run_until_complete(
@@ -138,9 +126,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_producer_context_manager(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         async with producer as prod:
             assert prod is producer
             assert producer._sender._sender_task is not None
@@ -148,9 +134,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         assert producer._closed
 
         # Closes even on error
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         with pytest.raises(ValueError):
             async with producer as prod:
                 assert prod is producer
@@ -161,11 +145,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_producer_send_noack(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts,
-            acks=0,
-            legacy_protocol=self.legacy_protocol,
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts, acks=0)
         await producer.start()
         fut1 = await producer.send(self.topic, b"hello, Kafka!", partition=0)
         fut2 = await producer.send(self.topic, b"hello, Kafka!", partition=1)
@@ -188,7 +168,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             key_serializer=key_serializer,
             acks="all",
             max_request_size=1000,
-            legacy_protocol=self.legacy_protocol,
         )
         await producer.start()
         key = "some key"
@@ -221,7 +200,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
             compression_type="gzip",
-            legacy_protocol=self.legacy_protocol,
         )
 
         await producer.start()
@@ -243,7 +221,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
             request_timeout_ms=200,
-            legacy_protocol=self.legacy_protocol,
         )
         await producer.start()
 
@@ -263,9 +240,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_producer_send_timeout(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         await producer.start()
 
         async def mocked_send(nodeid, req):
@@ -290,7 +265,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             retry_backoff_ms=100,
             linger_ms=5,
             request_timeout_ms=400,
-            legacy_protocol=self.legacy_protocol,
         )
         await producer.start()
 
@@ -328,7 +302,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
             max_batch_size=max_batch_size,
-            legacy_protocol=self.legacy_protocol,
         )
         await producer.start()
 
@@ -389,7 +362,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             key_serializer=key_serializer,
             value_serializer=value_serializer,
-            legacy_protocol=self.legacy_protocol,
         )
         await producer.start()
 
@@ -412,7 +384,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             enable_auto_commit=True,
             auto_offset_reset="earliest",
-            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
 
@@ -436,7 +407,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=[f"{self.kafka_host}:{self.kafka_ssl_port}"],
             security_protocol="SSL",
             ssl_context=context,
-            legacy_protocol=self.legacy_protocol,
         )
         await producer.start()
         await producer.send_and_wait(topic=topic, value=b"Super msg")
@@ -447,7 +417,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             bootstrap_servers=self.hosts,
             enable_auto_commit=True,
             auto_offset_reset="earliest",
-            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
         msg = await consumer.getone()
@@ -462,7 +431,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             AIOKafkaProducer(
                 bootstrap_servers=self.hosts,
                 security_protocol="SOME",
-                legacy_protocol=self.legacy_protocol,
             )
         with self.assertRaisesRegex(
             ValueError, "`ssl_context` is mandatory if security_protocol=='SSL'"
@@ -471,14 +439,11 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 bootstrap_servers=self.hosts,
                 security_protocol="SSL",
                 ssl_context=None,
-                legacy_protocol=self.legacy_protocol,
             )
 
     @run_until_complete
     async def test_producer_flush_test(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -494,9 +459,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
     @kafka_versions(">=0.10.0")
     @run_until_complete
     async def test_producer_correct_time_returned(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -530,9 +493,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # We trigger a unique case here, we don't send any messages, but the
         # ProduceBatch will be created. It should be discarded as it contains
         # 0 messages by sender routine.
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -551,11 +512,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # See issue #409. If reenqueue method does not reset the waiter
         # properly new batches will raise RecursionError.
 
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts,
-            linger_ms=1000,
-            legacy_protocol=self.legacy_protocol,
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts, linger_ms=1000)
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -601,18 +558,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(producer.stop)
         self.assertEqual(producer._sender._acks, -1)  # -1 is set for `all`
         self.assertIsNotNone(producer._txn_manager)
-
-    @kafka_versions("<0.11.0")
-    @run_until_complete
-    async def test_producer_indempotence_not_supported(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts,
-            enable_idempotence=True,
-            legacy_protocol=self.legacy_protocol,
-        )
-        with self.assertRaises(IncompatibleBrokerVersion):
-            await producer.start()
-        await producer.stop()
 
     @kafka_versions(">=0.11.0")
     @run_until_complete
@@ -689,11 +634,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # See related issue #362. The metadata can have a new node in leader
         # set while we still don't have metadata for that node.
 
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts,
-            linger_ms=1000,
-            legacy_protocol=self.legacy_protocol,
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts, linger_ms=1000)
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -716,11 +657,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # This way we may send the next batch to node 0 without waiting for
         # node 1 batch to be reenqueued, resulting in out-of-order batches
 
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts,
-            linger_ms=1000,
-            legacy_protocol=self.legacy_protocol,
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts, linger_ms=1000)
         await producer.start()
         self.add_cleanup(producer.stop)
 
@@ -768,7 +705,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             self.topic,
             bootstrap_servers=self.hosts,
             auto_offset_reset="earliest",
-            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
@@ -788,11 +724,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # Following on #362 there may be other unexpected errors in sender
         # routine that we want the user to see, rather than just get stuck.
 
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts,
-            linger_ms=1000,
-            legacy_protocol=self.legacy_protocol,
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts, linger_ms=1000)
         await producer.start()
         self.add_cleanup(producer.stop)
 

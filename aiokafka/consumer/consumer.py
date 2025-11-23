@@ -211,8 +211,6 @@ class AIOKafkaConsumer:
         sasl_oauth_token_provider (~aiokafka.abc.AbstractTokenProvider):
             OAuthBearer token provider instance.
             Default: None
-        legacy_protocol (str): Specify if legacy protocol should for
-            Old broker versions <=0.10. Default: None
 
     Note:
         Many configuration parameters are taken from Java Client:
@@ -262,7 +260,6 @@ class AIOKafkaConsumer:
         sasl_kerberos_service_name="kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
-        legacy_protocol=None,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -298,7 +295,6 @@ class AIOKafkaConsumer:
             sasl_kerberos_service_name=sasl_kerberos_service_name,
             sasl_kerberos_domain_name=sasl_kerberos_domain_name,
             sasl_oauth_token_provider=sasl_oauth_token_provider,
-            legacy_protocol=legacy_protocol,
         )
 
         self._group_id = group_id

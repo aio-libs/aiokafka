@@ -79,14 +79,12 @@ from aiokafka.protocol.group import (
     HeartbeatRequest_v0,
     HeartbeatRequest_v1,
     JoinGroupRequest,
-    JoinGroupRequest_v0,
     JoinGroupRequest_v2,
     JoinGroupRequest_v5,
     LeaveGroupRequest,
     LeaveGroupRequest_v0,
     LeaveGroupRequest_v1,
     SyncGroupRequest,
-    SyncGroupRequest_v0,
     SyncGroupRequest_v1,
     SyncGroupRequest_v3,
 )
@@ -134,7 +132,6 @@ class Versions:
 
 
 cases = [
-    # ApiVersionRequest allows unknown API version and falls back to v0
     (
         ApiVersionRequest(),
         [
@@ -413,11 +410,7 @@ cases = [
             topics=[("t1", [(0, 10, "md")])],
         ),
         [
-            Versions(
-                expected=OffsetCommitRequest_v2(
-                    "grp", 1, "cid", 1000, [("t1", [(0, 10, "md")])]
-                )
-            ),
+            Versions(expected=IncompatibleBrokerVersion),
             Versions(
                 max_version=2,
                 expected=OffsetCommitRequest_v2(
@@ -438,7 +431,7 @@ cases = [
             partitions=[("t1", [0, 1])],
         ),
         [
-            Versions(expected=OffsetFetchRequest_v1("grp", [("t1", [0, 1])])),
+            Versions(expected=IncompatibleBrokerVersion),
             Versions(
                 max_version=1,
                 expected=OffsetFetchRequest_v1("grp", [("t1", [0, 1])]),
@@ -468,7 +461,7 @@ cases = [
     (
         MetadataRequest(topics=None, allow_auto_topic_creation=None),
         [
-            Versions(expected=MetadataRequest_v0([])),
+            Versions(expected=IncompatibleBrokerVersion),
             Versions(max_version=0, expected=MetadataRequest_v0([])),
             Versions(max_version=1, expected=MetadataRequest_v1(None)),
             Versions(max_version=4, expected=MetadataRequest_v4(None, True)),
@@ -478,7 +471,7 @@ cases = [
     (
         MetadataRequest(topics=["t1", "t2"], allow_auto_topic_creation=False),
         [
-            Versions(expected=MetadataRequest_v0(["t1", "t2"])),
+            Versions(expected=IncompatibleBrokerVersion),
             Versions(max_version=1, expected=MetadataRequest_v1(["t1", "t2"])),
             Versions(max_version=4, expected=MetadataRequest_v4(["t1", "t2"], False)),
             Versions(max_version=5, expected=MetadataRequest_v5(["t1", "t2"], False)),
@@ -487,7 +480,7 @@ cases = [
     (
         FindCoordinatorRequest(coordinator_key="grp", coordinator_type=0),
         [
-            Versions(expected=FindCoordinatorRequest_v0("grp")),
+            Versions(expected=IncompatibleBrokerVersion),
             Versions(max_version=0, expected=FindCoordinatorRequest_v0("grp")),
             Versions(max_version=1, expected=FindCoordinatorRequest_v1("grp", 0)),
         ],
@@ -511,15 +504,7 @@ cases = [
             group_protocols=[("range", b"meta")],
         ),
         [
-            Versions(
-                expected=JoinGroupRequest_v0(
-                    "g",
-                    10000,
-                    "",
-                    "consumer",
-                    [("range", b"meta")],
-                )
-            ),
+            Versions(expected=IncompatibleBrokerVersion),
             Versions(
                 max_version=2,
                 expected=JoinGroupRequest_v2(
@@ -554,7 +539,7 @@ cases = [
             group_assignment=[("m", b"assign")],
         ),
         [
-            Versions(expected=SyncGroupRequest_v0("g", 1, "m", [("m", b"assign")])),
+            Versions(expected=IncompatibleBrokerVersion),
             Versions(
                 max_version=1,
                 expected=SyncGroupRequest_v1("g", 1, "m", [("m", b"assign")]),
@@ -568,7 +553,7 @@ cases = [
     (
         HeartbeatRequest(group="g", generation_id=1, member_id="m"),
         [
-            Versions(expected=HeartbeatRequest_v0("g", 1, "m")),
+            Versions(expected=IncompatibleBrokerVersion),
             Versions(max_version=0, expected=HeartbeatRequest_v0("g", 1, "m")),
             Versions(max_version=1, expected=HeartbeatRequest_v1("g", 1, "m")),
         ],
@@ -576,7 +561,7 @@ cases = [
     (
         LeaveGroupRequest(group="g", member_id="m"),
         [
-            Versions(expected=LeaveGroupRequest_v0("g", "m")),
+            Versions(expected=IncompatibleBrokerVersion),
             Versions(max_version=0, expected=LeaveGroupRequest_v0("g", "m")),
             Versions(max_version=1, expected=LeaveGroupRequest_v1("g", "m")),
         ],
@@ -589,7 +574,7 @@ cases = [
             topics=[("t", [(0, b"data")])],
         ),
         [
-            Versions(expected=ProduceRequest_v0(1, 100, [("t", [(0, b"data")])])),
+            Versions(expected=IncompatibleBrokerVersion),
             Versions(
                 max_version=2,
                 expected=ProduceRequest_v0(1, 100, [("t", [(0, b"data")])]),
@@ -623,7 +608,7 @@ cases = [
             topics=[("t", [(0, -1)])],
         ),
         [
-            Versions(expected=OffsetRequest_v0(-1, [("t", [(0, -1, 1)])])),
+            Versions(expected=IncompatibleBrokerVersion),
             Versions(
                 max_version=0, expected=OffsetRequest_v0(-1, [("t", [(0, -1, 1)])])
             ),
@@ -674,7 +659,7 @@ cases = [
             topics=[("t", [(0, 5, 100)])],
         ),
         [
-            Versions(expected=FetchRequest_v1(-1, 10, 1, [("t", [(0, 5, 100)])])),
+            Versions(expected=IncompatibleBrokerVersion),
             Versions(
                 max_version=1,
                 expected=FetchRequest_v1(-1, 10, 1, [("t", [(0, 5, 100)])]),

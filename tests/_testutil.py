@@ -19,7 +19,6 @@ import pytest
 
 from aiokafka import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
-from aiokafka.conn import LegacyProtocol
 from aiokafka.errors import KafkaConnectionError
 from aiokafka.helpers import create_ssl_context
 from aiokafka.producer import AIOKafkaProducer
@@ -374,11 +373,6 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         if not self.topic:
             self.topic = self.random_topic_name()
         self._cleanup = []
-        self.legacy_protocol = None
-        if self.kafka_version.startswith("0.9."):
-            self.legacy_protocol = LegacyProtocol.LEGACY_0_9
-        elif self.kafka_version.startswith("0.10."):
-            self.legacy_protocol = LegacyProtocol.LEGACY_0_10
 
     def tearDown(self):
         super().tearDown()
@@ -413,9 +407,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
     ):
         topic = topic or self.topic
         ret = []
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         await producer.start()
         try:
             await self.wait_topic(producer.client, topic)
@@ -482,9 +474,7 @@ async def _wait_kafka(kafka_host, kafka_port, timeout):
     # Reconnecting until Kafka in docker becomes available
     start = loop.time()
     while True:
-        client = AIOKafkaClient(
-            bootstrap_servers=hosts, legacy_protocol=LegacyProtocol.LEGACY_0_9
-        )
+        client = AIOKafkaClient(bootstrap_servers=hosts)
         try:
             await client.bootstrap()
             # Broker can still be loading cluster layout, so we can get 0

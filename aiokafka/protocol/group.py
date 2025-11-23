@@ -124,7 +124,6 @@ class JoinGroupRequest(Request):
         JoinGroupRequest_v5,
     ]
     UNKNOWN_MEMBER_ID = ""
-    ALLOW_UNKNOWN_API_VERSION = True
 
     def __init__(
         self,
@@ -242,7 +241,6 @@ class SyncGroupRequest_v3(RequestStruct):
 class SyncGroupRequest(Request):
     API_KEY = 14
     CLASSES = [SyncGroupRequest_v0, SyncGroupRequest_v1, SyncGroupRequest_v3]
-    ALLOW_UNKNOWN_API_VERSION = True
 
     def __init__(
         self,
@@ -316,7 +314,6 @@ class HeartbeatRequest_v1(RequestStruct):
 class HeartbeatRequest(Request):
     API_KEY = 12
     CLASSES = [HeartbeatRequest_v0, HeartbeatRequest_v1]
-    ALLOW_UNKNOWN_API_VERSION = True
 
     def __init__(self, group: str, generation_id: int, member_id: str):
         self._group = group
@@ -360,7 +357,6 @@ class LeaveGroupRequest_v1(RequestStruct):
 class LeaveGroupRequest(Request):
     API_KEY = 13
     CLASSES = [LeaveGroupRequest_v0, LeaveGroupRequest_v1]
-    ALLOW_UNKNOWN_API_VERSION = True
 
     def __init__(self, group: str, member_id: str):
         self._group = group

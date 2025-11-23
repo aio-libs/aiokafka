@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import perf
 
-from aiokafka.conn import LegacyProtocol
 from aiokafka.producer.message_accumulator import BatchBuilder
 import itertools
 import random
@@ -44,7 +43,7 @@ def finalize(results):
     print(hash_val, file=open(os.devnull, "w"))
 
 
-def func(loops: int, legacy_protocol: LegacyProtocol):
+def func(loops: int):
     # Jit can optimize out the whole function if the result is the same each
     # time, so we need some randomized input data )
     precomputed_samples = prepare()
@@ -53,7 +52,7 @@ def func(loops: int, legacy_protocol: LegacyProtocol):
     # Main benchmark code.
     t0 = perf.perf_counter()
     for _ in range(loops):
-        batch = BatchBuilder(legacy_protocol, batch_size=DEFAULT_BATCH_SIZE,
+        batch = BatchBuilder(batch_size=DEFAULT_BATCH_SIZE,
                              compression_type=0, is_transactional=False)
         for _ in range(MESSAGES_PER_BATCH):
             key, value, timestamp = next(precomputed_samples)
@@ -69,5 +68,4 @@ def func(loops: int, legacy_protocol: LegacyProtocol):
 
 
 runner = perf.Runner()
-runner.bench_time_func('batch_append_v0', func, True)
-runner.bench_time_func('batch_append_v2', func, False)
+runner.bench_time_func('batch_append', func)

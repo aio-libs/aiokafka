@@ -74,8 +74,6 @@ class AIOKafkaClient:
         connections_max_idle_ms (int): Close idle connections after the number
             of milliseconds specified by this config. Specifying `None` will
             disable idle checks. Default: 540000 (9 minutes).
-        legacy_protocol (str): Specify if legacy protocol should for
-            Old broker versions <=0.10. Default: None
     """
 
     def __init__(
@@ -96,7 +94,6 @@ class AIOKafkaClient:
         sasl_kerberos_service_name="kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
-        legacy_protocol=None,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -141,7 +138,6 @@ class AIOKafkaClient:
         self._sasl_kerberos_service_name = sasl_kerberos_service_name
         self._sasl_kerberos_domain_name = sasl_kerberos_domain_name
         self._sasl_oauth_token_provider = sasl_oauth_token_provider
-        self._legacy_protocol = legacy_protocol
 
         self.cluster = ClusterMetadata(metadata_max_age_ms=metadata_max_age_ms)
 
@@ -205,7 +201,6 @@ class AIOKafkaClient:
                     sasl_kerberos_service_name=self._sasl_kerberos_service_name,
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     sasl_oauth_token_provider=self._sasl_oauth_token_provider,
-                    legacy_protocol=self._legacy_protocol,
                 )
             except (OSError, KafkaError, asyncio.TimeoutError) as err:
                 log.error('Unable connect to "%s:%s": %s', host, port, err)
@@ -428,7 +423,6 @@ class AIOKafkaClient:
                     sasl_kerberos_service_name=self._sasl_kerberos_service_name,
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     sasl_oauth_token_provider=self._sasl_oauth_token_provider,
-                    legacy_protocol=self._legacy_protocol,
                 )
         except (OSError, asyncio.TimeoutError, KafkaError) as err:
             log.error("Unable connect to node with id %s: %s", node_id, err)

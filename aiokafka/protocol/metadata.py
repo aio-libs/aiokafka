@@ -264,7 +264,6 @@ class MetadataRequest(Request):
         MetadataRequest_v4,
         MetadataRequest_v5,
     ]
-    ALLOW_UNKNOWN_API_VERSION = True
 
     def __init__(
         self,

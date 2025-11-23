@@ -11,8 +11,10 @@ from aiokafka.errors import (
     MessageSizeTooLargeError,
 )
 from aiokafka.partitioner import DefaultPartitioner
-from aiokafka.record.default_records import DefaultRecordBatch
-from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
+from aiokafka.record.default_records import (
+    DefaultRecordBatch,
+    DefaultRecordBatchBuilder,
+)
 from aiokafka.structs import TopicPartition
 from aiokafka.util import (
     INTEGER_MAX_VALUE,
@@ -172,8 +174,6 @@ class AIOKafkaProducer:
         sasl_oauth_token_provider (:class:`~aiokafka.abc.AbstractTokenProvider`):
             OAuthBearer token provider instance.
             Default: :data:`None`
-        legacy_protocol (str): Specify if legacy protocol should for
-            Old broker versions <=0.10. Default: None
 
     Note:
         Many configuration parameters are taken from the Java client:
@@ -221,7 +221,6 @@ class AIOKafkaProducer:
         sasl_kerberos_service_name="kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
-        legacy_protocol=None,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -301,16 +300,13 @@ class AIOKafkaProducer:
             sasl_kerberos_service_name=sasl_kerberos_service_name,
             sasl_kerberos_domain_name=sasl_kerberos_domain_name,
             sasl_oauth_token_provider=sasl_oauth_token_provider,
-            legacy_protocol=legacy_protocol,
         )
-        self._legacy_protocol = legacy_protocol
         self._metadata = self.client.cluster
         self._message_accumulator = MessageAccumulator(
             self._metadata,
             max_batch_size,
             compression_attrs,
             self._request_timeout_ms / 1000,
-            self._legacy_protocol,
             txn_manager=self._txn_manager,
             loop=loop,
         )
@@ -382,7 +378,7 @@ class AIOKafkaProducer:
         """Returns set of all known partitions for the topic."""
         return await self.client._wait_on_metadata(topic)
 
-    def _serialize(self, topic, key, value):
+    def _serialize(self, key, value, headers):
         if self._key_serializer is None:
             serialized_key = key
         else:
@@ -392,13 +388,9 @@ class AIOKafkaProducer:
         else:
             serialized_value = self._value_serializer(value)
 
-        message_size = LegacyRecordBatchBuilder.record_overhead(
-            0 if self._legacy_protocol else 1
+        message_size = DefaultRecordBatchBuilder.estimate_size_in_bytes(
+            serialized_key, serialized_value, headers
         )
-        if serialized_key is not None:
-            message_size += len(serialized_key)
-        if serialized_value is not None:
-            message_size += len(serialized_value)
         if message_size > self._max_request_size:
             raise MessageSizeTooLargeError(
                 "The message is %d bytes when serialized which is larger than"
@@ -490,7 +482,7 @@ class AIOKafkaProducer:
 
         headers = headers or []
 
-        key_bytes, value_bytes = self._serialize(topic, key, value)
+        key_bytes, value_bytes = self._serialize(key, value, headers)
         partition = self._partition(
             topic, partition, key, value, key_bytes, value_bytes
         )

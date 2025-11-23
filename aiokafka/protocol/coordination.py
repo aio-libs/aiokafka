@@ -45,7 +45,6 @@ class FindCoordinatorRequest_v1(RequestStruct):
 class FindCoordinatorRequest(Request):
     API_KEY = 10
     CLASSES = [FindCoordinatorRequest_v0, FindCoordinatorRequest_v1]
-    ALLOW_UNKNOWN_API_VERSION = True
 
     def __init__(self, coordinator_key: str, coordinator_type: int):
         self._coordinator_key = coordinator_key

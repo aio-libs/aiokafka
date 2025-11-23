@@ -6,7 +6,7 @@ from unittest import mock
 
 import pytest
 
-from aiokafka.conn import AIOKafkaConnection, LegacyProtocol, create_conn
+from aiokafka.conn import AIOKafkaConnection, create_conn
 from aiokafka.errors import (
     CorrelationIdError,
     IllegalSaslStateError,
@@ -29,7 +29,7 @@ from aiokafka.protocol.coordination import (
 from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.protocol.metadata import MetadataResponse_v0 as MetadataResponse
 from aiokafka.protocol.produce import ProduceRequest
-from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
+from aiokafka.record.default_records import DefaultRecordBatchBuilder
 from aiokafka.util import get_running_loop
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
@@ -50,7 +50,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
     async def test_global_loop_for_create_conn(self):
         loop = get_running_loop()
         host, port = self.kafka_host, self.kafka_port
-        conn = await create_conn(host, port, legacy_protocol=self.legacy_protocol)
+        conn = await create_conn(host, port)
         self.assertIs(conn._loop, loop)
         conn.close()
         # make sure second closing does nothing and we have full coverage
@@ -60,9 +60,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_conn_warn_unclosed(self):
         host, port = self.kafka_host, self.kafka_port
-        conn = await create_conn(
-            host, port, max_idle_ms=100000, legacy_protocol=self.legacy_protocol
-        )
+        conn = await create_conn(host, port, max_idle_ms=100000)
 
         with self.silence_loop_exception_handler():
             with self.assertWarnsRegex(ResourceWarning, "Unclosed AIOKafkaConnection"):
@@ -72,7 +70,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_basic_connection_load_meta(self):
         host, port = self.kafka_host, self.kafka_port
-        conn = await create_conn(host, port, legacy_protocol=self.legacy_protocol)
+        conn = await create_conn(host, port)
 
         self.assertEqual(conn.connected(), True)
         request = MetadataRequest([])
@@ -83,9 +81,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_connections_max_idle_ms(self):
         host, port = self.kafka_host, self.kafka_port
-        conn = await create_conn(
-            host, port, max_idle_ms=200, legacy_protocol=self.legacy_protocol
-        )
+        conn = await create_conn(host, port, max_idle_ms=200)
         self.assertEqual(conn.connected(), True)
         await asyncio.sleep(0.1)
         # Do some work
@@ -117,13 +113,19 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         futures do not stuck in queue forever"""
 
         host, port = self.kafka_host, self.kafka_port
-        conn = await create_conn(host, port, legacy_protocol=LegacyProtocol.LEGACY_0_9)
+        conn = await create_conn(host, port)
 
         # prepare message
-        builder = LegacyRecordBatchBuilder(
-            magic=1, compression_type=0, batch_size=99999999
+        builder = DefaultRecordBatchBuilder(
+            magic=2,
+            compression_type=0,
+            batch_size=99999999,
+            is_transactional=0,
+            producer_id=-1,
+            producer_epoch=-1,
+            base_sequence=0,
         )
-        builder.append(offset=0, value=b"foo", key=None, timestamp=None)
+        builder.append(offset=0, value=b"foo", key=None, timestamp=None, headers=[])
         request = ProduceRequest(
             required_acks=0,
             timeout=10 * 1000,
@@ -135,14 +137,14 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         req = [conn.send(request, expect_response=False) for _ in range(10)]
         # make sure futures no stuck in queue
         self.assertEqual(len(conn._requests), 0)
-        for x in req:
-            await x
+        await asyncio.gather(*req)
         conn.close()
 
     @run_until_complete
     async def test_send_to_closed(self):
         host, port = self.kafka_host, self.kafka_port
         conn = AIOKafkaConnection(host=host, port=port)
+        conn._versions = {MetadataRequest.API_KEY: (0, 0)}
         request = MetadataRequest([])
         with self.assertRaises(KafkaConnectionError):
             await conn.send(request)
@@ -161,6 +163,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
         # setup connection with mocked reader and writer
         conn = AIOKafkaConnection(host=host, port=port)
+        conn._versions = {MetadataRequest.API_KEY: (0, 0)}
 
         # setup reader
         reader = mock.MagicMock()
@@ -194,6 +197,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
         # setup connection with mocked reader and writer
         conn = AIOKafkaConnection(host=host, port=port)
+        conn._versions = {FindCoordinatorRequest.API_KEY: (0, 0)}
 
         # setup reader
         reader = mock.MagicMock()
@@ -236,6 +240,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         request = MetadataRequest([])
         # setup connection with mocked reader and writer
         conn = AIOKafkaConnection(host=host, port=port)
+        conn._versions = {MetadataRequest.API_KEY: (0, 0)}
 
         # setup reader
         reader = mock.MagicMock()
@@ -254,7 +259,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
     @run_until_complete
     async def test_close_disconnects_connection(self):
         host, port = self.kafka_host, self.kafka_port
-        conn = await create_conn(host, port, legacy_protocol=self.legacy_protocol)
+        conn = await create_conn(host, port)
         self.assertTrue(conn.connected())
         conn.close()
         self.assertFalse(conn.connected())

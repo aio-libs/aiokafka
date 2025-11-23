@@ -32,7 +32,6 @@ from aiokafka.record.default_records import (
     # NB: test_solitary_abort_marker relies on implementation details
     _DefaultRecordBatchBuilderPy as DefaultRecordBatchBuilder,
 )
-from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.record.memory_records import MemoryRecords
 from aiokafka.structs import OffsetAndMetadata, OffsetAndTimestamp, TopicPartition
 from aiokafka.util import create_future, create_task, get_running_loop
@@ -236,10 +235,18 @@ class TestFetcher(unittest.TestCase):
         client.force_metadata_update.side_effect = force_metadata_update
         client.send = mock.MagicMock()
 
-        builder = LegacyRecordBatchBuilder(
-            magic=1, compression_type=0, batch_size=99999999
+        builder = DefaultRecordBatchBuilder(
+            magic=2,
+            compression_type=0,
+            batch_size=99999999,
+            is_transactional=0,
+            producer_id=-1,
+            producer_epoch=-1,
+            base_sequence=0,
         )
-        builder.append(offset=4, value=b"test msg", key=None, timestamp=None)
+        builder.append(
+            offset=4, value=b"test msg", key=None, timestamp=None, headers=[]
+        )
         raw_batch = bytes(builder.build())
 
         fetch_response = FetchResponse([("test", [(0, 0, 9, raw_batch)])])
@@ -423,12 +430,18 @@ class TestFetcher(unittest.TestCase):
             [(tp.topic, [(tp.partition, 155, 100000)])],
         )
 
-        builder = LegacyRecordBatchBuilder(
-            magic=1, compression_type=0, batch_size=99999999
+        builder = DefaultRecordBatchBuilder(
+            magic=2,
+            compression_type=0,
+            batch_size=99999999,
+            is_transactional=0,
+            producer_id=-1,
+            producer_epoch=-1,
+            base_sequence=0,
         )
-        builder.append(160, value=b"12345", key=b"1", timestamp=None)
-        builder.append(162, value=b"23456", key=b"2", timestamp=None)
-        builder.append(167, value=b"34567", key=b"3", timestamp=None)
+        builder.append(160, value=b"12345", key=b"1", timestamp=None, headers=[])
+        builder.append(162, value=b"23456", key=b"2", timestamp=None, headers=[])
+        builder.append(167, value=b"34567", key=b"3", timestamp=None, headers=[])
         batch = bytes(builder.build())
 
         resp = FetchResponse(

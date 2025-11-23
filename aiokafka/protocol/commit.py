@@ -133,7 +133,6 @@ class OffsetCommitRequest(Request):
         OffsetCommitRequest_v2,
         OffsetCommitRequest_v3,
     ]
-    ALLOW_UNKNOWN_API_VERSION = True
     DEFAULT_GENERATION_ID = -1
     DEFAULT_RETENTION_TIME = -1
 
@@ -278,7 +277,6 @@ class OffsetFetchRequest(Request):
         OffsetFetchRequest_v2,
         OffsetFetchRequest_v3,
     ]
-    ALLOW_UNKNOWN_API_VERSION = True
 
     def __init__(
         self, consumer_group: str, partitions: list[tuple[str, list[int]]] | None

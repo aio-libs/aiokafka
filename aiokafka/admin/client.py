@@ -8,7 +8,6 @@ import async_timeout
 
 from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient
-from aiokafka.conn import LegacyProtocol
 from aiokafka.errors import (
     LeaderNotAvailableError,
     NotControllerError,
@@ -78,8 +77,6 @@ class AIOKafkaAdminClient:
         ssl_context (ssl.SSLContext): Pre-configured SSLContext for wrapping
             socket connections. If provided, all other ssl_* configurations
             will be ignored. Default: None.
-        legacy_protocol (str): Specify if legacy protocol should for
-            Old broker versions <=0.10. Default: None
     """
 
     def __init__(
@@ -100,7 +97,6 @@ class AIOKafkaAdminClient:
         sasl_kerberos_service_name: str = "kafka",
         sasl_kerberos_domain_name: str | None = None,
         sasl_oauth_token_provider: str | None = None,
-        legacy_protocol: LegacyProtocol | None = None,
     ):
         self._closed = False
         self._started = False
@@ -122,7 +118,6 @@ class AIOKafkaAdminClient:
             sasl_kerberos_service_name=sasl_kerberos_service_name,
             sasl_kerberos_domain_name=sasl_kerberos_domain_name,
             sasl_oauth_token_provider=sasl_oauth_token_provider,
-            legacy_protocol=legacy_protocol,
         )
 
     async def close(self):

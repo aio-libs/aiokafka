@@ -4,7 +4,6 @@ import contextlib
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import (
     IllegalOperation,
-    KafkaError,
     OutOfOrderSequenceNumber,
     ProducerFenced,
 )
@@ -17,18 +16,6 @@ from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_compl
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
-    @kafka_versions("<0.11.0")
-    @run_until_complete
-    async def test_producer_transactions_not_supported(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer",
-            legacy_protocol=self.legacy_protocol,
-        )
-        with self.assertRaises(KafkaError):
-            await producer.start()
-        await producer.stop()
-
     @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_simple(self):

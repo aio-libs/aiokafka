@@ -49,7 +49,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             sasl_mechanism="PLAIN",
             sasl_plain_username=user,
             sasl_plain_password=user,
-            legacy_protocol=self.legacy_protocol,
             **kw,
         )
         self.add_cleanup(producer.stop)
@@ -70,7 +69,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             sasl_mechanism="PLAIN",
             sasl_plain_username=user,
             sasl_plain_password=user,
-            legacy_protocol=self.legacy_protocol,
             **kwargs,
         )
         self.add_cleanup(consumer.stop)
@@ -84,7 +82,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             sasl_mechanism="PLAIN",
             sasl_plain_username=user,
             sasl_plain_password=user,
-            legacy_protocol=self.legacy_protocol,
             **kw,
         )
         self.add_cleanup(admin_client.close)
@@ -97,7 +94,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             security_protocol="SASL_PLAINTEXT",
             sasl_mechanism="GSSAPI",
             sasl_kerberos_domain_name="localhost",
-            legacy_protocol=self.legacy_protocol,
             **kw,
         )
         self.add_cleanup(producer.stop)
@@ -117,7 +113,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             security_protocol="SASL_PLAINTEXT",
             sasl_mechanism="GSSAPI",
             sasl_kerberos_domain_name="localhost",
-            legacy_protocol=self.legacy_protocol,
             **kwargs,
         )
         self.add_cleanup(consumer.stop)
@@ -130,7 +125,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             security_protocol="SASL_PLAINTEXT",
             sasl_mechanism="GSSAPI",
             sasl_kerberos_domain_name="localhost",
-            legacy_protocol=self.legacy_protocol,
             **kw,
         )
         self.add_cleanup(admin_client.close)
@@ -144,7 +138,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             sasl_mechanism="SCRAM-SHA-256",
             sasl_plain_username=user,
             sasl_plain_password=user,
-            legacy_protocol=self.legacy_protocol,
             **kw,
         )
         self.add_cleanup(producer.stop)
@@ -165,7 +158,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             sasl_mechanism="SCRAM-SHA-256",
             sasl_plain_username=user,
             sasl_plain_password=user,
-            legacy_protocol=self.legacy_protocol,
             **kwargs,
         )
         self.add_cleanup(consumer.stop)
@@ -179,7 +171,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             sasl_mechanism="SCRAM-SHA-256",
             sasl_plain_username=user,
             sasl_plain_password=user,
-            legacy_protocol=self.legacy_protocol,
             **kw,
         )
         self.add_cleanup(admin_client.close)

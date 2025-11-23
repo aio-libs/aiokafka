@@ -239,7 +239,6 @@ class OffsetRequest(Request):
         # OffsetRequest_v4,
         # OffsetRequest_v5,
     ]
-    ALLOW_UNKNOWN_API_VERSION = True
 
     def __init__(
         self,

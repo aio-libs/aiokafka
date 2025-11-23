@@ -11,9 +11,7 @@ from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_compl
 
 class TestAdmin(KafkaIntegrationTestCase):
     async def create_admin(self):
-        admin = AIOKafkaAdminClient(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        )
+        admin = AIOKafkaAdminClient(bootstrap_servers=self.hosts)
         await admin.start()
         self.add_cleanup(admin.close)
         return admin
@@ -49,8 +47,7 @@ class TestAdmin(KafkaIntegrationTestCase):
         actual = await admin.list_topics()
         assert set(actual) >= topic_names
 
-    # @kafka_versions('>=0.10.1.0')
-    @kafka_versions(">=1.0.0")  # XXX Times out with 0.10.2.1 and 0.11.0.3
+    @kafka_versions(">=1.0.0")
     @run_until_complete
     async def test_delete_topics(self):
         admin = await self.create_admin()
@@ -148,10 +145,7 @@ class TestAdmin(KafkaIntegrationTestCase):
         admin = await self.create_admin()
         group_id = f"group-{self.id()}"
         consumer = AIOKafkaConsumer(
-            self.topic,
-            group_id=group_id,
-            bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
+            self.topic, group_id=group_id, bootstrap_servers=self.hosts
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
@@ -168,10 +162,7 @@ class TestAdmin(KafkaIntegrationTestCase):
         admin = await self.create_admin()
         group_id = f"group-{self.id()}"
         consumer = AIOKafkaConsumer(
-            self.topic,
-            group_id=group_id,
-            bootstrap_servers=self.hosts,
-            legacy_protocol=self.legacy_protocol,
+            self.topic, group_id=group_id, bootstrap_servers=self.hosts
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
@@ -194,14 +185,11 @@ class TestAdmin(KafkaIntegrationTestCase):
             group_id=group_id,
             bootstrap_servers=self.hosts,
             enable_auto_commit=False,
-            legacy_protocol=self.legacy_protocol,
         )
         await consumer.start()
         self.add_cleanup(consumer.stop)
 
-        async with AIOKafkaProducer(
-            bootstrap_servers=self.hosts, legacy_protocol=self.legacy_protocol
-        ) as producer:
+        async with AIOKafkaProducer(bootstrap_servers=self.hosts) as producer:
             await producer.send_and_wait(self.topic, b"some-message")
             await producer.send_and_wait(self.topic, b"other-message")
 

@@ -9,7 +9,6 @@ Breaking changes:
 
 * Resolve API versions at connection with brokers
   `api_version` parameter has been removed from the different clients (admin/consumer/producer)
-  If you are still connecting with a Kafka Brokers <=0.10, use the new parameter `legacy_protocol`
   (pr #1136 by @vmaurin)
 
 Improved Documentation:
