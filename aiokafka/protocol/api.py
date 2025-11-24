@@ -95,7 +95,7 @@ class Request(abc.ABC):
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
-        if cls.API_KEY is None or cls.CLASSES is None:
+        if not hasattr(cls, "API_KEY") or not hasattr(cls, "CLASSES"):
             raise TypeError(
                 f"{cls.__name__} must define class attributes 'API_KEY' and 'CLASSES"
             )
@@ -152,10 +152,10 @@ class RequestStruct(Struct, metaclass=abc.ABCMeta):
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
         if (
-            cls.API_KEY is None
-            or cls.API_VERSION is None
-            or cls.RESPONSE_TYPE is None
-            or cls.SCHEMA is None
+            not hasattr(cls, "API_KEY")
+            or not hasattr(cls, "API_VERSION")
+            or not hasattr(cls, "RESPONSE_TYPE")
+            or not hasattr(cls, "SCHEMA")
         ):
             raise TypeError(
                 f"{cls.__name__} must define class attributes "

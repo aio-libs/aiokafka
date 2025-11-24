@@ -782,28 +782,14 @@ def test_api_request_prepare(api_request, versions, expected):
 
 
 def test_creating_invalid_struct_classes():
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
 
         class MissingFieldRequest_v0(RequestStruct):
             pass
 
-    with pytest.raises(TypeError):
-
-        class NoneFieldRequest_v0(RequestStruct):
-            API_KEY = 0
-            API_VERSION = 0
-            RESPONSE_TYPE = None
-            SCHEMA = None
-
 
 def test_creating_invalid_request_classes():
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
 
         class MissingFieldRequest(Request):
             pass
-
-    with pytest.raises(TypeError):
-
-        class NoneFieldRequest(Request):
-            API_KEY = 0
-            CLASSES = None
