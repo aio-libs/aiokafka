@@ -1,3 +1,5 @@
+from typing import TypeAlias
+
 from aiokafka.errors import IncompatibleBrokerVersion
 
 from .api import Request, RequestStruct, Response
@@ -42,15 +44,21 @@ class FindCoordinatorRequest_v1(RequestStruct):
     SCHEMA = Schema(("coordinator_key", String("utf-8")), ("coordinator_type", Int8))
 
 
-class FindCoordinatorRequest(Request):
+FindCoordinatorRequestStruct: TypeAlias = (
+    FindCoordinatorRequest_v0 | FindCoordinatorRequest_v1
+)
+
+
+class FindCoordinatorRequest(Request[FindCoordinatorRequestStruct]):
     API_KEY = 10
-    CLASSES = [FindCoordinatorRequest_v0, FindCoordinatorRequest_v1]
 
     def __init__(self, coordinator_key: str, coordinator_type: int):
         self._coordinator_key = coordinator_key
         self._coordinator_type = coordinator_type
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[FindCoordinatorRequestStruct]
+    ) -> FindCoordinatorRequestStruct:
         if request_struct_class.API_VERSION < 1:
             if self._coordinator_type:
                 raise IncompatibleBrokerVersion(

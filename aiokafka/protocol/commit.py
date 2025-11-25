@@ -1,3 +1,5 @@
+from typing import TypeAlias
+
 from aiokafka.errors import IncompatibleBrokerVersion
 
 from .api import Request, RequestStruct, Response
@@ -127,12 +129,11 @@ class OffsetCommitRequest_v3(RequestStruct):
     SCHEMA = OffsetCommitRequest_v2.SCHEMA
 
 
-class OffsetCommitRequest(Request):
+OffsetCommitRequestStruct: TypeAlias = OffsetCommitRequest_v2 | OffsetCommitRequest_v3
+
+
+class OffsetCommitRequest(Request[OffsetCommitRequestStruct]):
     API_KEY = 8
-    CLASSES = [
-        OffsetCommitRequest_v2,
-        OffsetCommitRequest_v3,
-    ]
     DEFAULT_GENERATION_ID = -1
     DEFAULT_RETENTION_TIME = -1
 
@@ -150,7 +151,9 @@ class OffsetCommitRequest(Request):
         self._retention_time = retention_time
         self._topics = topics
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[OffsetCommitRequestStruct]
+    ) -> OffsetCommitRequestStruct:
         return request_struct_class(
             self._consumer_group,
             self._consumer_group_generation_id,
@@ -270,13 +273,13 @@ class OffsetFetchRequest_v3(RequestStruct):
     SCHEMA = OffsetFetchRequest_v2.SCHEMA
 
 
-class OffsetFetchRequest(Request):
+OffsetFetchRequestStruct: TypeAlias = (
+    OffsetFetchRequest_v1 | OffsetFetchRequest_v2 | OffsetFetchRequest_v3
+)
+
+
+class OffsetFetchRequest(Request[OffsetFetchRequestStruct]):
     API_KEY = 9
-    CLASSES = [
-        OffsetFetchRequest_v1,
-        OffsetFetchRequest_v2,
-        OffsetFetchRequest_v3,
-    ]
 
     def __init__(
         self, consumer_group: str, partitions: list[tuple[str, list[int]]] | None
@@ -284,7 +287,9 @@ class OffsetFetchRequest(Request):
         self._consumer_group = consumer_group
         self._partitions = partitions
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[OffsetFetchRequestStruct]
+    ) -> OffsetFetchRequestStruct:
         if request_struct_class.API_VERSION < 2 and self._partitions is None:
             raise IncompatibleBrokerVersion(
                 "OffsetFetchRequest < v2 requires specifying the "

@@ -1,3 +1,5 @@
+from typing import TypeAlias
+
 from .api import Request, RequestStruct, Response
 from .types import Array, Boolean, Int16, Int32, Int64, Schema, String
 
@@ -22,7 +24,10 @@ class InitProducerIdRequest_v0(RequestStruct):
     )
 
 
-class InitProducerIdRequest(Request):
+InitProducerIdRequestStruct: TypeAlias = InitProducerIdRequest_v0
+
+
+class InitProducerIdRequest(Request[InitProducerIdRequestStruct]):
     API_KEY = 22
     CLASSES = [InitProducerIdRequest_v0]
 
@@ -30,7 +35,9 @@ class InitProducerIdRequest(Request):
         self._transactional_id = transactional_id
         self._transaction_timeout_ms = transaction_timeout_ms
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[InitProducerIdRequestStruct]
+    ) -> InitProducerIdRequestStruct:
         return request_struct_class(
             self._transactional_id,
             self._transaction_timeout_ms,
@@ -67,9 +74,11 @@ class AddPartitionsToTxnRequest_v0(RequestStruct):
     )
 
 
-class AddPartitionsToTxnRequest(Request):
+AddPartitionsToTxnRequestStruct: TypeAlias = AddPartitionsToTxnRequest_v0
+
+
+class AddPartitionsToTxnRequest(Request[AddPartitionsToTxnRequestStruct]):
     API_KEY = 24
-    CLASSES = [AddPartitionsToTxnRequest_v0]
 
     def __init__(
         self,
@@ -83,7 +92,9 @@ class AddPartitionsToTxnRequest(Request):
         self._producer_epoch = producer_epoch
         self._topics = topics
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[AddPartitionsToTxnRequestStruct]
+    ) -> AddPartitionsToTxnRequestStruct:
         return request_struct_class(
             self._transactional_id,
             self._producer_id,
@@ -110,9 +121,11 @@ class AddOffsetsToTxnRequest_v0(RequestStruct):
     )
 
 
-class AddOffsetsToTxnRequest(Request):
+AddOffsetsToTxnRequestStruct: TypeAlias = AddOffsetsToTxnRequest_v0
+
+
+class AddOffsetsToTxnRequest(Request[AddOffsetsToTxnRequestStruct]):
     API_KEY = 25
-    CLASSES = [AddOffsetsToTxnRequest_v0]
 
     def __init__(
         self,
@@ -126,7 +139,9 @@ class AddOffsetsToTxnRequest(Request):
         self._producer_epoch = producer_epoch
         self._group_id = group_id
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[AddOffsetsToTxnRequestStruct]
+    ) -> AddOffsetsToTxnRequestStruct:
         return request_struct_class(
             self._transactional_id,
             self._producer_id,
@@ -153,9 +168,11 @@ class EndTxnRequest_v0(RequestStruct):
     )
 
 
-class EndTxnRequest(Request):
+EndTxnRequestStruct: TypeAlias = EndTxnRequest_v0
+
+
+class EndTxnRequest(Request[EndTxnRequestStruct]):
     API_KEY = 26
-    CLASSES = [EndTxnRequest_v0]
 
     def __init__(
         self,
@@ -169,7 +186,9 @@ class EndTxnRequest(Request):
         self._producer_epoch = producer_epoch
         self._transaction_result = transaction_result
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[EndTxnRequestStruct]
+    ) -> EndTxnRequestStruct:
         return request_struct_class(
             self._transactional_id,
             self._producer_id,
@@ -222,9 +241,11 @@ class TxnOffsetCommitRequest_v0(RequestStruct):
     )
 
 
-class TxnOffsetCommitRequest(Request):
+TxnOffsetCommitRequestStruct: TypeAlias = TxnOffsetCommitRequest_v0
+
+
+class TxnOffsetCommitRequest(Request[TxnOffsetCommitRequestStruct]):
     API_KEY = 28
-    CLASSES = [TxnOffsetCommitRequest_v0]
 
     def __init__(
         self,
@@ -240,7 +261,9 @@ class TxnOffsetCommitRequest(Request):
         self._producer_epoch = producer_epoch
         self._topics = topics
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[TxnOffsetCommitRequestStruct]
+    ) -> TxnOffsetCommitRequestStruct:
         return request_struct_class(
             self._transactional_id,
             self._group_id,

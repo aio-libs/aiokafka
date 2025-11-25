@@ -1,3 +1,5 @@
+from typing import TypeAlias
+
 from aiokafka.errors import IncompatibleBrokerVersion
 
 from .api import Request, RequestStruct, Response
@@ -228,17 +230,16 @@ class OffsetRequest_v5(RequestStruct):
     DEFAULTS = {"replica_id": -1}
 
 
-class OffsetRequest(Request):
+OffsetRequestStruct: TypeAlias = (
+    OffsetRequest_v0 | OffsetRequest_v1 | OffsetRequest_v2 | OffsetRequest_v3
+    # Not yet supported
+    #  | OffsetRequest_v4
+    #  | OffsetRequest_v5
+)
+
+
+class OffsetRequest(Request[OffsetRequestStruct]):
     API_KEY = 2
-    CLASSES = [
-        OffsetRequest_v0,
-        OffsetRequest_v1,
-        OffsetRequest_v2,
-        OffsetRequest_v3,
-        # Not yet supported
-        # OffsetRequest_v4,
-        # OffsetRequest_v5,
-    ]
 
     def __init__(
         self,
@@ -250,7 +251,9 @@ class OffsetRequest(Request):
         self._isolation_level = isolation_level
         self._topics = topics
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[OffsetRequestStruct]
+    ) -> OffsetRequestStruct:
         if request_struct_class.API_VERSION < 2:
             if self._isolation_level:
                 raise IncompatibleBrokerVersion(

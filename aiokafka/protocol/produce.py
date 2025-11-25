@@ -1,3 +1,5 @@
+from typing import TypeAlias
+
 from aiokafka.errors import IncompatibleBrokerVersion
 
 from .api import Request, RequestStruct, Response
@@ -275,20 +277,22 @@ class ProduceRequest_v8(RequestStruct):
     SCHEMA = ProduceRequest_v7.SCHEMA
 
 
-class ProduceRequest(Request):
+ProduceRequestStruct: TypeAlias = (
+    ProduceRequest_v0
+    | ProduceRequest_v1
+    | ProduceRequest_v2
+    | ProduceRequest_v3
+    | ProduceRequest_v4
+    | ProduceRequest_v5
+    | ProduceRequest_v6
+    | ProduceRequest_v7
+    # Not supported yet
+    # | ProduceRequest_v8
+)
+
+
+class ProduceRequest(Request[ProduceRequestStruct]):
     API_KEY = 0
-    CLASSES = [
-        ProduceRequest_v0,
-        ProduceRequest_v1,
-        ProduceRequest_v2,
-        ProduceRequest_v3,
-        ProduceRequest_v4,
-        ProduceRequest_v5,
-        ProduceRequest_v6,
-        ProduceRequest_v7,
-        # Not supported yet
-        # ProduceRequest_v8,
-    ]
 
     def __init__(
         self,
@@ -306,7 +310,9 @@ class ProduceRequest(Request):
     def required_acks(self) -> int:
         return self._required_acks
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[ProduceRequestStruct]
+    ) -> ProduceRequestStruct:
         if request_struct_class.API_VERSION < 3:
             if self._transactional_id:
                 raise IncompatibleBrokerVersion(

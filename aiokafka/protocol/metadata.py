@@ -1,3 +1,5 @@
+from typing import TypeAlias
+
 from .api import Request, RequestStruct, Response
 from .types import Array, Boolean, Int16, Int32, Schema, String
 
@@ -254,16 +256,18 @@ class MetadataRequest_v5(RequestStruct):
     SCHEMA = MetadataRequest_v4.SCHEMA
 
 
-class MetadataRequest(Request):
+MetadataRequestStruct: TypeAlias = (
+    MetadataRequest_v0
+    | MetadataRequest_v1
+    | MetadataRequest_v2
+    | MetadataRequest_v3
+    | MetadataRequest_v4
+    | MetadataRequest_v5
+)
+
+
+class MetadataRequest(Request[MetadataRequestStruct]):
     API_KEY = 3
-    CLASSES = [
-        MetadataRequest_v0,
-        MetadataRequest_v1,
-        MetadataRequest_v2,
-        MetadataRequest_v3,
-        MetadataRequest_v4,
-        MetadataRequest_v5,
-    ]
 
     def __init__(
         self,
@@ -273,7 +277,9 @@ class MetadataRequest(Request):
         self._topics = topics
         self._allow_auto_topic_creation = allow_auto_topic_creation
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[MetadataRequestStruct]
+    ) -> MetadataRequestStruct:
         if request_struct_class.API_VERSION >= 4:
             return request_struct_class(
                 self._topics,

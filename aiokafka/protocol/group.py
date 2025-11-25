@@ -1,3 +1,5 @@
+from typing import TypeAlias
+
 from .api import Request, RequestStruct, Response
 from .struct import Struct
 from .types import Array, Bytes, Int16, Int32, Schema, String
@@ -115,14 +117,16 @@ class JoinGroupRequest_v5(RequestStruct):
     )
 
 
-class JoinGroupRequest(Request):
+JoinGroupRequestStruct: TypeAlias = (
+    JoinGroupRequest_v0
+    | JoinGroupRequest_v1
+    | JoinGroupRequest_v2
+    | JoinGroupRequest_v5
+)
+
+
+class JoinGroupRequest(Request[JoinGroupRequestStruct]):
     API_KEY = 11
-    CLASSES = [
-        JoinGroupRequest_v0,
-        JoinGroupRequest_v1,
-        JoinGroupRequest_v2,
-        JoinGroupRequest_v5,
-    ]
     UNKNOWN_MEMBER_ID = ""
 
     def __init__(
@@ -143,7 +147,9 @@ class JoinGroupRequest(Request):
         self._protocol_type = protocol_type
         self._group_protocols = group_protocols
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[JoinGroupRequestStruct]
+    ) -> JoinGroupRequestStruct:
         if request_struct_class.API_VERSION == 0:
             return request_struct_class(
                 self._group,
@@ -238,9 +244,13 @@ class SyncGroupRequest_v3(RequestStruct):
     )
 
 
-class SyncGroupRequest(Request):
+SyncGroupRequestStruct: TypeAlias = (
+    SyncGroupRequest_v0 | SyncGroupRequest_v1 | SyncGroupRequest_v3
+)
+
+
+class SyncGroupRequest(Request[SyncGroupRequestStruct]):
     API_KEY = 14
-    CLASSES = [SyncGroupRequest_v0, SyncGroupRequest_v1, SyncGroupRequest_v3]
 
     def __init__(
         self,
@@ -256,7 +266,9 @@ class SyncGroupRequest(Request):
         self._group_instance_id = group_instance_id
         self._group_assignment = group_assignment
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[SyncGroupRequestStruct]
+    ) -> SyncGroupRequestStruct:
         if request_struct_class.API_VERSION < 3:
             return request_struct_class(
                 self._group,
@@ -311,16 +323,20 @@ class HeartbeatRequest_v1(RequestStruct):
     SCHEMA = HeartbeatRequest_v0.SCHEMA
 
 
-class HeartbeatRequest(Request):
+HeartbeatRequestStruct: TypeAlias = HeartbeatRequest_v0 | HeartbeatRequest_v1
+
+
+class HeartbeatRequest(Request[HeartbeatRequestStruct]):
     API_KEY = 12
-    CLASSES = [HeartbeatRequest_v0, HeartbeatRequest_v1]
 
     def __init__(self, group: str, generation_id: int, member_id: str):
         self._group = group
         self._generation_id = generation_id
         self._member_id = member_id
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[HeartbeatRequestStruct]
+    ) -> HeartbeatRequestStruct:
         return request_struct_class(
             self._group,
             self._generation_id,
@@ -354,15 +370,19 @@ class LeaveGroupRequest_v1(RequestStruct):
     SCHEMA = LeaveGroupRequest_v0.SCHEMA
 
 
-class LeaveGroupRequest(Request):
+LeaveGroupRequestStruct: TypeAlias = LeaveGroupRequest_v0 | LeaveGroupRequest_v1
+
+
+class LeaveGroupRequest(Request[LeaveGroupRequestStruct]):
     API_KEY = 13
-    CLASSES = [LeaveGroupRequest_v0, LeaveGroupRequest_v1]
 
     def __init__(self, group: str, member_id: str):
         self._group = group
         self._member_id = member_id
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[LeaveGroupRequestStruct]
+    ) -> LeaveGroupRequestStruct:
         return request_struct_class(
             self._group,
             self._member_id,

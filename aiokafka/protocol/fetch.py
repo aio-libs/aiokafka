@@ -1,3 +1,5 @@
+from typing import TypeAlias
+
 from aiokafka.errors import IncompatibleBrokerVersion
 
 from .api import Request, RequestStruct, Response
@@ -492,22 +494,21 @@ class FetchRequest_v11(RequestStruct):
     )
 
 
-class FetchRequest(Request):
+FetchRequestStruct: TypeAlias = (
+    FetchRequest_v1 | FetchRequest_v2 | FetchRequest_v3 | FetchRequest_v4
+    # After v4 is not implemented yet
+    # | FetchRequest_v5
+    # | FetchRequest_v6
+    # | FetchRequest_v7
+    # | FetchRequest_v8
+    # | FetchRequest_v9
+    # | FetchRequest_v10
+    # | FetchRequest_v11
+)
+
+
+class FetchRequest(Request[FetchRequestStruct]):
     API_KEY = 1
-    CLASSES = [
-        FetchRequest_v1,
-        FetchRequest_v2,
-        FetchRequest_v3,
-        FetchRequest_v4,
-        # After v4 is not implemented yet
-        # FetchRequest_v5,
-        # FetchRequest_v6,
-        # FetchRequest_v7,
-        # FetchRequest_v8,
-        # FetchRequest_v9,
-        # FetchRequest_v10,
-        # FetchRequest_v11,
-    ]
 
     def __init__(
         self,
@@ -527,7 +528,9 @@ class FetchRequest(Request):
     def topics(self) -> list[tuple[str, list[tuple[int, int, int]]]]:
         return self._topics
 
-    def build(self, request_struct_class: type[RequestStruct]) -> RequestStruct:
+    def build(
+        self, request_struct_class: type[FetchRequestStruct]
+    ) -> FetchRequestStruct:
         if request_struct_class.API_VERSION > 3:
             return request_struct_class(
                 -1,  # replica_id
