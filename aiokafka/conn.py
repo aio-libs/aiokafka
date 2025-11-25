@@ -427,9 +427,8 @@ class AIOKafkaConnection:
                 f"Connection at {self._host}:{self._port} broken: {err}"
             ) from err
 
-        log.debug(
-            "%s Request %d: %s", weakref.ref(self), correlation_id, request_struct
-        )
+        if log.isEnabledFor(logging.DEBUG):
+            log.debug("%s Request %d: %s", repr(self), correlation_id, request_struct)
 
         if not expect_response:
             return self._writer.drain()
@@ -464,7 +463,9 @@ class AIOKafkaConnection:
         return bool(self._reader is not None and not self._reader.at_eof())
 
     def close(self, reason=None, exc=None):
-        log.debug("Closing connection at %s:%s", self._host, self._port)
+        log.debug(
+            "Closing connection at %s:%s (%s,%s)", self._host, self._port, reason, exc
+        )
         if self._reader is not None:
             self._writer.close()
             self._writer = self._reader = None
@@ -487,8 +488,8 @@ class AIOKafkaConnection:
         if self._idle_handle is not None:
             self._idle_handle.cancel()
 
-        # transport.close() will close socket, but not right ahead. Return
-        # a future in case we need to wait on it.
+        # transport.close() will close socket, but not right ahead
+        # Return a future in case we need to wait on it.
         return self._closed_fut
 
     def _create_reader_task(self):
@@ -558,9 +559,10 @@ class AIOKafkaConnection:
 
             if not fut.done():
                 response = resp_type.decode(resp)
-                log.debug(
-                    "%s Response %d: %s", weakref.ref(self), correlation_id, response
-                )
+                if log.isEnabledFor(logging.DEBUG):
+                    log.debug(
+                        "%s Response %d: %s", repr(self), correlation_id, response
+                    )
                 fut.set_result(response)
 
         # Update idle timer.

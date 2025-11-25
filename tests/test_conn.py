@@ -16,6 +16,7 @@ from aiokafka.errors import (
     UnsupportedSaslMechanismError,
 )
 from aiokafka.protocol.admin import (
+    CreateTopicsRequest,
     SaslAuthenticateRequest,
     SaslAuthenticateResponse_v0,
     SaslHandShakeRequest,
@@ -115,6 +116,29 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         host, port = self.kafka_host, self.kafka_port
         conn = await create_conn(host, port)
 
+        # create a topic
+        async def create_topic(topic):
+            await conn.send(
+                CreateTopicsRequest(
+                    create_topic_requests=[("foo", 1, 1, [], [])],
+                    timeout=1000,
+                    validate_only=False,
+                )
+            )
+            for _ in range(5):
+                ok = await conn.send(
+                    MetadataRequest(["foo"], allow_auto_topic_creation=False)
+                )
+                if ok:
+                    ok = topic in (t for _, t, *_ in ok.topics)
+                if not ok:
+                    await asyncio.sleep(1)
+                else:
+                    return
+            raise AssertionError(f'No topic "{topic}" exists')
+
+        await create_topic("foo")
+
         # prepare message
         builder = DefaultRecordBatchBuilder(
             magic=2,
@@ -129,15 +153,19 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         request = ProduceRequest(
             required_acks=0,
             timeout=10 * 1000,
-            topics=[(b"foo", [(0, bytes(builder.build()))])],
+            topics=[("foo", [(0, bytes(builder.build()))])],
             transactional_id=None,
         )
 
         # produce messages without acknowledge
-        req = [conn.send(request, expect_response=False) for _ in range(10)]
+        req = [
+            asyncio.create_task(conn.send(request, expect_response=False))
+            for _ in range(10)
+        ]
         # make sure futures no stuck in queue
         self.assertEqual(len(conn._requests), 0)
-        await asyncio.gather(*req)
+        for x in req:
+            await x
         conn.close()
 
     @run_until_complete

@@ -466,6 +466,7 @@ cases = [
             Versions(max_version=1, expected=MetadataRequest_v1(None)),
             Versions(max_version=4, expected=MetadataRequest_v4(None, True)),
             Versions(max_version=5, expected=MetadataRequest_v5(None, True)),
+            Versions(min_version=6, expected=NotImplementedError),
         ],
     ),
     (
@@ -774,8 +775,8 @@ def prepare_cases():
 )
 def test_api_request_prepare(api_request, versions, expected):
     versions = {api_request.API_KEY: versions} if versions else {}
-    if expected == IncompatibleBrokerVersion:
-        with pytest.raises(IncompatibleBrokerVersion):
+    if isinstance(expected, type) and issubclass(expected, Exception):
+        with pytest.raises(expected):
             api_request.prepare(versions)
     else:
         assert api_request.prepare(versions) == expected
@@ -792,4 +793,9 @@ def test_creating_invalid_request_classes():
     with pytest.raises(TypeError):
 
         class MissingFieldRequest(Request):
+            pass
+
+    with pytest.raises(TypeError):
+
+        class WrongInheritence(int, Request):
             pass
