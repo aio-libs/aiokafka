@@ -10,7 +10,7 @@ C = TypeVar("C", bound=type[RequestStruct | Response])
 
 
 def _make_test_class(
-    klass: type[RequestStruct | Response], schema: Schema
+    klass: type[RequestStruct | Response], schema: Schema, flexible: bool = False
 ) -> type[RequestStruct | Response]:
     if klass is RequestStruct:
 
@@ -19,6 +19,7 @@ def _make_test_class(
             API_VERSION = 0
             RESPONSE_TYPE = Response
             SCHEMA = schema
+            FLEXIBLE_VERSION = flexible
 
         return RequestTestClass
     else:
@@ -27,6 +28,7 @@ def _make_test_class(
             API_KEY = 0
             API_VERSION = 0
             SCHEMA = schema
+            FLEXIBLE_VERSION = flexible
 
         return ResponseTestClass
 
@@ -187,6 +189,53 @@ class TestObjectConversion:
         assert len(myarray[1]["subarray"]) == 1
         assert myarray[1]["subarray"][0]["innertest"] == "hello"
         assert myarray[1]["subarray"][0]["otherinnertest"] == "hello again"
+
+    def test_flexible_version(self, superclass: type[RequestStruct | Response]) -> None:
+        TestClass = _make_test_class(
+            superclass,
+            Schema(
+                ("name", String("utf-8")),
+                ("myarray", Array(Int16)),
+                (("tagged_field1", 0), String("utf-8")),
+                (("tagged_field2", 42), Int16),
+                (
+                    ("tagged_field3", 53),
+                    Array(
+                        ("name", String("utf-8")),
+                        (("tag1", 0), Int16),
+                        (("tag2", 1), Int16),
+                    ),
+                ),
+            ),
+            flexible=True,
+        )
+
+        tc = TestClass(
+            name="foo",
+            myarray=[1, 2, 3],
+            tagged_field1="bar",
+            tagged_field2=23,
+            tagged_field3=[("hello", 1, 2), ("world", 3, 4)],
+        )
+        encoded = tc.encode()
+        assert tc.to_object()["name"] == "foo"
+        assert tc.to_object()["myarray"] == [1, 2, 3]
+        assert tc.to_object()["tagged_field1"] == "bar"
+        assert tc.to_object()["tagged_field2"] == 23
+        assert tc.to_object()["tagged_field3"] == [
+            {"name": "hello", "tag1": 1, "tag2": 2},
+            {"name": "world", "tag1": 3, "tag2": 4},
+        ]
+
+        tc = TestClass.decode(encoded)
+        assert tc.to_object()["name"] == "foo"
+        assert tc.to_object()["myarray"] == [1, 2, 3]
+        assert tc.to_object()["tagged_field1"] == "bar"
+        assert tc.to_object()["tagged_field2"] == 23
+        assert tc.to_object()["tagged_field3"] == [
+            {"name": "hello", "tag1": 1, "tag2": 2},
+            {"name": "world", "tag1": 3, "tag2": 4},
+        ]
 
 
 def test_with_metadata_response() -> None:

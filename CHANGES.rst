@@ -11,6 +11,14 @@ Breaking changes:
   `api_version` parameter has been removed from the different clients (admin/consumer/producer)
   (pr #1136 by @vmaurin)
 
+New features:
+
+* Simplify flexible versions in schema.
+  Defining an API request or response schemas that should support
+  flexible versions (KIP-482) is now achieved by setting `FLEXIBLE_VERSION` to True.
+  Tagged fields could be expressed with ("name", tag) instead of just a name.
+  (pr #1139 by @vmaurin)
+
 Improved Documentation:
 
 * Fix incomplete documentation for `AIOKafkaConsumer.offset_for_times``
