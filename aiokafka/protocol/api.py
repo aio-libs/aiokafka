@@ -8,7 +8,7 @@ from typing import Any, ClassVar, Generic, TypeVar, get_args, get_origin
 from aiokafka.errors import IncompatibleBrokerVersion
 
 from .struct import Struct
-from .types import Array, Int16, Int32, Schema, String, TaggedFields
+from .types import Array, Int16, Int32, Schema, String
 
 
 class RequestHeader_v1(Struct):
@@ -36,19 +36,18 @@ class RequestHeader_v2(Struct):
         ("api_key", Int16),
         ("api_version", Int16),
         ("correlation_id", Int32),
-        ("client_id", String("utf-8")),
-        ("tags", TaggedFields),
+        ("client_id", String("utf-8", allow_flexible=False)),
     )
+    FLEXIBLE_VERSION = True
 
     def __init__(
         self,
         request: RequestStruct,
         correlation_id: int = 0,
         client_id: str = "aiokafka",
-        tags: dict[int, bytes] | None = None,
     ):
         super().__init__(
-            request.API_KEY, request.API_VERSION, correlation_id, client_id, tags or {}
+            request.API_KEY, request.API_VERSION, correlation_id, client_id
         )
 
 
@@ -61,8 +60,8 @@ class ResponseHeader_v0(Struct):
 class ResponseHeader_v1(Struct):
     SCHEMA = Schema(
         ("correlation_id", Int32),
-        ("tags", TaggedFields),
     )
+    FLEXIBLE_VERSION = True
 
 
 T = TypeVar("T", bound="RequestStruct")
@@ -150,7 +149,7 @@ class RequestStruct(Struct, metaclass=abc.ABCMeta):
     Attributes
     ----------
     FLEXIBLE_VERSION : bool
-        Use request header with flexible tags
+        Support flexible versions/compact format
     API_KEY : int
         The unique API key identifying the request.
     API_VERSION : int
@@ -161,11 +160,9 @@ class RequestStruct(Struct, metaclass=abc.ABCMeta):
         An instance of Schema() representing the request structure.
     """
 
-    FLEXIBLE_VERSION: ClassVar[bool] = False
     API_KEY: ClassVar[int]
     API_VERSION: ClassVar[int]
     RESPONSE_TYPE: ClassVar[type[Response]]
-    SCHEMA: ClassVar[Schema]
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
@@ -203,15 +200,23 @@ class RequestStruct(Struct, metaclass=abc.ABCMeta):
 
 
 class Response(Struct, metaclass=abc.ABCMeta):
-    @property
-    @abc.abstractmethod
-    def API_KEY(self) -> int:
-        """Integer identifier for api request/response"""
+    """
+    Base structure for API responses.
 
-    @property
-    @abc.abstractmethod
-    def API_VERSION(self) -> int:
-        """Integer of api request/response version"""
+    Attributes
+    ----------
+    FLEXIBLE_VERSION : bool
+        Support flexible versions/compact format
+    API_KEY : int
+        The unique API key identifying the response.
+    API_VERSION : int
+        Which API version the Response class is.
+    SCHEMA : Schema
+        An instance of Schema() representing the response structure.
+    """
+
+    API_KEY: ClassVar[int]
+    API_VERSION: ClassVar[int]
 
     def to_object(self) -> dict[str, Any]:
         return _to_object(self.SCHEMA, self)

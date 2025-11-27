@@ -9,9 +9,8 @@ from aiokafka.protocol.fetch import FetchRequest_v0, FetchResponse_v0
 from aiokafka.protocol.message import Message, MessageSet, PartialMessage
 from aiokafka.protocol.metadata import MetadataRequest_v0
 from aiokafka.protocol.types import (
-    CompactArray,
-    CompactBytes,
-    CompactString,
+    Array,
+    Bytes,
     Int16,
     Int32,
     Int64,
@@ -239,7 +238,7 @@ def test_decode_fetch_response_partial() -> None:
     encoded = b"".join(
         [
             Int32.encode(1),  # Num Topics (Array)
-            String("utf-8").encode("foobar"),
+            String("utf-8").encode("foobar", flexible=False),
             Int32.encode(2),  # Num Partitions (Array)
             Int32.encode(0),  # Partition id
             Int16.encode(0),  # Error Code
@@ -328,33 +327,38 @@ def test_unsigned_varint_serde() -> None:
 
 
 def test_compact_data_structs() -> None:
-    cs = CompactString()
-    encoded = cs.encode(None)
+    cs = String()
+    encoded = cs.encode(None, flexible=True)
     assert encoded == struct.pack("B", 0)
-    decoded = cs.decode(io.BytesIO(encoded))
+    decoded = cs.decode(io.BytesIO(encoded), flexible=True)
     assert decoded is None
-    assert cs.encode("") == b"\x01"
-    assert cs.decode(io.BytesIO(b"\x01")) == ""
-    encoded = cs.encode("foobarbaz")
-    assert cs.decode(io.BytesIO(encoded)) == "foobarbaz"
+    assert cs.encode("", flexible=True) == b"\x01"
+    assert cs.decode(io.BytesIO(b"\x01"), flexible=True) == ""
+    encoded = cs.encode("foobarbaz", flexible=True)
+    assert cs.decode(io.BytesIO(encoded), flexible=True) == "foobarbaz"
 
-    arr = CompactArray(CompactString())
-    assert arr.encode(None) == b"\x00"
-    assert arr.decode(io.BytesIO(b"\x00")) is None
-    enc = arr.encode([])
+    arr = Array(String())
+    assert arr.encode(None, flexible=True) == b"\x00"
+    assert arr.decode(io.BytesIO(b"\x00"), flexible=True) is None
+    enc = arr.encode([], flexible=True)
     assert enc == b"\x01"
-    assert arr.decode(io.BytesIO(enc)) == []
-    encoded = arr.encode(["foo", "bar", "baz", "quux"])
-    assert arr.decode(io.BytesIO(encoded)) == ["foo", "bar", "baz", "quux"]
+    assert arr.decode(io.BytesIO(enc), flexible=True) == []
+    encoded = arr.encode(["foo", "bar", "baz", "quux"], flexible=True)
+    assert arr.decode(io.BytesIO(encoded), flexible=True) == [
+        "foo",
+        "bar",
+        "baz",
+        "quux",
+    ]
 
-    enc = CompactBytes.encode(None)
+    enc = Bytes.encode(None, flexible=True)
     assert enc == b"\x00"
-    assert CompactBytes.decode(io.BytesIO(b"\x00")) is None
-    enc = CompactBytes.encode(b"")
+    assert Bytes.decode(io.BytesIO(b"\x00"), flexible=True) is None
+    enc = Bytes.encode(b"", flexible=True)
     assert enc == b"\x01"
-    assert CompactBytes.decode(io.BytesIO(b"\x01")) == b""
-    enc = CompactBytes.encode(b"foo")
-    assert CompactBytes.decode(io.BytesIO(enc)) == b"foo"
+    assert Bytes.decode(io.BytesIO(b"\x01"), flexible=True) == b""
+    enc = Bytes.encode(b"foo", flexible=True)
+    assert Bytes.decode(io.BytesIO(enc), flexible=True) == b"foo"
 
 
 attr_names = [
