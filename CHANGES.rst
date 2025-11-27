@@ -13,6 +13,11 @@ New features:
   configured, the consumer will fetch from a same-rack follower instead of the
   partition leader, reducing cross-AZ traffic and tail latency.
   (prs #1159 and #1160 by @GlebShipilov)
+* Simplify flexible versions in schema.
+  Defining an API request or response schemas that should support
+  flexible versions (KIP-482) is now achieved by setting `FLEXIBLE_VERSION` to True.
+  Tagged fields could be expressed with ("name", tag) instead of just a name.
+  (pr #1139 by @vmaurin)
 
 Bugfixes:
 
