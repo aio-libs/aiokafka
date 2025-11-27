@@ -12,19 +12,19 @@ from aiokafka.consumer.group_coordinator import (
     NoGroupCoordinator,
 )
 from aiokafka.consumer.subscription_state import SubscriptionState
-from aiokafka.protocol.commit import OffsetCommitRequest, OffsetCommitResponse_v2
-from aiokafka.protocol.commit import OffsetFetchRequest_v1 as OffsetFetchRequest
-from aiokafka.protocol.group import (
-    HeartbeatRequest_v0 as HeartbeatRequest,
+from aiokafka.protocol.commit import (
+    OffsetCommitRequest,
+    OffsetCommitResponse_v2,
+    OffsetFetchRequest,
+    OffsetFetchResponse_v0,
 )
 from aiokafka.protocol.group import (
-    JoinGroupRequest_v0 as JoinGroupRequest,
-)
-from aiokafka.protocol.group import (
-    LeaveGroupRequest_v0 as LeaveGroupRequest,
-)
-from aiokafka.protocol.group import (
-    SyncGroupResponse_v0 as SyncGroupResponse,
+    HeartbeatRequest,
+    HeartbeatResponse_v0,
+    JoinGroupRequest,
+    JoinGroupResponse_v0,
+    LeaveGroupRequest,
+    SyncGroupResponse_v0,
 )
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.util import create_future, create_task, get_running_loop
@@ -160,11 +160,10 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         mocked = mock.MagicMock()
         coordinator._client = mocked
-        coordinator._client.api_version = (0, 10, 1)
         error_type = Errors.NoError
 
         async def send(*agrs, **kw):
-            resp = JoinGroupRequest.RESPONSE_TYPE(
+            resp = JoinGroupResponse_v0(
                 error_code=error_type.errno,
                 generation_id=-1,  # generation_id
                 group_protocol="roundrobin",
@@ -271,12 +270,11 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         mocked = mock.MagicMock()
         coordinator._client = mocked
-        coordinator._client.api_version = (0, 10, 1)
         subsc = subscription.subscription
         error_type = None
 
         async def send(*agrs, **kw):
-            resp = SyncGroupResponse(
+            resp = SyncGroupResponse_v0(
                 error_code=error_type.errno, member_assignment=b"123"
             )
             return resp
@@ -419,7 +417,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             commit_error = None
 
             async def mock_send_req(request):
-                if request.API_KEY == OffsetCommitRequest[0].API_KEY:
+                if request.API_KEY == OffsetCommitRequest.API_KEY:
                     if isinstance(commit_error, list):
                         error_code = commit_error.pop(0).errno
                     else:
@@ -538,7 +536,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                     else:
                         offset = -1
                     resp_topics = [("topic1", [(0, offset, "", error_code)])]
-                    return request.RESPONSE_TYPE(resp_topics)
+                    return OffsetFetchResponse_v0(resp_topics)
                 return await _orig_send_req(request)
 
             mocked.side_effect = mock_send_req
@@ -797,7 +795,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         with mock.patch.object(coordinator, "_send_req") as mocked:
 
             async def mock_send_req(request):
-                if request.API_KEY == OffsetCommitRequest[0].API_KEY:
+                if request.API_KEY == OffsetCommitRequest.API_KEY:
                     return OffsetCommitResponse_v2(resp_topics)
                 return await _orig_send_req(request)
 
@@ -828,7 +826,13 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         )
         self.add_cleanup(coordinator.close)
 
-        request = OffsetCommitRequest[2](topics=[])
+        request = OffsetCommitRequest(
+            coordinator.group_id,
+            OffsetCommitRequest.DEFAULT_GENERATION_ID,
+            JoinGroupRequest.UNKNOWN_MEMBER_ID,
+            OffsetCommitRequest.DEFAULT_RETENTION_TIME,
+            [],
+        )
 
         # We did not call ensure_coordinator_known yet
         with self.assertRaises(Errors.GroupCoordinatorNotAvailableError):
@@ -1018,7 +1022,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
                     error_code = heartbeat_error.pop(0).errno
                 else:
                     error_code = heartbeat_error.errno
-                return HeartbeatRequest.RESPONSE_TYPE(error_code)
+                return HeartbeatResponse_v0(error_code)
             return await _orig_send_req(request)
 
         mocked.side_effect = mock_send_req

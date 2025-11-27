@@ -174,16 +174,15 @@ class TestMessageAccumulator(unittest.TestCase):
         batches[0][tp0].done(base_offset=21)  # no error in this case
 
     def test_message_batch_builder_basic(self):
-        magic = 0
         batch_size = 1000
         msg_count = 3
         key = b"test key"
         value = b"test value"
-        builder = BatchBuilder(magic, batch_size, 0, is_transactional=False)
+        builder = BatchBuilder(batch_size, 0, is_transactional=False)
         self.assertEqual(builder._relative_offset, 0)
         self.assertIsNone(builder._buffer)
         self.assertFalse(builder._closed)
-        self.assertEqual(builder.size(), 0)
+        self.assertEqual(builder.size(), 61)
         self.assertEqual(builder.record_count(), 0)
 
         # adding messages returns size and increments appropriate values

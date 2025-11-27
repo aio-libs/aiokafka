@@ -518,8 +518,7 @@ class StickyAssignmentExecutor:
         max_assignment_size = len(self.consumer_to_all_potential_partitions[consumer])
         if current_assignment_size > max_assignment_size:
             log.error(
-                "The consumer %r is assigned more partitions than the maximum "
-                "possible",
+                "The consumer %r is assigned more partitions than the maximum possible",
                 consumer,
             )
         if current_assignment_size < max_assignment_size:

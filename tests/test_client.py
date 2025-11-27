@@ -12,14 +12,13 @@ from aiokafka.errors import (
     KafkaError,
     NodeNotReadyError,
     RequestTimedOutError,
-    UnrecognizedBrokerVersion,
 )
-from aiokafka.protocol.fetch import FetchRequest_v0
-from aiokafka.protocol.metadata import MetadataRequest_v0 as MetadataRequest
+from aiokafka.protocol.fetch import FetchRequest
+from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.protocol.metadata import MetadataResponse_v0 as MetadataResponse
 from aiokafka.util import create_task, get_running_loop
 
-from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_complete
+from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 NO_ERROR = 0
 UNKNOWN_TOPIC_OR_PARTITION = 3
@@ -201,7 +200,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         async def send(*args, **kwargs):
             return bad_response
 
-        client = AIOKafkaClient(bootstrap_servers=["broker_1:4567"], api_version="0.10")
+        client = AIOKafkaClient(bootstrap_servers=["broker_1:4567"])
         conn = mock.Mock()
         client._conns = [mock.Mock()]
 
@@ -229,7 +228,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         async def send(*args, **kwargs):
             raise asyncio.TimeoutError()
 
-        client = AIOKafkaClient(bootstrap_servers=["broker_1:4567"], api_version="0.10")
+        client = AIOKafkaClient(bootstrap_servers=["broker_1:4567"])
         conn = mock.Mock()
         client._conns = [mock.Mock()]
 
@@ -291,44 +290,12 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         await client.bootstrap()
         node_id = client.get_random_node()
         resp = await client.send(node_id, MetadataRequest([]))
-        self.assertTrue(isinstance(resp, MetadataResponse))
-        await client.close()
-
-    @kafka_versions("<2.7")  # FIXME Not implemented yet
-    @run_until_complete
-    async def test_check_version(self):
-        kafka_version = tuple(int(x) for x in self.kafka_version.split("."))
-
-        client = AIOKafkaClient(bootstrap_servers=self.hosts)
-        await client.bootstrap()
-        ver = await client.check_version()
-
-        expected_version = kafka_version[:2]
-        self.assertEqual(expected_version, ver[:2])
-        await self.wait_topic(client, "some_test_topic")
-        ver2 = await client.check_version()
-        self.assertEqual(ver, ver2)
-        ver2 = await client.check_version(client.get_random_node())
-        self.assertEqual(ver, ver2)
-
-        with mock.patch.object(AIOKafkaConnection, "send") as mocked:
-            mocked.side_effect = KafkaError("mocked exception")
-            with self.assertRaises(UnrecognizedBrokerVersion):
-                await client.check_version(client.get_random_node())
-
-        async def _get_conn(*args: Any, **kw: Any):
-            return None
-
-        client._get_conn = _get_conn
-        with self.assertRaises(KafkaConnectionError):
-            await client.check_version()
+        self.assertEqual(resp.API_KEY, MetadataRequest.API_KEY)
         await client.close()
 
     @run_until_complete
     async def test_metadata_synchronizer(self):
-        client = AIOKafkaClient(
-            bootstrap_servers=self.hosts, api_version="0.9", metadata_max_age_ms=10
-        )
+        client = AIOKafkaClient(bootstrap_servers=self.hosts, metadata_max_age_ms=10)
 
         with mock.patch.object(AIOKafkaClient, "_metadata_update") as mocked:
 
@@ -458,11 +425,12 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         await self.wait_topic(client, self.topic)
 
         node_id = client.get_random_node()
-        wait_request = FetchRequest_v0(
-            -1,  # replica_id
-            500,  # max_wait_ms
-            1024 * 1024,  # min_bytes
-            [(self.topic, [(0, 0, 1024)])],
+        wait_request = FetchRequest(
+            max_wait_time=500,
+            min_bytes=1024 * 1024,
+            max_bytes=52428800,
+            isolation_level=0,
+            topics=[(self.topic, [(0, 0, 1024)])],
         )
         vanila_request = MetadataRequest([])
 
@@ -521,11 +489,12 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
             purpose=(CoordinationType.GROUP, ""),
         )
 
-        wait_request = FetchRequest_v0(
-            -1,  # replica_id
-            500,  # max_wait_ms
-            1024 * 1024,  # min_bytes
-            [(self.topic, [(0, 0, 1024)])],
+        wait_request = FetchRequest(
+            max_wait_time=500,
+            min_bytes=1024 * 1024,
+            max_bytes=52428800,
+            isolation_level=0,
+            topics=[(self.topic, [(0, 0, 1024)])],
         )
         vanila_request = MetadataRequest([])
 

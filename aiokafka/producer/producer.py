@@ -9,11 +9,12 @@ from aiokafka.codec import has_gzip, has_lz4, has_snappy, has_zstd
 from aiokafka.errors import (
     IllegalOperation,
     MessageSizeTooLargeError,
-    UnsupportedVersionError,
 )
 from aiokafka.partitioner import DefaultPartitioner
-from aiokafka.record.default_records import DefaultRecordBatch
-from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
+from aiokafka.record.default_records import (
+    DefaultRecordBatch,
+    DefaultRecordBatchBuilder,
+)
 from aiokafka.structs import TopicPartition
 from aiokafka.util import (
     INTEGER_MAX_VALUE,
@@ -142,9 +143,6 @@ class AIOKafkaProducer:
             Default: 40000.
         retry_backoff_ms (int): Milliseconds to backoff when retrying on
             errors. Default: 100.
-        api_version (str): specify which kafka API version to use.
-            If set to ``auto``, will attempt to infer the broker version by
-            probing various APIs. Default: ``auto``
         security_protocol (str): Protocol used to communicate with brokers.
             Valid values are: ``PLAINTEXT``, ``SSL``, ``SASL_PLAINTEXT``,
             ``SASL_SSL``. Default: ``PLAINTEXT``.
@@ -202,7 +200,6 @@ class AIOKafkaProducer:
         client_id=None,
         metadata_max_age_ms=300000,
         request_timeout_ms=40000,
-        api_version="auto",
         acks=_missing,
         key_serializer=None,
         value_serializer=None,
@@ -294,7 +291,6 @@ class AIOKafkaProducer:
             metadata_max_age_ms=metadata_max_age_ms,
             request_timeout_ms=request_timeout_ms,
             retry_backoff_ms=retry_backoff_ms,
-            api_version=api_version,
             security_protocol=security_protocol,
             ssl_context=ssl_context,
             connections_max_idle_ms=connections_max_idle_ms,
@@ -350,25 +346,7 @@ class AIOKafkaProducer:
         ), "Please create objects with the same loop as running with"
         log.debug("Starting the Kafka producer")  # trace
         await self.client.bootstrap()
-
-        if self._compression_type == "lz4":
-            assert self.client.api_version >= (0, 8, 2), (
-                "LZ4 Requires >= Kafka 0.8.2 Brokers"
-            )  # fmt: skip
-        elif self._compression_type == "zstd":
-            assert self.client.api_version >= (2, 1, 0), (
-                "Zstd Requires >= Kafka 2.1.0 Brokers"
-            )  # fmt: skip
-
-        if self._txn_manager is not None and self.client.api_version < (0, 11):
-            raise UnsupportedVersionError(
-                "Idempotent producer available only for Broker version 0.11"
-                " and above"
-            )
-
         await self._sender.start()
-        self._message_accumulator.set_api_version(self.client.api_version)
-        self._producer_magic = 0 if self.client.api_version < (0, 10) else 1
         log.debug("Kafka producer started")
 
     async def flush(self):
@@ -400,7 +378,7 @@ class AIOKafkaProducer:
         """Returns set of all known partitions for the topic."""
         return await self.client._wait_on_metadata(topic)
 
-    def _serialize(self, topic, key, value):
+    def _serialize(self, key, value, headers):
         if self._key_serializer is None:
             serialized_key = key
         else:
@@ -410,11 +388,9 @@ class AIOKafkaProducer:
         else:
             serialized_value = self._value_serializer(value)
 
-        message_size = LegacyRecordBatchBuilder.record_overhead(self._producer_magic)
-        if serialized_key is not None:
-            message_size += len(serialized_key)
-        if serialized_value is not None:
-            message_size += len(serialized_value)
+        message_size = DefaultRecordBatchBuilder.estimate_size_in_bytes(
+            serialized_key, serialized_value, headers
+        )
         if message_size > self._max_request_size:
             raise MessageSizeTooLargeError(
                 "The message is %d bytes when serialized which is larger than"
@@ -490,9 +466,6 @@ class AIOKafkaProducer:
             from being sent, but cancelling the :meth:`send` coroutine itself
             **will**.
         """
-        assert value is not None or self.client.api_version >= (0, 8, 1), (
-            "Null messages require kafka >= 0.8.1"
-        )  # fmt: skip
         assert not (value is None and key is None), "Need at least one: key or value"
 
         # first make sure the metadata for the topic is available
@@ -507,14 +480,9 @@ class AIOKafkaProducer:
             ):
                 raise IllegalOperation("Can't send messages while not in transaction")
 
-        if headers is not None:
-            if self.client.api_version < (0, 11):
-                raise UnsupportedVersionError("Headers not supported before Kafka 0.11")
-        else:
-            # Record parser/builder support only list type, no explicit None
-            headers = []
+        headers = headers or []
 
-        key_bytes, value_bytes = self._serialize(topic, key, value)
+        key_bytes, value_bytes = self._serialize(key, value, headers)
         partition = self._partition(
             topic, partition, key, value, key_bytes, value_bytes
         )

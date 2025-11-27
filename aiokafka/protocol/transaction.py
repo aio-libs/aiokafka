@@ -1,4 +1,6 @@
-from .api import Request, Response
+from typing import TypeAlias
+
+from .api import Request, RequestStruct, Response
 from .types import Array, Boolean, Int16, Int32, Int64, Schema, String
 
 
@@ -13,13 +15,33 @@ class InitProducerIdResponse_v0(Response):
     )
 
 
-class InitProducerIdRequest_v0(Request):
+class InitProducerIdRequest_v0(RequestStruct):
     API_KEY = 22
     API_VERSION = 0
     RESPONSE_TYPE = InitProducerIdResponse_v0
     SCHEMA = Schema(
         ("transactional_id", String("utf-8")), ("transaction_timeout_ms", Int32)
     )
+
+
+InitProducerIdRequestStruct: TypeAlias = InitProducerIdRequest_v0
+
+
+class InitProducerIdRequest(Request[InitProducerIdRequestStruct]):
+    API_KEY = 22
+    CLASSES = [InitProducerIdRequest_v0]
+
+    def __init__(self, transactional_id: str, transaction_timeout_ms: int):
+        self._transactional_id = transactional_id
+        self._transaction_timeout_ms = transaction_timeout_ms
+
+    def build(
+        self, request_struct_class: type[InitProducerIdRequestStruct]
+    ) -> InitProducerIdRequestStruct:
+        return request_struct_class(
+            self._transactional_id,
+            self._transaction_timeout_ms,
+        )
 
 
 class AddPartitionsToTxnResponse_v0(Response):
@@ -40,7 +62,7 @@ class AddPartitionsToTxnResponse_v0(Response):
     )
 
 
-class AddPartitionsToTxnRequest_v0(Request):
+class AddPartitionsToTxnRequest_v0(RequestStruct):
     API_KEY = 24
     API_VERSION = 0
     RESPONSE_TYPE = AddPartitionsToTxnResponse_v0
@@ -52,13 +74,42 @@ class AddPartitionsToTxnRequest_v0(Request):
     )
 
 
+AddPartitionsToTxnRequestStruct: TypeAlias = AddPartitionsToTxnRequest_v0
+
+
+class AddPartitionsToTxnRequest(Request[AddPartitionsToTxnRequestStruct]):
+    API_KEY = 24
+
+    def __init__(
+        self,
+        transactional_id: str,
+        producer_id: int,
+        producer_epoch: int,
+        topics: list[tuple[str, list[int]]],
+    ):
+        self._transactional_id = transactional_id
+        self._producer_id = producer_id
+        self._producer_epoch = producer_epoch
+        self._topics = topics
+
+    def build(
+        self, request_struct_class: type[AddPartitionsToTxnRequestStruct]
+    ) -> AddPartitionsToTxnRequestStruct:
+        return request_struct_class(
+            self._transactional_id,
+            self._producer_id,
+            self._producer_epoch,
+            self._topics,
+        )
+
+
 class AddOffsetsToTxnResponse_v0(Response):
     API_KEY = 25
     API_VERSION = 0
     SCHEMA = Schema(("throttle_time_ms", Int32), ("error_code", Int16))
 
 
-class AddOffsetsToTxnRequest_v0(Request):
+class AddOffsetsToTxnRequest_v0(RequestStruct):
     API_KEY = 25
     API_VERSION = 0
     RESPONSE_TYPE = AddOffsetsToTxnResponse_v0
@@ -70,13 +121,42 @@ class AddOffsetsToTxnRequest_v0(Request):
     )
 
 
+AddOffsetsToTxnRequestStruct: TypeAlias = AddOffsetsToTxnRequest_v0
+
+
+class AddOffsetsToTxnRequest(Request[AddOffsetsToTxnRequestStruct]):
+    API_KEY = 25
+
+    def __init__(
+        self,
+        transactional_id: str,
+        producer_id: int,
+        producer_epoch: int,
+        group_id: str,
+    ):
+        self._transactional_id = transactional_id
+        self._producer_id = producer_id
+        self._producer_epoch = producer_epoch
+        self._group_id = group_id
+
+    def build(
+        self, request_struct_class: type[AddOffsetsToTxnRequestStruct]
+    ) -> AddOffsetsToTxnRequestStruct:
+        return request_struct_class(
+            self._transactional_id,
+            self._producer_id,
+            self._producer_epoch,
+            self._group_id,
+        )
+
+
 class EndTxnResponse_v0(Response):
     API_KEY = 26
     API_VERSION = 0
     SCHEMA = Schema(("throttle_time_ms", Int32), ("error_code", Int16))
 
 
-class EndTxnRequest_v0(Request):
+class EndTxnRequest_v0(RequestStruct):
     API_KEY = 26
     API_VERSION = 0
     RESPONSE_TYPE = EndTxnResponse_v0
@@ -86,6 +166,35 @@ class EndTxnRequest_v0(Request):
         ("producer_epoch", Int16),
         ("transaction_result", Boolean),
     )
+
+
+EndTxnRequestStruct: TypeAlias = EndTxnRequest_v0
+
+
+class EndTxnRequest(Request[EndTxnRequestStruct]):
+    API_KEY = 26
+
+    def __init__(
+        self,
+        transactional_id: str,
+        producer_id: int,
+        producer_epoch: int,
+        transaction_result: bool,
+    ):
+        self._transactional_id = transactional_id
+        self._producer_id = producer_id
+        self._producer_epoch = producer_epoch
+        self._transaction_result = transaction_result
+
+    def build(
+        self, request_struct_class: type[EndTxnRequestStruct]
+    ) -> EndTxnRequestStruct:
+        return request_struct_class(
+            self._transactional_id,
+            self._producer_id,
+            self._producer_epoch,
+            self._transaction_result,
+        )
 
 
 class TxnOffsetCommitResponse_v0(Response):
@@ -106,7 +215,7 @@ class TxnOffsetCommitResponse_v0(Response):
     )
 
 
-class TxnOffsetCommitRequest_v0(Request):
+class TxnOffsetCommitRequest_v0(RequestStruct):
     API_KEY = 28
     API_VERSION = 0
     RESPONSE_TYPE = TxnOffsetCommitResponse_v0
@@ -132,19 +241,33 @@ class TxnOffsetCommitRequest_v0(Request):
     )
 
 
-InitProducerIdRequest = [InitProducerIdRequest_v0]
-InitProducerIdResponse = [InitProducerIdResponse_v0]
+TxnOffsetCommitRequestStruct: TypeAlias = TxnOffsetCommitRequest_v0
 
-AddPartitionsToTxnRequest = [AddPartitionsToTxnRequest_v0]
-AddPartitionsToTxnResponse = [AddPartitionsToTxnResponse_v0]
 
-AddOffsetsToTxnRequest = [AddOffsetsToTxnRequest_v0]
-AddOffsetsToTxnResponse = [AddOffsetsToTxnResponse_v0]
+class TxnOffsetCommitRequest(Request[TxnOffsetCommitRequestStruct]):
+    API_KEY = 28
 
-EndTxnRequest = [EndTxnRequest_v0]
+    def __init__(
+        self,
+        transactional_id: str,
+        group_id: str,
+        producer_id: int,
+        producer_epoch: int,
+        topics: list[tuple[str, list[tuple[int, int, str]]]],
+    ):
+        self._transactional_id = transactional_id
+        self._group_id = group_id
+        self._producer_id = producer_id
+        self._producer_epoch = producer_epoch
+        self._topics = topics
 
-EndTxnResponse = [EndTxnResponse_v0]
-
-TxnOffsetCommitResponse = [TxnOffsetCommitResponse_v0]
-
-TxnOffsetCommitRequest = [TxnOffsetCommitRequest_v0]
+    def build(
+        self, request_struct_class: type[TxnOffsetCommitRequestStruct]
+    ) -> TxnOffsetCommitRequestStruct:
+        return request_struct_class(
+            self._transactional_id,
+            self._group_id,
+            self._producer_id,
+            self._producer_epoch,
+            self._topics,
+        )

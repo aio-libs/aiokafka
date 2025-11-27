@@ -11,7 +11,6 @@ from aiokafka.errors import (
     ProducerClosed,
 )
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
-from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
 from aiokafka.structs import RecordMetadata
 from aiokafka.util import create_future, get_running_loop
 
@@ -19,29 +18,22 @@ from aiokafka.util import create_future, get_running_loop
 class BatchBuilder:
     def __init__(
         self,
-        magic,
         batch_size,
         compression_type,
         *,
-        is_transactional,
+        is_transactional=0,
         key_serializer=None,
         value_serializer=None,
     ):
-        if magic < 2:
-            assert not is_transactional
-            self._builder = LegacyRecordBatchBuilder(
-                magic, compression_type, batch_size
-            )
-        else:
-            self._builder = DefaultRecordBatchBuilder(
-                magic,
-                compression_type,
-                is_transactional=is_transactional,
-                producer_id=-1,
-                producer_epoch=-1,
-                base_sequence=0,
-                batch_size=batch_size,
-            )
+        self._builder = DefaultRecordBatchBuilder(
+            2,
+            compression_type,
+            is_transactional=is_transactional,
+            producer_id=-1,
+            producer_epoch=-1,
+            base_sequence=0,
+            batch_size=batch_size,
+        )
         self._relative_offset = 0
         self._buffer = None
         self._closed = False
@@ -65,8 +57,7 @@ class BatchBuilder:
 
         Arguments:
             timestamp (float or None): epoch timestamp in seconds. If None,
-                the timestamp will be set to the current time. If submitting to
-                an 0.8.x or 0.9.x broker, the timestamp will be ignored.
+                the timestamp will be set to the current time.
             key (bytes or None): the message key. `key` and `value` may not
                 both be None.
             value (bytes or None): the message value. `key` and `value` may not
@@ -333,13 +324,9 @@ class MessageAccumulator:
         self._batch_ttl = batch_ttl
         self._wait_data_future = loop.create_future()
         self._closed = False
-        self._api_version = (0, 9)
         self._txn_manager = txn_manager
 
         self._exception = None  # Critical exception
-
-    def set_api_version(self, api_version):
-        self._api_version = api_version
 
     async def flush(self):
         waiters = [
@@ -500,13 +487,6 @@ class MessageAccumulator:
         return nodes, unknown_leaders_exist
 
     def create_builder(self, key_serializer=None, value_serializer=None):
-        if self._api_version >= (0, 11):
-            magic = 2
-        elif self._api_version >= (0, 10):
-            magic = 1
-        else:
-            magic = 0
-
         is_transactional = False
         if (
             self._txn_manager is not None
@@ -514,7 +494,6 @@ class MessageAccumulator:
         ):
             is_transactional = True
         return BatchBuilder(
-            magic,
             self._batch_size,
             self._compression_type,
             is_transactional=is_transactional,

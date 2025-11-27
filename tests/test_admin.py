@@ -47,8 +47,7 @@ class TestAdmin(KafkaIntegrationTestCase):
         actual = await admin.list_topics()
         assert set(actual) >= topic_names
 
-    # @kafka_versions('>=0.10.1.0')
-    @kafka_versions(">=1.0.0")  # XXX Times out with 0.10.2.1 and 0.11.0.3
+    @kafka_versions(">=1.0.0")
     @run_until_complete
     async def test_delete_topics(self):
         admin = await self.create_admin()

@@ -280,8 +280,7 @@ class UnknownTopicOrPartitionError(BrokerResponseError):
     errno = 3
     message = "UNKNOWN_TOPIC_OR_PARTITION"
     description = (
-        "This request is for a topic or partition that does not"
-        " exist on this broker."
+        "This request is for a topic or partition that does not exist on this broker."
     )
     retriable = True
     invalid_metadata = True
@@ -341,8 +340,7 @@ class ReplicaNotAvailableError(BrokerResponseError):
     errno = 9
     message = "REPLICA_NOT_AVAILABLE"
     description = (
-        "If replica is expected on a broker, but is not (this can be"
-        " safely ignored)."
+        "If replica is expected on a broker, but is not (this can be safely ignored)."
     )
 
 

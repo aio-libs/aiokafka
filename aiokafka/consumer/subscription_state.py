@@ -102,8 +102,7 @@ class SubscriptionState:
             self._subscription_type = subscription_type
         else:
             raise IllegalStateError(
-                "Subscription to topics, partitions and pattern are mutually "
-                "exclusive"
+                "Subscription to topics, partitions and pattern are mutually exclusive"
             )
 
     def _change_subscription(self, subscription: Subscription):

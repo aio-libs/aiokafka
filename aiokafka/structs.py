@@ -7,12 +7,12 @@ from typing import Generic, NamedTuple, TypeVar
 from aiokafka.errors import KafkaError
 
 __all__ = [
-    "OffsetAndMetadata",
-    "TopicPartition",
-    "RecordMetadata",
-    "ConsumerRecord",
     "BrokerMetadata",
+    "ConsumerRecord",
+    "OffsetAndMetadata",
     "PartitionMetadata",
+    "RecordMetadata",
+    "TopicPartition",
 ]
 
 

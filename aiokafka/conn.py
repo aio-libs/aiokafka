@@ -26,9 +26,7 @@ from aiokafka.protocol.admin import (
     SaslAuthenticateRequest,
     SaslHandShakeRequest,
 )
-from aiokafka.protocol.commit import (
-    GroupCoordinatorResponse_v0 as GroupCoordinatorResponse,
-)
+from aiokafka.protocol.coordination import FindCoordinatorResponse_v0
 from aiokafka.util import create_future, create_task, get_running_loop, wait_for
 
 try:
@@ -55,33 +53,12 @@ class CloseReason(IntEnum):
     AUTH_FAILURE = 5
 
 
-class VersionInfo:
-    def __init__(self, versions):
-        self._versions = versions
-
-    def pick_best(self, request_versions):
-        api_key = request_versions[0].API_KEY
-        if api_key not in self._versions:
-            return request_versions[0]
-
-        min_version, max_version = self._versions[api_key]
-        for req_klass in reversed(request_versions):
-            if min_version <= req_klass.API_VERSION <= max_version:
-                return req_klass
-
-        raise Errors.KafkaError(
-            f"Could not pick a version for API_KEY={api_key} from "
-            f"[{min_version}, {max_version}]."
-        )
-
-
 async def create_conn(
     host,
     port,
     *,
     client_id="aiokafka",
     request_timeout_ms=40000,
-    api_version=(0, 8, 2),
     ssl_context=None,
     security_protocol="PLAINTEXT",
     max_idle_ms=None,
@@ -92,14 +69,12 @@ async def create_conn(
     sasl_kerberos_service_name="kafka",
     sasl_kerberos_domain_name=None,
     sasl_oauth_token_provider=None,
-    version_hint=None,
 ):
     conn = AIOKafkaConnection(
         host,
         port,
         client_id=client_id,
         request_timeout_ms=request_timeout_ms,
-        api_version=api_version,
         ssl_context=ssl_context,
         security_protocol=security_protocol,
         max_idle_ms=max_idle_ms,
@@ -110,7 +85,6 @@ async def create_conn(
         sasl_kerberos_service_name=sasl_kerberos_service_name,
         sasl_kerberos_domain_name=sasl_kerberos_domain_name,
         sasl_oauth_token_provider=sasl_oauth_token_provider,
-        version_hint=version_hint,
     )
     await conn.connect()
     return conn
@@ -140,7 +114,6 @@ class AIOKafkaConnection:
         *,
         client_id="aiokafka",
         request_timeout_ms=40000,
-        api_version=(0, 8, 2),
         ssl_context=None,
         security_protocol="PLAINTEXT",
         max_idle_ms=None,
@@ -151,7 +124,6 @@ class AIOKafkaConnection:
         sasl_kerberos_service_name="kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
-        version_hint=None,
     ):
         loop = get_running_loop()
 
@@ -174,7 +146,6 @@ class AIOKafkaConnection:
         self._host = host
         self._port = port
         self._request_timeout = request_timeout_ms / 1000
-        self._api_version = api_version
         self._client_id = client_id
         self._ssl_context = ssl_context
         self._security_protocol = security_protocol
@@ -185,9 +156,7 @@ class AIOKafkaConnection:
         self._sasl_kerberos_domain_name = sasl_kerberos_domain_name
         self._sasl_oauth_token_provider = sasl_oauth_token_provider
 
-        # Version hint is the version determined by initial client bootstrap
-        self._version_hint = version_hint
-        self._version_info = VersionInfo({})
+        self._versions = {}
 
         self._reader = self._writer = self._protocol = None
         # Even on small size seems to be a bit faster than list.
@@ -258,8 +227,7 @@ class AIOKafkaConnection:
             self._idle_handle = loop.call_soon(self._idle_check, weakref.ref(self))
 
         try:
-            if self._version_hint and self._version_hint >= (0, 10):
-                await self._do_version_lookup()
+            await self._do_version_lookup()
 
             if self._security_protocol in ["SASL_SSL", "SASL_PLAINTEXT"]:
                 await self._do_sasl_handshake()
@@ -270,8 +238,7 @@ class AIOKafkaConnection:
         return reader, writer
 
     async def _do_version_lookup(self):
-        version_req = ApiVersionRequest[0]()
-        response = await self.send(version_req)
+        response = await self.send(ApiVersionRequest())
         versions = {}
         for api_key, min_version, max_version in response.api_versions:
             assert min_version <= max_version, (
@@ -279,32 +246,24 @@ class AIOKafkaConnection:
                 f" or equal to {max_version} for {api_key}"
             )
             versions[api_key] = (min_version, max_version)
-        self._version_info = VersionInfo(versions)
+        self._versions = versions
 
     async def _do_sasl_handshake(self):
-        # NOTE: We will only fallback to v0.9 gssapi scheme if user explicitly
-        #       stated, that api_version is "0.9"
-        if self._version_hint and self._version_hint < (0, 10):
-            handshake_klass = None
-            assert self._sasl_mechanism == "GSSAPI", "Only GSSAPI supported for v0.9"
-        else:
-            handshake_klass = self._version_info.pick_best(SaslHandShakeRequest)
+        handshake_response = await self.send(SaslHandShakeRequest(self._sasl_mechanism))
+        error_type = Errors.for_code(handshake_response.error_code)
+        if error_type is not Errors.NoError:
+            error = error_type(self)
+            self.close(reason=CloseReason.AUTH_FAILURE, exc=error)
+            raise error
 
-            sasl_handshake = handshake_klass(self._sasl_mechanism)
-            response = await self.send(sasl_handshake)
-            error_type = Errors.for_code(response.error_code)
-            if error_type is not Errors.NoError:
-                error = error_type(self)
-                self.close(reason=CloseReason.AUTH_FAILURE, exc=error)
-                raise error
-
-            if self._sasl_mechanism not in response.enabled_mechanisms:
-                exc = Errors.UnsupportedSaslMechanismError(
-                    f"Kafka broker does not support {self._sasl_mechanism} sasl "
-                    f"mechanism. Enabled mechanisms are: {response.enabled_mechanisms}"
-                )
-                self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
-                raise exc
+        if self._sasl_mechanism not in handshake_response.enabled_mechanisms:
+            exc = Errors.UnsupportedSaslMechanismError(
+                f"Kafka broker does not support {self._sasl_mechanism} sasl "
+                "mechanism. Enabled mechanisms are: "
+                f"{handshake_response.enabled_mechanisms}"
+            )
+            self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
+            raise exc
 
         assert self._sasl_mechanism in (
             "PLAIN",
@@ -328,11 +287,6 @@ class AIOKafkaConnection:
         else:
             authenticator = self.authenticator_plain()
 
-        if handshake_klass is not None and sasl_handshake.API_VERSION > 0:
-            auth_klass = self._version_info.pick_best(SaslAuthenticateRequest)
-        else:
-            auth_klass = None
-
         auth_bytes = None
         expect_response = True
 
@@ -346,17 +300,16 @@ class AIOKafkaConnection:
             # without a Kafka Header, only with Length. This made error
             # handling hard, so they made SaslAuthenticateRequest to properly
             # pass error messages to clients on source of error.
-            if auth_klass is None:
-                auth_bytes = await self._send_sasl_token(payload, expect_response)
-            else:
-                req = auth_klass(payload)
-                resp = await self.send(req)
+            if handshake_response is not None and handshake_response.API_VERSION > 0:
+                resp = await self.send(SaslAuthenticateRequest(payload))
                 error_type = Errors.for_code(resp.error_code)
                 if error_type is not Errors.NoError:
                     exc = error_type(resp.error_message)
                     self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
                     raise exc
                 auth_bytes = resp.sasl_auth_bytes
+            else:
+                auth_bytes = await self._send_sasl_token(payload, expect_response)
 
         if self._sasl_mechanism == "GSSAPI":
             log.info("Authenticated as %s via GSSAPI", self.sasl_principal)
@@ -458,11 +411,13 @@ class AIOKafkaConnection:
                 f"No connection to broker at {self._host}:{self._port}"
             )
 
+        request_struct = request.prepare(self._versions)
+
         correlation_id = self._next_correlation_id()
-        header = request.build_request_header(
+        header = request_struct.build_request_header(
             correlation_id=correlation_id, client_id=self._client_id
         )
-        message = header.encode() + request.encode()
+        message = header.encode() + request_struct.encode()
         size = struct.pack(">i", len(message))
         try:
             self._writer.write(size + message)
@@ -472,13 +427,19 @@ class AIOKafkaConnection:
                 f"Connection at {self._host}:{self._port} broken: {err}"
             ) from err
 
-        log.debug("%s Request %d: %s", self, correlation_id, request)
+        log.debug(
+            "Request to %s:%d %d: %s",
+            self._host,
+            self._port,
+            correlation_id,
+            request_struct,
+        )
 
         if not expect_response:
             return self._writer.drain()
         fut = self._loop.create_future()
         self._requests.append(
-            (correlation_id, request, fut),
+            (correlation_id, request_struct, fut),
         )
         return wait_for(fut, self._request_timeout)
 
@@ -507,7 +468,9 @@ class AIOKafkaConnection:
         return bool(self._reader is not None and not self._reader.at_eof())
 
     def close(self, reason=None, exc=None):
-        log.debug("Closing connection at %s:%s", self._host, self._port)
+        log.debug(
+            "Closing connection at %s:%s (%s, %s)", self._host, self._port, reason, exc
+        )
         if self._reader is not None:
             self._writer.close()
             self._writer = self._reader = None
@@ -530,8 +493,8 @@ class AIOKafkaConnection:
         if self._idle_handle is not None:
             self._idle_handle.cancel()
 
-        # transport.close() will close socket, but not right ahead. Return
-        # a future in case we need to wait on it.
+        # transport.close() will close socket, but not right ahead.
+        # Return a future in case we need to wait on it.
         return self._closed_fut
 
     def _create_reader_task(self):
@@ -578,13 +541,12 @@ class AIOKafkaConnection:
             resp_type = request.RESPONSE_TYPE
 
             if (
-                self._api_version == (0, 8, 2)
-                and resp_type is GroupCoordinatorResponse
+                resp_type is FindCoordinatorResponse_v0
                 and correlation_id != 0
                 and response_header.correlation_id == 0
             ):
                 log.warning(
-                    "Kafka 0.8.2 quirk -- GroupCoordinatorResponse"
+                    "Kafka 0.8.2 quirk -- FindCoordinatorResponse"
                     " correlation id does not match request. This"
                     " should go away once at least one topic has been"
                     " initialized on the broker"
@@ -602,7 +564,13 @@ class AIOKafkaConnection:
 
             if not fut.done():
                 response = resp_type.decode(resp)
-                log.debug("%s Response %d: %s", self, correlation_id, response)
+                log.debug(
+                    "Response from %s:%d %d: %s",
+                    self._host,
+                    self._port,
+                    correlation_id,
+                    response,
+                )
                 fut.set_result(response)
 
         # Update idle timer.

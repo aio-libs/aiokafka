@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from collections import defaultdict
-from collections.abc import Sequence
 from ssl import SSLContext
 from typing import Any
 
@@ -10,7 +9,6 @@ import async_timeout
 from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
-    IncompatibleBrokerVersion,
     LeaderNotAvailableError,
     NotControllerError,
     NotLeaderForPartitionError,
@@ -18,7 +16,6 @@ from aiokafka.errors import (
 )
 from aiokafka.protocol.admin import (
     AlterConfigsRequest,
-    ApiVersionRequest_v0,
     CreatePartitionsRequest,
     CreateTopicsRequest,
     DeleteRecordsRequest,
@@ -28,7 +25,8 @@ from aiokafka.protocol.admin import (
     ListGroupsRequest,
 )
 from aiokafka.protocol.api import Request, Response
-from aiokafka.protocol.commit import GroupCoordinatorRequest, OffsetFetchRequest
+from aiokafka.protocol.commit import OffsetFetchRequest
+from aiokafka.protocol.coordination import FindCoordinatorRequest
 from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 
@@ -79,10 +77,6 @@ class AIOKafkaAdminClient:
         ssl_context (ssl.SSLContext): Pre-configured SSLContext for wrapping
             socket connections. If provided, all other ssl_* configurations
             will be ignored. Default: None.
-        api_version (str): Specify which kafka API version to use.
-            AIOKafka supports Kafka API versions >=0.9 only.
-            If set to 'auto', will attempt to infer the broker version by
-            probing various APIs. Default: auto
     """
 
     def __init__(
@@ -97,7 +91,6 @@ class AIOKafkaAdminClient:
         metadata_max_age_ms: int = 300000,
         security_protocol: str = "PLAINTEXT",
         ssl_context: SSLContext | None = None,
-        api_version: str = "auto",
         sasl_mechanism: str = "PLAIN",
         sasl_plain_username: str | None = None,
         sasl_plain_password: str | None = None,
@@ -116,7 +109,6 @@ class AIOKafkaAdminClient:
             metadata_max_age_ms=metadata_max_age_ms,
             request_timeout_ms=request_timeout_ms,
             retry_backoff_ms=retry_backoff_ms,
-            api_version=api_version,
             ssl_context=ssl_context,
             security_protocol=security_protocol,
             connections_max_idle_ms=connections_max_idle_ms,
@@ -147,45 +139,12 @@ class AIOKafkaAdminClient:
             node_id = self._client.get_random_node()
         return await self._client.send(node_id, request)
 
-    async def _get_version_info(self):
-        resp = await self._send_request(ApiVersionRequest_v0())
-        for api_key, min_version, max_version in resp.api_versions:
-            self._version_info[api_key] = (min_version, max_version)
-
     async def start(self):
         if self._started:
             return
         await self._client.bootstrap()
-        await self._get_version_info()
         log.debug("AIOKafkaAdminClient started")
         self._started = True
-
-    def _matching_api_version(self, operation: Sequence[type[Request]]) -> int:
-        """Find the latest version of the protocol operation
-        supported by both this library and the broker.
-
-        This resolves to the lesser of either the latest api
-        version this library supports, or the max version
-        supported by the broker.
-
-        :param operation: A list of protocol operation versions from
-        aiokafka.protocol.
-        :return: The max matching version number between client and broker.
-        """
-        api_key = operation[0].API_KEY
-        if not self._version_info or api_key not in self._version_info:
-            raise IncompatibleBrokerVersion(
-                f"Kafka broker does not support the '{operation[0].__name__}' "
-                "Kafka protocol."
-            )
-        min_version, max_version = self._version_info[api_key]
-        version = min(len(operation) - 1, max_version)
-        if version < min_version:
-            raise IncompatibleBrokerVersion(
-                f"No version of the '{operation[0].__name__}' Kafka protocol "
-                "is supported by both the client and broker."
-            )
-        return version
 
     async def _send_request_to_node(self, node_id: int, request: Request) -> Response:
         async with async_timeout.timeout(self._client._request_timeout_ms / 1000):
@@ -198,8 +157,6 @@ class AIOKafkaAdminClient:
         return await self._client.send(node_id, request)
 
     async def _send_to_controller(self, request: Request) -> Response:
-        # With "auto" api_version the first request is sent with minimal
-        # version, so the controller is not returned in metadata.
         if self._client.cluster.controller is None:
             await self._client.force_metadata_update()
 
@@ -239,32 +196,16 @@ class AIOKafkaAdminClient:
             Not supported by all versions. Default: False
         :return: Appropriate version of CreateTopicResponse class.
         """
-        version = self._matching_api_version(CreateTopicsRequest)
         topics = [self._convert_new_topic_request(nt) for nt in new_topics]
         log.debug("Attempting to send create topic request for %r", new_topics)
         timeout_ms = timeout_ms or self._request_timeout_ms
-        if version == 0:
-            if validate_only:
-                raise IncompatibleBrokerVersion(
-                    "validate_only requires CreateTopicsRequest >= v1, "
-                    f"which is not supported by Kafka {self._client.api_version}."
-                )
-            request = CreateTopicsRequest[version](
-                create_topic_requests=topics,
-                timeout=timeout_ms,
-            )
-        elif version <= 3:
-            request = CreateTopicsRequest[version](
+        return await self._send_to_controller(
+            CreateTopicsRequest(
                 create_topic_requests=topics,
                 timeout=timeout_ms,
                 validate_only=validate_only,
             )
-        else:
-            raise NotImplementedError(
-                f"Support for CreateTopics v{version} has not yet been added "
-                "to AIOKafkaAdminClient."
-            )
-        return await self._send_to_controller(request)
+        )
 
     async def delete_topics(
         self,
@@ -278,9 +219,7 @@ class AIOKafkaAdminClient:
             before the broker returns.
         :return: Appropriate version of DeleteTopicsResponse class.
         """
-        version = self._matching_api_version(DeleteTopicsRequest)
-        req_cls = DeleteTopicsRequest[version]
-        request = req_cls(topics, timeout_ms or self._request_timeout_ms)
+        request = DeleteTopicsRequest(topics, timeout_ms or self._request_timeout_ms)
         return await self._send_to_controller(request)
 
     async def _get_cluster_metadata(
@@ -292,8 +231,7 @@ class AIOKafkaAdminClient:
         :param topics List of topic names, None means "get all topics"
         :return MetadataResponse
         """
-        req_cls = MetadataRequest[self._matching_api_version(MetadataRequest)]
-        request = req_cls(topics=topics)
+        request = MetadataRequest(topics)
         return await self._send_request(request)
 
     async def list_topics(self) -> list[str]:
@@ -332,31 +270,18 @@ class AIOKafkaAdminClient:
         """
 
         futures = []
-        version = self._matching_api_version(DescribeConfigsRequest)
-        if version == 0 and include_synonyms:
-            raise IncompatibleBrokerVersion(
-                "include_synonyms requires DescribeConfigsRequest >= v1,"
-                f" which is not supported by Kafka {self._client.api_version}."
-            )
         broker_res, topic_res = self._convert_config_resources(
             config_resources,
             "describe",
         )
-        req_cls = DescribeConfigsRequest[version]
         for broker_id in broker_res:
-            if version == 0:
-                req = req_cls(resources=broker_res[broker_id])
-            else:
-                req = req_cls(
-                    resources=broker_res[broker_id],
-                    include_synonyms=include_synonyms,
-                )
+            req = DescribeConfigsRequest(
+                resources=broker_res[broker_id],
+                include_synonyms=include_synonyms,
+            )
             futures.append(self._send_request(req, broker_id))
         if topic_res:
-            if version == 0:
-                req = req_cls(topic_res)
-            else:
-                req = req_cls(topic_res, include_synonyms)
+            req = DescribeConfigsRequest(topic_res, include_synonyms)
             futures.append(self._send_request(req))
         return await asyncio.gather(*futures)
 
@@ -368,15 +293,15 @@ class AIOKafkaAdminClient:
         :return: Appropriate version of AlterConfigsResponse class.
         """
         futures = []
-        version = self._matching_api_version(AlterConfigsRequest)
         broker_resources, topic_resources = self._convert_config_resources(
             config_resources,
             "alter",
         )
-        req_cls = AlterConfigsRequest[version]
-        futures.append(self._send_request(req_cls(resources=topic_resources)))
+        futures.append(
+            self._send_request(AlterConfigsRequest(resources=topic_resources))
+        )
         for broker_id in broker_resources:
-            req = req_cls(resources=broker_resources[broker_id])
+            req = AlterConfigsRequest(resources=broker_resources[broker_id])
             futures.append(self._send_request(req, broker_id))
         return await asyncio.gather(*futures)
 
@@ -439,10 +364,8 @@ class AIOKafkaAdminClient:
             Default: False
         :return: Appropriate version of CreatePartitionsResponse class.
         """
-        version = self._matching_api_version(CreatePartitionsRequest)
-        req_class = CreatePartitionsRequest[version]
         converted_partitions = self._convert_topic_partitions(topic_partitions)
-        req = req_class(
+        req = CreatePartitionsRequest(
             topic_partitions=converted_partitions,
             timeout=timeout_ms or self._request_timeout_ms,
             validate_only=validate_only,
@@ -478,14 +401,6 @@ class AIOKafkaAdminClient:
         :return: A list of group descriptions. For now the group descriptions
             are the raw results from the DescribeGroupsResponse.
         """
-        version = self._matching_api_version(DescribeGroupsRequest)
-        if version < 3 and include_authorized_operations:
-            raise IncompatibleBrokerVersion(
-                "include_authorized_operations requests "
-                "DescribeGroupsRequest >= v3, which is not "
-                f"supported by Kafka {version}"
-            )
-        req_class = DescribeGroupsRequest[version]
         futures = []
         node_to_groups = defaultdict(set)
         for group_id in group_ids:
@@ -495,13 +410,10 @@ class AIOKafkaAdminClient:
                 node_id = group_coordinator_id
             node_to_groups[node_id].add(group_id)
         for node_id, groups in node_to_groups.items():
-            if include_authorized_operations:
-                req = req_class(
-                    groups=list(groups),
-                    include_authorized_operations=include_authorized_operations,
-                )
-            else:
-                req = req_class(groups=list(groups))
+            req = DescribeGroupsRequest(
+                groups=list(groups),
+                include_authorized_operations=include_authorized_operations,
+            )
             future = self._send_request(req, node_id)
             futures.append(future)
         results = await asyncio.gather(*futures)
@@ -541,7 +453,7 @@ class AIOKafkaAdminClient:
         consumer_groups = set()
         for broker_id in broker_ids:
             response = await self._send_request(
-                ListGroupsRequest[self._matching_api_version(ListGroupsRequest)](),
+                ListGroupsRequest(),
                 broker_id,
             )
             if response.error_code:
@@ -559,16 +471,7 @@ class AIOKafkaAdminClient:
 
         :return int: the acting coordinator broker id
         """
-        version = self._matching_api_version(GroupCoordinatorRequest)
-        if version == 0 and coordinator_type:
-            raise IncompatibleBrokerVersion(
-                "Cannot query for transaction id on current broker version"
-            )
-        req_class = GroupCoordinatorRequest[version]
-        if version == 0:
-            request = req_class(consumer_group=group_id)
-        else:
-            request = req_class(group_id, coordinator_type)
+        request = FindCoordinatorRequest(group_id, coordinator_type)
         response = await self._send_request(request)
         if response.error_code:
             err = for_code(response.error_code)
@@ -605,13 +508,6 @@ class AIOKafkaAdminClient:
             TopicPartition. A `-1` can only happen for partitions that are
             explicitly specified.
         """
-        version = self._matching_api_version(OffsetFetchRequest)
-        if version <= 1 and partitions is None:
-            raise ValueError(
-                f"""OffsetFetchRequest_v{version} requires specifying the
-                partitions for which to fetch offsets. Omitting the
-                partitions is only supported on brokers >= 0.10.2"""
-            )
         if partitions:
             topics_partitions_dict = defaultdict(set)
             for topic, partition in partitions:
@@ -620,7 +516,7 @@ class AIOKafkaAdminClient:
                 (topic, list(partitions))
                 for topic, partitions in topics_partitions_dict.items()
             ]
-        request = OffsetFetchRequest[version](group_id, partitions)
+        request = OffsetFetchRequest(group_id, partitions)
         if group_coordinator_id is None:
             group_coordinator_id = await self.find_coordinator(group_id)
         response = await self._send_request(request, group_coordinator_id)
@@ -646,8 +542,6 @@ class AIOKafkaAdminClient:
         :param timeout_ms: Milliseconds to wait for the deletion to complete.
         :return: Appropriate version of DeleteRecordsResponse class.
         """
-        version = self._matching_api_version(DeleteRecordsRequest)
-
         metadata = await self._get_cluster_metadata()
 
         self._client.cluster.update_metadata(metadata)
@@ -663,10 +557,8 @@ class AIOKafkaAdminClient:
                 raise LeaderNotAvailableError()
             requests[leader][tp.topic].append((tp.partition, records))
 
-        req_cls = DeleteRecordsRequest[version]
-
         for leader, delete_request in requests.items():
-            request = req_cls(
+            request = DeleteRecordsRequest(
                 self._convert_records_to_delete(delete_request),
                 timeout_ms or self._request_timeout_ms,
             )

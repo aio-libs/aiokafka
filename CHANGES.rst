@@ -5,6 +5,12 @@ Changelog
 0.13.0 (????-??-??)
 ===================
 
+Breaking changes:
+
+* Resolve API versions at connection with brokers
+  `api_version` parameter has been removed from the different clients (admin/consumer/producer)
+  (pr #1136 by @vmaurin)
+
 Improved Documentation:
 
 * Fix incomplete documentation for `AIOKafkaConsumer.offset_for_times``

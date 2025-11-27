@@ -11,7 +11,7 @@ import pytest
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
 from aiokafka.consumer import AIOKafkaConsumer, fetcher
-from aiokafka.consumer.fetcher import FetchRequest, RecordTooLargeError
+from aiokafka.consumer.fetcher import FetchRequest
 from aiokafka.errors import (
     ConsumerStoppedError,
     CorruptRecordException,
@@ -23,7 +23,6 @@ from aiokafka.errors import (
     NoOffsetForPartitionError,
     OffsetOutOfRangeError,
     UnknownError,
-    UnsupportedVersionError,
 )
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.record import MemoryRecords
@@ -78,10 +77,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_simple_consumer(self):
-        with self.assertRaises(ValueError):
-            # check unsupported version
-            consumer = await self.consumer_factory(api_version="0.8")
-
         now = time.time()
         await self.send_messages(0, list(range(100)))
         await self.send_messages(1, list(range(100, 200)))
@@ -187,31 +182,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 self.assert_message_count(messages, 10)
                 raise ValueError
         assert consumer._closed
-
-    @run_until_complete
-    async def test_consumer_api_version(self):
-        await self.send_messages(0, list(range(10)))
-        for text_version, api_version in [
-            ("auto", (0, 9, 0)),
-            ("0.9.1", (0, 9, 1)),
-            ("0.10.0", (0, 10, 0)),
-            ("0.11", (0, 11, 0)),
-            ("0.12.1", (0, 12, 1)),
-            ("1.0.2", (1, 0, 2)),
-        ]:
-            consumer = AIOKafkaConsumer(
-                bootstrap_servers=self.hosts, api_version=text_version
-            )
-            self.assertEqual(consumer._client.api_version, api_version)
-            await consumer.stop()
-
-        # invalid cases
-        for version in ["0", "1", "0.10.0.1"]:
-            with self.assertRaises(ValueError):
-                AIOKafkaConsumer(bootstrap_servers=self.hosts, api_version=version)
-        for version in [(0, 9), (0, 9, 1)]:
-            with self.assertRaises(TypeError):
-                AIOKafkaConsumer(bootstrap_servers=self.hosts, api_version=version)
 
     @run_until_complete
     async def test_consumer_warn_unclosed(self):
@@ -327,8 +297,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         actual_messages = {m.value for m in actual_messages}
         self.assertEqual(expected_messages, set(actual_messages))
 
+    @kafka_versions(">=0.10.1")
     @run_until_complete
-    async def test_too_large_messages_getone(self):
+    async def test_large_messages_getone(self):
         msgs = [
             random_string(10),  # small one
             random_string(50000),  # large one
@@ -340,20 +311,15 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         m = await consumer.getone()
         self.assertEqual(m.value, messages[0])
 
-        # Starting from 0.10.1 we should be able to handle any message size,
-        # as we use FetchRequest v3 or above
-        if consumer._client.api_version <= (0, 10, 0):
-            with self.assertRaises(RecordTooLargeError):
-                await consumer.getone()
-        else:
-            m = await consumer.getone()
-            self.assertEqual(m.value, messages[1])
+        m = await consumer.getone()
+        self.assertEqual(m.value, messages[1])
 
         m = await consumer.getone()
         self.assertEqual(m.value, messages[2])
 
+    @kafka_versions(">=0.10.1")
     @run_until_complete
-    async def test_too_large_messages_getmany(self):
+    async def test_large_messages_getmany(self):
         msgs = [
             random_string(10),  # small one
             random_string(50000),  # large one
@@ -369,15 +335,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertTrue(m)
         self.assertEqual(m[tp][0].value, messages[0])
 
-        # Starting from 0.10.1 we should be able to handle any message size,
-        # as we use FetchRequest v3 or above
-        if consumer._client.api_version <= (0, 10, 0):
-            with self.assertRaises(RecordTooLargeError):
-                await consumer.getmany(timeout_ms=1000)
-        else:
-            m = await consumer.getmany(timeout_ms=1000)
-            self.assertTrue(m)
-            self.assertEqual(m[tp][0].value, messages[1])
+        m = await consumer.getmany(timeout_ms=1000)
+        self.assertTrue(m)
+        self.assertEqual(m[tp][0].value, messages[1])
 
         m = await consumer.getmany(timeout_ms=1000)
         self.assertTrue(m)
@@ -712,6 +672,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             result.append(msg.value)
         self.assertEqual(set(available_msgs), set(result))
 
+    @kafka_versions(">=0.10.0")
     @run_until_complete
     async def test_check_extended_message_record(self):
         s_time_ms = time.time() * 1000
@@ -727,13 +688,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(rmsg1.value, msg1)
         self.assertEqual(rmsg1.serialized_key_size, -1)
         self.assertEqual(rmsg1.serialized_value_size, 14)
-        if consumer._client.api_version >= (0, 10):
-            self.assertNotEqual(rmsg1.timestamp, None)
-            self.assertTrue(rmsg1.timestamp >= s_time_ms)
-            self.assertEqual(rmsg1.timestamp_type, 0)
-        else:
-            self.assertEqual(rmsg1.timestamp, None)
-            self.assertEqual(rmsg1.timestamp_type, None)
+        self.assertNotEqual(rmsg1.timestamp, None)
+        self.assertTrue(rmsg1.timestamp >= s_time_ms)
+        self.assertEqual(rmsg1.timestamp_type, 0)
 
     @run_until_complete
     async def test_max_poll_records(self):
@@ -1563,19 +1520,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(KafkaTimeoutError):
             await consumer.offsets_for_times({bad_tp: 0})
 
-    @kafka_versions("<0.10.1")
-    @run_until_complete
-    async def test_kafka_consumer_offsets_old_brokers(self):
-        consumer = await self.consumer_factory()
-        tp = TopicPartition(self.topic, 0)
-
-        with self.assertRaises(UnsupportedVersionError):
-            await consumer.offsets_for_times({tp: int(time.time())})
-        with self.assertRaises(UnsupportedVersionError):
-            await consumer.beginning_offsets(tp)
-        with self.assertRaises(UnsupportedVersionError):
-            await consumer.end_offsets(tp)
-
     @run_until_complete
     async def test_kafka_consumer_sets_coordinator_values(self):
         group = f"test-group-{self.id()}"
@@ -1733,7 +1677,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
             async def mock_send(node_id, req, group=None):
                 res = await orig_send(node_id, req, group=group)
-                if res.API_KEY == FetchRequest[0].API_KEY and not corrupted:
+                if res.API_KEY == FetchRequest.API_KEY and not corrupted:
                     for _topic, partitions in res.topics:
                         for index, partition_data in enumerate(partitions):
                             partition_data = list(partition_data)
@@ -1855,7 +1799,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
             async def mock_send(node_id, req, group=None, test_case=self):
                 res = await orig_send(node_id, req, group=group)
-                if res.API_KEY == FetchRequest[0].API_KEY:
+                if res.API_KEY == FetchRequest.API_KEY:
                     for _topic, partitions in res.topics:
                         for partition_data in partitions:
                             data = partition_data[-1]

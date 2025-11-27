@@ -19,10 +19,9 @@ from aiokafka.errors import (
     ProducerClosed,
     RequestTimedOutError,
     UnknownTopicOrPartitionError,
-    UnsupportedVersionError,
 )
 from aiokafka.producer import AIOKafkaProducer
-from aiokafka.protocol.produce import ProduceResponse
+from aiokafka.protocol.produce import ProduceResponse_v0, ProduceResponse_v2
 from aiokafka.util import create_future
 
 from ._testutil import (
@@ -41,48 +40,13 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(ValueError):
             producer = AIOKafkaProducer(acks=122)
 
-        with self.assertRaises(ValueError):
-            producer = AIOKafkaProducer(api_version="3.4.5")
-
         producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
         await producer.start()
-        self.assertNotEqual(producer.client.api_version, "auto")
         partitions = await producer.partitions_for("some_topic_name")
         self.assertEqual(len(partitions), 2)
         self.assertEqual(partitions, {0, 1})
         await producer.stop()
         self.assertEqual(producer._closed, True)
-
-    @run_until_complete
-    async def test_producer_api_version(self):
-        for text_version, api_version in [
-            ("auto", (0, 9, 0)),
-            ("0.9.1", (0, 9, 1)),
-            ("0.10.0", (0, 10, 0)),
-            ("0.11", (0, 11, 0)),
-            ("0.12.1", (0, 12, 1)),
-            ("1.0.2", (1, 0, 2)),
-        ]:
-            producer = AIOKafkaProducer(
-                bootstrap_servers=self.hosts,
-                api_version=text_version,
-            )
-            self.assertEqual(producer.client.api_version, api_version)
-            await producer.stop()
-
-        # invalid cases
-        for version in ["0", "1", "0.10.0.1"]:
-            with self.assertRaises(ValueError):
-                AIOKafkaProducer(
-                    bootstrap_servers=self.hosts,
-                    api_version=version,
-                )
-        for version in [(0, 9), (0, 9, 1)]:
-            with self.assertRaises(TypeError):
-                AIOKafkaProducer(
-                    bootstrap_servers=self.hosts,
-                    api_version=version,
-                )
 
     @run_until_complete
     async def test_producer_warn_unclosed(self):
@@ -306,7 +270,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         async def mocked_send(nodeid, req):
             # RequestTimedOutCode error for partition=0
-            return ProduceResponse[0]([(self.topic, [(0, 7, 0), (1, 0, 111)])])
+            return ProduceResponse_v0([(self.topic, [(0, 7, 0), (1, 0, 111)])])
 
         with mock.patch.object(producer.client, "send") as mocked:
             mocked.side_effect = mocked_send
@@ -320,7 +284,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         async def mocked_send_with_sleep(nodeid, req):
             # RequestTimedOutCode error for partition=0
             await asyncio.sleep(0.1)
-            return ProduceResponse[0]([(self.topic, [(0, 7, 0)])])
+            return ProduceResponse_v0([(self.topic, [(0, 7, 0)])])
 
         with mock.patch.object(producer.client, "send") as mocked:
             mocked.side_effect = mocked_send_with_sleep
@@ -513,7 +477,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         async def mocked_send(*args, **kw):
             # There's no easy way to set LOG_APPEND_TIME on server, so use this
             # hack for now.
-            return ProduceResponse[2](
+            return ProduceResponse_v2(
                 topics=[("XXXX", [(0, 0, 0, expected_timestamp)])], throttle_time_ms=0
             )
 
@@ -595,16 +559,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(producer._sender._acks, -1)  # -1 is set for `all`
         self.assertIsNotNone(producer._txn_manager)
 
-    @kafka_versions("<0.11.0")
-    @run_until_complete
-    async def test_producer_indempotence_not_supported(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts, enable_idempotence=True
-        )
-        with self.assertRaises(UnsupportedVersionError):
-            await producer.start()
-        await producer.stop()
-
     @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_indempotence_simple(self):
@@ -649,7 +603,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         async def mocked_send(*args, **kw):
             result = await original_send(*args, **kw)
-            if result.API_KEY == ProduceResponse[0].API_KEY and retry[0] < 2:
+            if result.API_KEY == ProduceResponse_v0.API_KEY and retry[0] < 2:
                 retry[0] += 1
                 raise RequestTimedOutError
             return result
@@ -718,7 +672,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         original_send = producer.client.send
 
         async def mocked_send(node_id, request, *args, **kw):
-            if node_id != real_leader and request.API_KEY == ProduceResponse[0].API_KEY:
+            if node_id != real_leader and request.API_KEY == ProduceResponse_v0.API_KEY:
                 await asyncio.sleep(2)
 
             result = await original_send(node_id, request, *args, **kw)
@@ -799,18 +753,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         )
         resp = await fut
         self.assertEqual(resp.partition, 0)
-
-    @kafka_versions("<0.11.0")
-    @run_until_complete
-    async def test_producer_send_with_headers_raise_error(self):
-        producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
-        await producer.start()
-        self.add_cleanup(producer.stop)
-
-        with self.assertRaises(UnsupportedVersionError):
-            await producer.send(
-                self.topic, b"msg", partition=0, headers=[("type", b"Normal")]
-            )
 
     @kafka_versions(">=0.11.0")
     @run_until_complete

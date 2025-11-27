@@ -6,32 +6,31 @@ from unittest import mock
 
 import pytest
 
-from aiokafka.conn import AIOKafkaConnection, VersionInfo, create_conn
+from aiokafka.conn import AIOKafkaConnection, create_conn
 from aiokafka.errors import (
     CorrelationIdError,
     IllegalSaslStateError,
     KafkaConnectionError,
-    KafkaError,
     NoError,
     UnknownError,
     UnsupportedSaslMechanismError,
 )
 from aiokafka.protocol.admin import (
+    CreateTopicsRequest,
     SaslAuthenticateRequest,
-    SaslAuthenticateResponse,
+    SaslAuthenticateResponse_v0,
     SaslHandShakeRequest,
-    SaslHandShakeResponse,
+    SaslHandShakeResponse_v0,
+    SaslHandShakeResponse_v1,
 )
-from aiokafka.protocol.commit import (
-    GroupCoordinatorRequest_v0 as GroupCoordinatorRequest,
+from aiokafka.protocol.coordination import (
+    FindCoordinatorRequest,
+    FindCoordinatorResponse_v0,
 )
-from aiokafka.protocol.commit import (
-    GroupCoordinatorResponse_v0 as GroupCoordinatorResponse,
-)
-from aiokafka.protocol.metadata import MetadataRequest_v0 as MetadataRequest
+from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.protocol.metadata import MetadataResponse_v0 as MetadataResponse
-from aiokafka.protocol.produce import ProduceRequest_v0 as ProduceRequest
-from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
+from aiokafka.protocol.produce import ProduceRequest
+from aiokafka.record.default_records import DefaultRecordBatchBuilder
 from aiokafka.util import get_running_loop
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
@@ -78,7 +77,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         request = MetadataRequest([])
         response = await conn.send(request)
         conn.close()
-        self.assertIsInstance(response, MetadataResponse)
+        self.assertEqual(response.API_KEY, 3)
 
     @run_until_complete
     async def test_connections_max_idle_ms(self):
@@ -117,19 +116,52 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         host, port = self.kafka_host, self.kafka_port
         conn = await create_conn(host, port)
 
+        # create a topic
+        async def create_topic(topic):
+            await conn.send(
+                CreateTopicsRequest(
+                    create_topic_requests=[("foo", 1, 1, [], [])],
+                    timeout=1000,
+                    validate_only=False,
+                )
+            )
+            for _ in range(5):
+                ok = await conn.send(
+                    MetadataRequest(["foo"], allow_auto_topic_creation=False)
+                )
+                if ok:
+                    ok = topic in (t for _, t, *_ in ok.topics)
+                if not ok:
+                    await asyncio.sleep(1)
+                else:
+                    return
+            raise AssertionError(f'No topic "{topic}" exists')
+
+        await create_topic("foo")
+
         # prepare message
-        builder = LegacyRecordBatchBuilder(
-            magic=1, compression_type=0, batch_size=99999999
+        builder = DefaultRecordBatchBuilder(
+            magic=2,
+            compression_type=0,
+            batch_size=99999999,
+            is_transactional=0,
+            producer_id=-1,
+            producer_epoch=-1,
+            base_sequence=0,
         )
-        builder.append(offset=0, value=b"foo", key=None, timestamp=None)
+        builder.append(offset=0, value=b"foo", key=None, timestamp=None, headers=[])
         request = ProduceRequest(
             required_acks=0,
             timeout=10 * 1000,
-            topics=[(b"foo", [(0, bytes(builder.build()))])],
+            topics=[("foo", [(0, bytes(builder.build()))])],
+            transactional_id=None,
         )
 
         # produce messages without acknowledge
-        req = [conn.send(request, expect_response=False) for _ in range(10)]
+        req = [
+            asyncio.create_task(conn.send(request, expect_response=False))
+            for _ in range(10)
+        ]
         # make sure futures no stuck in queue
         self.assertEqual(len(conn._requests), 0)
         for x in req:
@@ -140,6 +172,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
     async def test_send_to_closed(self):
         host, port = self.kafka_host, self.kafka_port
         conn = AIOKafkaConnection(host=host, port=port)
+        conn._versions = {MetadataRequest.API_KEY: (0, 0)}
         request = MetadataRequest([])
         with self.assertRaises(KafkaConnectionError):
             await conn.send(request)
@@ -158,6 +191,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
         # setup connection with mocked reader and writer
         conn = AIOKafkaConnection(host=host, port=port)
+        conn._versions = {MetadataRequest.API_KEY: (0, 0)}
 
         # setup reader
         reader = mock.MagicMock()
@@ -187,15 +221,16 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
     async def test_correlation_id_on_group_coordinator_req(self):
         host, port = self.kafka_host, self.kafka_port
 
-        request = GroupCoordinatorRequest(consumer_group="test")
+        request = FindCoordinatorRequest(coordinator_key="test", coordinator_type=0)
 
         # setup connection with mocked reader and writer
         conn = AIOKafkaConnection(host=host, port=port)
+        conn._versions = {FindCoordinatorRequest.API_KEY: (0, 0)}
 
         # setup reader
         reader = mock.MagicMock()
         int32 = struct.Struct(">i")
-        resp = GroupCoordinatorResponse(
+        resp = FindCoordinatorResponse_v0(
             error_code=0, coordinator_id=22, host="127.0.0.1", port=3333
         )
         resp = resp.encode()
@@ -216,7 +251,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         conn._read_task = conn._create_reader_task()
 
         response = await conn.send(request)
-        self.assertIsInstance(response, GroupCoordinatorResponse)
+        self.assertIsInstance(response, FindCoordinatorResponse_v0)
         self.assertEqual(response.error_code, 0)
         self.assertEqual(response.coordinator_id, 22)
         self.assertEqual(response.host, "127.0.0.1")
@@ -233,6 +268,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         request = MetadataRequest([])
         # setup connection with mocked reader and writer
         conn = AIOKafkaConnection(host=host, port=port)
+        conn._versions = {MetadataRequest.API_KEY: (0, 0)}
 
         # setup reader
         reader = mock.MagicMock()
@@ -256,32 +292,6 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         conn.close()
         self.assertFalse(conn.connected())
 
-    def test_connection_version_info(self):
-        # All version supported
-        version_info = VersionInfo({SaslHandShakeRequest[0].API_KEY: [0, 1]})
-        self.assertEqual(
-            version_info.pick_best(SaslHandShakeRequest), SaslHandShakeRequest[1]
-        )
-
-        # Broker only supports the lesser version
-        version_info = VersionInfo({SaslHandShakeRequest[0].API_KEY: [0, 0]})
-        self.assertEqual(
-            version_info.pick_best(SaslHandShakeRequest), SaslHandShakeRequest[0]
-        )
-
-        # We don't support any version compatible with the broker
-        version_info = VersionInfo({SaslHandShakeRequest[0].API_KEY: [2, 3]})
-        with self.assertRaises(KafkaError):
-            self.assertEqual(
-                version_info.pick_best(SaslHandShakeRequest), SaslHandShakeRequest[1]
-            )
-
-        # No information on the supported versions
-        version_info = VersionInfo({})
-        self.assertEqual(
-            version_info.pick_best(SaslHandShakeRequest), SaslHandShakeRequest[0]
-        )
-
     @run_until_complete
     async def test__do_sasl_handshake_v0(self):
         host, port = self.kafka_host, self.kafka_port
@@ -300,7 +310,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         error_class = NoError
 
         async def mock_send(request, expect_response=True):
-            return SaslHandShakeResponse[0](
+            return SaslHandShakeResponse_v0(
                 error_code=error_class.errno, enabled_mechanisms=supported_mechanisms
             )
 
@@ -309,7 +319,6 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
         conn.send = mock.Mock(side_effect=mock_send)
         conn._send_sasl_token = mock.Mock(side_effect=mock_sasl_send)
-        conn._version_info = VersionInfo({SaslHandShakeRequest[0].API_KEY: [0, 0]})
 
         await conn._do_sasl_handshake()
 
@@ -345,22 +354,24 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         auth_error_class = NoError
 
         async def mock_send(request, expect_response=True):
-            if request.API_KEY == SaslHandShakeRequest[0].API_KEY:
-                assert request.API_VERSION == 1
-                return SaslHandShakeResponse[1](
+            if request.API_KEY == SaslHandShakeRequest.API_KEY:
+                assert (
+                    request.prepare({SaslHandShakeRequest.API_KEY: [0, 1]}).API_VERSION
+                    == 1
+                )
+                return SaslHandShakeResponse_v1(
                     error_code=error_class.errno,
                     enabled_mechanisms=supported_mechanisms,
                 )
             else:
-                assert request.API_KEY == SaslAuthenticateRequest[0].API_KEY
-                return SaslAuthenticateResponse[0](
+                assert request.API_KEY == SaslAuthenticateRequest.API_KEY
+                return SaslAuthenticateResponse_v0(
                     error_code=auth_error_class.errno,
                     error_message="",
                     sasl_auth_bytes=b"",
                 )
 
         conn.send = mock.Mock(side_effect=mock_send)
-        conn._version_info = VersionInfo({SaslHandShakeRequest[0].API_KEY: [0, 1]})
 
         await conn._do_sasl_handshake()
 

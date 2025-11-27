@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import abc
 from io import BytesIO
-from typing import Any, ClassVar
+from types import UnionType
+from typing import Any, ClassVar, Generic, TypeVar, get_args, get_origin
+
+from aiokafka.errors import IncompatibleBrokerVersion
 
 from .struct import Struct
 from .types import Array, Int16, Int32, Schema, String, TaggedFields
@@ -17,7 +20,10 @@ class RequestHeader_v0(Struct):
     )
 
     def __init__(
-        self, request: Request, correlation_id: int = 0, client_id: str = "aiokafka"
+        self,
+        request: RequestStruct,
+        correlation_id: int = 0,
+        client_id: str = "aiokafka",
     ) -> None:
         super().__init__(
             request.API_KEY, request.API_VERSION, correlation_id, client_id
@@ -36,7 +42,7 @@ class RequestHeader_v1(Struct):
 
     def __init__(
         self,
-        request: Request,
+        request: RequestStruct,
         correlation_id: int = 0,
         client_id: str = "aiokafka",
         tags: dict[int, bytes] | None = None,
@@ -59,32 +65,120 @@ class ResponseHeader_v1(Struct):
     )
 
 
-class Request(Struct, metaclass=abc.ABCMeta):
+T = TypeVar("T", bound="RequestStruct")
+
+
+class Request(abc.ABC, Generic[T]):
+    """
+    Base class for all the requests classes.
+    The aiokafka clients must use children classes of Request
+    in order to communicate with the brokers.
+    The correct API versions will be negotiated per connection
+    basis, so this class is acting as a builder for the final
+    RequestStruct sent over the wire.
+
+    When implementing a Request sub-class, you must accept all
+    the different attributes in the constructor, then eventually
+    raise a IncompatibleBrokerVersion exception if the negotiated
+    version doesn't allow some attributes to be sent.
+
+    Type T is used to describe all the possible RequestStruct
+    classes supported, ordered by version ascending.
+
+    Attributes
+    ----------
+    API_KEY : int
+        The unique API key identifying the request.
+    ALLOW_UNKNOWN_API_VERSION: bool
+        If true, the request could be used without knowing
+        the API version
+    """
+
+    API_KEY: ClassVar[int]
+    ALLOW_UNKNOWN_API_VERSION: ClassVar[bool] = False
+
+    _CLASSES: ClassVar[tuple[type[RequestStruct]]]
+
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        if not hasattr(cls, "API_KEY"):
+            raise TypeError(f"{cls.__name__} must define class attributes 'API_KEY'")
+        # To be replaced by typing.get_original_bases when 3.12 is the min version
+        if (
+            hasattr(cls, "__orig_bases__")
+            and (base_classes := cls.__orig_bases__)
+            and len(base_classes) == 1
+        ):
+            generic_type = get_args(base_classes[0])[0]
+            if get_origin(generic_type) is UnionType:
+                cls._CLASSES = get_args(get_args(base_classes[0])[0])
+            else:
+                cls._CLASSES = (generic_type,)
+
+        else:
+            raise TypeError(f"{cls.__name__} must extend Request")
+
+    @abc.abstractmethod
+    def build(self, request_struct_class: type[T]) -> T:
+        pass
+
+    def prepare(self, versions: dict[int, tuple[int, int]]) -> T:
+        api_key = self.API_KEY
+        if api_key not in versions:
+            if self.ALLOW_UNKNOWN_API_VERSION:
+                return self.build(self._CLASSES[0])  # type: ignore[arg-type]
+            raise IncompatibleBrokerVersion(
+                f"{self.__class__.__name__} cannot be used "
+                "if the API version is unknown"
+            )
+
+        min_version, max_version = versions[api_key]
+        for req_class in reversed(self._CLASSES):
+            if min_version <= req_class.API_VERSION <= max_version:
+                return self.build(req_class)  # type: ignore[arg-type]
+
+        raise NotImplementedError(
+            f"Support for {self.__class__.__name__} v{min_version} "
+            "has not yet been added"
+        )
+
+
+class RequestStruct(Struct, metaclass=abc.ABCMeta):
+    """
+    Base structure for API requests.
+
+    Attributes
+    ----------
+    FLEXIBLE_VERSION : bool
+        Use request header with flexible tags
+    API_KEY : int
+        The unique API key identifying the request.
+    API_VERSION : int
+        Which API version the RequestStruct class is.
+    RESPONSE_TYPE : type[Response]
+        Class used to parse the response.
+    SCHEMA : Schema
+        An instance of Schema() representing the request structure.
+    """
+
     FLEXIBLE_VERSION: ClassVar[bool] = False
+    API_KEY: ClassVar[int]
+    API_VERSION: ClassVar[int]
+    RESPONSE_TYPE: ClassVar[type[Response]]
+    SCHEMA: ClassVar[Schema]
 
-    @property
-    @abc.abstractmethod
-    def API_KEY(self) -> int:
-        """Integer identifier for api request"""
-
-    @property
-    @abc.abstractmethod
-    def API_VERSION(self) -> int:
-        """Integer of api request version"""
-
-    @property
-    @abc.abstractmethod
-    def RESPONSE_TYPE(self) -> type[Response]:
-        """The Response class associated with the api request"""
-
-    @property
-    @abc.abstractmethod
-    def SCHEMA(self) -> Schema:
-        """An instance of Schema() representing the request structure"""
-
-    def expect_response(self) -> bool:
-        """Override this method if an api request does not always generate a response"""
-        return True
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        if (
+            not hasattr(cls, "API_KEY")
+            or not hasattr(cls, "API_VERSION")
+            or not hasattr(cls, "RESPONSE_TYPE")
+            or not hasattr(cls, "SCHEMA")
+        ):
+            raise TypeError(
+                f"{cls.__name__} must define class attributes "
+                "'API_KEY', 'API_VERSION', 'RESPONSE_TYPE' and 'SCHEMA"
+            )
 
     def to_object(self) -> dict[str, Any]:
         return _to_object(self.SCHEMA, self)

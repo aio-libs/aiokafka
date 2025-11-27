@@ -16,11 +16,11 @@ from packaging.version import Version
 from .structs import OffsetAndMetadata, TopicPartition
 
 __all__ = [
-    "create_task",
-    "create_future",
-    "NO_EXTENSIONS",
     "INTEGER_MAX_VALUE",
     "INTEGER_MIN_VALUE",
+    "NO_EXTENSIONS",
+    "create_future",
+    "create_task",
 ]
 
 

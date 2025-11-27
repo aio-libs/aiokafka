@@ -6,7 +6,6 @@ from aiokafka.errors import (
     IllegalOperation,
     OutOfOrderSequenceNumber,
     ProducerFenced,
-    UnsupportedVersionError,
 )
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.producer.transaction_manager import TransactionState
@@ -17,17 +16,6 @@ from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_compl
 
 
 class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
-    @kafka_versions("<0.11.0")
-    @run_until_complete
-    async def test_producer_transactions_not_supported(self):
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.hosts,
-            transactional_id="sobaka_producer",
-        )
-        with self.assertRaises(UnsupportedVersionError):
-            await producer.start()
-        await producer.stop()
-
     @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_transactional_simple(self):

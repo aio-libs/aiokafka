@@ -4,7 +4,7 @@ from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import ConsumerStoppedError, NoOffsetForPartitionError
 from aiokafka.util import create_task
 
-from ._testutil import KafkaIntegrationTestCase, random_string, run_until_complete
+from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
 class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
@@ -28,41 +28,6 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
                 break
 
         self.assert_message_count(messages, 20)
-
-    @run_until_complete
-    async def test_exception_ignored_with_aiter(self):
-        # Test relies on MessageTooLarge error, which is no more in
-        # Kafka 0.10.1+. So we pin the API version here to 0.9
-
-        l_msgs = [random_string(10), random_string(50000)]
-        large_messages = await self.send_messages(0, l_msgs)
-        r_msgs = [random_string(50)]
-        small_messages = await self.send_messages(0, r_msgs)
-
-        consumer = AIOKafkaConsumer(
-            self.topic,
-            bootstrap_servers=self.hosts,
-            auto_offset_reset="earliest",
-            max_partition_fetch_bytes=4000,
-            api_version="0.9",
-        )
-        await consumer.start()
-        self.add_cleanup(consumer.stop)
-
-        messages = []
-        with self.assertLogs("aiokafka.consumer.consumer", level="ERROR") as cm:
-            async for m in consumer:
-                messages.append(m)
-                if len(messages) == 2:
-                    break
-
-            self.assertEqual(len(cm.output), 1)
-            self.assertTrue(
-                "ERROR:aiokafka.consumer.consumer:error in consumer iterator"
-                in cm.output[0]
-            )
-        self.assertEqual(messages[0].value, large_messages[0])
-        self.assertEqual(messages[1].value, small_messages[0])
 
     @run_until_complete
     async def test_exception_in_aiter(self):
