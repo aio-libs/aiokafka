@@ -231,7 +231,11 @@ class Sender:
             except Errors.GroupAuthorizationFailedError as err:
                 new_err = Errors.GroupAuthorizationFailedError(coordinator_key)
                 raise new_err from err
-            except Errors.CoordinatorNotAvailableError:
+            except (
+                Errors.CoordinatorNotAvailableError,
+                Errors.NodeNotReadyError,
+                Errors.RequestTimedOutError,
+            ):
                 await self.client.force_metadata_update()
                 await asyncio.sleep(self._retry_backoff)
                 continue
@@ -403,6 +407,11 @@ class BaseHandler:
             resp = await self._sender.client.send(node_id, req, group=self.group)
         except IncompatibleBrokerVersion:
             raise
+        except (Errors.NodeNotReadyError, Errors.RequestTimedOutError) as err:
+            log.warning("Cannot send %r to %s: %r", req.__class__, node_id, err)
+            retry_backoff = self.handle_error()
+            await asyncio.sleep(retry_backoff)
+            return False
         except KafkaError as err:
             log.warning("Could not send %r: %r", req.__class__, err)
             await asyncio.sleep(self._default_backoff)
@@ -419,6 +428,9 @@ class BaseHandler:
         raise NotImplementedError  # pragma: no cover
 
     def handle_response(self, response):
+        raise NotImplementedError  # pragma: no cover
+
+    def handle_error(self):
         raise NotImplementedError  # pragma: no cover
 
 
@@ -460,6 +472,10 @@ class InitPIDHandler(BaseHandler):
             log.error("Unexpected error during InitProducerIdRequest: %s", error_type)
             raise error_type()
 
+        return self._default_backoff
+
+    def handle_error(self):
+        self._sender._coordinator_dead(CoordinationType.TRANSACTION)
         return self._default_backoff
 
 
@@ -543,6 +559,10 @@ class AddPartitionsToTxnHandler(BaseHandler):
             )
         return None
 
+    def handle_error(self):
+        self._sender._coordinator_dead(CoordinationType.TRANSACTION)
+        return self._default_backoff
+
 
 class AddOffsetsToTxnHandler(BaseHandler):
     group = ConnectionGroup.COORDINATION
@@ -597,6 +617,10 @@ class AddOffsetsToTxnHandler(BaseHandler):
             )
             raise error_type()
 
+        return self._default_backoff
+
+    def handle_error(self):
+        self._sender._coordinator_dead(CoordinationType.TRANSACTION)
         return self._default_backoff
 
 
@@ -677,6 +701,10 @@ class TxnOffsetCommitHandler(BaseHandler):
 
         return None
 
+    def handle_error(self):
+        self._sender._coordinator_dead(CoordinationType.GROUP)
+        return self._default_backoff
+
 
 class EndTxnHandler(BaseHandler):
     group = ConnectionGroup.COORDINATION
@@ -723,6 +751,10 @@ class EndTxnHandler(BaseHandler):
             )
             raise error_type()
 
+        return self._default_backoff
+
+    def handle_error(self):
+        self._sender._coordinator_dead(CoordinationType.TRANSACTION)
         return self._default_backoff
 
 
@@ -855,6 +887,9 @@ class SendProduceReqHandler(BaseHandler):
                     if getattr(error, "invalid_metadata", False):
                         self._client.force_metadata_update()
                     self._to_reenqueue.append(batch)
+
+    def handle_error(self):
+        return self._default_backoff
 
     def _can_retry(self, error, batch):
         # If indempotence is enabled we never expire batches, but retry until
