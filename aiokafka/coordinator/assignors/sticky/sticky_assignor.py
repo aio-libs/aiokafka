@@ -653,7 +653,7 @@ class StickyAssignmentExecutor:
             consumer_to_assignment[consumer_id] = len(partitions)
 
         consumers_to_explore = set(consumer_to_assignment.keys())
-        for consumer_id in consumer_to_assignment:
+        for consumer_id in consumer_to_assignment:  # noqa: PLC0206
             if consumer_id in consumers_to_explore:
                 consumers_to_explore.remove(consumer_id)
                 for other_consumer_id in consumers_to_explore:

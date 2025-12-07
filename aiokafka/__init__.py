@@ -12,7 +12,7 @@ from .structs import (
     TopicPartition,
 )
 
-__all__ = [
+__all__ = [  # noqa: RUF022
     # Clients API
     "AIOKafkaProducer",
     "AIOKafkaConsumer",

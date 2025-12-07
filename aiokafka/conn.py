@@ -138,9 +138,9 @@ class AIOKafkaConnection:
                     "sasl_oauth_token_provider needs to be"
                     " provided implementing aiokafka.abc.AbstractTokenProvider"
                 )
-            assert callable(
-                getattr(sasl_oauth_token_provider, "token", None)
-            ), "sasl_oauth_token_provider must implement method #token()"
+            assert callable(getattr(sasl_oauth_token_provider, "token", None)), (
+                "sasl_oauth_token_provider must implement method #token()"
+            )
 
         self._loop = loop
         self._host = host

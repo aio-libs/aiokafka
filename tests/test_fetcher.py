@@ -375,7 +375,7 @@ class TestFetcher(unittest.TestCase):
     @run_until_complete
     async def test_fetched_records_error_after_data(self):
         # Test error after some data. fetched_records should not discard data.
-        fetcher, tp1, tp2, messages = self._setup_error_after_data()
+        fetcher, _tp1, tp2, messages = self._setup_error_after_data()
 
         msg = await fetcher.fetched_records([])
         self.assertEqual(msg, {tp2: messages})
@@ -389,7 +389,7 @@ class TestFetcher(unittest.TestCase):
     @run_until_complete
     async def test_next_record_error_after_data(self):
         # Test error after some data. next_record should not discard data.
-        fetcher, tp1, tp2, messages = self._setup_error_after_data()
+        fetcher, _tp1, _tp2, messages = self._setup_error_after_data()
 
         msg = await fetcher.next_record([])
         self.assertEqual(msg, messages[0])

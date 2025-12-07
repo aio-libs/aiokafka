@@ -213,11 +213,6 @@ class Response(Struct, metaclass=abc.ABCMeta):
     def API_VERSION(self) -> int:
         """Integer of api request/response version"""
 
-    @property
-    @abc.abstractmethod
-    def SCHEMA(self) -> Schema:
-        """An instance of Schema() representing the response structure"""
-
     def to_object(self) -> dict[str, Any]:
         return _to_object(self.SCHEMA, self)
 

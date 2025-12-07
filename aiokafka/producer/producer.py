@@ -341,9 +341,9 @@ class AIOKafkaProducer:
 
     async def start(self):
         """Connect to Kafka cluster and check server version"""
-        assert (
-            self._loop is get_running_loop()
-        ), "Please create objects with the same loop as running with"
+        assert self._loop is get_running_loop(), (
+            "Please create objects with the same loop as running with"
+        )
         log.debug("Starting the Kafka producer")  # trace
         await self.client.bootstrap()
         await self._sender.start()
@@ -393,9 +393,9 @@ class AIOKafkaProducer:
         )
         if message_size > self._max_request_size:
             raise MessageSizeTooLargeError(
-                "The message is %d bytes when serialized which is larger than"
-                " the maximum request size you have configured with the"
-                " max_request_size configuration" % message_size
+                f"The message is {message_size} bytes when serialized which is "
+                "larger than the maximum request size you have configured with "
+                "the max_request_size configuration"
             )
 
         return serialized_key, serialized_value
@@ -405,9 +405,9 @@ class AIOKafkaProducer:
     ):
         if partition is not None:
             assert partition >= 0
-            assert partition in self._metadata.partitions_for_topic(
-                topic
-            ), "Unrecognized partition"
+            assert partition in self._metadata.partitions_for_topic(topic), (
+                "Unrecognized partition"
+            )
             return partition
 
         all_partitions = list(self._metadata.partitions_for_topic(topic))

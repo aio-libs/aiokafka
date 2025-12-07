@@ -390,8 +390,7 @@ class ClusterMetadata:
         self._coordinator_by_key[purpose] = node_id
 
     def __str__(self):
-        return "ClusterMetadata(brokers: %d, topics: %d, groups: %d)" % (
-            len(self._brokers),
-            len(self._partitions),
-            len(self._groups),
+        return (
+            f"ClusterMetadata(brokers: {len(self._brokers)}, topics: "
+            f"{len(self._partitions)}, groups: {len(self._groups)})"
         )

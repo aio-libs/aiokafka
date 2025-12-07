@@ -338,9 +338,9 @@ class Subscription:
 
     def _assign(self, topic_partitions: Iterable[TopicPartition]):
         for tp in topic_partitions:
-            assert (
-                tp.topic in self._topics
-            ), f"Received an assignment for unsubscribed topic: {tp}"
+            assert tp.topic in self._topics, (
+                f"Received an assignment for unsubscribed topic: {tp}"
+            )
 
         if self._assignment is not None:
             self._assignment._unassign()

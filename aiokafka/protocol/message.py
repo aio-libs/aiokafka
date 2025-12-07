@@ -229,9 +229,6 @@ class Message(Struct):
 
         return MessageSet.decode(raw_bytes, bytes_to_read=len(raw_bytes))
 
-    def __hash__(self) -> int:
-        return hash(self.encode(recalc_crc=False))
-
 
 class PartialMessage(bytes):
     def __repr__(self) -> str:

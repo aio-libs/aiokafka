@@ -684,9 +684,9 @@ def test_stickiness(mocker: MockerFixture) -> None:
     verify_validity_and_balance(subscriptions, assignment)
     partitions_assigned = {}
     for consumer, consumer_assignment in assignment.items():
-        assert (
-            len(consumer_assignment.partitions()) <= 1
-        ), f"Consumer {consumer} is assigned more topic partitions than expected."
+        assert len(consumer_assignment.partitions()) <= 1, (
+            f"Consumer {consumer} is assigned more topic partitions than expected."
+        )
         if len(consumer_assignment.partitions()) == 1:
             partitions_assigned[consumer] = consumer_assignment.partitions()[0]
 
@@ -704,9 +704,9 @@ def test_stickiness(mocker: MockerFixture) -> None:
     assert StickyPartitionAssignor._latest_partition_movements.are_sticky()
 
     for consumer, consumer_assignment in assignment.items():
-        assert (
-            len(consumer_assignment.partitions()) <= 1
-        ), f"Consumer {consumer} is assigned more topic partitions than expected."
+        assert len(consumer_assignment.partitions()) <= 1, (
+            f"Consumer {consumer} is assigned more topic partitions than expected."
+        )
         assert (
             consumer not in partitions_assigned
             or partitions_assigned[consumer] in consumer_assignment.partitions()
@@ -963,7 +963,7 @@ def test_assignment_with_conflicting_previous_generations(
         "C3": 2,
     }
     member_metadata: dict[str, ConsumerProtocolMemberMetadata] = {}
-    for member in member_assignments:
+    for member in member_assignments:  # noqa: PLC0206
         member_metadata[member] = StickyPartitionAssignor._metadata(
             {"t"}, member_assignments[member], member_generations[member]
         )
@@ -989,7 +989,7 @@ def assert_assignment(
 ) -> None:
     assert result_assignment == expected_assignment
     assert set(result_assignment) == set(expected_assignment)
-    for member in result_assignment:
+    for member in result_assignment:  # noqa: PLC0206
         assert (
             result_assignment[member].encode() == expected_assignment[member].encode()
         )

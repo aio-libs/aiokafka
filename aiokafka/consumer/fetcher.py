@@ -225,9 +225,9 @@ class PartitionRecords:
                 self._consume_aborted_up_to(next_batch.base_offset)
 
                 if (
-                    next_batch.is_control_batch  # fmt: skip
+                    next_batch.is_control_batch
                     and self._contains_abort_marker(next_batch)
-                ):
+                ):  # fmt: skip
                     # Using `discard` instead of `remove`, because Kafka
                     # may return an abort marker for an otherwise empty
                     # topic-partition.
@@ -977,9 +977,9 @@ class Fetcher:
                 if error_type is Errors.NoError:
                     if response.API_VERSION == 0:
                         offsets = partition_info[0]
-                        assert (
-                            len(offsets) <= 1
-                        ), "Expected OffsetResponse with one offset"
+                        assert len(offsets) <= 1, (
+                            "Expected OffsetResponse with one offset"
+                        )
                         if offsets:
                             offset = offsets[0]
                             log.debug(

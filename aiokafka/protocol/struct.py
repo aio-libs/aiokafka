@@ -54,3 +54,5 @@ class Struct:
             if self.__dict__[attr] != other.__dict__[attr]:
                 return False
         return True
+
+    __hash__ = object.__hash__  # unhashable
