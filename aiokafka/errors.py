@@ -1,7 +1,7 @@
 from collections.abc import Iterable
 from typing import Any, TypeVar
 
-__all__ = [
+__all__ = [  # noqa: RUF022
     # aiokafka custom errors
     "ConsumerStoppedError",
     "NoOffsetForPartitionError",

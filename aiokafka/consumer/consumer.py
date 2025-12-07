@@ -357,9 +357,9 @@ class AIOKafkaConsumer:
         * Wait for possible topic autocreation
         * Join group if ``group_id`` provided
         """
-        assert (
-            self._loop is get_running_loop()
-        ), "Please create objects with the same loop as running with"
+        assert self._loop is get_running_loop(), (
+            "Please create objects with the same loop as running with"
+        )
         assert self._fetcher is None, "Did you call `start` twice?"
         await self._client.bootstrap()
         await self._wait_topics()

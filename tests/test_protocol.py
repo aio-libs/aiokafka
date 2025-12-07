@@ -166,8 +166,8 @@ def test_decode_message_set() -> None:
     assert len(msgs) == 2
     msg1, msg2 = msgs
 
-    returned_offset1, message1_size, decoded_message1 = msg1
-    returned_offset2, message2_size, decoded_message2 = msg2
+    returned_offset1, _message1_size, decoded_message1 = msg1
+    returned_offset2, _message2_size, decoded_message2 = msg2
 
     assert returned_offset1 == 0
     message1 = Message(value=b"v1", key=b"k1", magic=0, attributes=0, crc=0)
@@ -222,7 +222,7 @@ def test_decode_message_set_partial() -> None:
     assert len(msgs) == 2
     msg1, msg2 = msgs
 
-    returned_offset1, message1_size, decoded_message1 = msg1
+    returned_offset1, _message1_size, decoded_message1 = msg1
     returned_offset2, message2_size, decoded_message2 = msg2
 
     assert returned_offset1 == 0

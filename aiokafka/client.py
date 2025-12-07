@@ -179,9 +179,9 @@ class AIOKafkaClient:
 
     async def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
-        assert (
-            self._loop is get_running_loop()
-        ), "Please create objects with the same loop as running with"
+        assert self._loop is get_running_loop(), (
+            "Please create objects with the same loop as running with"
+        )
 
         for host, port, _ in self.hosts:
             log.debug("Attempting to bootstrap via node at %s:%s", host, port)

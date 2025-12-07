@@ -1174,7 +1174,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             fut = tp_state.fetch_committed()
             return assignment, tp_state, fut
 
-        assignment, tp_state, fut = reset_assignment()
+        assignment, _tp_state, fut = reset_assignment()
 
         # Success case
         resp = await coordinator._maybe_refresh_commit_offsets(assignment)
@@ -1188,13 +1188,13 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         # Commit not found case
         fetched_offsets = {}
-        assignment, tp_state, fut = reset_assignment()
+        assignment, _tp_state, fut = reset_assignment()
         resp = await coordinator._maybe_refresh_commit_offsets(assignment)
         self.assertEqual(resp, True)
         self.assertEqual(fut.result(), OffsetAndMetadata(-1, ""))
 
         # Retriable error will be skipped
-        assignment, tp_state, fut = reset_assignment()
+        assignment, _tp_state, fut = reset_assignment()
         mocked.side_effect = Errors.GroupCoordinatorNotAvailableError()
         resp = await coordinator._maybe_refresh_commit_offsets(assignment)
         self.assertEqual(resp, False)
@@ -1235,7 +1235,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             tp_state = assignment.state_value(tp)
             return assignment, tp_state
 
-        assignment, tp_state = reset_assignment()
+        assignment, _tp_state = reset_assignment()
 
         # Fast return if autocommit disabled
         coordinator._enable_auto_commit = False

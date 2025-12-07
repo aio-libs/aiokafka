@@ -17,7 +17,7 @@ from aiokafka.record.default_records import (
 )
 from aiokafka.util import NO_EXTENSIONS
 
-from ._testutil import wait_kafka
+from ._testutil import ACLManager, KafkaConfig, KerberosUtils, wait_kafka
 
 if not NO_EXTENSIONS:
     assert DefaultRecordBatchBuilder is not _DefaultRecordBatchBuilderPy, (
@@ -64,8 +64,6 @@ def acl_manager(kafka_server, request):
     image = request.config.getoption("--docker-image")
     tag = image.split(":")[-1].replace("_", "-")
 
-    from ._testutil import ACLManager
-
     manager = ACLManager(kafka_server.container, tag)
     return manager
 
@@ -75,8 +73,6 @@ def kafka_config(kafka_server, request):
     image = request.config.getoption("--docker-image")
     tag = image.split(":")[-1].replace("_", "-")
 
-    from ._testutil import KafkaConfig
-
     manager = KafkaConfig(kafka_server.container, tag)
     return manager
 
@@ -85,8 +81,6 @@ if sys.platform != "win32":
 
     @pytest.fixture(scope="class")
     def kerberos_utils(kafka_server):
-        from ._testutil import KerberosUtils
-
         utils = KerberosUtils(kafka_server.container)
         utils.create_keytab()
         return utils
@@ -244,12 +238,12 @@ if sys.platform != "win32":
 
         try:
             if not wait_kafka(kafka_host, kafka_port):
-                exit_code, output = container.exec_run(
+                _exit_code, output = container.exec_run(
                     ["supervisorctl", "tail", "-20000", "kafka"]
                 )
                 print("Kafka failed to start. \n--- STDOUT:")
                 print(output.decode(), file=sys.stdout)
-                exit_code, output = container.exec_run(
+                _exit_code, output = container.exec_run(
                     ["supervisorctl", "tail", "-20000", "kafka", "stderr"]
                 )
                 print("--- STDERR:")

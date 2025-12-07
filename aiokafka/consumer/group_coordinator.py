@@ -435,7 +435,7 @@ class GroupCoordinator(BaseCoordinator):
         all_subscribed_topics = set()
         for member in members:
             if response.API_VERSION == 5:
-                member_id, group_instance_id, metadata_bytes = member
+                member_id, _group_instance_id, metadata_bytes = member
             else:
                 member_id, metadata_bytes = member
             metadata = ConsumerProtocol.METADATA.decode(metadata_bytes)
@@ -675,7 +675,7 @@ class GroupCoordinator(BaseCoordinator):
             if self._commit_refresh_task:
                 futures.append(self._commit_refresh_task)
 
-            done, _ = await asyncio.wait(
+            await asyncio.wait(
                 futures, timeout=wait_timeout, return_when=asyncio.FIRST_COMPLETED
             )
 

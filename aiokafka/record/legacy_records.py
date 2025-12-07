@@ -256,8 +256,8 @@ class _LegacyRecordBatchPy(LegacyRecordBase, LegacyRecordBatchProtocol):
                 offset, _, crc, _, attrs, timestamp = header
                 # There should only ever be a single layer of compression
                 assert not attrs & self.CODEC_MASK, (
-                    "MessageSet at offset %d appears double-compressed. This "
-                    "should not happen -- check your producers!" % offset
+                    f"MessageSet at offset {offset} appears double-compressed. This "
+                    "should not happen -- check your producers!"
                 )
 
                 # When magic value is greater than 0, the timestamp
@@ -404,9 +404,9 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase, LegacyRecordBatchBuilderProt
                 "b"  # Magic => Int8
                 "b"  # Attributes => Int8
                 "i"  # key length => Int32
-                "%ds"  # key => bytes
+                f"{key_size:d}s"  # key => bytes
                 "i"  # value length => Int32
-                "%ds" % (key_size, value_size),  # value => bytes
+                f"{value_size:d}s",  # value => bytes
                 buf,
                 0,
                 offset,
@@ -429,9 +429,9 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase, LegacyRecordBatchBuilderProt
                 "b"  # Attributes => Int8
                 "q"  # timestamp => Int64
                 "i"  # key length => Int32
-                "%ds"  # key => bytes
+                f"{key_size:d}s"  # key => bytes
                 "i"  # value length => Int32
-                "%ds" % (key_size, value_size),  # value => bytes
+                f"{value_size:d}s",  # value => bytes
                 buf,
                 0,
                 offset,

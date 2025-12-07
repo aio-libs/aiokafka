@@ -30,9 +30,9 @@ __all__ = ["KafkaIntegrationTestCase", "random_string"]
 
 
 def run_until_complete(fun):
-    assert inspect.iscoroutinefunction(
-        fun
-    ), "Can not decorate ordinary function, only async ones"
+    assert inspect.iscoroutinefunction(fun), (
+        "Can not decorate ordinary function, only async ones"
+    )
 
     @wraps(fun)
     def wrapper(test, *args, **kw):

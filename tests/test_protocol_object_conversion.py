@@ -3,6 +3,7 @@ from typing import TypeVar
 import pytest
 
 from aiokafka.protocol.admin import RequestStruct, Response
+from aiokafka.protocol.metadata import MetadataResponse_v5
 from aiokafka.protocol.types import Array, Int16, Schema, String
 
 C = TypeVar("C", bound=type[RequestStruct | Response])
@@ -189,8 +190,6 @@ class TestObjectConversion:
 
 
 def test_with_metadata_response() -> None:
-    from aiokafka.protocol.metadata import MetadataResponse_v5
-
     tc = MetadataResponse_v5(
         throttle_time_ms=0,
         brokers=[

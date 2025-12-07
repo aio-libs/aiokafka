@@ -104,9 +104,9 @@ class TransactionManager:
     # TRANSACTION PART
 
     def _transition_to(self, target):
-        assert TransactionState.is_transition_valid(
-            self.state, target
-        ), f"Invalid state transition {self.state} -> {target}"
+        assert TransactionState.is_transition_valid(self.state, target), (
+            f"Invalid state transition {self.state} -> {target}"
+        )
         self.state = target
 
     def begin_transaction(self):

@@ -413,9 +413,9 @@ class MessageAccumulator:
         batch = self._batches[tp].popleft()
         not_retry = batch.retry_count == 0
         if self._txn_manager is not None and not_retry:
-            assert (
-                self._txn_manager.has_pid()
-            ), "We should have waited for it in sender routine"
+            assert self._txn_manager.has_pid(), (
+                "We should have waited for it in sender routine"
+            )
             seq = self._txn_manager.sequence_number(batch.tp)
             self._txn_manager.increment_sequence_number(batch.tp, batch.record_count)
             batch.set_producer_state(
