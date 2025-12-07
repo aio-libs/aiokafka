@@ -42,7 +42,7 @@ jobs:
             arch: x86_64
           - os: ubuntu-latest
             arch: aarch64
-          - os: macos-13
+          - os: macos-15-intel
             arch: x86_64
           - os: macos-latest
             arch: arm64
@@ -124,7 +124,7 @@ jobs:
 
   test-wheels-mac:
     needs: [package-source, package-wheel]
-    runs-on: macos-13
+    runs-on: macos-15-intel
 
     strategy:
       matrix:
@@ -146,7 +146,7 @@ jobs:
       - name: Download distributions
         uses: actions/download-artifact@v4
         with:
-          name: dist-macos-13-x86_64
+          name: dist-macos-15-intel-x86_64
           path: dist/
       - name: Set up Python
         uses: actions/setup-python@v5
