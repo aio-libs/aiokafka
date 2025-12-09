@@ -27,7 +27,9 @@ Bugfixes:
   (pr #1135 by @vmaurin)
 * Rename the RequestHeader version classes to match official version
   schemas (pr #1141 by @vmaurin)
-
+* Properly manage batch max size and linger_ms. A batch will be always
+  produced if the max size or the lingering time is reached
+  (pr #1142 by @vmaurin)
 
 Misc:
 * Use SPDX license expression for project metadata.

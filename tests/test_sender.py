@@ -73,7 +73,6 @@ class TestSender(KafkaIntegrationTestCase):
             txn_manager=tm,
             message_accumulator=ma,
             retry_backoff_ms=100,
-            linger_ms=0,
             request_timeout_ms=40000,
         )
         self.add_cleanup(sender.close)
