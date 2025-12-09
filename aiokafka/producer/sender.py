@@ -1,7 +1,6 @@
 import asyncio
 import collections
 import logging
-import time
 
 import aiokafka.errors as Errors
 from aiokafka.client import ConnectionGroup, CoordinationType
@@ -55,7 +54,6 @@ class Sender:
         txn_manager,
         message_accumulator,
         retry_backoff_ms,
-        linger_ms,
         request_timeout_ms,
     ):
         self.client = client
@@ -69,7 +67,6 @@ class Sender:
         self._coordinators = {}
         self._retry_backoff = retry_backoff_ms / 1000
         self._request_timeout_ms = request_timeout_ms
-        self._linger_time = linger_ms / 1000
 
     async def start(self):
         # If producer is idempotent we need to assure we have PID found
@@ -140,6 +137,7 @@ class Sender:
                 (
                     batches,
                     unknown_leaders_exist,
+                    remaining_linger_time,
                 ) = self._message_accumulator.drain_by_nodes(
                     ignore_nodes=self._in_flight,
                     muted_partitions=muted_partitions,
@@ -157,6 +155,10 @@ class Sender:
                     # we have at least one unknown partition's leader,
                     # try to update cluster metadata and wait backoff time
                     fut = self.client.force_metadata_update()
+                    waiters |= tasks.union([fut])
+                elif remaining_linger_time:
+                    # we have batch lingering, we need to wait for one to be ready
+                    fut = create_task(asyncio.sleep(remaining_linger_time))
                     waiters |= tasks.union([fut])
                 else:
                     fut = self._message_accumulator.data_waiter()
@@ -286,16 +288,8 @@ class Sender:
             node_id (int): kafka broker identifier
             batches (dict): dictionary of {TopicPartition: MessageBatch}
         """
-        t0 = time.monotonic()
-
         handler = SendProduceReqHandler(self, batches)
         await handler.do(node_id)
-
-        # if batches for node is processed in less than a linger seconds
-        # then waiting for the remaining time
-        sleep_time = self._linger_time - (time.monotonic() - t0)
-        if sleep_time > 0:
-            await asyncio.sleep(sleep_time)
 
         self._in_flight.remove(node_id)
         for tp in batches:
