@@ -11,7 +11,7 @@ from .struct import Struct
 from .types import Array, Int16, Int32, Schema, String, TaggedFields
 
 
-class RequestHeader_v0(Struct):
+class RequestHeader_v1(Struct):
     SCHEMA = Schema(
         ("api_key", Int16),
         ("api_version", Int16),
@@ -30,7 +30,7 @@ class RequestHeader_v0(Struct):
         )
 
 
-class RequestHeader_v1(Struct):
+class RequestHeader_v2(Struct):
     # Flexible response / request headers end in field buffer
     SCHEMA = Schema(
         ("api_key", Int16),
@@ -185,12 +185,12 @@ class RequestStruct(Struct, metaclass=abc.ABCMeta):
 
     def build_request_header(
         self, correlation_id: int, client_id: str
-    ) -> RequestHeader_v0 | RequestHeader_v1:
+    ) -> RequestHeader_v1 | RequestHeader_v2:
         if self.FLEXIBLE_VERSION:
-            return RequestHeader_v1(
+            return RequestHeader_v2(
                 self, correlation_id=correlation_id, client_id=client_id
             )
-        return RequestHeader_v0(
+        return RequestHeader_v1(
             self, correlation_id=correlation_id, client_id=client_id
         )
 
