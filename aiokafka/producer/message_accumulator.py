@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import contextlib
 import copy
 import time
 from collections.abc import Sequence
@@ -127,14 +128,20 @@ class BatchBuilder:
         """Get the number of records in the batch."""
         return self._relative_offset
 
+    def closed(self):
+        """Indicates if the builder is already closed"""
+        return self._closed
+
 
 class MessageBatch:
-    """This class incapsulate operations with batch of produce messages"""
+    """This class encapsulate operations with batch of produce messages"""
 
-    def __init__(self, tp, builder, ttl):
+    def __init__(self, tp, builder, ttl, linger_time, max_size):
         self._builder = builder
         self._tp = tp
         self._ttl = ttl
+        self._linger_time = linger_time
+        self._max_size = max_size
         self._ctime = time.monotonic()
 
         # Waiters
@@ -266,6 +273,19 @@ class MessageBatch:
         if waiter.done():
             waiter.result()  # Check for exception
 
+    def remaining_linger(self):
+        """Return the eventual remaining linger time"""
+        lifetime = time.monotonic() - self._ctime
+        # Batch builders reject a message if they reach the exact size
+        # so we should consider it ready if it is size - 1
+        if (
+            self._builder.closed()
+            or self._builder.size() >= self._max_size - 1
+            or lifetime >= self._linger_time
+        ):
+            return None
+        return self._linger_time - lifetime
+
     def expired(self):
         """Check that batch is expired or not"""
         return (time.monotonic() - self._ctime) > self._ttl
@@ -312,6 +332,7 @@ class MessageAccumulator:
         *,
         txn_manager=None,
         loop=None,
+        linger_ms=0,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -322,9 +343,11 @@ class MessageAccumulator:
         self._batch_size = batch_size
         self._compression_type = compression_type
         self._batch_ttl = batch_ttl
-        self._wait_data_future = loop.create_future()
+        self._waiter_future = loop.create_future()
+        self._wakeup_task = None
         self._closed = False
         self._txn_manager = txn_manager
+        self._linger_time = linger_ms / 1000
 
         self._exception = None  # Critical exception
 
@@ -344,6 +367,9 @@ class MessageAccumulator:
                 # scope. We should not add anything to this transaction.
                 batch._builder.close()
                 waiters.append(batch.future)
+        # We wake up eventually the sender waiting for lingering batches
+        if not self._waiter_future.done():
+            self._waiter_future.set_result(None)
         waiters += [batch.future for batch in self._pending_batches]
         # Wait for all waiters to finish. We only wait for the scope we defined
         # above, other batches should not be delivered as part of this
@@ -403,11 +429,11 @@ class MessageAccumulator:
             if timeout <= 0:
                 raise KafkaTimeoutError()
 
-    def data_waiter(self):
+    def waiter(self):
         """Return waiter future that will be resolved when accumulator contain
-        some data for drain
+        some data for drain or a batch lingering is ready to be picked
         """
-        return self._wait_data_future
+        return self._waiter_future
 
     def _pop_batch(self, tp):
         batch = self._batches[tp].popleft()
@@ -442,10 +468,11 @@ class MessageAccumulator:
         self._pending_batches.remove(batch)
         batch.reset_drain()
 
-    def drain_by_nodes(self, ignore_nodes, muted_partitions=frozenset()):
+    async def drain_by_nodes(self, ignore_nodes, muted_partitions=frozenset()):
         """Group batches by leader to partition nodes."""
         nodes = collections.defaultdict(dict)
         unknown_leaders_exist = False
+        remaining_linger_time = None
         for tp in list(self._batches.keys()):
             # Just ignoring by node is not enough, as leader can change during
             # the cycle
@@ -467,6 +494,16 @@ class MessageAccumulator:
             elif ignore_nodes and leader in ignore_nodes:
                 continue
 
+            batch_remaining_linger = self._batches[tp][0].remaining_linger()
+            if batch_remaining_linger:
+                # Batch should linger more
+                remaining_linger_time = (
+                    min(remaining_linger_time, batch_remaining_linger)
+                    if remaining_linger_time
+                    else batch_remaining_linger
+                )
+                continue
+
             batch = self._pop_batch(tp)
             # We can get an empty batch here if all `append()` calls failed
             # with validation...
@@ -478,13 +515,32 @@ class MessageAccumulator:
                 batch.done_noack()
 
         # all batches are drained from accumulator
-        # so create "wait data" future again for waiting new data in send
+        # so create "wait" future again for waiting new data/linger expired in send
         # task
-        if not self._wait_data_future.done():
-            self._wait_data_future.set_result(None)
-        self._wait_data_future = self._loop.create_future()
+        if not self._waiter_future.done():
+            self._waiter_future.set_result(None)
+        self._waiter_future = self._loop.create_future()
+
+        # cleaning up old wakeup task
+        if self._wakeup_task:
+            self._wakeup_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._wakeup_task
+            self._wakeup_task = None
+
+        # schedule a new wakeup task
+        if remaining_linger_time:
+            self._wakeup_task = self._loop.create_task(
+                self._wakeup(self._waiter_future, remaining_linger_time)
+            )
 
         return nodes, unknown_leaders_exist
+
+    @staticmethod
+    async def _wakeup(fut, after):
+        await asyncio.sleep(after)
+        if not fut.done():
+            fut.set_result(None)
 
     def create_builder(self, key_serializer=None, value_serializer=None):
         is_transactional = False
@@ -506,10 +562,12 @@ class MessageAccumulator:
         if self._txn_manager is not None:
             self._txn_manager.maybe_add_partition_to_txn(tp)
 
-        batch = MessageBatch(tp, builder, self._batch_ttl)
+        batch = MessageBatch(
+            tp, builder, self._batch_ttl, self._linger_time, self._batch_size
+        )
         self._batches[tp].append(batch)
-        if not self._wait_data_future.done():
-            self._wait_data_future.set_result(None)
+        if not self._waiter_future.done():
+            self._waiter_future.set_result(None)
         return batch
 
     async def add_batch(self, builder, tp, timeout):
