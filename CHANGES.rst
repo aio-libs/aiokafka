@@ -25,6 +25,8 @@ Bugfixes:
 * Ensure the transaction coordinator is refreshed after broker fail‑over,
   so transactional producers resume once a new coordinator is elected.
   (pr #1135 by @vmaurin)
+* Rename the RequestHeader version classes to match official version
+  schemas (pr #1141 by @vmaurin)
 
 
 Misc:
