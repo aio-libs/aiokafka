@@ -429,7 +429,7 @@ class AIOKafkaClient:
             if group == ConnectionGroup.DEFAULT:
                 # Connection failures imply that our metadata is stale, so
                 # let's refresh
-                self.force_metadata_update()
+                await self.force_metadata_update()
             return None
         else:
             return self._conns[conn_id]
