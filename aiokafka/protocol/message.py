@@ -132,11 +132,13 @@ class Message(Struct):
                     self.timestamp,
                     self.key,
                     self.value,
-                )
+                ),
+                flexible=False,
             )
         elif version == 0:
             message = Message.SCHEMAS[version].encode(
-                (self.crc, self.magic, self.attributes, self.key, self.value)
+                (self.crc, self.magic, self.attributes, self.key, self.value),
+                flexible=False,
             )
         else:
             raise ValueError(f"Unrecognized message version: {version}")
@@ -144,7 +146,7 @@ class Message(Struct):
             return message
         self.crc = crc32(message[4:])
         crc_field = self.BASE_FIELDS[0][1]
-        return crc_field.encode(self.crc) + message[4:]
+        return crc_field.encode(self.crc, flexible=False) + message[4:]
 
     @classmethod
     def decode(cls, data: io.BytesIO | bytes) -> Self:
@@ -154,16 +156,16 @@ class Message(Struct):
             data = io.BytesIO(data)
         # Partial decode required to determine message version
         crc, magic, attributes = (
-            cls.BASE_FIELDS[0][1].decode(data),
-            cls.BASE_FIELDS[1][1].decode(data),
-            cls.BASE_FIELDS[2][1].decode(data),
+            cls.BASE_FIELDS[0][1].decode(data, flexible=False),
+            cls.BASE_FIELDS[1][1].decode(data, flexible=False),
+            cls.BASE_FIELDS[2][1].decode(data, flexible=False),
         )
         if magic == 1:
             magic = cast(Literal[1], magic)
             timestamp, key, value = (
-                cls.MAGIC1_FIELDS[0][1].decode(data),
-                cls.MAGIC1_FIELDS[1][1].decode(data),
-                cls.MAGIC1_FIELDS[2][1].decode(data),
+                cls.MAGIC1_FIELDS[0][1].decode(data, flexible=False),
+                cls.MAGIC1_FIELDS[1][1].decode(data, flexible=False),
+                cls.MAGIC1_FIELDS[2][1].decode(data, flexible=False),
             )
             msg = cls(
                 value=value,
@@ -176,8 +178,8 @@ class Message(Struct):
         elif magic == 0:
             magic = cast(Literal[0], magic)
             key, value = (
-                cls.MAGIC0_FIELDS[0][1].decode(data),
-                cls.MAGIC0_FIELDS[1][1].decode(data),
+                cls.MAGIC0_FIELDS[0][1].decode(data, flexible=False),
+                cls.MAGIC0_FIELDS[1][1].decode(data, flexible=False),
             )
             msg = cls(
                 value=value,
@@ -247,7 +249,7 @@ class MessageSet:
     ) -> bytes:
         # RecordAccumulator encodes messagesets internally
         if isinstance(items, io.BytesIO):
-            size = Int32.decode(items)
+            size = Int32.decode(items, flexible=False)
             if prepend_size:
                 # rewind and return all the bytes
                 items.seek(items.tell() - 4)
@@ -256,11 +258,11 @@ class MessageSet:
 
         encoded_values: list[bytes] = []
         for offset, message in items:
-            encoded_values.append(Int64.encode(offset))
-            encoded_values.append(Bytes.encode(message))
+            encoded_values.append(Int64.encode(offset, flexible=False))
+            encoded_values.append(Bytes.encode(message, flexible=False))
         encoded = b"".join(encoded_values)
         if prepend_size:
-            return Bytes.encode(encoded)
+            return Bytes.encode(encoded, flexible=False)
         else:
             return encoded
 
@@ -274,7 +276,7 @@ class MessageSet:
         if isinstance(data, bytes):
             data = io.BytesIO(data)
         if bytes_to_read is None:
-            bytes_to_read = Int32.decode(data)
+            bytes_to_read = Int32.decode(data, flexible=False)
 
         # if FetchRequest max_bytes is smaller than the available message set
         # the server returns partial data for the final message
@@ -284,8 +286,8 @@ class MessageSet:
         items: list[tuple[int, int, Message] | tuple[None, None, PartialMessage]] = []
         try:
             while bytes_to_read:
-                offset = Int64.decode(raw)
-                msg_bytes = Bytes.decode(raw)
+                offset = Int64.decode(raw, flexible=False)
+                msg_bytes = Bytes.decode(raw, flexible=False)
                 assert msg_bytes is not None
                 bytes_to_read -= 8 + 4 + len(msg_bytes)
                 items.append(
