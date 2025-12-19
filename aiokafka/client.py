@@ -429,6 +429,7 @@ class AIOKafkaClient:
             if group == ConnectionGroup.DEFAULT:
                 # Connection failures imply that our metadata is stale, so
                 # let's refresh
+                await asyncio.sleep(self._retry_backoff)
                 self.force_metadata_update()
             return None
         else:
