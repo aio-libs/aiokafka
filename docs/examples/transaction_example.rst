@@ -50,15 +50,16 @@ process data and produce the resut to ``OUT_TOPIC`` in a transactional manner.
             group_id=GROUP_ID,
             isolation_level="read_committed"  # <-- This will filter aborted txn's
         )
-        await consumer.start()
 
         producer = AIOKafkaProducer(
             bootstrap_servers=BOOTSTRAP_SERVERS,
             transactional_id=TRANSACTIONAL_ID
         )
-        await producer.start()
 
         try:
+            await consumer.start()
+            await producer.start()
+
             while True:
                 msg_batch = await consumer.getmany(timeout_ms=POLL_TIMEOUT)
 

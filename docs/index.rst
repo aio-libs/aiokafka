@@ -41,9 +41,9 @@ Here's a consumer example:
             'my_topic', 'my_other_topic',
             bootstrap_servers='localhost:9092',
             group_id="my-group")
-        # Get cluster layout and join group `my-group`
-        await consumer.start()
         try:
+            # Get cluster layout and join group `my-group`
+            await consumer.start()
             # Consume messages
             async for msg in consumer:
                 print("consumed: ", msg.topic, msg.partition, msg.offset,
@@ -71,9 +71,9 @@ Here's a producer example:
     async def send_one():
         producer = AIOKafkaProducer(
             bootstrap_servers='localhost:9092')
-        # Get cluster layout and initial topic/partition leadership information
-        await producer.start()
         try:
+            # Get cluster layout and initial topic/partition leadership information
+            await producer.start()
             # Produce message
             await producer.send_and_wait("my_topic", b"Super message")
         finally:
