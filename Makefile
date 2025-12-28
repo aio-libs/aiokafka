@@ -58,6 +58,10 @@ ci-test-unit:
 ci-test-all:
 	pytest -s -v --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
 
+.PHONY: manual-test
+manual-test:
+	docker compose up --build --exit-code-from aiokafka --attach aiokafka
+
 coverage.xml: .coverage
 	coverage xml
 
