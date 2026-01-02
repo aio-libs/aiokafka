@@ -2,7 +2,7 @@
 Changelog
 =========
 
-0.13.0 (????-??-??)
+0.13.0 (2026-01-02)
 ===================
 
 Breaking changes:
@@ -30,6 +30,7 @@ Bugfixes:
 
 
 Misc:
+
 * Use SPDX license expression for project metadata.
 
 
