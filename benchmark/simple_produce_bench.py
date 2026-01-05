@@ -5,6 +5,8 @@ from aiokafka import AIOKafkaProducer
 from collections import Counter
 import random
 
+from aiokafka.partitioner import DefaultPartitioner, RoundRobinPartitioner
+
 
 class Benchmark:
 
@@ -26,9 +28,19 @@ class Benchmark:
         else:
             self._is_transactional = False
 
+        if args.partitioner == "default":
+            self._producer_kwargs["partitioner"] = DefaultPartitioner()
+        elif args.partitioner == "round-robin":
+            self._producer_kwargs["partitioner"] = RoundRobinPartitioner()
+
+        if args.key:
+            self._key = b"abc"
+        else:
+            self._key = None
+
         self.transaction_size = args.transaction_size
 
-        self._partition = args.partition
+        self._partition = args.partition if args.partition != -1 else None
         self._stats_interval = 1
         self._stats = [Counter()]
 
@@ -76,7 +88,7 @@ class Benchmark:
             if not self._is_transactional:
                 for i in range(self._num):
                     # payload[i % self._size] = random.randint(0, 255)
-                    await producer.send(topic, payload, partition=partition)
+                    await producer.send(topic, payload, partition=partition, key=self._key)
                     self._stats[-1]['count'] += 1
             else:
                 for i in range(self._num // transaction_size):
@@ -117,7 +129,7 @@ def parse_args():
         help='Topic to produce messages to. Default {default}.')
     parser.add_argument(
         '--partition', type=int, default=0,
-        help='Partition to produce messages to. Default {default}.')
+        help='Partition to produce messages to. Default {default}. Set to -1 to omit.')
     parser.add_argument(
         '--uvloop', action='store_true',
         help='Use uvloop instead of asyncio default loop.')
@@ -130,6 +142,12 @@ def parse_args():
     parser.add_argument(
         '--transaction-size', type=int, default=100,
         help='Number of messages in transaction')
+    parser.add_argument(
+        '--partitioner', type=str, default="default", choices=["default", "round-robin"],
+        help='Partitioner, either `default` or `round-robin`')
+    parser.add_argument(
+        '--key', action='store_true',
+        help='Whether to use a partitioning key')
     return parser.parse_args()
 
 
