@@ -129,12 +129,14 @@ class BatchBuilder:
 
 
 class MessageBatch:
-    """This class incapsulate operations with batch of produce messages"""
+    """This class encapsulate operations with batch of produce messages"""
 
-    def __init__(self, tp, builder, ttl):
+    def __init__(self, tp, builder, ttl, linger_time, max_size):
         self._builder = builder
         self._tp = tp
         self._ttl = ttl
+        self._linger_time = linger_time
+        self._max_size = max_size
         self._ctime = time.monotonic()
 
         # Waiters
@@ -266,6 +268,15 @@ class MessageBatch:
         if waiter.done():
             waiter.result()  # Check for exception
 
+    def remaining_linger(self):
+        """Return the eventual remaining linger time"""
+        lifetime = time.monotonic() - self._ctime
+        # Batch builders reject a message if they reach the exact size
+        # so we should consider it ready if it is size - 1
+        if self._builder.size() >= self._max_size - 1 or lifetime >= self._linger_time:
+            return None
+        return self._linger_time - lifetime
+
     def expired(self):
         """Check that batch is expired or not"""
         return (time.monotonic() - self._ctime) > self._ttl
@@ -312,6 +323,7 @@ class MessageAccumulator:
         *,
         txn_manager=None,
         loop=None,
+        linger_ms=0,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -325,6 +337,7 @@ class MessageAccumulator:
         self._wait_data_future = loop.create_future()
         self._closed = False
         self._txn_manager = txn_manager
+        self._linger_time = linger_ms / 1000
 
         self._exception = None  # Critical exception
 
@@ -446,6 +459,7 @@ class MessageAccumulator:
         """Group batches by leader to partition nodes."""
         nodes = collections.defaultdict(dict)
         unknown_leaders_exist = False
+        remaining_linger_time = None
         for tp in list(self._batches.keys()):
             # Just ignoring by node is not enough, as leader can change during
             # the cycle
@@ -467,6 +481,16 @@ class MessageAccumulator:
             elif ignore_nodes and leader in ignore_nodes:
                 continue
 
+            batch_remaining_linger = self._batches[tp][0].remaining_linger()
+            if batch_remaining_linger:
+                # Batch should linger more
+                remaining_linger_time = (
+                    min(remaining_linger_time, batch_remaining_linger)
+                    if remaining_linger_time
+                    else batch_remaining_linger
+                )
+                continue
+
             batch = self._pop_batch(tp)
             # We can get an empty batch here if all `append()` calls failed
             # with validation...
@@ -484,7 +508,7 @@ class MessageAccumulator:
             self._wait_data_future.set_result(None)
         self._wait_data_future = self._loop.create_future()
 
-        return nodes, unknown_leaders_exist
+        return nodes, unknown_leaders_exist, remaining_linger_time
 
     def create_builder(self, key_serializer=None, value_serializer=None):
         is_transactional = False
@@ -506,7 +530,9 @@ class MessageAccumulator:
         if self._txn_manager is not None:
             self._txn_manager.maybe_add_partition_to_txn(tp)
 
-        batch = MessageBatch(tp, builder, self._batch_ttl)
+        batch = MessageBatch(
+            tp, builder, self._batch_ttl, self._linger_time, self._batch_size
+        )
         self._batches[tp].append(batch)
         if not self._wait_data_future.done():
             self._wait_data_future.set_result(None)

@@ -2,6 +2,16 @@
 Changelog
 =========
 
+0.14.0 (????-??-??)
+===================
+
+Bugfixes:
+
+* Properly manage batch max size and linger_ms. A batch will be always
+  produced if the max size or the lingering time is reached
+  (pr #1142 by @vmaurin)
+
+
 0.13.0 (2026-01-02)
 ===================
 

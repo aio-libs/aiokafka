@@ -533,11 +533,8 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             # 100ms backoff time
             await asyncio.sleep(0.11)
         self.assertFalse(fut.done())
-        self.assertTrue(producer._message_accumulator._batches)
-
-        # Then we add another msg right after the reenqueue. As we use
-        # linger_ms `_sender_routine` will be locked for some time after we
-        # reenqueue batch, so this add will be forced to wait a longer time.
+        # At this stage, the batch might have been drained again
+        # Then we add another msg right after the reenqueue.
         # If drain_waiter is broken it will end up with a RecursionError.
         fut2 = await producer.send(self.topic, b"Some MSG 2", partition=0)
 
