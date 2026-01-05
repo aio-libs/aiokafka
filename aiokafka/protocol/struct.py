@@ -8,6 +8,7 @@ from .types import Schema
 
 class Struct:
     SCHEMA: ClassVar = Schema()
+    FLEXIBLE_VERSION: ClassVar[bool] = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         if len(args) == len(self.SCHEMA.fields):
@@ -26,13 +27,15 @@ class Struct:
                 )
 
     def encode(self) -> bytes:
-        return self.SCHEMA.encode([self.__dict__[name] for name in self.SCHEMA.names])
+        return self.SCHEMA.encode(
+            [self.__dict__[name] for name in self.SCHEMA.names], self.FLEXIBLE_VERSION
+        )
 
     @classmethod
     def decode(cls, data: BytesIO | bytes) -> Self:
         if isinstance(data, bytes):
             data = BytesIO(data)
-        return cls(*[field.decode(data) for field in cls.SCHEMA.fields])
+        return cls(*cls.SCHEMA.decode(data, cls.FLEXIBLE_VERSION))
 
     def get_item(self, name: str) -> Any:
         if name not in self.SCHEMA.names:

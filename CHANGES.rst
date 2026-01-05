@@ -2,6 +2,18 @@
 Changelog
 =========
 
+0.14.0 (????-??-??)
+===================
+
+New features:
+
+* Simplify flexible versions in schema.
+  Defining an API request or response schemas that should support
+  flexible versions (KIP-482) is now achieved by setting `FLEXIBLE_VERSION` to True.
+  Tagged fields could be expressed with ("name", tag) instead of just a name.
+  (pr #1139 by @vmaurin)
+
+
 0.13.0 (2026-01-02)
 ===================
 

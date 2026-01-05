@@ -428,10 +428,11 @@ class AIOKafkaConnection:
             ) from err
 
         log.debug(
-            "Request to %s:%d %d: %s",
+            "Request to %s:%d %d: %s, %s",
             self._host,
             self._port,
             correlation_id,
+            header,
             request_struct,
         )
 
@@ -565,10 +566,11 @@ class AIOKafkaConnection:
             if not fut.done():
                 response = resp_type.decode(resp)
                 log.debug(
-                    "Response from %s:%d %d: %s",
+                    "Response from %s:%d %d: %s, %s",
                     self._host,
                     self._port,
                     correlation_id,
+                    response_header,
                     response,
                 )
                 fut.set_result(response)
