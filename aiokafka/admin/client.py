@@ -7,6 +7,7 @@ from typing import Any
 import async_timeout
 
 from aiokafka import __version__
+from aiokafka.abc import AbstractTokenProvider
 from aiokafka.client import AIOKafkaClient
 from aiokafka.errors import (
     LeaderNotAvailableError,
@@ -96,7 +97,7 @@ class AIOKafkaAdminClient:
         sasl_plain_password: str | None = None,
         sasl_kerberos_service_name: str = "kafka",
         sasl_kerberos_domain_name: str | None = None,
-        sasl_oauth_token_provider: str | None = None,
+        sasl_oauth_token_provider: AbstractTokenProvider | None = None,
     ):
         self._closed = False
         self._started = False

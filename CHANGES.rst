@@ -2,6 +2,14 @@
 Changelog
 =========
 
+0.14.0 (????-??-??)
+===================
+
+Bugfixes:
+
+* Fix type annotation for `AIOKafkaAdminClient` (issue #1148)
+
+
 0.13.0 (2026-01-02)
 ===================
 
@@ -13,7 +21,7 @@ Breaking changes:
 
 Improved Documentation:
 
-* Fix incomplete documentation for `AIOKafkaConsumer.offset_for_times``
+* Fix incomplete documentation for `AIOKafkaConsumer.offset_for_times`
   (pr #1068 by @jzvandenoever)
 * Fix Java Client API reference (pr #1069 by @emmanuel-ferdman)
 
