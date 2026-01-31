@@ -8,6 +8,8 @@ Changelog
 Bugfixes:
 
 * Fix type annotation for `AIOKafkaAdminClient` (issue #1148)
+* Return back and deprecate `api_version` parameter in client classes
+  (issue #1147)
 
 
 0.13.0 (2026-01-02)

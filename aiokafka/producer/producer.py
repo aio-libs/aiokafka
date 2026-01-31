@@ -200,6 +200,7 @@ class AIOKafkaProducer:
         client_id=None,
         metadata_max_age_ms=300000,
         request_timeout_ms=40000,
+        api_version=None,
         acks=_missing,
         key_serializer=None,
         value_serializer=None,
@@ -226,14 +227,22 @@ class AIOKafkaProducer:
             loop = get_running_loop()
         else:
             warnings.warn(
-                "The loop argument is deprecated since 0.7.1, "
-                "and scheduled for removal in 0.9.0",
+                "The `loop` parameter has been deprecated since 0.7.1 "
+                "and will be removed in a future release.",
                 DeprecationWarning,
                 stacklevel=2,
             )
         if loop.get_debug():
             self._source_traceback = traceback.extract_stack(sys._getframe(1))
         self._loop = loop
+
+        if api_version is not None:
+            warnings.warn(
+                "The `api_version` parameter has been deprecated since 0.13.0. "
+                "It is now a no-op and will be removed in a future release. ",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         if acks not in (0, 1, -1, "all", _missing):
             raise ValueError("Invalid ACKS parameter")

@@ -251,6 +251,7 @@ class AIOKafkaConsumer:
         max_poll_records=None,
         ssl_context=None,
         security_protocol="PLAINTEXT",
+        api_version=None,
         exclude_internal_topics=True,
         connections_max_idle_ms=540000,
         isolation_level="read_uncommitted",
@@ -267,6 +268,14 @@ class AIOKafkaConsumer:
             warnings.warn(
                 "The loop argument is deprecated since 0.7.1, "
                 "and scheduled for removal in 0.9.0",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        if api_version is not None:
+            warnings.warn(
+                "The `api_version` parameter has been deprecated since 0.13.0. "
+                "It is now a no-op and will be removed in a future release. ",
                 DeprecationWarning,
                 stacklevel=2,
             )

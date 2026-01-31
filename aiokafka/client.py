@@ -3,6 +3,7 @@ import contextlib
 import logging
 import random
 import time
+import warnings
 from enum import IntEnum
 
 import aiokafka.errors as Errors
@@ -87,6 +88,7 @@ class AIOKafkaClient:
         retry_backoff_ms=100,
         ssl_context=None,
         security_protocol="PLAINTEXT",
+        api_version=None,
         connections_max_idle_ms=540000,
         sasl_mechanism="PLAIN",
         sasl_plain_username=None,
@@ -97,6 +99,14 @@ class AIOKafkaClient:
     ):
         if loop is None:
             loop = get_running_loop()
+
+        if api_version is not None:
+            warnings.warn(
+                "The `api_version` parameter has been deprecated since 0.13.0. "
+                "It is now a no-op and will be removed in a future release. ",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         if security_protocol not in ("SSL", "PLAINTEXT", "SASL_PLAINTEXT", "SASL_SSL"):
             raise ValueError("`security_protocol` should be SSL or PLAINTEXT")
