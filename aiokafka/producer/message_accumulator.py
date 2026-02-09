@@ -422,7 +422,11 @@ class MessageAccumulator:
             if future is not None:
                 return future
             # Batch is full, can't append data atm,
-            # waiting until batch per topic-partition is drained
+            # wake up the sender loop
+            # and wait until batch per topic-partition is drained
+            if not self._waiter_future.done():
+                self._waiter_future.set_result(None)
+
             start = time.monotonic()
             await batch.wait_drain(timeout)
             timeout -= time.monotonic() - start
