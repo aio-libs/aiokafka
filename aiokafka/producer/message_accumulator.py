@@ -1,6 +1,5 @@
 import asyncio
 import collections
-import contextlib
 import copy
 import time
 from collections.abc import Sequence
@@ -137,12 +136,11 @@ class BatchBuilder:
 class MessageBatch:
     """This class encapsulate operations with batch of produce messages"""
 
-    def __init__(self, tp, builder, ttl, linger_time, max_size):
+    def __init__(self, tp, builder, ttl, linger_time):
         self._builder = builder
         self._tp = tp
         self._ttl = ttl
         self._linger_time = linger_time
-        self._max_size = max_size
         self._ctime = time.monotonic()
 
         # Waiters
@@ -341,7 +339,7 @@ class MessageAccumulator:
         self._compression_type = compression_type
         self._batch_ttl = batch_ttl
         self._waiter_future = loop.create_future()
-        self._wakeup_task = None
+        self._wakeup_handle = None
         self._closed = False
         self._txn_manager = txn_manager
         self._linger_time = linger_ms / 1000
@@ -469,7 +467,7 @@ class MessageAccumulator:
         self._pending_batches.remove(batch)
         batch.reset_drain()
 
-    async def drain_by_nodes(self, ignore_nodes, muted_partitions=frozenset()):
+    def drain_by_nodes(self, ignore_nodes, muted_partitions=frozenset()):
         """Group batches by leader to partition nodes."""
         nodes = collections.defaultdict(dict)
         unknown_leaders_exist = False
@@ -523,23 +521,20 @@ class MessageAccumulator:
         self._waiter_future = self._loop.create_future()
 
         # cleaning up old wakeup task
-        if self._wakeup_task:
-            self._wakeup_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._wakeup_task
-            self._wakeup_task = None
+        if self._wakeup_handle:
+            self._wakeup_handle.cancel()
+            self._wakeup_handle = None
 
         # schedule a new wakeup task
         if remaining_linger_time:
-            self._wakeup_task = self._loop.create_task(
-                self._wakeup(self._waiter_future, remaining_linger_time)
+            self._wakeup_handle = self._loop.call_later(
+                remaining_linger_time, self._wakeup, self._waiter_future
             )
 
         return nodes, unknown_leaders_exist
 
     @staticmethod
-    async def _wakeup(fut, after):
-        await asyncio.sleep(after)
+    def _wakeup(fut):
         if not fut.done():
             fut.set_result(None)
 
@@ -563,9 +558,7 @@ class MessageAccumulator:
         if self._txn_manager is not None:
             self._txn_manager.maybe_add_partition_to_txn(tp)
 
-        batch = MessageBatch(
-            tp, builder, self._batch_ttl, self._linger_time, self._batch_size
-        )
+        batch = MessageBatch(tp, builder, self._batch_ttl, self._linger_time)
         self._batches[tp].append(batch)
         if not self._waiter_future.done():
             self._waiter_future.set_result(None)

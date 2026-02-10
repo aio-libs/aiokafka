@@ -137,7 +137,7 @@ class Sender:
                 (
                     batches,
                     unknown_leaders_exist,
-                ) = await self._message_accumulator.drain_by_nodes(
+                ) = self._message_accumulator.drain_by_nodes(
                     ignore_nodes=self._in_flight,
                     muted_partitions=muted_partitions,
                 )

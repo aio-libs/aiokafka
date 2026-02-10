@@ -39,7 +39,7 @@ class TestMessageAccumulator(unittest.TestCase):
         done, _ = await asyncio.wait([data_waiter], timeout=0.2)
         self.assertTrue(bool(done))
 
-        batches, unknown_leaders_exist = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(batches, {})
         self.assertEqual(unknown_leaders_exist, True)
 
@@ -52,7 +52,7 @@ class TestMessageAccumulator(unittest.TestCase):
 
         cluster.leader_for_partition = mock.MagicMock()
         cluster.leader_for_partition.side_effect = mocked_leader_for_partition
-        batches, unknown_leaders_exist = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(len(batches), 2)
         self.assertEqual(unknown_leaders_exist, False)
         m_set0 = batches[0].get(tp0)
@@ -78,7 +78,7 @@ class TestMessageAccumulator(unittest.TestCase):
         done, _ = await asyncio.wait([add_task], timeout=0.2)
         self.assertFalse(bool(done))
 
-        batches, unknown_leaders_exist = await ma.drain_by_nodes(ignore_nodes=[1, 2])
+        batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[1, 2])
         self.assertEqual(unknown_leaders_exist, True)
         m_set0 = batches[0].get(tp0)
         self.assertEqual(m_set0._builder._relative_offset, 2)
@@ -88,7 +88,7 @@ class TestMessageAccumulator(unittest.TestCase):
         done, _ = await asyncio.wait([add_task], timeout=0.1)
         self.assertFalse(bool(done))  # we still not drained data for tp1
 
-        batches, unknown_leaders_exist = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(unknown_leaders_exist, True)
         m_set0 = batches[0].get(tp0)
         self.assertEqual(m_set0, None)
@@ -97,7 +97,7 @@ class TestMessageAccumulator(unittest.TestCase):
 
         done, _ = await asyncio.wait([add_task], timeout=0.2)
         self.assertTrue(bool(done))
-        batches, unknown_leaders_exist = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, unknown_leaders_exist = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(unknown_leaders_exist, True)
         m_set1 = batches[1].get(tp1)
         self.assertEqual(m_set1._builder._relative_offset, 1)
@@ -119,29 +119,29 @@ class TestMessageAccumulator(unittest.TestCase):
         )
         await ma.add_message(tp0, None, b"hello", timeout=2)
 
-        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         # it should not be ready yet (linger time)
         self.assertEqual(len(batches), 0)
         waiter = ma.waiter()
         await waiter
-        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         # it should be ready (linger time reached)
         self.assertEqual(len(batches), 1)
-        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         # Nothing to do here
         self.assertEqual(len(batches), 0)
 
         await ma.add_message(tp1, None, b"hello", timeout=2)
-        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(len(batches), 0)
         await ma.add_message(tp1, None, b"hello", timeout=2)
-        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(len(batches), 0)
         # this write should block as the buffer is full
         waiter = ma.waiter()
         add_task = asyncio.create_task(ma.add_message(tp1, None, b"hello", timeout=2))
         await waiter
-        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         # it should be ready (max size reached)
         self.assertEqual(len(batches), 1)
         await add_task
@@ -172,7 +172,7 @@ class TestMessageAccumulator(unittest.TestCase):
         await ma.add_message(tp1, None, b"0123456789" * 70, timeout=2)
         with self.assertRaises(KafkaTimeoutError):
             await ma.add_message(tp1, None, b"0123456789" * 70, timeout=2)
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(batches[1][tp1].expired(), True)
         with self.assertRaises(LeaderNotAvailableError):
             await fut1
@@ -182,7 +182,7 @@ class TestMessageAccumulator(unittest.TestCase):
         fut01 = await ma.add_message(tp0, b"key0", b"value#0", timeout=2)
         fut02 = await ma.add_message(tp0, b"key1", b"value#1", timeout=2)
         fut10 = await ma.add_message(tp1, None, b"0123456789" * 70, timeout=2)
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(batches[0][tp0].expired(), False)
         self.assertEqual(batches[1][tp1].expired(), False)
         batch_data = batches[0][tp0].get_data_buffer()
@@ -206,14 +206,14 @@ class TestMessageAccumulator(unittest.TestCase):
             await fut10
 
         fut01 = await ma.add_message(tp0, b"key0", b"value#0", timeout=2)
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         batches[0][tp0].done_noack()
         res = await fut01
         self.assertEqual(res, None)
 
         # cancelling future
         fut01 = await ma.add_message(tp0, b"key0", b"value#2", timeout=2)
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         fut01.cancel()
         batches[0][tp0].done(base_offset=21)  # no error in this case
 
@@ -291,7 +291,7 @@ class TestMessageAccumulator(unittest.TestCase):
         # second batch gets added once the others are cleared out
         async def drain_later():
             await asyncio.sleep(0.1)
-            await ma.drain_by_nodes(ignore_nodes=[])
+            ma.drain_by_nodes(ignore_nodes=[])
 
         drain_task = asyncio.create_task(drain_later())
         await ma.add_batch(builder1_2, tp1, 1)
@@ -322,7 +322,7 @@ class TestMessageAccumulator(unittest.TestCase):
         fut1 = await ma.add_message(tp0, b"key", b"value", timeout=2)
 
         # Drain and Reenqueu
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         batch = batches[0][tp0]
         self.assertIn(batch, ma._pending_batches)
         self.assertFalse(ma._batches)
@@ -335,7 +335,7 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertFalse(fut1.done())
 
         # Drain and Reenqueu again. We check for repeated call
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(batches[0][tp0], batch)
         self.assertEqual(batch.retry_count, 2)
         self.assertIn(batch, ma._pending_batches)
@@ -349,7 +349,7 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertFalse(fut1.done())
 
         # Drain and mark as done. Check that no link to batch remained
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(batches[0][tp0], batch)
         self.assertEqual(batch.retry_count, 3)
         self.assertIn(batch, ma._pending_batches)
