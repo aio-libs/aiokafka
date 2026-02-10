@@ -85,6 +85,7 @@ class BatchBuilder:
 
         # Check if we could add the message
         if metadata is None:
+            self.close()
             return None
 
         self._relative_offset += 1
@@ -276,13 +277,9 @@ class MessageBatch:
     def remaining_linger(self):
         """Return the eventual remaining linger time"""
         lifetime = time.monotonic() - self._ctime
-        # Batch builders reject a message if they reach the exact size
-        # so we should consider it ready if it is size - 1
-        if (
-            self._builder.closed()
-            or self._builder.size() >= self._max_size - 1
-            or lifetime >= self._linger_time
-        ):
+        # Batch builders reject a message if they reach
+        # their maximum capacity
+        if self._builder.closed() or lifetime >= self._linger_time:
             return None
         return self._linger_time - lifetime
 

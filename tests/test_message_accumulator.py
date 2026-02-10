@@ -115,24 +115,36 @@ class TestMessageAccumulator(unittest.TestCase):
         cluster.leader_for_partition.side_effect = mocked_leader_for_partition
 
         ma = MessageAccumulator(
-            cluster, compression_type=0, batch_size=98, batch_ttl=10, linger_ms=1000
+            cluster, compression_type=0, batch_size=90, batch_ttl=10, linger_ms=2000
         )
         await ma.add_message(tp0, None, b"hello", timeout=2)
 
         batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
         # it should not be ready yet (linger time)
         self.assertEqual(len(batches), 0)
-        await asyncio.sleep(1.1)
+        waiter = ma.waiter()
+        await waiter
         batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
         # it should be ready (linger time reached)
         self.assertEqual(len(batches), 1)
+        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
+        # Nothing to do here
+        self.assertEqual(len(batches), 0)
 
         await ma.add_message(tp1, None, b"hello", timeout=2)
+        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
+        self.assertEqual(len(batches), 0)
         await ma.add_message(tp1, None, b"hello", timeout=2)
-        await ma.add_message(tp1, None, b"hello", timeout=2)
+        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
+        self.assertEqual(len(batches), 0)
+        # this write should block as the buffer is full
+        waiter = ma.waiter()
+        add_task = asyncio.create_task(ma.add_message(tp1, None, b"hello", timeout=2))
+        await waiter
         batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
         # it should be ready (max size reached)
         self.assertEqual(len(batches), 1)
+        await add_task
 
     @run_until_complete
     async def test_batch_done(self):
