@@ -172,7 +172,7 @@ class TestMessageAccumulator(unittest.TestCase):
         await ma.add_message(tp1, None, b"0123456789" * 70, timeout=2)
         with self.assertRaises(KafkaTimeoutError):
             await ma.add_message(tp1, None, b"0123456789" * 70, timeout=2)
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(batches[1][tp1].expired(), True)
         with self.assertRaises(LeaderNotAvailableError):
             await fut1
@@ -182,7 +182,7 @@ class TestMessageAccumulator(unittest.TestCase):
         fut01 = await ma.add_message(tp0, b"key0", b"value#0", timeout=2)
         fut02 = await ma.add_message(tp0, b"key1", b"value#1", timeout=2)
         fut10 = await ma.add_message(tp1, None, b"0123456789" * 70, timeout=2)
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(batches[0][tp0].expired(), False)
         self.assertEqual(batches[1][tp1].expired(), False)
         batch_data = batches[0][tp0].get_data_buffer()
@@ -206,14 +206,14 @@ class TestMessageAccumulator(unittest.TestCase):
             await fut10
 
         fut01 = await ma.add_message(tp0, b"key0", b"value#0", timeout=2)
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
         batches[0][tp0].done_noack()
         res = await fut01
         self.assertEqual(res, None)
 
         # cancelling future
         fut01 = await ma.add_message(tp0, b"key0", b"value#2", timeout=2)
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
         fut01.cancel()
         batches[0][tp0].done(base_offset=21)  # no error in this case
 
@@ -322,7 +322,7 @@ class TestMessageAccumulator(unittest.TestCase):
         fut1 = await ma.add_message(tp0, b"key", b"value", timeout=2)
 
         # Drain and Reenqueu
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
         batch = batches[0][tp0]
         self.assertIn(batch, ma._pending_batches)
         self.assertFalse(ma._batches)
@@ -335,7 +335,7 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertFalse(fut1.done())
 
         # Drain and Reenqueu again. We check for repeated call
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(batches[0][tp0], batch)
         self.assertEqual(batch.retry_count, 2)
         self.assertIn(batch, ma._pending_batches)
@@ -349,7 +349,7 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertFalse(fut1.done())
 
         # Drain and mark as done. Check that no link to batch remained
-        batches, *_ = await ma.drain_by_nodes(ignore_nodes=[])
+        batches, _ = await ma.drain_by_nodes(ignore_nodes=[])
         self.assertEqual(batches[0][tp0], batch)
         self.assertEqual(batch.retry_count, 3)
         self.assertIn(batch, ma._pending_batches)

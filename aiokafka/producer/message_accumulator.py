@@ -137,12 +137,11 @@ class BatchBuilder:
 class MessageBatch:
     """This class encapsulate operations with batch of produce messages"""
 
-    def __init__(self, tp, builder, ttl, linger_time, max_size):
+    def __init__(self, tp, builder, ttl, linger_time):
         self._builder = builder
         self._tp = tp
         self._ttl = ttl
         self._linger_time = linger_time
-        self._max_size = max_size
         self._ctime = time.monotonic()
 
         # Waiters
@@ -563,9 +562,7 @@ class MessageAccumulator:
         if self._txn_manager is not None:
             self._txn_manager.maybe_add_partition_to_txn(tp)
 
-        batch = MessageBatch(
-            tp, builder, self._batch_ttl, self._linger_time, self._batch_size
-        )
+        batch = MessageBatch(tp, builder, self._batch_ttl, self._linger_time)
         self._batches[tp].append(batch)
         if not self._waiter_future.done():
             self._waiter_future.set_result(None)
