@@ -7,8 +7,8 @@ async def send_one():
         transactional_id="transactional_test")
 
     # Get cluster layout and topic/partition allocation
-    await producer.start()
     try:
+        await producer.start()
         async with producer.transaction():
             # Produce messages
             res = await producer.send_and_wait(
