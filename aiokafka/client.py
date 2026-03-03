@@ -395,17 +395,14 @@ class AIOKafkaClient:
                 return conn
 
         try:
-            if group == ConnectionGroup.DEFAULT:
-                broker = self.cluster.broker_metadata(node_id)
-                # XXX: earlier we only did an assert here, but it seems it's
-                # possible to get a leader that is for some reason not in
-                # metadata.
-                # I think requiring metadata should solve this problem
-                if broker is None:
-                    raise StaleMetadata(f"Broker id {node_id} not in current metadata")
-            else:
-                broker = self.cluster.coordinator_metadata(node_id)
-                assert broker is not None
+            broker = self.cluster.broker_metadata(node_id)
+
+            # XXX: earlier we only did an asserts, but it seems it's
+            # possible to get a leader/coordinator that is for
+            # some reason not in metadata.
+            # I think requiring metadata should solve this problem
+            if broker is None:
+                raise StaleMetadata(f"Broker id {node_id} not in current metadata")
 
             log.debug(
                 "Initiating connection to node %s at %s:%s",
@@ -436,10 +433,9 @@ class AIOKafkaClient:
                 )
         except (OSError, asyncio.TimeoutError, KafkaError) as err:
             log.error("Unable connect to node with id %s: %s", node_id, err)
-            if group == ConnectionGroup.DEFAULT:
-                # Connection failures imply that our metadata is stale, so
-                # let's refresh
-                self.force_metadata_update()
+            # Connection failures imply that our metadata is stale, so
+            # let's refresh
+            self.force_metadata_update()
             return None
         else:
             return self._conns[conn_id]
@@ -548,11 +544,4 @@ class AIOKafkaClient:
         if error_type is not Errors.NoError:
             err = error_type()
             raise err
-        self.cluster.add_coordinator(
-            resp.coordinator_id,
-            resp.host,
-            resp.port,
-            rack=None,
-            purpose=(coordinator_type, coordinator_key),
-        )
         return resp.coordinator_id

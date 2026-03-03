@@ -45,7 +45,6 @@ class ClusterMetadata:
         self._partitions = {}  # topic -> partition -> PartitionMetadata
         # node_id -> {TopicPartition...}
         self._broker_partitions = collections.defaultdict(set)
-        self._groups = {}  # group_name -> node_id
         self._last_refresh_ms = 0
         self._last_successful_refresh_ms = 0
         self._need_update = True
@@ -63,9 +62,6 @@ class ClusterMetadata:
                 self.config[key] = configs[key]
 
         self._bootstrap_brokers = self._generate_bootstrap_brokers()
-        self._coordinator_brokers = {}
-        self._coordinators = {}
-        self._coordinator_by_key = {}
 
     def _generate_bootstrap_brokers(self):
         # collect_hosts does not perform DNS, so we should be fine to re-use
@@ -97,11 +93,7 @@ class ClusterMetadata:
         Returns:
             BrokerMetadata or None if not found
         """
-        return (
-            self._brokers.get(broker_id)
-            or self._bootstrap_brokers.get(broker_id)
-            or self._coordinator_brokers.get(broker_id)
-        )
+        return self._brokers.get(broker_id) or self._bootstrap_brokers.get(broker_id)
 
     def partitions_for_topic(self, topic: str) -> set[int] | None:
         """Return set of all partitions for topic (whether available or not)
@@ -154,18 +146,6 @@ class ClusterMetadata:
             None if the broker either has no partitions or does not exist.
         """
         return self._broker_partitions.get(broker_id)
-
-    def coordinator_for_group(self, group):
-        """Return node_id of group coordinator.
-
-        Arguments:
-            group (str): name of consumer group
-
-        Returns:
-            int: node_id for group coordinator
-            None if the group does not exist.
-        """
-        return self._groups.get(group)
 
     def request_update(self):
         """Flags metadata for update, return Future()
@@ -327,40 +307,12 @@ class ClusterMetadata:
         """Remove a previously added listener callback"""
         self._listeners.remove(listener)
 
-    def add_group_coordinator(self, group, response):
-        """Update with metadata for a group coordinator
-
-        Arguments:
-            group (str): name of group from FindCoordinatorRequest
-            response (FindCoordinatorResponse): broker response
-
-        Returns:
-            string: coordinator node_id if metadata is updated, None on error
-        """
-        log.debug("Updating coordinator for %s: %s", group, response)
-        error_type = Errors.for_code(response.error_code)
-        if error_type is not Errors.NoError:
-            log.error("FindCoordinatorResponse error: %s", error_type)
-            self._groups[group] = -1
-            return None
-
-        # Use a coordinator-specific node id so that group requests
-        # get a dedicated connection
-        node_id = f"coordinator-{response.coordinator_id}"
-        coordinator = BrokerMetadata(node_id, response.host, response.port, None)
-
-        log.info("Group coordinator for %s is %s", group, coordinator)
-        self._coordinator_brokers[node_id] = coordinator
-        self._groups[group] = node_id
-        return node_id
-
     def with_partitions(self, partitions_to_add):
         """Returns a copy of cluster metadata with partitions added"""
         new_metadata = ClusterMetadata(**self.config)
         new_metadata._brokers = copy.deepcopy(self._brokers)
         new_metadata._partitions = copy.deepcopy(self._partitions)
         new_metadata._broker_partitions = copy.deepcopy(self._broker_partitions)
-        new_metadata._groups = copy.deepcopy(self._groups)
         new_metadata.internal_topics = copy.deepcopy(self.internal_topics)
         new_metadata.unauthorized_topics = copy.deepcopy(self.unauthorized_topics)
 
@@ -374,23 +326,8 @@ class ClusterMetadata:
 
         return new_metadata
 
-    def coordinator_metadata(self, node_id):
-        return self._coordinators.get(node_id)
-
-    def add_coordinator(self, node_id, host, port, rack=None, *, purpose):
-        """Keep track of all coordinator nodes separately and remove them if
-        a new one was elected for the same purpose (For example group
-        coordinator for group X).
-        """
-        if purpose in self._coordinator_by_key:
-            old_id = self._coordinator_by_key.pop(purpose)
-            del self._coordinators[old_id]
-
-        self._coordinators[node_id] = BrokerMetadata(node_id, host, port, rack)
-        self._coordinator_by_key[purpose] = node_id
-
     def __str__(self):
         return (
             f"ClusterMetadata(brokers: {len(self._brokers)}, topics: "
-            f"{len(self._partitions)}, groups: {len(self._groups)})"
+            f"{len(self._partitions)})"
         )

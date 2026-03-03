@@ -5,7 +5,7 @@ from typing import Any
 from unittest import mock
 
 from aiokafka import __version__
-from aiokafka.client import AIOKafkaClient, ConnectionGroup, CoordinationType
+from aiokafka.client import AIOKafkaClient, ConnectionGroup
 from aiokafka.conn import AIOKafkaConnection, CloseReason
 from aiokafka.errors import (
     KafkaConnectionError,
@@ -142,6 +142,9 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
         with self.assertRaises(NodeNotReadyError):
             await client.send(0, None)
+
+        with self.assertRaises(NodeNotReadyError):
+            await client.send(0, None, group=ConnectionGroup.COORDINATION)
 
         self.assertEqual(md.unauthorized_topics, {"topic_auth_error"})
 
@@ -456,14 +459,6 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         self.add_cleanup(client.close)
 
         node_id = client.get_random_node()
-        broker = client.cluster.broker_metadata(node_id)
-        client.cluster.add_coordinator(
-            node_id,
-            broker.host,
-            broker.port,
-            rack=None,
-            purpose=(CoordinationType.GROUP, ""),
-        )
 
         conn1 = await client._get_conn(node_id)
         conn2 = await client._get_conn(node_id, group=ConnectionGroup.COORDINATION)
@@ -480,14 +475,6 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         await self.wait_topic(client, self.topic)
 
         node_id = client.get_random_node()
-        broker = client.cluster.broker_metadata(node_id)
-        client.cluster.add_coordinator(
-            node_id,
-            broker.host,
-            broker.port,
-            rack=None,
-            purpose=(CoordinationType.GROUP, ""),
-        )
 
         wait_request = FetchRequest(
             max_wait_time=500,
