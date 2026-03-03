@@ -12,6 +12,9 @@ Bugfixes:
   (issue #1147)
 * Avoid failures when a transaction coordinator is dead by removing deprecated code
   (issue #1151)
+* Properly manage batch max size and linger_ms. A batch will be always
+  produced if the max size or the lingering time is reached
+  (pr #1142 by @vmaurin)
 
 
 0.13.0 (2026-01-02)
