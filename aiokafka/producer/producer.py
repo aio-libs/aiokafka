@@ -318,13 +318,13 @@ class AIOKafkaProducer:
             self._request_timeout_ms / 1000,
             txn_manager=self._txn_manager,
             loop=loop,
+            linger_ms=linger_ms,
         )
         self._sender = Sender(
             self.client,
             acks=acks,
             txn_manager=self._txn_manager,
             retry_backoff_ms=retry_backoff_ms,
-            linger_ms=linger_ms,
             message_accumulator=self._message_accumulator,
             request_timeout_ms=request_timeout_ms,
         )

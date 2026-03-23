@@ -16,7 +16,7 @@ from aiokafka.producer.message_accumulator import (
     MessageBatch,
 )
 from aiokafka.structs import TopicPartition
-from aiokafka.util import create_task, get_running_loop
+from aiokafka.util import create_task
 
 from ._testutil import run_until_complete
 
@@ -27,7 +27,7 @@ class TestMessageAccumulator(unittest.TestCase):
     async def test_basic(self):
         cluster = ClusterMetadata(metadata_max_age_ms=10000)
         ma = MessageAccumulator(cluster, 1000, 0, 30)
-        data_waiter = ma.data_waiter()
+        data_waiter = ma.waiter()
         done, _ = await asyncio.wait([data_waiter], timeout=0.2)
         self.assertFalse(bool(done))  # no data in accumulator yet...
 
@@ -61,7 +61,7 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertEqual(type(m_set1), MessageBatch)
         self.assertEqual(m_set0.expired(), False)
 
-        data_waiter = asyncio.ensure_future(ma.data_waiter())
+        data_waiter = asyncio.ensure_future(ma.waiter())
         done, _ = await asyncio.wait([data_waiter], timeout=0.2)
         self.assertFalse(bool(done))  # no data in accumulator again...
 
@@ -101,6 +101,50 @@ class TestMessageAccumulator(unittest.TestCase):
         self.assertEqual(unknown_leaders_exist, True)
         m_set1 = batches[1].get(tp1)
         self.assertEqual(m_set1._builder._relative_offset, 1)
+
+    @run_until_complete
+    async def test_batch_lingering(self):
+        tp0 = TopicPartition("test-topic", 0)
+        tp1 = TopicPartition("test-topic", 1)
+
+        def mocked_leader_for_partition(tp):
+            return 0
+
+        cluster = ClusterMetadata(metadata_max_age_ms=10000)
+        cluster.leader_for_partition = mock.MagicMock()
+        cluster.leader_for_partition.side_effect = mocked_leader_for_partition
+
+        ma = MessageAccumulator(
+            cluster, compression_type=0, batch_size=90, batch_ttl=10, linger_ms=2000
+        )
+        await ma.add_message(tp0, None, b"hello", timeout=2)
+
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
+        # it should not be ready yet (linger time)
+        self.assertEqual(len(batches), 0)
+        waiter = ma.waiter()
+        await waiter
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
+        # it should be ready (linger time reached)
+        self.assertEqual(len(batches), 1)
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
+        # Nothing to do here
+        self.assertEqual(len(batches), 0)
+
+        await ma.add_message(tp1, None, b"hello", timeout=2)
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
+        self.assertEqual(len(batches), 0)
+        await ma.add_message(tp1, None, b"hello", timeout=2)
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
+        self.assertEqual(len(batches), 0)
+        # this write should block as the buffer is full
+        waiter = ma.waiter()
+        add_task = asyncio.create_task(ma.add_message(tp1, None, b"hello", timeout=2))
+        await waiter
+        batches, _ = ma.drain_by_nodes(ignore_nodes=[])
+        # it should be ready (max size reached)
+        self.assertEqual(len(batches), 1)
+        await add_task
 
     @run_until_complete
     async def test_batch_done(self):
@@ -232,24 +276,29 @@ class TestMessageAccumulator(unittest.TestCase):
         builder1_2 = ma.create_builder()
 
         # batches may queued one-per-TP
-        self.assertFalse(ma._wait_data_future.done())
+        self.assertFalse(ma._waiter_future.done())
         await ma.add_batch(builder0, tp0, 1)
-        self.assertTrue(ma._wait_data_future.done())
+        self.assertTrue(ma._waiter_future.done())
         self.assertEqual(len(ma._batches[tp0]), 1)
 
         await ma.add_batch(builder1_1, tp1, 1)
         self.assertEqual(len(ma._batches[tp1]), 1)
         with self.assertRaises(KafkaTimeoutError):
             await ma.add_batch(builder1_2, tp1, 0.1)
-        self.assertTrue(ma._wait_data_future.done())
+        self.assertTrue(ma._waiter_future.done())
         self.assertEqual(len(ma._batches[tp1]), 1)
 
         # second batch gets added once the others are cleared out
-        get_running_loop().call_later(0.1, ma.drain_by_nodes, [])
+        async def drain_later():
+            await asyncio.sleep(0.1)
+            ma.drain_by_nodes(ignore_nodes=[])
+
+        drain_task = asyncio.create_task(drain_later())
         await ma.add_batch(builder1_2, tp1, 1)
-        self.assertTrue(ma._wait_data_future.done())
+        self.assertTrue(ma._waiter_future.done())
         self.assertEqual(len(ma._batches[tp0]), 0)
         self.assertEqual(len(ma._batches[tp1]), 1)
+        await drain_task
 
     @run_until_complete
     async def test_batch_pending_batch_list(self):
