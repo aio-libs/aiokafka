@@ -1471,3 +1471,83 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         await coordinator.close()
         await client.close()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for coordinator_state (no Kafka broker required)
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_coordinator():
+    """Return a GroupCoordinator with all internals replaced by mocks/futures."""
+    gc = GroupCoordinator.__new__(GroupCoordinator)
+    gc._coordination_task = create_future()  # pending = alive
+    gc._pending_exception = None
+    gc._rejoin_needed_fut = create_future()  # pending = stable
+    return gc
+
+
+async def test_group_coordinator_state_stable():
+    gc = _make_mock_coordinator()
+    assert gc.coordinator_state == "STABLE"
+
+
+async def test_group_coordinator_state_rebalancing():
+    gc = _make_mock_coordinator()
+    gc._rejoin_needed_fut.set_result(None)
+    assert gc.coordinator_state == "REBALANCING"
+
+
+async def test_group_coordinator_state_pending_error():
+    gc = _make_mock_coordinator()
+    gc._rejoin_needed_fut.set_result(None)
+    gc._pending_exception = Exception("test error")
+    assert gc.coordinator_state == "PENDING_ERROR"
+
+
+async def test_group_coordinator_state_coordinator_dead():
+    gc = _make_mock_coordinator()
+    gc._coordination_task.set_result(None)  # task finished = dead
+    assert gc.coordinator_state == "COORDINATOR_DEAD"
+
+
+async def test_group_coordinator_dead_takes_priority_over_pending_error():
+    gc = _make_mock_coordinator()
+    gc._coordination_task.set_result(None)
+    gc._pending_exception = Exception("test error")
+    gc._rejoin_needed_fut.set_result(None)
+    assert gc.coordinator_state == "COORDINATOR_DEAD"
+
+
+async def test_no_group_coordinator_state_is_always_stable():
+    ngc = NoGroupCoordinator.__new__(NoGroupCoordinator)
+    assert ngc.coordinator_state == "STABLE"
+
+
+async def test_consumer_coordinator_state_stopped_when_not_started():
+    from aiokafka.consumer.consumer import AIOKafkaConsumer
+
+    consumer = AIOKafkaConsumer.__new__(AIOKafkaConsumer)
+    consumer._closed = False
+    consumer._coordinator = None
+    assert consumer.coordinator_state == "STOPPED"
+
+
+async def test_consumer_coordinator_state_stopped_when_closed():
+    from aiokafka.consumer.consumer import AIOKafkaConsumer
+
+    consumer = AIOKafkaConsumer.__new__(AIOKafkaConsumer)
+    consumer._closed = True
+    consumer._coordinator = None
+    assert consumer.coordinator_state == "STOPPED"
+
+
+async def test_consumer_coordinator_state_delegates():
+    from aiokafka.consumer.consumer import AIOKafkaConsumer
+    from unittest.mock import MagicMock
+
+    consumer = AIOKafkaConsumer.__new__(AIOKafkaConsumer)
+    consumer._closed = False
+    consumer._coordinator = MagicMock()
+    consumer._coordinator.coordinator_state = "REBALANCING"
+    assert consumer.coordinator_state == "REBALANCING"

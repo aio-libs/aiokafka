@@ -5,6 +5,14 @@ Changelog
 0.14.0 (????-??-??)
 ===================
 
+Features:
+
+* Add ``AIOKafkaConsumer.coordinator_state`` property exposing the current
+  coordinator health as a string (``"STABLE"``, ``"REBALANCING"``,
+  ``"PENDING_ERROR"``, ``"COORDINATOR_DEAD"``, or ``"STOPPED"``), replacing
+  the need to inspect private attributes for health checks after broker
+  restarts or group rebalances (issue #1154)
+
 Bugfixes:
 
 * Fix type annotation for `AIOKafkaAdminClient` (issue #1148)
