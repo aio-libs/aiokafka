@@ -184,6 +184,10 @@ class NoGroupCoordinator(BaseCoordinator):
         if self._reset_committed_task.done():  # pragma: no cover
             self._reset_committed_task.result()
 
+    @property
+    def coordinator_state(self):
+        return "STABLE"
+
 
 class GroupCoordinator(BaseCoordinator):
     """
@@ -546,6 +550,29 @@ class GroupCoordinator(BaseCoordinator):
             bool: True if consumer should rejoin group, False otherwise
         """
         return subscription.assignment is None or self._rejoin_needed_fut.done()
+
+    @property
+    def coordinator_state(self):
+        """Current coordinator state string.
+
+        Returns one of:
+            ``"STABLE"``           — healthy, joined and operating normally.
+            ``"REBALANCING"``      — needs to rejoin; transient, recovers on
+                                     its own.
+            ``"PENDING_ERROR"``    — a fatal error is waiting to be consumed
+                                     via getone/getmany; the coordinator loop
+                                     is paused until then.
+            ``"COORDINATOR_DEAD"`` — the coordination background task has
+                                     crashed; the consumer cannot recover and
+                                     must be restarted.
+        """
+        if self._coordination_task.done():
+            return "COORDINATOR_DEAD"
+        if self._pending_exception is not None:
+            return "PENDING_ERROR"
+        if self._rejoin_needed_fut.done():
+            return "REBALANCING"
+        return "STABLE"
 
     async def ensure_coordinator_known(self):
         """Block until the coordinator for this group is known."""

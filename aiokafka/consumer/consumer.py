@@ -494,6 +494,36 @@ class AIOKafkaConsumer:
         """
         return self._subscription.assigned_partitions()
 
+    @property
+    def coordinator_state(self):
+        """Return the current coordinator state.
+
+        Useful for health checks after broker restarts or group rebalances.
+        Returns one of the following strings:
+
+        * ``"STABLE"`` — the consumer has joined its group and is operating
+          normally.
+        * ``"REBALANCING"`` — a rejoin is pending; this is transient and the
+          consumer should recover on its own.
+        * ``"PENDING_ERROR"`` — a fatal coordinator error is waiting to be
+          surfaced. The coordinator loop is paused until the error is consumed
+          by calling :meth:`getone` or :meth:`getmany`. If your polling loop
+          has stopped, the consumer will not recover until you resume it or
+          restart the consumer.
+        * ``"COORDINATOR_DEAD"`` — the coordination background task has
+          crashed. The consumer cannot recover and must be restarted.
+        * ``"STOPPED"`` — the consumer has not been started or has been closed.
+
+        Example health check::
+
+            if consumer.coordinator_state in ("COORDINATOR_DEAD", "PENDING_ERROR"):
+                # trigger a restart
+                ...
+        """
+        if self._closed or self._coordinator is None:
+            return "STOPPED"
+        return self._coordinator.coordinator_state
+
     async def stop(self):
         """Close the consumer, while waiting for finalizers:
 
