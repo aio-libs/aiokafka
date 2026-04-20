@@ -690,14 +690,35 @@ class Fetcher:
             self._preferred_read_replica.pop(tp, None)
         return self._client.cluster.leader_for_partition(tp)
 
-    def _update_preferred_read_replica(self, tp, node_id):
+    def _update_preferred_read_replica(self, tp, node_id, *, responder_node_id=None):
         """Cache or invalidate the preferred read replica for ``tp``.
 
-        ``node_id == -1`` means the broker asks the consumer to fetch from the
-        leader.
+        Per KIP-392, the meaning of ``preferred_read_replica == -1`` depends on
+        which broker produced the response:
+
+        * If the **leader** answered with ``-1``, it is telling us "no preferred
+          replica is available — keep fetching from me." We should drop any
+          cached entry so the next fetch goes to the leader.
+        * If a **follower** (the previously selected preferred replica)
+          answered with ``-1``, it is telling us "I am still the right one,
+          keep using me." Dropping the cache here would bounce the consumer
+          back to the leader on every fetch, defeating the purpose of KIP-392.
+
+        ``responder_node_id`` identifies the broker that produced the response.
+        When unknown, we fall back to the previous (more conservative) behavior
+        of dropping the cache on ``-1``.
         """
         if node_id is None or node_id == -1:
-            self._preferred_read_replica.pop(tp, None)
+            if responder_node_id is None:
+                # Unknown responder — be conservative and invalidate.
+                self._preferred_read_replica.pop(tp, None)
+                return
+            leader = self._client.cluster.leader_for_partition(tp)
+            # Only drop the cache if the leader itself told us there is no
+            # preferred replica. A `-1` from the previously chosen follower
+            # means "I am still the right choice" — keep it.
+            if responder_node_id == leader:
+                self._preferred_read_replica.pop(tp, None)
             return
         self._preferred_read_replica[tp] = (
             node_id,
@@ -754,7 +775,9 @@ class Fetcher:
                         aborted_transactions = part_data[2]
                         preferred_read_replica = part_data[3]
                         self._update_preferred_read_replica(
-                            tp, preferred_read_replica
+                            tp,
+                            preferred_read_replica,
+                            responder_node_id=node_id,
                         )
                     elif response.API_VERSION >= 4:
                         aborted_transactions = part_data[-2]
