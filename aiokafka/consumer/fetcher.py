@@ -374,6 +374,11 @@ class Fetcher:
             ofther value will raise the exception. Default: 'latest'.
         isolation_level (str): Controls how to read messages written
             transactionally. See consumer description.
+        client_rack (str): A rack identifier for this client. This is sent to
+            the broker on FetchRequest v11+ to enable rack-aware fetching
+            from the closest replica (KIP-392). Default: ``""`` (disabled).
+        metadata_max_age_ms (int): Period of time after which a cached
+            preferred read replica is invalidated. Default: 300000.
     """
 
     def __init__(
@@ -393,6 +398,8 @@ class Fetcher:
         retry_backoff_ms=100,
         auto_offset_reset="latest",
         isolation_level="read_uncommitted",
+        client_rack="",
+        metadata_max_age_ms=5 * 60 * 1000,
     ):
         self._client = client
         self._loop = client._loop
@@ -408,6 +415,13 @@ class Fetcher:
         self._retry_backoff = retry_backoff_ms / 1000
         self._subscriptions = subscriptions
         self._default_reset_strategy = OffsetResetStrategy.from_str(auto_offset_reset)
+        self._client_rack = client_rack or ""
+        # KIP-392: cache of preferred read replica per partition.
+        # tp -> (node_id, expires_at_monotonic)
+        self._preferred_read_replica: dict[
+            TopicPartition, tuple[int, float]
+        ] = {}
+        self._preferred_replica_ttl = metadata_max_age_ms / 1000
 
         if isolation_level == "read_uncommitted":
             self._isolation_level = READ_UNCOMMITTED
@@ -586,7 +600,7 @@ class Fetcher:
         for tp in assignment.tps:
             tp_state = assignment.state_value(tp)
 
-            node_id = self._client.cluster.leader_for_partition(tp)
+            node_id = self._select_read_replica(tp)
             backoff = 0
             if tp in self._records:
                 # We have data still not consumed by user. In this case we
@@ -640,6 +654,7 @@ class Fetcher:
                 self._fetch_max_bytes,
                 self._isolation_level,
                 list(by_topics.items()),
+                rack_id=self._client_rack,
             )
             fetch_requests.append((node_id, req))
 
@@ -655,6 +670,38 @@ class Fetcher:
             backoff,
             invalid_metadata,
             resume_futures,
+        )
+
+    def _select_read_replica(self, tp):
+        """Return node id to fetch ``tp`` from.
+
+        Honors the KIP-392 preferred read replica returned by the broker if
+        it is still valid (not expired and the node is known to the cluster);
+        otherwise falls back to the partition leader.
+        """
+        cached = self._preferred_read_replica.get(tp)
+        if cached is not None:
+            node_id, expires_at = cached
+            if time.monotonic() < expires_at and (
+                self._client.cluster.broker_metadata(node_id) is not None
+            ):
+                return node_id
+            # Expired or node disappeared from metadata
+            self._preferred_read_replica.pop(tp, None)
+        return self._client.cluster.leader_for_partition(tp)
+
+    def _update_preferred_read_replica(self, tp, node_id):
+        """Cache or invalidate the preferred read replica for ``tp``.
+
+        ``node_id == -1`` means the broker asks the consumer to fetch from the
+        leader.
+        """
+        if node_id is None or node_id == -1:
+            self._preferred_read_replica.pop(tp, None)
+            return
+        self._preferred_read_replica[tp] = (
+            node_id,
+            time.monotonic() + self._preferred_replica_ttl,
         )
 
     async def _proc_fetch_request(self, assignment, node_id, request):
@@ -699,7 +746,17 @@ class Fetcher:
                     continue
 
                 if error_type is Errors.NoError:
-                    if response.API_VERSION >= 4:
+                    if response.API_VERSION >= 11:
+                        # part_data layout: [last_stable_offset,
+                        # log_start_offset, aborted_transactions,
+                        # preferred_read_replica, message_set]
+                        lso = part_data[0]
+                        aborted_transactions = part_data[2]
+                        preferred_read_replica = part_data[3]
+                        self._update_preferred_read_replica(
+                            tp, preferred_read_replica
+                        )
+                    elif response.API_VERSION >= 4:
                         aborted_transactions = part_data[-2]
                         lso = part_data[-3]
                     else:
@@ -762,8 +819,15 @@ class Fetcher:
                     Errors.NotLeaderForPartitionError,
                     Errors.UnknownTopicOrPartitionError,
                 ):
+                    # Stale routing -- drop the cached preferred replica so we
+                    # fall back to the leader returned by the next metadata
+                    # update.
+                    self._preferred_read_replica.pop(tp, None)
                     self._client.force_metadata_update()
                 elif error_type is Errors.OffsetOutOfRangeError:
+                    # The follower replica may be lagging; force re-fetch from
+                    # the leader after reset.
+                    self._preferred_read_replica.pop(tp, None)
                     if self._default_reset_strategy != OffsetResetStrategy.NONE:
                         tp_state.await_reset(self._default_reset_strategy)
                     else:
