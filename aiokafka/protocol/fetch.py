@@ -604,7 +604,7 @@ class FetchRequest(Request[FetchRequestStruct]):
             if api_version >= 7:
                 args.append([])  # forgotten_topics_data
             if api_version >= 11:
-                args.append(self._rack_id or "")
+                args.append(self._rack_id)
             return request_struct_class(*args)
 
         if self._isolation_level:

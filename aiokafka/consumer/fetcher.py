@@ -650,7 +650,7 @@ class Fetcher:
                 self._fetch_max_bytes,
                 self._isolation_level,
                 list(by_topics.items()),
-                rack_id=self._client_rack,
+                rack_id=self._client_rack or "",
             )
             fetch_requests.append((node_id, req))
 

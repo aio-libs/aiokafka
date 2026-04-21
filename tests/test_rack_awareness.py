@@ -8,8 +8,11 @@ hint from the leader?"
 
 from __future__ import annotations
 
+import logging
 import time
 from unittest import mock
+
+import pytest
 
 from aiokafka.consumer.fetcher import Fetcher
 from aiokafka.protocol.fetch import (
@@ -126,7 +129,10 @@ class TestReplicaSelectionRouting:
         fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
 
         fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
-        time.sleep(0.005)  # ensure TTL expired
+
+        # Force the cached entry to be expired by setting its expiry to the past.
+        # This avoids relying on time.sleep, which is unreliable on Windows.
+        fetcher._preferred_read_replica[tp] = (7, time.monotonic() - 1)
 
         assignment = _make_assignment(fetcher, [tp])
         fetch_requests, *_ = fetcher._get_actions_per_node(assignment)
@@ -276,3 +282,77 @@ class TestRackIdInRequest:
 
         _, req = fetch_requests[0]
         assert req._rack_id == "us-east-1a"
+
+
+# ---------------------------------------------------------------------------
+# 5. Warning when client_rack is set but broker < v11
+# ---------------------------------------------------------------------------
+
+
+class TestRackVersionWarning:
+    """A one-shot warning must be logged when client_rack is set but the
+    broker only supports FetchRequest < v11."""
+
+    @pytest.mark.asyncio
+    async def test_warning_logged_when_broker_below_v11(self, caplog):
+        """If client_rack is set and the FetchResponse version is < 11,
+        a warning is logged exactly once."""
+        fetcher = _make_fetcher(client_rack="us-east-1a")
+
+        # Mock assignment
+        assignment = mock.Mock()
+        assignment.active = True
+        state = mock.Mock()
+        state.has_valid_position = True
+        state.position = 0
+        assignment.state_value.return_value = state
+
+        # Mock a v4 FetchResponse with one topic and one partition (NoError,
+        # but empty message set so we don't need real record parsing).
+        response = mock.Mock()
+        response.API_VERSION = 4
+        response.topics = []  # no partitions to iterate
+
+        # Mock the request's .topics property so fetch_offsets can be built.
+        request = mock.Mock()
+        request.topics = []
+
+        # The client.send() must return our mock response.
+        fetcher._client.send = mock.AsyncMock(return_value=response)
+
+        assert not fetcher._rack_warning_logged
+
+        with caplog.at_level(logging.WARNING):
+            await fetcher._proc_fetch_request(assignment, 1, request)
+
+        assert fetcher._rack_warning_logged
+        assert any("client_rack" in msg and "v4" in msg for msg in caplog.messages)
+
+        # Second call should NOT log again.
+        caplog.clear()
+        with caplog.at_level(logging.WARNING):
+            await fetcher._proc_fetch_request(assignment, 1, request)
+        assert not any("client_rack" in msg for msg in caplog.messages)
+
+    @pytest.mark.asyncio
+    async def test_no_warning_when_rack_not_set(self, caplog):
+        """If client_rack is not set, no warning even when broker < v11."""
+        fetcher = _make_fetcher(client_rack=None)
+
+        assignment = mock.Mock()
+        assignment.active = True
+
+        response = mock.Mock()
+        response.API_VERSION = 4
+        response.topics = []
+
+        request = mock.Mock()
+        request.topics = []
+
+        fetcher._client.send = mock.AsyncMock(return_value=response)
+
+        with caplog.at_level(logging.WARNING):
+            await fetcher._proc_fetch_request(assignment, 1, request)
+
+        assert not fetcher._rack_warning_logged
+        assert not any("client_rack" in msg for msg in caplog.messages)
