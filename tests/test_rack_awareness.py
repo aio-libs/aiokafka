@@ -14,6 +14,7 @@ from unittest import mock
 
 import pytest
 
+from aiokafka import errors as Errors
 from aiokafka.consumer.fetcher import Fetcher
 from aiokafka.protocol.fetch import (
     FetchRequest,
@@ -356,3 +357,158 @@ class TestRackVersionWarning:
 
         assert not fetcher._rack_warning_logged
         assert not any("client_rack" in msg for msg in caplog.messages)
+
+
+# ---------------------------------------------------------------------------
+# 6. Offset resets must always be routed to the partition leader
+# ---------------------------------------------------------------------------
+
+
+class TestOffsetResetRouting:
+    """Per KIP-392, only Fetch traffic may be served by a follower.
+    ListOffsets (used for seek_to_beginning / seek_to_end / out-of-range
+    resets) must always go to the partition leader, otherwise the follower
+    will reply with NOT_LEADER_FOR_PARTITION and the consumer will be stuck
+    until the preferred-replica TTL expires."""
+
+    def test_awaiting_reset_is_keyed_by_leader_not_follower(self):
+        fetcher = _make_fetcher()
+        tp = TopicPartition("topic-a", 0)
+
+        # Leader = node 1, cached preferred replica = node 7.
+        fetcher._client.cluster.leader_for_partition.return_value = 1
+        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
+        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+
+        # Build an assignment where the partition has no valid position,
+        # so it ends up in awaiting_reset.
+        assignment = mock.Mock()
+        assignment.tps = [tp]
+
+        def state_value(_tp):
+            state = mock.Mock()
+            state.has_valid_position = False
+            state.paused = False
+            return state
+
+        assignment.state_value = state_value
+        fetcher._records = {}
+        fetcher._in_flight = set()
+
+        _, awaiting_reset, *_ = fetcher._get_actions_per_node(assignment)
+
+        assert 1 in awaiting_reset, (
+            "ListOffsets must be sent to the leader (node 1), not to the "
+            "preferred follower (node 7)"
+        )
+        assert 7 not in awaiting_reset
+        assert tp in awaiting_reset[1]
+
+    def test_unknown_leader_during_reset_triggers_metadata_refresh(self):
+        """If a preferred replica is cached but the partition leader is
+        currently unknown (e.g. during leader election), the partition must
+        not be enqueued under an invalid leader id. Instead, the routine must
+        signal ``invalid_metadata`` so the client forces a metadata refresh."""
+        fetcher = _make_fetcher()
+        tp = TopicPartition("topic-a", 0)
+
+        # Cache a preferred follower while the leader is known.
+        fetcher._client.cluster.leader_for_partition.return_value = 1
+        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
+        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+
+        # Now leader becomes unknown (e.g. mid-election).
+        fetcher._client.cluster.leader_for_partition.return_value = None
+
+        assignment = mock.Mock()
+        assignment.tps = [tp]
+
+        def state_value(_tp):
+            state = mock.Mock()
+            state.has_valid_position = False
+            state.paused = False
+            return state
+
+        assignment.state_value = state_value
+        fetcher._records = {}
+        fetcher._in_flight = set()
+
+        _, awaiting_reset, _, invalid_metadata, _ = fetcher._get_actions_per_node(
+            assignment
+        )
+
+        assert invalid_metadata is True
+        assert not awaiting_reset, (
+            "Partition must not be queued under an unknown leader id"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 7. Transport failures against a follower must evict the cached replica
+# ---------------------------------------------------------------------------
+
+
+class TestTransportFailureEviction:
+    """If a fetch to the preferred follower fails at the transport level
+    (connection error, broker down, etc.), the cached entry must be evicted
+    so the next attempt falls back to the leader instead of repeatedly
+    hitting the unreachable follower until ``metadata_max_age_ms`` expiry."""
+
+    @pytest.mark.asyncio
+    async def test_kafka_error_evicts_preferred_replica(self):
+        fetcher = _make_fetcher()
+        tp = TopicPartition("topic-a", 0)
+
+        fetcher._client.cluster.leader_for_partition.return_value = 1
+        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
+        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        assert tp in fetcher._preferred_read_replica
+
+        # Simulate a transport failure when sending to follower 7.
+        fetcher._client.send = mock.AsyncMock(
+            side_effect=Errors.KafkaConnectionError("boom")
+        )
+
+        # Sleep is awaited inside the error path; make it instant.
+        with mock.patch("aiokafka.consumer.fetcher.asyncio.sleep", mock.AsyncMock()):
+            request = mock.Mock()
+            request.topics = [("topic-a", [(0, 0, 1024)])]
+            assignment = mock.Mock()
+            assignment.active = True
+            ok = await fetcher._proc_fetch_request(assignment, 7, request)
+
+        assert ok is False
+        assert tp not in fetcher._preferred_read_replica, (
+            "Cached preferred replica must be evicted after transport failure"
+        )
+        # After eviction, the next routing decision falls back to the leader.
+        assert fetcher._select_read_replica(tp) == 1
+
+    @pytest.mark.asyncio
+    async def test_failure_against_leader_does_not_evict_other_followers(self):
+        """Failures while talking to the leader (no cache entry) must leave
+        any unrelated cached entries alone."""
+        fetcher = _make_fetcher()
+        tp_b = TopicPartition("topic-b", 0)
+
+        fetcher._client.cluster.leader_for_partition.return_value = 1
+        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
+        # tp_b is cached against follower 7; tp_a is fetched from leader 1.
+        fetcher._update_preferred_read_replica(tp_b, 7, responder_node_id=1)
+
+        fetcher._client.send = mock.AsyncMock(
+            side_effect=Errors.KafkaConnectionError("boom")
+        )
+
+        with mock.patch("aiokafka.consumer.fetcher.asyncio.sleep", mock.AsyncMock()):
+            request = mock.Mock()
+            request.topics = [("topic-a", [(0, 0, 1024)])]
+            assignment = mock.Mock()
+            assignment.active = True
+            await fetcher._proc_fetch_request(assignment, 1, request)
+
+        # tp_b's cached follower entry must be untouched.
+        assert tp_b in fetcher._preferred_read_replica
+        assert fetcher._preferred_read_replica[tp_b][0] == 7
+
+

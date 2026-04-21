@@ -615,7 +615,22 @@ class Fetcher:
                 )
                 invalid_metadata = True
             elif not tp_state.has_valid_position:
-                awaiting_reset[node_id].append(tp)
+                # Per KIP-392, only Fetch requests may be served by a follower.
+                # ListOffsets must always go to the partition leader, otherwise
+                # the follower will reply with NOT_LEADER_FOR_PARTITION.
+                leader_id = self._client.cluster.leader_for_partition(tp)
+                if leader_id is None or leader_id == -1:
+                    # The cached preferred replica may still be reachable, but
+                    # without a known leader we cannot safely send ListOffsets.
+                    # Force a metadata refresh and try again next iteration.
+                    log.debug(
+                        "No leader found for partition %s while resetting "
+                        "offset. Waiting metadata update",
+                        tp,
+                    )
+                    invalid_metadata = True
+                else:
+                    awaiting_reset[leader_id].append(tp)
             elif tp_state.paused:
                 resume_futures.append(tp_state.resume_fut)
             else:
@@ -717,12 +732,33 @@ class Fetcher:
             time.monotonic() + self._preferred_replica_ttl,
         )
 
+    def _invalidate_preferred_read_replica_for_node(self, node_id, request):
+        """Drop cached preferred-replica entries that point to ``node_id``.
+
+        Called when a fetch to a follower fails at the transport level. We
+        only consider TPs that were actually part of the failed request, and
+        only evict entries whose cached replica matches the failing node, so
+        that the next call to :meth:`_select_read_replica` falls back to the
+        partition leader.
+        """
+        for topic, partitions in request.topics:
+            for partition_info in partitions:
+                tp = TopicPartition(topic, partition_info[0])
+                cached = self._preferred_read_replica.get(tp)
+                if cached is not None and cached[0] == node_id:
+                    self._preferred_read_replica.pop(tp, None)
+
     async def _proc_fetch_request(self, assignment, node_id, request):
         needs_wakeup = False
         try:
             response = await self._client.send(node_id, request)
         except Errors.KafkaError as err:
             log.error("Failed fetch messages from %s: %s", node_id, err)
+            # If this fetch was routed to a preferred read replica (follower)
+            # and failed at the transport/protocol level, evict the cached
+            # entries so the next attempt falls back to the leader instead of
+            # repeatedly hitting the unreachable follower until TTL expiry.
+            self._invalidate_preferred_read_replica_for_node(node_id, request)
             await asyncio.sleep(self._retry_backoff)
             return False
         except asyncio.CancelledError:
