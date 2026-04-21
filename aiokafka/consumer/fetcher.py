@@ -417,6 +417,7 @@ class Fetcher:
         # tp -> (node_id, expires_at_monotonic)
         self._preferred_read_replica: dict[TopicPartition, tuple[int, float]] = {}
         self._preferred_replica_ttl = client._metadata_max_age_ms / 1000
+        self._rack_warning_logged = False
 
         if isolation_level == "read_uncommitted":
             self._isolation_level = READ_UNCOMMITTED
@@ -741,6 +742,20 @@ class Fetcher:
                 fetch_offsets[TopicPartition(topic, partition)] = offset
 
         now_ms = int(1000 * time.time())
+        if (
+            self._client_rack
+            and response.API_VERSION < 11
+            and not self._rack_warning_logged
+        ):
+            log.warning(
+                "client_rack is set to %r but broker only supports "
+                "FetchRequest v%d (v11+ required for KIP-392 rack-aware "
+                "fetching). The consumer will fall back to fetching from "
+                "the partition leader.",
+                self._client_rack,
+                response.API_VERSION,
+            )
+            self._rack_warning_logged = True
         for topic, partitions in response.topics:
             for partition, error_code, highwater, *part_data in partitions:
                 tp = TopicPartition(topic, partition)
