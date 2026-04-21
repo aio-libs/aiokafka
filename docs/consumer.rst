@@ -560,7 +560,7 @@ supports this via the ``client_rack`` option::
     consumer = aiokafka.AIOKafkaConsumer(
         "my_topic",
         bootstrap_servers="kafka-nl-1:9092,kafka-nl2-1:9092,kafka-ld-1:9092",
-        client_rack="nl",  # this consumer lives in rack/AZ "nl"
+        client_rack="us-east-1a",  # this consumer lives in rack/AZ "us-east-1a"
     )
 
 When set, the consumer sends its rack id in every ``FetchRequest``. The broker

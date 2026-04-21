@@ -21,7 +21,7 @@ from aiokafka.structs import TopicPartition
 # ---------------------------------------------------------------------------
 
 
-def _make_fetcher(client_rack: str = "nl", metadata_max_age_ms: int = 60_000):
+def _make_fetcher(client_rack: str = "us-east-1a", metadata_max_age_ms: int = 60_000):
     """Build a minimal Fetcher with mocked client/subscriptions.
 
     No running event loop needed — we only exercise synchronous methods.
@@ -256,11 +256,11 @@ class TestRackIdInRequest:
             max_bytes=1024,
             isolation_level=0,
             topics=[("t", [(0, 42, 1024)])],
-            rack_id="nl",
+            rack_id="us-east-1a",
         )
         built = req.build(FetchRequest_v11)
         obj = built.to_object()
-        assert obj["rack_id"] == "nl"
+        assert obj["rack_id"] == "us-east-1a"
 
     def test_fetch_request_v9_does_not_carry_rack_id(self):
         from aiokafka.protocol.fetch import FetchRequest, FetchRequest_v9
@@ -271,7 +271,7 @@ class TestRackIdInRequest:
             max_bytes=1024,
             isolation_level=0,
             topics=[("t", [(0, 42, 1024)])],
-            rack_id="nl",
+            rack_id="us-east-1a",
         )
         built = req.build(FetchRequest_v9)
         obj = built.to_object()
@@ -279,7 +279,7 @@ class TestRackIdInRequest:
 
     def test_fetch_request_built_by_fetcher_includes_rack(self):
         """_get_actions_per_node should produce requests with our rack_id."""
-        fetcher = _make_fetcher(client_rack="nl")
+        fetcher = _make_fetcher(client_rack="us-east-1a")
         tp = TopicPartition("topic-a", 0)
 
         fetcher._client.cluster.leader_for_partition.return_value = 1
@@ -289,4 +289,4 @@ class TestRackIdInRequest:
         fetch_requests, *_ = fetcher._get_actions_per_node(assignment)
 
         _, req = fetch_requests[0]
-        assert req._rack_id == "nl"
+        assert req._rack_id == "us-east-1a"
