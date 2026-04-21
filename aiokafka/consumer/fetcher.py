@@ -418,9 +418,7 @@ class Fetcher:
         self._client_rack = client_rack or ""
         # KIP-392: cache of preferred read replica per partition.
         # tp -> (node_id, expires_at_monotonic)
-        self._preferred_read_replica: dict[
-            TopicPartition, tuple[int, float]
-        ] = {}
+        self._preferred_read_replica: dict[TopicPartition, tuple[int, float]] = {}
         self._preferred_replica_ttl = metadata_max_age_ms / 1000
 
         if isolation_level == "read_uncommitted":

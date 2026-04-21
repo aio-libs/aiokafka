@@ -565,9 +565,7 @@ class FetchRequest(Request[FetchRequestStruct]):
             # `current_leader_epoch`. v7+ adds incremental fetch session
             # fields and forgotten_topics_data. v11 adds top-level rack_id.
             include_leader_epoch = api_version >= 9
-            partitions_by_topic: list[
-                tuple[str, list[tuple[int, ...]]]
-            ] = []
+            partitions_by_topic: list[tuple[str, list[tuple[int, ...]]]] = []
             for topic, parts in self._topics:
                 new_parts = []
                 for partition, offset, max_bytes in parts:

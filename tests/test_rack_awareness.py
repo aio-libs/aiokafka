@@ -11,7 +11,6 @@ from __future__ import annotations
 import time
 from unittest import mock
 
-import pytest
 
 from aiokafka.consumer.fetcher import Fetcher
 from aiokafka.structs import TopicPartition
@@ -82,7 +81,9 @@ class TestReplicaSelectionRouting:
 
         # Leader is node 1, preferred replica is node 7.
         fetcher._client.cluster.leader_for_partition.return_value = 1
-        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()  # node 7 is known
+        fetcher._client.cluster.broker_metadata.return_value = (
+            mock.Mock()
+        )  # node 7 is known
 
         # Simulate the broker returning preferred_read_replica=7.
         fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
@@ -289,4 +290,3 @@ class TestRackIdInRequest:
 
         _, req = fetch_requests[0]
         assert req._rack_id == "nl"
-
