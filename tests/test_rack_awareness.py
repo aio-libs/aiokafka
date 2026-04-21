@@ -11,10 +11,13 @@ from __future__ import annotations
 import time
 from unittest import mock
 
-
 from aiokafka.consumer.fetcher import Fetcher
+from aiokafka.protocol.fetch import (
+    FetchRequest,
+    FetchRequest_v9,
+    FetchRequest_v11,
+)
 from aiokafka.structs import TopicPartition
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -93,7 +96,7 @@ class TestReplicaSelectionRouting:
         fetch_requests, *_ = fetcher._get_actions_per_node(assignment)
 
         assert len(fetch_requests) == 1
-        node_id, req = fetch_requests[0]
+        node_id, _req = fetch_requests[0]
         assert node_id == 7, (
             f"Expected fetch to be routed to preferred replica 7, got {node_id}"
         )
@@ -248,8 +251,6 @@ class TestRackIdInRequest:
     older versions."""
 
     def test_fetch_request_v11_carries_rack_id(self):
-        from aiokafka.protocol.fetch import FetchRequest, FetchRequest_v11
-
         req = FetchRequest(
             max_wait_time=100,
             min_bytes=1,
@@ -263,8 +264,6 @@ class TestRackIdInRequest:
         assert obj["rack_id"] == "us-east-1a"
 
     def test_fetch_request_v9_does_not_carry_rack_id(self):
-        from aiokafka.protocol.fetch import FetchRequest, FetchRequest_v9
-
         req = FetchRequest(
             max_wait_time=100,
             min_bytes=1,
