@@ -510,5 +510,3 @@ class TestTransportFailureEviction:
         # tp_b's cached follower entry must be untouched.
         assert tp_b in fetcher._preferred_read_replica
         assert fetcher._preferred_read_replica[tp_b][0] == 7
-
-
