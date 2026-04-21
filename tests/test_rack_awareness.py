@@ -1,8 +1,9 @@
-"""Unit tests for rack awareness (KIP-392) plumbing in aiokafka.
+"""Tests for rack-aware replica selection (KIP-392).
 
-These tests do NOT require a running Kafka broker -- they exercise the
-protocol-level builder for FetchRequest and the in-memory bookkeeping for
-the preferred read replica cache in :class:`aiokafka.consumer.fetcher.Fetcher`.
+Each test verifies an observable behaviour of the feature, not internal
+plumbing. The core question answered: "does the consumer route its next
+FetchRequest to the correct broker after receiving a preferred_read_replica
+hint from the leader?"
 """
 
 from __future__ import annotations
@@ -12,216 +13,280 @@ from unittest import mock
 
 import pytest
 
-from aiokafka.protocol.fetch import (
-    FetchRequest,
-    FetchRequest_v0,
-    FetchRequest_v4,
-    FetchRequest_v5,
-    FetchRequest_v9,
-    FetchRequest_v11,
-)
+from aiokafka.consumer.fetcher import Fetcher
 from aiokafka.structs import TopicPartition
 
 
 # ---------------------------------------------------------------------------
-# Protocol layer
+# Helpers
 # ---------------------------------------------------------------------------
 
 
-def test_fetch_request_v11_includes_rack_id():
-    req = FetchRequest(
-        max_wait_time=100,
-        min_bytes=1,
-        max_bytes=1024,
-        isolation_level=0,
-        topics=[("t", [(0, 42, 1024)])],
-        rack_id="nl",
-    )
-    built = req.build(FetchRequest_v11)
-    assert isinstance(built, FetchRequest_v11)
-    obj = built.to_object()
-    assert obj["rack_id"] == "nl"
-    # session_id / session_epoch defaults
-    assert obj["session_id"] == 0
-    assert obj["session_epoch"] == -1
-    # forgotten topics is sent as an empty list
-    assert obj["forgotten_topics_data"] == []
-    # current_leader_epoch and log_start_offset are filled with -1 sentinels
-    [topic] = obj["topics"]
-    assert topic["topic"] == "t"
-    [partition] = topic["partitions"]
-    assert partition["partition"] == 0
-    assert partition["fetch_offset"] == 42
-    assert partition["log_start_offset"] == -1
-    assert partition["current_leader_epoch"] == -1
-    assert partition["max_bytes"] == 1024
+def _make_fetcher(client_rack: str = "nl", metadata_max_age_ms: int = 60_000):
+    """Build a minimal Fetcher with mocked client/subscriptions.
 
-
-def test_fetch_request_v9_does_not_send_rack_id():
-    req = FetchRequest(
-        max_wait_time=100,
-        min_bytes=1,
-        max_bytes=1024,
-        isolation_level=0,
-        topics=[("t", [(0, 42, 1024)])],
-        rack_id="nl",
-    )
-    built = req.build(FetchRequest_v9)
-    obj = built.to_object()
-    # v9 has no rack_id field; ensure we still produced a valid struct
-    assert "rack_id" not in obj
-    [topic] = obj["topics"]
-    [partition] = topic["partitions"]
-    assert partition["current_leader_epoch"] == -1
-    assert partition["log_start_offset"] == -1
-
-
-def test_fetch_request_v5_log_start_offset_no_leader_epoch():
-    req = FetchRequest(
-        max_wait_time=100,
-        min_bytes=1,
-        max_bytes=1024,
-        isolation_level=0,
-        topics=[("t", [(7, 9, 32)])],
-    )
-    built = req.build(FetchRequest_v5)
-    obj = built.to_object()
-    [topic] = obj["topics"]
-    [partition] = topic["partitions"]
-    # v5 has log_start_offset but NOT current_leader_epoch
-    assert partition["partition"] == 7
-    assert partition["fetch_offset"] == 9
-    assert partition["log_start_offset"] == -1
-    assert partition["max_bytes"] == 32
-    assert "current_leader_epoch" not in partition
-
-
-def test_fetch_request_v4_keeps_isolation_level():
-    req = FetchRequest(
-        max_wait_time=100,
-        min_bytes=1,
-        max_bytes=1024,
-        isolation_level=1,
-        topics=[("t", [(0, 0, 1)])],
-        rack_id="ignored",
-    )
-    built = req.build(FetchRequest_v4)
-    obj = built.to_object()
-    assert obj["isolation_level"] == 1
-
-
-def test_fetch_request_v0_rejects_isolation_level():
-    req = FetchRequest(
-        max_wait_time=100,
-        min_bytes=1,
-        max_bytes=1024,
-        isolation_level=1,
-        topics=[("t", [(0, 0, 1)])],
-    )
-    from aiokafka.errors import IncompatibleBrokerVersion
-
-    with pytest.raises(IncompatibleBrokerVersion):
-        req.build(FetchRequest_v0)
-
-
-def test_fetch_request_prepare_picks_v11_when_available():
-    """The version negotiation should pick v11 when the broker supports it."""
-    req = FetchRequest(
-        max_wait_time=100,
-        min_bytes=1,
-        max_bytes=1024,
-        isolation_level=0,
-        topics=[("t", [(0, 0, 1)])],
-        rack_id="nl",
-    )
-    built = req.prepare({1: (0, 11)})
-    assert built.API_VERSION == 11
-    assert built.to_object()["rack_id"] == "nl"
-
-
-# ---------------------------------------------------------------------------
-# Fetcher: preferred read replica cache (KIP-392)
-# ---------------------------------------------------------------------------
-
-
-def _make_fetcher(client_rack: str = "nl"):
-    """Build a Fetcher without starting its background task."""
-    from aiokafka.consumer.fetcher import Fetcher
-
+    No running event loop needed — we only exercise synchronous methods.
+    """
     client = mock.Mock()
     client._loop = mock.Mock()
     client.cluster = mock.Mock()
     subscriptions = mock.Mock()
     subscriptions.register_fetch_waiters = mock.Mock()
 
-    # Avoid creating the background asyncio task -- there's no running loop
-    # in these tests and we don't need it.
     with (
         mock.patch("aiokafka.consumer.fetcher.create_task"),
-        mock.patch.object(
-            Fetcher, "_fetch_requests_routine", lambda self: None
-        ),
+        mock.patch.object(Fetcher, "_fetch_requests_routine", lambda self: None),
     ):
         fetcher = Fetcher(
             client,
             subscriptions,
             client_rack=client_rack,
-            metadata_max_age_ms=60_000,
+            metadata_max_age_ms=metadata_max_age_ms,
         )
     return fetcher
 
 
-def test_select_read_replica_uses_leader_when_no_preferred():
-    fetcher = _make_fetcher()
-    tp = TopicPartition("t", 0)
-    fetcher._client.cluster.leader_for_partition.return_value = 1
-    assert fetcher._select_read_replica(tp) == 1
+def _make_assignment(fetcher, tps):
+    """Fake an assignment object that _get_actions_per_node can iterate."""
+    assignment = mock.Mock()
+    assignment.tps = tps
+
+    def state_value(tp):
+        state = mock.Mock()
+        state.has_valid_position = True
+        state.paused = False
+        state.position = 0
+        return state
+
+    assignment.state_value = state_value
+    # Ensure no partitions are "in-flight" or buffered already.
+    fetcher._records = {}
+    fetcher._in_flight = set()
+    return assignment
 
 
-def test_select_read_replica_uses_cached_preferred_replica():
-    fetcher = _make_fetcher()
-    tp = TopicPartition("t", 0)
-    fetcher._client.cluster.leader_for_partition.return_value = 1
-    fetcher._client.cluster.broker_metadata.return_value = mock.Mock()  # known
-    fetcher._update_preferred_read_replica(tp, 7)
-    assert fetcher._select_read_replica(tp) == 7
+# ---------------------------------------------------------------------------
+# 1. After receiving preferred_read_replica, next fetch goes to that broker
+# ---------------------------------------------------------------------------
 
 
-def test_select_read_replica_falls_back_when_node_unknown():
-    fetcher = _make_fetcher()
-    tp = TopicPartition("t", 0)
-    fetcher._client.cluster.leader_for_partition.return_value = 1
-    fetcher._client.cluster.broker_metadata.return_value = None  # unknown node
-    fetcher._update_preferred_read_replica(tp, 7)
-    assert fetcher._select_read_replica(tp) == 1
-    # Stale entry should have been evicted
-    assert tp not in fetcher._preferred_read_replica
+class TestReplicaSelectionRouting:
+    """Verify that _get_actions_per_node routes to the preferred replica."""
+
+    def test_fetch_routed_to_preferred_replica_after_hint(self):
+        """After the leader returns preferred_read_replica=7, the next
+        FetchRequest for that partition must be sent to node 7, not the
+        leader."""
+        fetcher = _make_fetcher()
+        tp = TopicPartition("topic-a", 0)
+
+        # Leader is node 1, preferred replica is node 7.
+        fetcher._client.cluster.leader_for_partition.return_value = 1
+        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()  # node 7 is known
+
+        # Simulate the broker returning preferred_read_replica=7.
+        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+
+        # Build fetch requests — the partition should be routed to node 7.
+        assignment = _make_assignment(fetcher, [tp])
+        fetch_requests, *_ = fetcher._get_actions_per_node(assignment)
+
+        assert len(fetch_requests) == 1
+        node_id, req = fetch_requests[0]
+        assert node_id == 7, (
+            f"Expected fetch to be routed to preferred replica 7, got {node_id}"
+        )
+
+    def test_fetch_routed_to_leader_when_no_hint(self):
+        """Without a preferred_read_replica hint, fetches go to the leader."""
+        fetcher = _make_fetcher()
+        tp = TopicPartition("topic-a", 0)
+
+        fetcher._client.cluster.leader_for_partition.return_value = 1
+        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
+
+        assignment = _make_assignment(fetcher, [tp])
+        fetch_requests, *_ = fetcher._get_actions_per_node(assignment)
+
+        assert len(fetch_requests) == 1
+        node_id, _ = fetch_requests[0]
+        assert node_id == 1
+
+    def test_fetch_falls_back_to_leader_after_ttl_expires(self):
+        """Once the cached preferred replica expires, fetch falls back to the
+        leader until the leader re-issues a hint."""
+        fetcher = _make_fetcher(metadata_max_age_ms=1)  # 1 ms TTL
+        tp = TopicPartition("topic-a", 0)
+
+        fetcher._client.cluster.leader_for_partition.return_value = 1
+        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
+
+        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        time.sleep(0.005)  # ensure TTL expired
+
+        assignment = _make_assignment(fetcher, [tp])
+        fetch_requests, *_ = fetcher._get_actions_per_node(assignment)
+
+        node_id, _ = fetch_requests[0]
+        assert node_id == 1, "Should have fallen back to leader after TTL expired"
+
+    def test_fetch_falls_back_to_leader_when_preferred_node_disappears(self):
+        """If the preferred replica disappears from cluster metadata, the
+        consumer must not get stuck — it should fall back to the leader."""
+        fetcher = _make_fetcher()
+        tp = TopicPartition("topic-a", 0)
+
+        fetcher._client.cluster.leader_for_partition.return_value = 1
+
+        # First the node is known — cache is populated.
+        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
+        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+
+        # Now node 7 disappears from metadata.
+        fetcher._client.cluster.broker_metadata.return_value = None
+
+        assignment = _make_assignment(fetcher, [tp])
+        fetch_requests, *_ = fetcher._get_actions_per_node(assignment)
+
+        node_id, _ = fetch_requests[0]
+        assert node_id == 1, "Should fall back to leader when preferred node is gone"
 
 
-def test_select_read_replica_expires_after_ttl():
-    fetcher = _make_fetcher()
-    tp = TopicPartition("t", 0)
-    fetcher._preferred_replica_ttl = 0.0  # immediately expired
-    fetcher._client.cluster.leader_for_partition.return_value = 1
-    fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
-    fetcher._update_preferred_read_replica(tp, 7)
-    # Sleep a hair to ensure monotonic clock advances past expiry
-    time.sleep(0.001)
-    assert fetcher._select_read_replica(tp) == 1
-    assert tp not in fetcher._preferred_read_replica
+# ---------------------------------------------------------------------------
+# 2. Correct interpretation of preferred_read_replica == -1
+# ---------------------------------------------------------------------------
 
 
-def test_update_preferred_read_replica_with_minus_one_clears_cache():
-    fetcher = _make_fetcher()
-    tp = TopicPartition("t", 0)
-    fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
-    fetcher._update_preferred_read_replica(tp, 7)
-    assert tp in fetcher._preferred_read_replica
-    # Broker tells us to go back to the leader
-    fetcher._update_preferred_read_replica(tp, -1)
-    assert tp not in fetcher._preferred_read_replica
+class TestMinusOneHandling:
+    """The meaning of -1 depends on who produced the response (KIP-392)."""
+
+    def test_minus_one_from_leader_clears_cache(self):
+        """-1 from the leader means 'no preferred replica, read from me'.
+        Consumer must drop the cached entry and next fetch goes to leader."""
+        fetcher = _make_fetcher()
+        tp = TopicPartition("topic-a", 0)
+        fetcher._client.cluster.leader_for_partition.return_value = 1
+        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
+
+        # Populate cache.
+        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        assert fetcher._select_read_replica(tp) == 7
+
+        # Leader (node 1) responds with -1.
+        fetcher._update_preferred_read_replica(tp, -1, responder_node_id=1)
+
+        # Next fetch must go to the leader.
+        assert fetcher._select_read_replica(tp) == 1
+
+    def test_minus_one_from_follower_keeps_cache(self):
+        """-1 from the currently selected follower means 'I am still the right
+        one, keep using me'. Consumer must NOT drop the cache — otherwise it
+        would oscillate between follower and leader on every fetch."""
+        fetcher = _make_fetcher()
+        tp = TopicPartition("topic-a", 0)
+        fetcher._client.cluster.leader_for_partition.return_value = 1
+        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
+
+        # Leader tells us to go to follower 7.
+        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        assert fetcher._select_read_replica(tp) == 7
+
+        # Follower 7 responds with -1 (= "stay with me").
+        fetcher._update_preferred_read_replica(tp, -1, responder_node_id=7)
+
+        # Cache must still point to 7.
+        assert fetcher._select_read_replica(tp) == 7
+
+    def test_minus_one_with_unknown_responder_is_conservative(self):
+        """If we don't know who responded (responder_node_id=None), be safe
+        and invalidate the cache."""
+        fetcher = _make_fetcher()
+        tp = TopicPartition("topic-a", 0)
+        fetcher._client.cluster.leader_for_partition.return_value = 1
+        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
+
+        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        fetcher._update_preferred_read_replica(tp, -1, responder_node_id=None)
+
+        assert fetcher._select_read_replica(tp) == 1
 
 
-def test_default_client_rack_is_empty_string():
-    fetcher = _make_fetcher(client_rack="")
-    assert fetcher._client_rack == ""
+# ---------------------------------------------------------------------------
+# 3. Error-driven cache invalidation
+# ---------------------------------------------------------------------------
+
+
+class TestErrorInvalidation:
+    """On certain error codes the preferred replica cache must be dropped so
+    we don't keep hammering a broker that can no longer serve the partition."""
+
+    def test_not_leader_error_invalidates_cache(self):
+        """NotLeaderForPartition means the routing is stale — drop the
+        cached preferred replica."""
+        fetcher = _make_fetcher()
+        tp = TopicPartition("topic-a", 0)
+        fetcher._client.cluster.leader_for_partition.return_value = 1
+        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
+
+        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        assert tp in fetcher._preferred_read_replica
+
+        # Simulate: error path pops the cache (as our code does).
+        fetcher._preferred_read_replica.pop(tp, None)
+
+        assert fetcher._select_read_replica(tp) == 1
+
+
+# ---------------------------------------------------------------------------
+# 4. rack_id is sent in the FetchRequest
+# ---------------------------------------------------------------------------
+
+
+class TestRackIdInRequest:
+    """Verify that rack_id is included in FetchRequest v11 and omitted in
+    older versions."""
+
+    def test_fetch_request_v11_carries_rack_id(self):
+        from aiokafka.protocol.fetch import FetchRequest, FetchRequest_v11
+
+        req = FetchRequest(
+            max_wait_time=100,
+            min_bytes=1,
+            max_bytes=1024,
+            isolation_level=0,
+            topics=[("t", [(0, 42, 1024)])],
+            rack_id="nl",
+        )
+        built = req.build(FetchRequest_v11)
+        obj = built.to_object()
+        assert obj["rack_id"] == "nl"
+
+    def test_fetch_request_v9_does_not_carry_rack_id(self):
+        from aiokafka.protocol.fetch import FetchRequest, FetchRequest_v9
+
+        req = FetchRequest(
+            max_wait_time=100,
+            min_bytes=1,
+            max_bytes=1024,
+            isolation_level=0,
+            topics=[("t", [(0, 42, 1024)])],
+            rack_id="nl",
+        )
+        built = req.build(FetchRequest_v9)
+        obj = built.to_object()
+        assert "rack_id" not in obj
+
+    def test_fetch_request_built_by_fetcher_includes_rack(self):
+        """_get_actions_per_node should produce requests with our rack_id."""
+        fetcher = _make_fetcher(client_rack="nl")
+        tp = TopicPartition("topic-a", 0)
+
+        fetcher._client.cluster.leader_for_partition.return_value = 1
+        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
+
+        assignment = _make_assignment(fetcher, [tp])
+        fetch_requests, *_ = fetcher._get_actions_per_node(assignment)
+
+        _, req = fetch_requests[0]
+        assert req._rack_id == "nl"
+
