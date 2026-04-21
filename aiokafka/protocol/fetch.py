@@ -519,7 +519,7 @@ class FetchRequest(Request[FetchRequestStruct]):
         max_bytes: int,
         isolation_level: int,
         topics: list[tuple[str, list[tuple[int, int, int]]]],
-        rack_id: str | None = None,
+        rack_id: str = "",
     ):
         self._max_wait_ms = max_wait_time
         self._min_bytes = min_bytes
