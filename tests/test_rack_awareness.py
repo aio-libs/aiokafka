@@ -32,6 +32,7 @@ def _make_fetcher(client_rack: str = "us-east-1a", metadata_max_age_ms: int = 60
     client = mock.Mock()
     client._loop = mock.Mock()
     client.cluster = mock.Mock()
+    client._metadata_max_age_ms = metadata_max_age_ms
     subscriptions = mock.Mock()
     subscriptions.register_fetch_waiters = mock.Mock()
 
@@ -43,7 +44,6 @@ def _make_fetcher(client_rack: str = "us-east-1a", metadata_max_age_ms: int = 60
             client,
             subscriptions,
             client_rack=client_rack,
-            metadata_max_age_ms=metadata_max_age_ms,
         )
     return fetcher
 
@@ -200,19 +200,6 @@ class TestMinusOneHandling:
 
         # Cache must still point to 7.
         assert fetcher._select_read_replica(tp) == 7
-
-    def test_minus_one_with_unknown_responder_is_conservative(self):
-        """If we don't know who responded (responder_node_id=None), be safe
-        and invalidate the cache."""
-        fetcher = _make_fetcher()
-        tp = TopicPartition("topic-a", 0)
-        fetcher._client.cluster.leader_for_partition.return_value = 1
-        fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
-
-        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
-        fetcher._update_preferred_read_replica(tp, -1, responder_node_id=None)
-
-        assert fetcher._select_read_replica(tp) == 1
 
 
 # ---------------------------------------------------------------------------

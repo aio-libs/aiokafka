@@ -519,7 +519,7 @@ class FetchRequest(Request[FetchRequestStruct]):
         max_bytes: int,
         isolation_level: int,
         topics: list[tuple[str, list[tuple[int, int, int]]]],
-        rack_id: str = "",
+        rack_id: str | None = None,
     ):
         self._max_wait_ms = max_wait_time
         self._min_bytes = min_bytes
@@ -531,10 +531,6 @@ class FetchRequest(Request[FetchRequestStruct]):
     @property
     def topics(self) -> list[tuple[str, list[tuple[int, int, int]]]]:
         return self._topics
-
-    @property
-    def rack_id(self) -> str:
-        return self._rack_id
 
     def build(
         self, request_struct_class: type[FetchRequestStruct]
@@ -566,11 +562,11 @@ class FetchRequest(Request[FetchRequestStruct]):
             # fields and forgotten_topics_data. v11 adds top-level rack_id.
             include_leader_epoch = api_version >= 9
             partitions_by_topic: list[tuple[str, list[tuple[int, ...]]]] = []
-            for topic, parts in self._topics:
-                new_parts = []
-                for partition, offset, max_bytes in parts:
+            for topic, partitions in self._topics:
+                new_partitions: list[tuple[int, ...]] = []
+                for partition, offset, max_bytes in partitions:
                     if include_leader_epoch:
-                        new_parts.append(
+                        new_partitions.append(
                             (
                                 partition,
                                 -1,  # current_leader_epoch (unknown)
@@ -580,7 +576,7 @@ class FetchRequest(Request[FetchRequestStruct]):
                             )
                         )
                     else:
-                        new_parts.append(
+                        new_partitions.append(
                             (
                                 partition,
                                 offset,  # fetch_offset
@@ -588,9 +584,9 @@ class FetchRequest(Request[FetchRequestStruct]):
                                 max_bytes,
                             )
                         )
-                partitions_by_topic.append((topic, new_parts))
+                partitions_by_topic.append((topic, new_partitions))
 
-            args: list = [
+            args: list[object] = [
                 -1,  # replica_id
                 self._max_wait_ms,
                 self._min_bytes,
@@ -608,7 +604,7 @@ class FetchRequest(Request[FetchRequestStruct]):
             if api_version >= 7:
                 args.append([])  # forgotten_topics_data
             if api_version >= 11:
-                args.append(self._rack_id)
+                args.append(self._rack_id or "")
             return request_struct_class(*args)
 
         if self._isolation_level:

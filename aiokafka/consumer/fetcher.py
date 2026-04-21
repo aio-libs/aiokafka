@@ -376,9 +376,7 @@ class Fetcher:
             transactionally. See consumer description.
         client_rack (str): A rack identifier for this client. This is sent to
             the broker on FetchRequest v11+ to enable rack-aware fetching
-            from the closest replica (KIP-392). Default: ``""`` (disabled).
-        metadata_max_age_ms (int): Period of time after which a cached
-            preferred read replica is invalidated. Default: 300000.
+            from the closest replica (KIP-392). Default: ``None`` (disabled).
     """
 
     def __init__(
@@ -398,8 +396,7 @@ class Fetcher:
         retry_backoff_ms=100,
         auto_offset_reset="latest",
         isolation_level="read_uncommitted",
-        client_rack="",
-        metadata_max_age_ms=5 * 60 * 1000,
+        client_rack=None,
     ):
         self._client = client
         self._loop = client._loop
@@ -415,11 +412,11 @@ class Fetcher:
         self._retry_backoff = retry_backoff_ms / 1000
         self._subscriptions = subscriptions
         self._default_reset_strategy = OffsetResetStrategy.from_str(auto_offset_reset)
-        self._client_rack = client_rack or ""
+        self._client_rack = client_rack
         # KIP-392: cache of preferred read replica per partition.
         # tp -> (node_id, expires_at_monotonic)
         self._preferred_read_replica: dict[TopicPartition, tuple[int, float]] = {}
-        self._preferred_replica_ttl = metadata_max_age_ms / 1000
+        self._preferred_replica_ttl = client._metadata_max_age_ms / 1000
 
         if isolation_level == "read_uncommitted":
             self._isolation_level = READ_UNCOMMITTED
@@ -688,7 +685,9 @@ class Fetcher:
             self._preferred_read_replica.pop(tp, None)
         return self._client.cluster.leader_for_partition(tp)
 
-    def _update_preferred_read_replica(self, tp, node_id, *, responder_node_id=None):
+    def _update_preferred_read_replica(
+        self, tp, preferred_read_replica, *, responder_node_id
+    ):
         """Cache or invalidate the preferred read replica for ``tp``.
 
         Per KIP-392, the meaning of ``preferred_read_replica == -1`` depends on
@@ -703,14 +702,8 @@ class Fetcher:
           back to the leader on every fetch, defeating the purpose of KIP-392.
 
         ``responder_node_id`` identifies the broker that produced the response.
-        When unknown, we fall back to the previous (more conservative) behavior
-        of dropping the cache on ``-1``.
         """
-        if node_id is None or node_id == -1:
-            if responder_node_id is None:
-                # Unknown responder — be conservative and invalidate.
-                self._preferred_read_replica.pop(tp, None)
-                return
+        if preferred_read_replica is None or preferred_read_replica == -1:
             leader = self._client.cluster.leader_for_partition(tp)
             # Only drop the cache if the leader itself told us there is no
             # preferred replica. A `-1` from the previously chosen follower
@@ -719,7 +712,7 @@ class Fetcher:
                 self._preferred_read_replica.pop(tp, None)
             return
         self._preferred_read_replica[tp] = (
-            node_id,
+            preferred_read_replica,
             time.monotonic() + self._preferred_replica_ttl,
         )
 
