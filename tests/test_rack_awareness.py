@@ -93,7 +93,7 @@ class TestReplicaSelectionRouting:
         )  # node 7 is known
 
         # Simulate the broker returning preferred_read_replica=7.
-        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        fetcher._update_preferred_read_replica(tp, 7)
 
         # Build fetch requests — the partition should be routed to node 7.
         assignment = _make_assignment(fetcher, [tp])
@@ -129,7 +129,7 @@ class TestReplicaSelectionRouting:
         fetcher._client.cluster.leader_for_partition.return_value = 1
         fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
 
-        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        fetcher._update_preferred_read_replica(tp, 7)
 
         # Force the cached entry to be expired by setting its expiry to the past.
         # This avoids relying on time.sleep, which is unreliable on Windows.
@@ -151,7 +151,7 @@ class TestReplicaSelectionRouting:
 
         # First the node is known — cache is populated.
         fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
-        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        fetcher._update_preferred_read_replica(tp, 7)
 
         # Now node 7 disappears from metadata.
         fetcher._client.cluster.broker_metadata.return_value = None
@@ -169,24 +169,36 @@ class TestReplicaSelectionRouting:
 
 
 class TestMinusOneHandling:
-    """The meaning of -1 depends on who produced the response (KIP-392)."""
+    """The meaning of -1 depends on who produced the response (KIP-392).
 
-    def test_minus_one_from_leader_clears_cache(self):
-        """-1 from the leader means 'no preferred replica, read from me'.
-        Consumer must drop the cached entry and next fetch goes to leader."""
+    Both cases are handled by a single rule in
+    :meth:`Fetcher._update_preferred_read_replica`: ``-1`` (and ``None`` from
+    pre-v11 brokers) is a no-op. By construction the cache is always
+    consistent with where the request was routed:
+
+    * If the request went to the **leader**, the cache for ``tp`` was already
+      empty (otherwise routing would have picked the cached follower) — so
+      "no-op" is equivalent to "cache stays empty".
+    * If the request went to the previously cached **follower**, ``-1`` means
+      "stay with me" — preserving the cache is the desired behaviour.
+    """
+
+    def test_minus_one_from_leader_does_not_populate_cache(self):
+        """-1 from the leader (no cached follower) leaves the cache empty,
+        and the next fetch goes to the leader."""
         fetcher = _make_fetcher()
         tp = TopicPartition("topic-a", 0)
         fetcher._client.cluster.leader_for_partition.return_value = 1
         fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
 
-        # Populate cache.
-        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
-        assert fetcher._select_read_replica(tp) == 7
+        # Cache starts empty — the leader is the only valid destination.
+        assert fetcher._select_read_replica(tp) == 1
 
         # Leader (node 1) responds with -1.
-        fetcher._update_preferred_read_replica(tp, -1, responder_node_id=1)
+        fetcher._update_preferred_read_replica(tp, -1)
 
-        # Next fetch must go to the leader.
+        # Cache must still be empty; next fetch keeps going to the leader.
+        assert tp not in fetcher._preferred_read_replica
         assert fetcher._select_read_replica(tp) == 1
 
     def test_minus_one_from_follower_keeps_cache(self):
@@ -199,11 +211,11 @@ class TestMinusOneHandling:
         fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
 
         # Leader tells us to go to follower 7.
-        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        fetcher._update_preferred_read_replica(tp, 7)
         assert fetcher._select_read_replica(tp) == 7
 
         # Follower 7 responds with -1 (= "stay with me").
-        fetcher._update_preferred_read_replica(tp, -1, responder_node_id=7)
+        fetcher._update_preferred_read_replica(tp, -1)
 
         # Cache must still point to 7.
         assert fetcher._select_read_replica(tp) == 7
@@ -226,7 +238,7 @@ class TestErrorInvalidation:
         fetcher._client.cluster.leader_for_partition.return_value = 1
         fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
 
-        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        fetcher._update_preferred_read_replica(tp, 7)
         assert tp in fetcher._preferred_read_replica
 
         # Simulate: error path pops the cache (as our code does).
@@ -378,7 +390,7 @@ class TestOffsetResetRouting:
         # Leader = node 1, cached preferred replica = node 7.
         fetcher._client.cluster.leader_for_partition.return_value = 1
         fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
-        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        fetcher._update_preferred_read_replica(tp, 7)
 
         # Build an assignment where the partition has no valid position,
         # so it ends up in awaiting_reset.
@@ -415,7 +427,7 @@ class TestOffsetResetRouting:
         # Cache a preferred follower while the leader is known.
         fetcher._client.cluster.leader_for_partition.return_value = 1
         fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
-        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        fetcher._update_preferred_read_replica(tp, 7)
 
         # Now leader becomes unknown (e.g. mid-election).
         fetcher._client.cluster.leader_for_partition.return_value = None
@@ -461,7 +473,7 @@ class TestTransportFailureEviction:
 
         fetcher._client.cluster.leader_for_partition.return_value = 1
         fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
-        fetcher._update_preferred_read_replica(tp, 7, responder_node_id=1)
+        fetcher._update_preferred_read_replica(tp, 7)
         assert tp in fetcher._preferred_read_replica
 
         # Simulate a transport failure when sending to follower 7.
@@ -494,7 +506,7 @@ class TestTransportFailureEviction:
         fetcher._client.cluster.leader_for_partition.return_value = 1
         fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
         # tp_b is cached against follower 7; tp_a is fetched from leader 1.
-        fetcher._update_preferred_read_replica(tp_b, 7, responder_node_id=1)
+        fetcher._update_preferred_read_replica(tp_b, 7)
 
         fetcher._client.send = mock.AsyncMock(
             side_effect=Errors.KafkaConnectionError("boom")

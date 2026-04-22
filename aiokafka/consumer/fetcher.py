@@ -701,36 +701,29 @@ class Fetcher:
             self._preferred_read_replica.pop(tp, None)
         return self._client.cluster.leader_for_partition(tp)
 
-    def _update_preferred_read_replica(
-        self, tp, preferred_read_replica, *, responder_node_id
-    ):
-        """Cache or invalidate the preferred read replica for ``tp``.
+    def _update_preferred_read_replica(self, tp, preferred_read_replica):
+        """Cache the preferred read replica for ``tp`` (KIP-392).
 
-        Per KIP-392, the meaning of ``preferred_read_replica == -1`` depends on
-        which broker produced the response:
+        Only a valid replica id (``>= 0``) updates the cache. ``None`` (older
+        broker without the field) and ``-1`` (broker is telling us either
+        "no preferred replica" or "I am still the right choice") are no-ops:
 
-        * If the **leader** answered with ``-1``, it is telling us "no preferred
-          replica is available — keep fetching from me." We should drop any
-          cached entry so the next fetch goes to the leader.
-        * If a **follower** (the previously selected preferred replica)
-          answered with ``-1``, it is telling us "I am still the right one,
-          keep using me." Dropping the cache here would bounce the consumer
-          back to the leader on every fetch, defeating the purpose of KIP-392.
+        * If we sent the request to the **leader**, the cache is already empty
+          for ``tp`` (otherwise the request would have been routed to the
+          cached follower), so there is nothing to invalidate.
+        * If we sent the request to the cached **follower**, ``-1`` means
+          "stay with me" — preserving the cache is the desired behaviour.
 
-        ``responder_node_id`` identifies the broker that produced the response.
+        Real cache invalidation happens elsewhere: TTL expiry in
+        :meth:`_select_read_replica`, transport-failure eviction in
+        :meth:`_invalidate_preferred_read_replica_for_node`, and routing
+        errors (e.g. ``NotLeaderForPartition``) in the fetch error path.
         """
-        if preferred_read_replica is None or preferred_read_replica == -1:
-            leader = self._client.cluster.leader_for_partition(tp)
-            # Only drop the cache if the leader itself told us there is no
-            # preferred replica. A `-1` from the previously chosen follower
-            # means "I am still the right choice" — keep it.
-            if responder_node_id == leader:
-                self._preferred_read_replica.pop(tp, None)
-            return
-        self._preferred_read_replica[tp] = (
-            preferred_read_replica,
-            time.monotonic() + self._preferred_replica_ttl,
-        )
+        if preferred_read_replica is not None and preferred_read_replica >= 0:
+            self._preferred_read_replica[tp] = (
+                preferred_read_replica,
+                time.monotonic() + self._preferred_replica_ttl,
+            )
 
     def _invalidate_preferred_read_replica_for_node(self, node_id, request):
         """Drop cached preferred-replica entries that point to ``node_id``.
@@ -819,7 +812,6 @@ class Fetcher:
                         self._update_preferred_read_replica(
                             tp,
                             preferred_read_replica,
-                            responder_node_id=node_id,
                         )
                     elif response.API_VERSION >= 4:
                         aborted_transactions = part_data[-2]
