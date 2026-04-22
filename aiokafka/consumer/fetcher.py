@@ -701,12 +701,12 @@ class Fetcher:
             self._preferred_read_replica.pop(tp, None)
         return self._client.cluster.leader_for_partition(tp)
 
-    def _update_preferred_read_replica(self, tp, preferred_read_replica):
+    def _update_preferred_read_replica(self, tp, preferred_read_replica: int):
         """Cache the preferred read replica for ``tp`` (KIP-392).
 
-        Only a valid replica id (``>= 0``) updates the cache. ``None`` (older
-        broker without the field) and ``-1`` (broker is telling us either
-        "no preferred replica" or "I am still the right choice") are no-ops:
+        Only a valid replica id (``>= 0``) updates the cache.  ``-1`` (broker
+        telling us either "no preferred replica" or "I am still the right
+        choice") is a no-op:
 
         * If we sent the request to the **leader**, the cache is already empty
           for ``tp`` (otherwise the request would have been routed to the
@@ -719,7 +719,7 @@ class Fetcher:
         :meth:`_invalidate_preferred_read_replica_for_node`, and routing
         errors (e.g. ``NotLeaderForPartition``) in the fetch error path.
         """
-        if preferred_read_replica is not None and preferred_read_replica >= 0:
+        if preferred_read_replica >= 0:
             self._preferred_read_replica[tp] = (
                 preferred_read_replica,
                 time.monotonic() + self._preferred_replica_ttl,
