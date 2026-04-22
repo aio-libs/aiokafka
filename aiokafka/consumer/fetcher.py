@@ -771,9 +771,14 @@ class Fetcher:
                 fetch_offsets[TopicPartition(topic, partition)] = offset
 
         now_ms = int(1000 * time.time())
+        # KIP-392 is only meaningful when the client advertises a rack and the
+        # broker speaks FetchRequest v11+. Compute this once per response so
+        # the per-partition loop below can skip the preferred-replica work
+        # entirely when the feature is inactive.
+        rack_aware = bool(self._client_rack) and response.API_VERSION >= 11
         if (
             self._client_rack
-            and response.API_VERSION < 11
+            and not rack_aware
             and not self._rack_warning_logged
         ):
             log.warning(
@@ -784,6 +789,7 @@ class Fetcher:
                 self._client_rack,
                 response.API_VERSION,
             )
+            # Latch the warning so subsequent fetches skip the check above.
             self._rack_warning_logged = True
         for topic, partitions in response.topics:
             for partition, error_code, highwater, *part_data in partitions:
@@ -808,11 +814,10 @@ class Fetcher:
                         # preferred_read_replica, message_set]
                         lso = part_data[0]
                         aborted_transactions = part_data[2]
-                        preferred_read_replica = part_data[3]
-                        self._update_preferred_read_replica(
-                            tp,
-                            preferred_read_replica,
-                        )
+                        if rack_aware:
+                            self._update_preferred_read_replica(
+                                tp, part_data[3]
+                            )
                     elif response.API_VERSION >= 4:
                         aborted_transactions = part_data[-2]
                         lso = part_data[-3]
@@ -872,40 +877,40 @@ class Fetcher:
                         tp_state.consumed_to(tp_state.position + 1)
                         needs_wakeup = True
 
-                elif error_type in (
-                    Errors.NotLeaderForPartitionError,
-                    Errors.UnknownTopicOrPartitionError,
-                ):
-                    # Stale routing -- drop the cached preferred replica so we
-                    # fall back to the leader returned by the next metadata
-                    # update.
+                else:
+                    # Any non-success response invalidates the cached
+                    # preferred replica for this partition, matching the
+                    # Java consumer. The next fetch will go to the leader
+                    # until the broker hints another follower.
                     self._preferred_read_replica.pop(tp, None)
-                    self._client.force_metadata_update()
-                elif error_type is Errors.OffsetOutOfRangeError:
-                    # The follower replica may be lagging; force re-fetch from
-                    # the leader after reset.
-                    self._preferred_read_replica.pop(tp, None)
-                    if self._default_reset_strategy != OffsetResetStrategy.NONE:
-                        tp_state.await_reset(self._default_reset_strategy)
-                    else:
-                        err = Errors.OffsetOutOfRangeError({tp: fetch_offset})
+                    if error_type in (
+                        Errors.NotLeaderForPartitionError,
+                        Errors.UnknownTopicOrPartitionError,
+                    ):
+                        self._client.force_metadata_update()
+                    elif error_type is Errors.OffsetOutOfRangeError:
+                        if self._default_reset_strategy != OffsetResetStrategy.NONE:
+                            tp_state.await_reset(self._default_reset_strategy)
+                        else:
+                            err = Errors.OffsetOutOfRangeError({tp: fetch_offset})
+                            self._set_error(tp, err)
+                            needs_wakeup = True
+                        log.info(
+                            "Fetch offset %s is out of range for partition %s,"
+                            " resetting offset",
+                            fetch_offset,
+                            tp,
+                        )
+                    elif error_type is Errors.TopicAuthorizationFailedError:
+                        log.warning("Not authorized to read from topic %s.", tp.topic)
+                        err = Errors.TopicAuthorizationFailedError(tp.topic)
                         self._set_error(tp, err)
                         needs_wakeup = True
-                    log.info(
-                        "Fetch offset %s is out of range for partition %s,"
-                        " resetting offset",
-                        fetch_offset,
-                        tp,
-                    )
-                elif error_type is Errors.TopicAuthorizationFailedError:
-                    log.warning("Not authorized to read from topic %s.", tp.topic)
-                    err = Errors.TopicAuthorizationFailedError(tp.topic)
-                    self._set_error(tp, err)
-                    needs_wakeup = True
-                else:
-                    log.warning(
-                        "Unexpected error while fetching data: %s", error_type.__name__
-                    )
+                    else:
+                        log.warning(
+                            "Unexpected error while fetching data: %s",
+                            error_type.__name__,
+                        )
         return needs_wakeup
 
     def _set_error(self, tp, error):
