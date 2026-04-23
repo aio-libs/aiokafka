@@ -585,7 +585,8 @@ brokers** (not on the consumer):
 
 Some caveats to keep in mind:
 
-* The "preferred" replica is only used **while it stays in the ISR**. If the
+* The "preferred" replica is only used **while it stays in the ISR
+  (in-sync replica set)**. If the
   same-rack follower falls behind, the broker will redirect the consumer to a
   different replica (possibly cross-AZ) until the follower catches up.
 * Reading from a follower means you only see records that have already been
