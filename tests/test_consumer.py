@@ -2182,10 +2182,10 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await consumer1.start()
         self.add_cleanup(consumer1.stop)
         await consumer1.seek_to_committed()
-        listener1.revoke_mock.assert_called_with(set())
         self.assertEqual(listener1.revoke_mock.call_count, 1)
-        listener1.assign_mock.assert_called_with({tp0, tp1})
+        listener1.revoke_mock.assert_called_with(set())
         self.assertEqual(listener1.assign_mock.call_count, 1)
+        listener1.assign_mock.assert_called_with({tp0, tp1})
         # second rebalance for consumer1, first rebalance for
         # consumer2 that assigns 1 partition to both consumer1
         # and consumer2
@@ -2203,14 +2203,14 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             c1_assignment = {tp1}
             c2_assignment = {tp0}
 
-        listener1.revoke_mock.assert_called_with({tp0, tp1})
         self.assertEqual(listener1.revoke_mock.call_count, 2)
-        listener1.assign_mock.assert_called_with(c1_assignment)
+        listener1.revoke_mock.assert_called_with({tp0, tp1})
         self.assertEqual(listener1.assign_mock.call_count, 2)
-        listener2.revoke_mock.assert_called_with(set())
+        listener1.assign_mock.assert_called_with(c1_assignment)
         self.assertEqual(listener2.revoke_mock.call_count, 1)
-        listener2.assign_mock.assert_called_with(c2_assignment)
+        listener2.revoke_mock.assert_called_with(set())
         self.assertEqual(listener2.assign_mock.call_count, 1)
+        listener2.assign_mock.assert_called_with(c2_assignment)
 
         # confirm diff partitions
         assert c2_partitions != c1_partitions
