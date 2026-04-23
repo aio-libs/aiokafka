@@ -813,8 +813,14 @@ class Fetcher:
                         if rack_aware:
                             self._update_preferred_read_replica(tp, part_data[3])
                     elif response.API_VERSION >= 4:
+                        # part_data layout:
+                        #   v4:     [lso, aborted_transactions, message_set]
+                        #   v5..v10:[lso, log_start_offset,
+                        #            aborted_transactions, message_set]
+                        # lso is always part_data[0] and
+                        # aborted_transactions is always part_data[-2].
+                        lso = part_data[0]
                         aborted_transactions = part_data[-2]
-                        lso = part_data[-3]
                     else:
                         aborted_transactions = None
                         lso = None
