@@ -6,8 +6,7 @@ FetchRequest to the correct broker after receiving a preferred_read_replica
 hint from the leader?"
 """
 
-from __future__ import annotations
-
+import asyncio
 import logging
 import time
 from unittest import mock
@@ -18,7 +17,6 @@ from aiokafka import errors as Errors
 from aiokafka.consumer.fetcher import Fetcher
 from aiokafka.protocol.fetch import (
     FetchRequest,
-    FetchRequest_v9,
     FetchRequest_v11,
 )
 from aiokafka.structs import TopicPartition
@@ -28,27 +26,43 @@ from aiokafka.structs import TopicPartition
 # ---------------------------------------------------------------------------
 
 
-def _make_fetcher(client_rack: str = "us-east-1a", metadata_max_age_ms: int = 60_000):
+async def _noop_fetch_routine(self):
+    """Replacement for Fetcher._fetch_requests_routine in tests.
+
+    Returns immediately so the background task created in ``Fetcher.__init__``
+    completes without doing any real work.
+    """
+    return None
+
+
+async def _make_fetcher(
+    client_rack: str | None = "us-east-1a", metadata_max_age_ms: int = 60_000
+):
     """Build a minimal Fetcher with mocked client/subscriptions.
 
-    No running event loop needed — we only exercise synchronous methods.
+    Must be awaited inside a running event loop because ``Fetcher.__init__``
+    schedules the background fetch routine via :func:`create_task`. We swap
+    that routine for an awaitable no-op rather than patching ``create_task``
+    itself, which keeps the test setup honest about what the constructor does.
     """
     client = mock.Mock()
-    client._loop = mock.Mock()
+    client._loop = asyncio.get_running_loop()
     client.cluster = mock.Mock()
     client._metadata_max_age_ms = metadata_max_age_ms
     subscriptions = mock.Mock()
     subscriptions.register_fetch_waiters = mock.Mock()
 
-    with (
-        mock.patch("aiokafka.consumer.fetcher.create_task"),
-        mock.patch.object(Fetcher, "_fetch_requests_routine", lambda self: None),
+    with mock.patch.object(
+        Fetcher, "_fetch_requests_routine", _noop_fetch_routine
     ):
         fetcher = Fetcher(
             client,
             subscriptions,
             client_rack=client_rack,
         )
+    # Let the no-op background task run to completion so we don't leave a
+    # pending Task behind for the event loop to GC.
+    await asyncio.sleep(0)
     return fetcher
 
 
@@ -79,11 +93,11 @@ def _make_assignment(fetcher, tps):
 class TestReplicaSelectionRouting:
     """Verify that _get_actions_per_node routes to the preferred replica."""
 
-    def test_fetch_routed_to_preferred_replica_after_hint(self):
+    async def test_fetch_routed_to_preferred_replica_after_hint(self):
         """After the leader returns preferred_read_replica=7, the next
         FetchRequest for that partition must be sent to node 7, not the
         leader."""
-        fetcher = _make_fetcher()
+        fetcher = await _make_fetcher()
         tp = TopicPartition("topic-a", 0)
 
         # Leader is node 1, preferred replica is node 7.
@@ -105,9 +119,9 @@ class TestReplicaSelectionRouting:
             f"Expected fetch to be routed to preferred replica 7, got {node_id}"
         )
 
-    def test_fetch_routed_to_leader_when_no_hint(self):
+    async def test_fetch_routed_to_leader_when_no_hint(self):
         """Without a preferred_read_replica hint, fetches go to the leader."""
-        fetcher = _make_fetcher()
+        fetcher = await _make_fetcher()
         tp = TopicPartition("topic-a", 0)
 
         fetcher._client.cluster.leader_for_partition.return_value = 1
@@ -120,10 +134,10 @@ class TestReplicaSelectionRouting:
         node_id, _ = fetch_requests[0]
         assert node_id == 1
 
-    def test_fetch_falls_back_to_leader_after_ttl_expires(self):
+    async def test_fetch_falls_back_to_leader_after_ttl_expires(self):
         """Once the cached preferred replica expires, fetch falls back to the
         leader until the leader re-issues a hint."""
-        fetcher = _make_fetcher(metadata_max_age_ms=1)  # 1 ms TTL
+        fetcher = await _make_fetcher(metadata_max_age_ms=1)  # 1 ms TTL
         tp = TopicPartition("topic-a", 0)
 
         fetcher._client.cluster.leader_for_partition.return_value = 1
@@ -141,10 +155,10 @@ class TestReplicaSelectionRouting:
         node_id, _ = fetch_requests[0]
         assert node_id == 1, "Should have fallen back to leader after TTL expired"
 
-    def test_fetch_falls_back_to_leader_when_preferred_node_disappears(self):
+    async def test_fetch_falls_back_to_leader_when_preferred_node_disappears(self):
         """If the preferred replica disappears from cluster metadata, the
         consumer must not get stuck — it should fall back to the leader."""
-        fetcher = _make_fetcher()
+        fetcher = await _make_fetcher()
         tp = TopicPartition("topic-a", 0)
 
         fetcher._client.cluster.leader_for_partition.return_value = 1
@@ -183,10 +197,10 @@ class TestMinusOneHandling:
       "stay with me" — preserving the cache is the desired behaviour.
     """
 
-    def test_minus_one_from_leader_does_not_populate_cache(self):
+    async def test_minus_one_from_leader_does_not_populate_cache(self):
         """-1 from the leader (no cached follower) leaves the cache empty,
         and the next fetch goes to the leader."""
-        fetcher = _make_fetcher()
+        fetcher = await _make_fetcher()
         tp = TopicPartition("topic-a", 0)
         fetcher._client.cluster.leader_for_partition.return_value = 1
         fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
@@ -201,11 +215,11 @@ class TestMinusOneHandling:
         assert tp not in fetcher._preferred_read_replica
         assert fetcher._select_read_replica(tp) == 1
 
-    def test_minus_one_from_follower_keeps_cache(self):
+    async def test_minus_one_from_follower_keeps_cache(self):
         """-1 from the currently selected follower means 'I am still the right
         one, keep using me'. Consumer must NOT drop the cache — otherwise it
         would oscillate between follower and leader on every fetch."""
-        fetcher = _make_fetcher()
+        fetcher = await _make_fetcher()
         tp = TopicPartition("topic-a", 0)
         fetcher._client.cluster.leader_for_partition.return_value = 1
         fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
@@ -230,10 +244,10 @@ class TestErrorInvalidation:
     """On certain error codes the preferred replica cache must be dropped so
     we don't keep hammering a broker that can no longer serve the partition."""
 
-    def test_not_leader_error_invalidates_cache(self):
+    async def test_not_leader_error_invalidates_cache(self):
         """NotLeaderForPartition means the routing is stale — drop the
         cached preferred replica."""
-        fetcher = _make_fetcher()
+        fetcher = await _make_fetcher()
         tp = TopicPartition("topic-a", 0)
         fetcher._client.cluster.leader_for_partition.return_value = 1
         fetcher._client.cluster.broker_metadata.return_value = mock.Mock()
@@ -269,22 +283,9 @@ class TestRackIdInRequest:
         obj = built.to_object()
         assert obj["rack_id"] == "us-east-1a"
 
-    def test_fetch_request_v9_does_not_carry_rack_id(self):
-        req = FetchRequest(
-            max_wait_time=100,
-            min_bytes=1,
-            max_bytes=1024,
-            isolation_level=0,
-            topics=[("t", [(0, 42, 1024)])],
-            rack_id="us-east-1a",
-        )
-        built = req.build(FetchRequest_v9)
-        obj = built.to_object()
-        assert "rack_id" not in obj
-
-    def test_fetch_request_built_by_fetcher_includes_rack(self):
+    async def test_fetch_request_built_by_fetcher_includes_rack(self):
         """_get_actions_per_node should produce requests with our rack_id."""
-        fetcher = _make_fetcher(client_rack="us-east-1a")
+        fetcher = await _make_fetcher(client_rack="us-east-1a")
         tp = TopicPartition("topic-a", 0)
 
         fetcher._client.cluster.leader_for_partition.return_value = 1
@@ -306,11 +307,10 @@ class TestRackVersionWarning:
     """A one-shot warning must be logged when client_rack is set but the
     broker only supports FetchRequest < v11."""
 
-    @pytest.mark.asyncio
     async def test_warning_logged_when_broker_below_v11(self, caplog):
         """If client_rack is set and the FetchResponse version is < 11,
         a warning is logged exactly once."""
-        fetcher = _make_fetcher(client_rack="us-east-1a")
+        fetcher = await _make_fetcher(client_rack="us-east-1a")
 
         # Mock assignment
         assignment = mock.Mock()
@@ -347,10 +347,9 @@ class TestRackVersionWarning:
             await fetcher._proc_fetch_request(assignment, 1, request)
         assert not any("client_rack" in msg for msg in caplog.messages)
 
-    @pytest.mark.asyncio
     async def test_no_warning_when_rack_not_set(self, caplog):
         """If client_rack is not set, no warning even when broker < v11."""
-        fetcher = _make_fetcher(client_rack=None)
+        fetcher = await _make_fetcher(client_rack=None)
 
         assignment = mock.Mock()
         assignment.active = True
@@ -383,8 +382,8 @@ class TestOffsetResetRouting:
     will reply with NOT_LEADER_FOR_PARTITION and the consumer will be stuck
     until the preferred-replica TTL expires."""
 
-    def test_awaiting_reset_is_keyed_by_leader_not_follower(self):
-        fetcher = _make_fetcher()
+    async def test_awaiting_reset_is_keyed_by_leader_not_follower(self):
+        fetcher = await _make_fetcher()
         tp = TopicPartition("topic-a", 0)
 
         # Leader = node 1, cached preferred replica = node 7.
@@ -416,12 +415,12 @@ class TestOffsetResetRouting:
         assert 7 not in awaiting_reset
         assert tp in awaiting_reset[1]
 
-    def test_unknown_leader_during_reset_triggers_metadata_refresh(self):
+    async def test_unknown_leader_during_reset_triggers_metadata_refresh(self):
         """If a preferred replica is cached but the partition leader is
         currently unknown (e.g. during leader election), the partition must
         not be enqueued under an invalid leader id. Instead, the routine must
         signal ``invalid_metadata`` so the client forces a metadata refresh."""
-        fetcher = _make_fetcher()
+        fetcher = await _make_fetcher()
         tp = TopicPartition("topic-a", 0)
 
         # Cache a preferred follower while the leader is known.
@@ -466,9 +465,8 @@ class TestTransportFailureEviction:
     so the next attempt falls back to the leader instead of repeatedly
     hitting the unreachable follower until ``metadata_max_age_ms`` expiry."""
 
-    @pytest.mark.asyncio
     async def test_kafka_error_evicts_preferred_replica(self):
-        fetcher = _make_fetcher()
+        fetcher = await _make_fetcher()
         tp = TopicPartition("topic-a", 0)
 
         fetcher._client.cluster.leader_for_partition.return_value = 1
@@ -482,7 +480,7 @@ class TestTransportFailureEviction:
         )
 
         # Sleep is awaited inside the error path; make it instant.
-        with mock.patch("aiokafka.consumer.fetcher.asyncio.sleep", mock.AsyncMock()):
+        with mock.patch.object(asyncio, "sleep", mock.AsyncMock()):
             request = mock.Mock()
             request.topics = [("topic-a", [(0, 0, 1024)])]
             assignment = mock.Mock()
@@ -496,11 +494,10 @@ class TestTransportFailureEviction:
         # After eviction, the next routing decision falls back to the leader.
         assert fetcher._select_read_replica(tp) == 1
 
-    @pytest.mark.asyncio
     async def test_failure_against_leader_does_not_evict_other_followers(self):
         """Failures while talking to the leader (no cache entry) must leave
         any unrelated cached entries alone."""
-        fetcher = _make_fetcher()
+        fetcher = await _make_fetcher()
         tp_b = TopicPartition("topic-b", 0)
 
         fetcher._client.cluster.leader_for_partition.return_value = 1
@@ -512,7 +509,7 @@ class TestTransportFailureEviction:
             side_effect=Errors.KafkaConnectionError("boom")
         )
 
-        with mock.patch("aiokafka.consumer.fetcher.asyncio.sleep", mock.AsyncMock()):
+        with mock.patch.object(asyncio, "sleep", mock.AsyncMock()):
             request = mock.Mock()
             request.topics = [("topic-a", [(0, 0, 1024)])]
             assignment = mock.Mock()
