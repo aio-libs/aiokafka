@@ -1,0 +1,2 @@
+Fix ``Consumer.last_stable_offset()`` always returning 0 against brokers older than Kafka 2.3 (``FetchResponse`` versions 5..10). The fetcher was reading the wrong field from the per-partition response tuple, breaking ``read_committed`` consumers and any code that relied on the LSO when talking to those brokers.
+
