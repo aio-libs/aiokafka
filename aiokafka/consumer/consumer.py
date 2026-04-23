@@ -211,6 +211,12 @@ class AIOKafkaConsumer:
         sasl_oauth_token_provider (~aiokafka.abc.AbstractTokenProvider):
             OAuthBearer token provider instance.
             Default: None
+        client_rack (str): A rack identifier for this client (e.g. the
+            availability zone the consumer runs in). When set and the broker
+            supports FetchRequest v11+ (Kafka 2.4+ with a configured
+            ``replica.selector.class`` such as ``RackAwareReplicaSelector``),
+            the consumer will fetch from the closest in-sync replica
+            instead of the leader (KIP-392). Default: ``None`` (disabled).
 
     Note:
         Many configuration parameters are taken from Java Client:
@@ -261,6 +267,7 @@ class AIOKafkaConsumer:
         sasl_kerberos_service_name="kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
+        client_rack=None,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -328,6 +335,7 @@ class AIOKafkaConsumer:
         self._isolation_level = isolation_level
         self._rebalance_timeout_ms = rebalance_timeout_ms
         self._max_poll_interval_ms = max_poll_interval_ms
+        self._client_rack = client_rack
 
         self._check_crcs = check_crcs
         self._subscription = SubscriptionState(loop=loop)
@@ -387,6 +395,7 @@ class AIOKafkaConsumer:
             retry_backoff_ms=self._retry_backoff_ms,
             auto_offset_reset=self._auto_offset_reset,
             isolation_level=self._isolation_level,
+            client_rack=self._client_rack,
         )
 
         if self._group_id is not None:

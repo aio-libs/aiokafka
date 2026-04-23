@@ -218,11 +218,26 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_producer_send_leader_notfound(self):
+        # Warm up the topic with a normal-timeout producer so the topic is
+        # auto-created and present in broker metadata BEFORE we construct the
+        # 200ms-timeout producer below. Without this, the tight
+        # request_timeout_ms=200 has to cover both topic auto-creation/metadata
+        # discovery AND the actual leader-not-found retry path the test
+        # exercises, which is too tight on busy CI runners and was the source
+        # of historic flakes.
+        warmup = AIOKafkaProducer(bootstrap_servers=self.hosts)
+        await warmup.start()
+        try:
+            await warmup.send_and_wait(self.topic, b"warmup")
+        finally:
+            await warmup.stop()
+
         producer = AIOKafkaProducer(
             bootstrap_servers=self.hosts,
             request_timeout_ms=200,
         )
         await producer.start()
+        self.add_cleanup(producer.stop)
 
         with mock.patch.object(ClusterMetadata, "leader_for_partition") as mocked:
             mocked.return_value = -1
@@ -235,8 +250,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             future = await producer.send(self.topic, b"text")
             with self.assertRaises(NotLeaderForPartitionError):
                 await future
-
-        await producer.stop()
 
     @run_until_complete
     async def test_producer_send_timeout(self):

@@ -546,6 +546,62 @@ those messages would not be returned by the consumer and yet would have valid
 offsets.
 
 
+.. _rack-aware-fetch:
+
+Reading from the Closest Replica (Rack Awareness)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In a multi-AZ / multi-DC Kafka deployment, fetching from the partition leader
+can mean every record crosses a (slow, expensive) cross-AZ link. Since Kafka
+2.4 (`KIP-392`_), a consumer can instead fetch from an in-sync **follower**
+that lives in the same rack as the consumer itself. :class:`.AIOKafkaConsumer`
+supports this via the ``client_rack`` option::
+
+    consumer = aiokafka.AIOKafkaConsumer(
+        "my_topic",
+        bootstrap_servers="kafka-nl-1:9092,kafka-nl2-1:9092,kafka-ld-1:9092",
+        client_rack="us-east-1a",  # this consumer lives in rack/AZ "us-east-1a"
+    )
+
+When set, the consumer sends its rack id in every ``FetchRequest``. The broker
+responds with a ``preferred_read_replica`` pointing at the closest in-sync
+replica, and **all subsequent fetches for that partition** are routed there.
+The cache is automatically invalidated on leader changes, on
+``OffsetOutOfRange`` errors, when the chosen broker disappears from cluster
+metadata, or after ``metadata_max_age_ms`` -- after which a new
+``preferred_read_replica`` is requested.
+
+For this to actually take effect, **two things must be configured on the
+brokers** (not on the consumer):
+
+1. Each broker must declare its rack via ``broker.rack=<rack-id>`` in
+   ``server.properties``. This both spreads new replicas across racks
+   (`KIP-36`_) and advertises the rack in metadata responses.
+2. Each broker must have a replica selector enabled, e.g.
+   ``replica.selector.class=org.apache.kafka.common.replica.RackAwareReplicaSelector``.
+   Without this, the broker always returns ``preferred_read_replica = -1``
+   ("keep fetching from the leader") regardless of the rack id sent by the
+   consumer.
+
+Some caveats to keep in mind:
+
+* The "preferred" replica is only used **while it stays in the ISR
+  (in-sync replica set)**. If the
+  same-rack follower falls behind, the broker will redirect the consumer to a
+  different replica (possibly cross-AZ) until the follower catches up.
+* Reading from a follower means you only see records that have already been
+  replicated. End-to-end consumer lag will be slightly higher than when
+  reading from the leader.
+* This setting only affects consumers. The Kafka **produce** path always
+  writes to the partition leader, so producer traffic remains cross-AZ for
+  partitions whose leader is in another DC.
+* If the brokers do not support ``FetchRequest v11`` (Kafka < 2.4), the
+  setting is silently ignored and the consumer falls back to leader fetches.
+
+.. _KIP-392: https://cwiki.apache.org/confluence/display/KAFKA/KIP-392%3A+Allow+consumers+to+fetch+from+closest+replica
+.. _KIP-36: https://cwiki.apache.org/confluence/display/KAFKA/KIP-36+Rack+aware+replica+assignment
+
+
 Detecting Consumer Failures
 ---------------------------
 

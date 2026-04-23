@@ -495,15 +495,17 @@ class FetchRequest_v11(RequestStruct):
 
 
 FetchRequestStruct: TypeAlias = (
-    FetchRequest_v1 | FetchRequest_v2 | FetchRequest_v3 | FetchRequest_v4
-    # After v4 is not implemented yet
-    # | FetchRequest_v5
-    # | FetchRequest_v6
-    # | FetchRequest_v7
-    # | FetchRequest_v8
-    # | FetchRequest_v9
-    # | FetchRequest_v10
-    # | FetchRequest_v11
+    FetchRequest_v1
+    | FetchRequest_v2
+    | FetchRequest_v3
+    | FetchRequest_v4
+    | FetchRequest_v5
+    | FetchRequest_v6
+    | FetchRequest_v7
+    | FetchRequest_v8
+    | FetchRequest_v9
+    | FetchRequest_v10
+    | FetchRequest_v11
 )
 
 
@@ -517,12 +519,14 @@ class FetchRequest(Request[FetchRequestStruct]):
         max_bytes: int,
         isolation_level: int,
         topics: list[tuple[str, list[tuple[int, int, int]]]],
+        rack_id: str = "",
     ):
         self._max_wait_ms = max_wait_time
         self._min_bytes = min_bytes
         self._max_bytes = max_bytes
         self._isolation_level = isolation_level
         self._topics = topics
+        self._rack_id = rack_id
 
     @property
     def topics(self) -> list[tuple[str, list[tuple[int, int, int]]]]:
@@ -531,7 +535,18 @@ class FetchRequest(Request[FetchRequestStruct]):
     def build(
         self, request_struct_class: type[FetchRequestStruct]
     ) -> FetchRequestStruct:
-        if request_struct_class.API_VERSION > 3:
+        api_version = request_struct_class.API_VERSION
+
+        # v0..v3 do not support isolation_level. v4 adds isolation_level
+        # but keeps the v0 per-partition layout. v5+ adds per-partition
+        # `log_start_offset`. v9+ also adds `current_leader_epoch`. v7+
+        # adds incremental fetch session fields and forgotten_topics_data.
+        # v11 adds top-level rack_id.
+        # We silently allow `rack_id` to be set on the FetchRequest builder
+        # so callers don't have to branch -- it is simply not transmitted on
+        # versions < 11.
+
+        if api_version == 4:
             return request_struct_class(
                 -1,  # replica_id
                 self._max_wait_ms,
@@ -541,12 +556,63 @@ class FetchRequest(Request[FetchRequestStruct]):
                 self._topics,
             )
 
+        if api_version >= 5:
+            # v5+ adds per-partition `log_start_offset`. v9+ also adds
+            # `current_leader_epoch`. v7+ adds incremental fetch session
+            # fields and forgotten_topics_data. v11 adds top-level rack_id.
+            include_leader_epoch = api_version >= 9
+            partitions_by_topic: list[tuple[str, list[tuple[int, ...]]]] = []
+            for topic, partitions in self._topics:
+                new_partitions: list[tuple[int, ...]] = []
+                for partition, offset, max_bytes in partitions:
+                    if include_leader_epoch:
+                        new_partitions.append(
+                            (
+                                partition,
+                                -1,  # current_leader_epoch (unknown)
+                                offset,  # fetch_offset
+                                -1,  # log_start_offset (consumer)
+                                max_bytes,
+                            )
+                        )
+                    else:
+                        new_partitions.append(
+                            (
+                                partition,
+                                offset,  # fetch_offset
+                                -1,  # log_start_offset (consumer)
+                                max_bytes,
+                            )
+                        )
+                partitions_by_topic.append((topic, new_partitions))
+
+            args: list[object] = [
+                -1,  # replica_id
+                self._max_wait_ms,
+                self._min_bytes,
+                self._max_bytes,
+                self._isolation_level,
+            ]
+            if api_version >= 7:
+                args.extend(
+                    [
+                        0,  # session_id (no incremental fetch session)
+                        -1,  # session_epoch (FINAL_EPOCH)
+                    ]
+                )
+            args.append(partitions_by_topic)
+            if api_version >= 7:
+                args.append([])  # forgotten_topics_data
+            if api_version >= 11:
+                args.append(self._rack_id)
+            return request_struct_class(*args)
+
         if self._isolation_level:
             raise IncompatibleBrokerVersion(
                 "isolation_level requires FetchRequest >= v4"
             )
 
-        if request_struct_class.API_VERSION == 3:
+        if api_version == 3:
             return request_struct_class(
                 -1,  # replica_id
                 self._max_wait_ms,
