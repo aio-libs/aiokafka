@@ -11,8 +11,6 @@ import logging
 import time
 from unittest import mock
 
-import pytest
-
 from aiokafka import errors as Errors
 from aiokafka.consumer.fetcher import Fetcher
 from aiokafka.protocol.fetch import (
@@ -32,7 +30,7 @@ async def _noop_fetch_routine(self):
     Returns immediately so the background task created in ``Fetcher.__init__``
     completes without doing any real work.
     """
-    return None
+    return
 
 
 async def _make_fetcher(
