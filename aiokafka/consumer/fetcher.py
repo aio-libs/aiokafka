@@ -776,11 +776,7 @@ class Fetcher:
         # the per-partition loop below can skip the preferred-replica work
         # entirely when the feature is inactive.
         rack_aware = bool(self._client_rack) and response.API_VERSION >= 11
-        if (
-            self._client_rack
-            and not rack_aware
-            and not self._rack_warning_logged
-        ):
+        if self._client_rack and not rack_aware and not self._rack_warning_logged:
             log.warning(
                 "client_rack is set to %r but broker only supports "
                 "FetchRequest v%d (v11+ required for KIP-392 rack-aware "
@@ -815,9 +811,7 @@ class Fetcher:
                         lso = part_data[0]
                         aborted_transactions = part_data[2]
                         if rack_aware:
-                            self._update_preferred_read_replica(
-                                tp, part_data[3]
-                            )
+                            self._update_preferred_read_replica(tp, part_data[3])
                     elif response.API_VERSION >= 4:
                         aborted_transactions = part_data[-2]
                         lso = part_data[-3]

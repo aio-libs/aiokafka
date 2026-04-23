@@ -52,9 +52,7 @@ async def _make_fetcher(
     subscriptions = mock.Mock()
     subscriptions.register_fetch_waiters = mock.Mock()
 
-    with mock.patch.object(
-        Fetcher, "_fetch_requests_routine", _noop_fetch_routine
-    ):
+    with mock.patch.object(Fetcher, "_fetch_requests_routine", _noop_fetch_routine):
         fetcher = Fetcher(
             client,
             subscriptions,

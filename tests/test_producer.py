@@ -251,7 +251,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
             with self.assertRaises(NotLeaderForPartitionError):
                 await future
 
-
     @run_until_complete
     async def test_producer_send_timeout(self):
         producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
