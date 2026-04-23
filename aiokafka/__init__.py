@@ -1,4 +1,4 @@
-__version__ = "0.13.0"
+__version__ = "0.14.0b1"
 
 from .abc import ConsumerRebalanceListener
 from .client import AIOKafkaClient
