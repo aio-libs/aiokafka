@@ -69,11 +69,9 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.value, b"Hello from non-transaction")
         self.assertEqual(msg.key, None)
 
-        # 3, because we have a commit marker also.
-        # Drive a no-data fetch round-trip so the consumer picks up the
-        # transaction commit marker and updates last_stable_offset/highwater
-        # before we assert on them. Sleeping a fixed interval here was racy
-        # under Python 3.14's task scheduler.
+        # 3, because we have a commit marker also. Drive a no-data fetch
+        # round-trip so the consumer observes the transaction commit marker
+        # and updates last_stable_offset/highwater before we assert.
         self.assertEqual(await consumer.getmany(timeout_ms=1000), {})
 
         tp = TopicPartition(self.topic, 0)
@@ -132,10 +130,9 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.value, b"Hello from non-transaction")
         self.assertEqual(msg.key, None)
 
-        # Drive a no-data fetch round-trip so the consumer picks up the
+        # Drive a no-data fetch round-trip so the consumer observes the
         # transaction abort marker and updates last_stable_offset/highwater
-        # before we assert on them. Replaces a former asyncio.wait_for(getone,
-        # timeout=0.5) which was racy under Python 3.14's task scheduler.
+        # before we assert.
         self.assertEqual(await consumer.getmany(timeout_ms=1000), {})
 
         tp = TopicPartition(self.topic, 0)
