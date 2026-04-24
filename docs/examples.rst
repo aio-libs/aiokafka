@@ -13,3 +13,4 @@ Examples
    Local state consumer <examples/local_state_consumer>
    Batch producer <examples/batch_produce>
    Transactional Consume-Process-Produce <examples/transaction_example>
+   Concurrent Consumption <examples/concurrent_consumption>
