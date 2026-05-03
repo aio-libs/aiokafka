@@ -1,0 +1,2 @@
+Use the stdlib ``compression.zstd`` module (added in Python 3.14) for zstd
+compression when available, falling back to ``cramjam``.
