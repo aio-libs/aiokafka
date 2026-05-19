@@ -2,6 +2,15 @@
 Changelog
 =========
 
+0.15.0 (2026-??-??)
+===================
+
+New features:
+
+* Change the way tagged fields are managed in the protocol definitions
+  (pr #1162 by @vmaurin)
+
+
 0.14.0 (2026-04-29)
 ===================
 

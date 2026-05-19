@@ -32,7 +32,7 @@ class Struct:
     def decode(cls, data: BytesIO | bytes) -> Self:
         if isinstance(data, bytes):
             data = BytesIO(data)
-        return cls(*[field.decode(data) for field in cls.SCHEMA.fields])
+        return cls(*cls.SCHEMA.decode(data))
 
     def get_item(self, name: str) -> Any:
         if name not in self.SCHEMA.names:
