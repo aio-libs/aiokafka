@@ -590,6 +590,7 @@ class Fetcher:
         fetchable = collections.defaultdict(list)
         awaiting_reset = collections.defaultdict(list)
         backoff_by_nodes = collections.defaultdict(list)
+        fetch_backoffs = []
         resume_futures = []
         invalid_metadata = False
 
@@ -634,6 +635,10 @@ class Fetcher:
             elif tp_state.paused:
                 resume_futures.append(tp_state.resume_fut)
             else:
+                backoff = tp_state.fetch_backoff()
+                if backoff:
+                    fetch_backoffs.append(backoff)
+                    continue
                 position = tp_state.position
                 fetchable[node_id].append((tp, position))
                 log.debug(
@@ -669,10 +674,10 @@ class Fetcher:
             )
             fetch_requests.append((node_id, req))
 
-        if backoff_by_nodes:
+        if backoff_by_nodes or fetch_backoffs:
             # Return min time till any node will be ready to send event
             # (max of it's backoffs)
-            backoff = min(map(max, backoff_by_nodes.values()))
+            backoff = min([*map(max, backoff_by_nodes.values()), *fetch_backoffs])
         else:
             backoff = self._fetcher_timeout
         return (
@@ -888,6 +893,7 @@ class Fetcher:
                         Errors.UnknownTopicOrPartitionError,
                     ):
                         self._client.force_metadata_update()
+                        tp_state.request_fetch_backoff(self._retry_backoff)
                     elif error_type is Errors.OffsetOutOfRangeError:
                         if self._default_reset_strategy != OffsetResetStrategy.NONE:
                             tp_state.await_reset(self._default_reset_strategy)
