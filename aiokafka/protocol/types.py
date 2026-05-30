@@ -1,5 +1,5 @@
 import struct
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from io import BytesIO
 from struct import error
 from typing import (
@@ -185,22 +185,118 @@ class Boolean(AbstractType[bool]):
 class Schema:
     names: tuple[str, ...]
     fields: tuple[ValueT, ...]
+    tags: tuple[int, ...]
+    tagged_fields_offset: int
 
-    def __init__(self, *fields: tuple[str, ValueT]):
-        if fields:
-            self.names, self.fields = zip(*fields, strict=False)
-        else:
-            self.names, self.fields = (), ()
+    def __init__(
+        self,
+        *fields: tuple[str, ValueT],
+        tagged_fields: Iterable[tuple[int, str, ValueT]] | None = None,
+    ):
+        self.tagged_fields_offset = -1
+        all_names = []
+        all_fields = []
+        all_tags = []
+        for name, field in fields:
+            all_names.append(name)
+            all_fields.append(field)
+            all_tags.append(-1)
+
+        if tagged_fields is not None:
+            self.tagged_fields_offset = len(fields)
+            previous_tag = -1
+            for tag, name, field in tagged_fields:
+                if tag <= previous_tag:
+                    raise ValueError(
+                        "Tagged fields must be declared ordered by tag."
+                        f" {name} is out-of-order"
+                    )
+                previous_tag = tag
+                all_names.append(name)
+                all_fields.append(field)
+                all_tags.append(tag)
+
+        self.names = tuple(all_names)
+        self.fields = tuple(all_fields)
+        self.tags = tuple(all_tags)
+
+    @property
+    def has_tagged_fields(self) -> bool:
+        return self.tagged_fields_offset >= 0
 
     def encode(self, item: Sequence[Any]) -> bytes:
         if len(item) != len(self.fields):
             raise ValueError("Item field count does not match Schema")
-        return b"".join(field.encode(item[i]) for i, field in enumerate(self.fields))
+        return b"".join(
+            self.fields[i].encode(item[i])
+            for i in range(
+                self.tagged_fields_offset
+                if self.tagged_fields_offset >= 0
+                else len(self.fields),
+            )
+        ) + (
+            self._encode_tagged_fields(
+                [
+                    (
+                        self.tags[i],
+                        self.fields[i].encode(item[i]),
+                    )
+                    for i in range(self.tagged_fields_offset, len(self.fields))
+                    if item[i] is not None
+                ]
+            )
+            if self.tagged_fields_offset >= 0
+            else b""
+        )
 
     def decode(
         self, data: BytesIO
     ) -> tuple[Any | str | None | list[Any | tuple[Any, ...]], ...]:
-        return tuple(field.decode(data) for field in self.fields)
+        result = [
+            self.fields[i].decode(data)
+            for i in range(
+                self.tagged_fields_offset
+                if self.tagged_fields_offset >= 0
+                else len(self.fields)
+            )
+        ]
+        if self.tagged_fields_offset >= 0:
+            tagged_fields = self._decode_tagged_fields(data)
+            for i in range(self.tagged_fields_offset, len(self.fields)):
+                encoded_value = tagged_fields.get(self.tags[i])
+                if encoded_value is not None:
+                    result.append(self.fields[i].decode(BytesIO(encoded_value)))
+                else:
+                    result.append(None)
+
+        return tuple(result)
+
+    @staticmethod
+    def _encode_tagged_fields(value: list[tuple[int, bytes]]) -> bytes:
+        ret = UnsignedVarInt32.encode(len(value))
+        for k, v in value:
+            ret += UnsignedVarInt32.encode(k)
+            ret += UnsignedVarInt32.encode(len(v))
+            ret += v
+        return ret
+
+    @staticmethod
+    def _decode_tagged_fields(data: BytesIO) -> dict[int, bytes]:
+        # According to the specs https://cwiki.apache.org/confluence/display/KAFKA/KIP-482%3A+The+Kafka+Protocol+should+Support+Optional+Tagged+Fields
+        # "They are serialized in ascending order of their tag"
+        # On deserialize, we prefer supporting any order:
+        # * it doesn't complexify the implementation
+        # * it is more robust in case a future broker version produce them unordered
+        num_fields = UnsignedVarInt32.decode(data)
+        ret: dict[int, bytes] = {}
+        if not num_fields:
+            return ret
+        for _ in range(num_fields):
+            tag = UnsignedVarInt32.decode(data)
+            size = UnsignedVarInt32.decode(data)
+            val = data.read(size)
+            ret[tag] = val
+        return ret
 
     def __len__(self) -> int:
         return len(self.fields)
@@ -227,17 +323,21 @@ class Array:
 
     @overload
     def __init__(
-        self, array_of_0: tuple[str, ValueT], *array_of: tuple[str, ValueT]
+        self,
+        array_of_0: tuple[str, ValueT],
+        *array_of: tuple[str, ValueT],
+        tagged_fields: Iterable[tuple[int, str, ValueT]] | None = None,
     ): ...
 
     def __init__(
         self,
         array_of_0: ValueT | tuple[str, ValueT],
         *array_of: tuple[str, ValueT],
+        tagged_fields: Iterable[tuple[int, str, ValueT]] | None = None,
     ) -> None:
-        if array_of:
+        if array_of or tagged_fields:
             array_of_0 = cast(tuple[str, ValueT], array_of_0)
-            self.array_of = Schema(array_of_0, *array_of)
+            self.array_of = Schema(array_of_0, *array_of, tagged_fields=tagged_fields)
         else:
             array_of_0 = cast(ValueT, array_of_0)
             if isinstance(array_of_0, String | Array | Schema) or issubclass(
@@ -353,36 +453,6 @@ class CompactString(String):
             return UnsignedVarInt32.encode(0)
         encoded_value = str(value).encode(self.encoding)
         return UnsignedVarInt32.encode(len(encoded_value) + 1) + encoded_value
-
-
-class TaggedFields(AbstractType[dict[int, bytes]]):
-    @classmethod
-    def decode(cls, data: BytesIO) -> dict[int, bytes]:
-        num_fields = UnsignedVarInt32.decode(data)
-        ret: dict[int, bytes] = {}
-        if not num_fields:
-            return ret
-        prev_tag = -1
-        for _ in range(num_fields):
-            tag = UnsignedVarInt32.decode(data)
-            if tag <= prev_tag:
-                raise ValueError(f"Invalid or out-of-order tag {tag}")
-            prev_tag = tag
-            size = UnsignedVarInt32.decode(data)
-            val = data.read(size)
-            ret[tag] = val
-        return ret
-
-    @classmethod
-    def encode(cls, value: dict[int, bytes]) -> bytes:
-        ret = UnsignedVarInt32.encode(len(value))
-        for k, v in value.items():
-            # do we allow for other data types ?? It could get complicated really fast
-            assert isinstance(v, bytes), f"Value {v!r} is not a byte array"
-            assert isinstance(k, int) and k > 0, f"Key {k} is not a positive integer"
-            ret += UnsignedVarInt32.encode(k)
-            ret += v
-        return ret
 
 
 class CompactBytes(AbstractType[bytes | None]):

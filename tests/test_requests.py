@@ -28,7 +28,6 @@ from aiokafka.protocol.admin import (
     DeleteRecordsRequest,
     DeleteRecordsRequest_v0,
     DeleteRecordsRequest_v1,
-    DeleteRecordsRequest_v2,
     DeleteTopicsRequest,
     DeleteTopicsRequest_v0,
     DescribeAclsRequest,
@@ -357,22 +356,22 @@ cases = [
         ],
     ),
     (
-        AlterPartitionReassignmentsRequest(timeout_ms=100, topics=[], tags={}),
+        AlterPartitionReassignmentsRequest(timeout_ms=100, topics=[]),
         [
             Versions(expected=IncompatibleBrokerVersion),
             Versions(
                 max_version=0,
-                expected=AlterPartitionReassignmentsRequest_v0(100, [], {}),
+                expected=AlterPartitionReassignmentsRequest_v0(100, []),
             ),
         ],
     ),
     (
-        ListPartitionReassignmentsRequest(timeout_ms=200, topics=[], tags={}),
+        ListPartitionReassignmentsRequest(timeout_ms=200, topics=[]),
         [
             Versions(expected=IncompatibleBrokerVersion),
             Versions(
                 max_version=0,
-                expected=ListPartitionReassignmentsRequest_v0(200, [], {}),
+                expected=ListPartitionReassignmentsRequest_v0(200, []),
             ),
         ],
     ),
@@ -387,17 +386,6 @@ cases = [
             Versions(
                 max_version=1,
                 expected=DeleteRecordsRequest_v1([("t1", [(0, 123)])], 50),
-            ),
-        ],
-    ),
-    (
-        DeleteRecordsRequest(topics=[("t1", [(0, 123)])], timeout_ms=50, tags={}),
-        [
-            Versions(expected=IncompatibleBrokerVersion),
-            Versions(max_version=1, expected=IncompatibleBrokerVersion),
-            Versions(
-                max_version=2,
-                expected=DeleteRecordsRequest_v2([("t1", [(0, 123, {})], {})], 50, {}),
             ),
         ],
     ),

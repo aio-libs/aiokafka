@@ -8,7 +8,7 @@ from typing import Any, ClassVar, Generic, TypeVar, get_args, get_origin
 from aiokafka.errors import IncompatibleBrokerVersion
 
 from .struct import Struct
-from .types import Array, Int16, Int32, Schema, String, TaggedFields
+from .types import Array, Int16, Int32, Schema, String
 
 
 class RequestHeader_v1(Struct):
@@ -37,7 +37,7 @@ class RequestHeader_v2(Struct):
         ("api_version", Int16),
         ("correlation_id", Int32),
         ("client_id", String("utf-8")),
-        ("tags", TaggedFields),
+        tagged_fields=(),
     )
 
     def __init__(
@@ -45,10 +45,9 @@ class RequestHeader_v2(Struct):
         request: RequestStruct,
         correlation_id: int = 0,
         client_id: str = "aiokafka",
-        tags: dict[int, bytes] | None = None,
     ):
         super().__init__(
-            request.API_KEY, request.API_VERSION, correlation_id, client_id, tags or {}
+            request.API_KEY, request.API_VERSION, correlation_id, client_id
         )
 
 
@@ -61,7 +60,7 @@ class ResponseHeader_v0(Struct):
 class ResponseHeader_v1(Struct):
     SCHEMA = Schema(
         ("correlation_id", Int32),
-        ("tags", TaggedFields),
+        tagged_fields=(),
     )
 
 
@@ -149,8 +148,6 @@ class RequestStruct(Struct, metaclass=abc.ABCMeta):
 
     Attributes
     ----------
-    FLEXIBLE_VERSION : bool
-        Use request header with flexible tags
     API_KEY : int
         The unique API key identifying the request.
     API_VERSION : int
@@ -161,7 +158,6 @@ class RequestStruct(Struct, metaclass=abc.ABCMeta):
         An instance of Schema() representing the request structure.
     """
 
-    FLEXIBLE_VERSION: ClassVar[bool] = False
     API_KEY: ClassVar[int]
     API_VERSION: ClassVar[int]
     RESPONSE_TYPE: ClassVar[type[Response]]
@@ -186,7 +182,7 @@ class RequestStruct(Struct, metaclass=abc.ABCMeta):
     def build_request_header(
         self, correlation_id: int, client_id: str
     ) -> RequestHeader_v1 | RequestHeader_v2:
-        if self.FLEXIBLE_VERSION:
+        if self.SCHEMA.has_tagged_fields:
             return RequestHeader_v2(
                 self, correlation_id=correlation_id, client_id=client_id
             )
@@ -197,7 +193,7 @@ class RequestStruct(Struct, metaclass=abc.ABCMeta):
     def parse_response_header(
         self, read_buffer: BytesIO | bytes
     ) -> ResponseHeader_v0 | ResponseHeader_v1:
-        if self.FLEXIBLE_VERSION:
+        if self.SCHEMA.has_tagged_fields:
             return ResponseHeader_v1.decode(read_buffer)
         return ResponseHeader_v0.decode(read_buffer)
 

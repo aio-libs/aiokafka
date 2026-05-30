@@ -17,7 +17,6 @@ from .types import (
     Int64,
     Schema,
     String,
-    TaggedFields,
 )
 
 
@@ -1467,18 +1466,17 @@ class AlterPartitionReassignmentsResponse_v0(Response):
                         ("partition_index", Int32),
                         ("error_code", Int16),
                         ("error_message", CompactString("utf-8")),
-                        ("tags", TaggedFields),
+                        tagged_fields=(),
                     ),
                 ),
-                ("tags", TaggedFields),
+                tagged_fields=(),
             ),
         ),
-        ("tags", TaggedFields),
+        tagged_fields=(),
     )
 
 
 class AlterPartitionReassignmentsRequest_v0(RequestStruct):
-    FLEXIBLE_VERSION = True
     API_KEY = 45
     API_VERSION = 0
     RESPONSE_TYPE = AlterPartitionReassignmentsResponse_v0
@@ -1493,13 +1491,13 @@ class AlterPartitionReassignmentsRequest_v0(RequestStruct):
                     CompactArray(
                         ("partition_index", Int32),
                         ("replicas", CompactArray(Int32)),
-                        ("tags", TaggedFields),
+                        tagged_fields=(),
                     ),
                 ),
-                ("tags", TaggedFields),
+                tagged_fields=(),
             ),
         ),
-        ("tags", TaggedFields),
+        tagged_fields=(),
     )
 
 
@@ -1516,17 +1514,15 @@ class AlterPartitionReassignmentsRequest(
     def __init__(
         self,
         timeout_ms: int,
-        topics: list[tuple[str, tuple[int, list[int], TaggedFields], TaggedFields]],
-        tags: TaggedFields,
+        topics: list[tuple[str, tuple[int, list[int]]]],
     ):
         self._timeout_ms = timeout_ms
         self._topics = topics
-        self._tags = tags
 
     def build(
         self, request_struct_class: type[AlterPartitionReassignmentsRequestStruct]
     ) -> AlterPartitionReassignmentsRequestStruct:
-        return request_struct_class(self._timeout_ms, self._topics, self._tags)
+        return request_struct_class(self._timeout_ms, self._topics)
 
 
 class ListPartitionReassignmentsResponse_v0(Response):
@@ -1547,18 +1543,17 @@ class ListPartitionReassignmentsResponse_v0(Response):
                         ("replicas", CompactArray(Int32)),
                         ("adding_replicas", CompactArray(Int32)),
                         ("removing_replicas", CompactArray(Int32)),
-                        ("tags", TaggedFields),
+                        tagged_fields=(),
                     ),
                 ),
-                ("tags", TaggedFields),
+                tagged_fields=(),
             ),
         ),
-        ("tags", TaggedFields),
+        tagged_fields=(),
     )
 
 
 class ListPartitionReassignmentsRequest_v0(RequestStruct):
-    FLEXIBLE_VERSION = True
     API_KEY = 46
     API_VERSION = 0
     RESPONSE_TYPE = ListPartitionReassignmentsResponse_v0
@@ -1569,10 +1564,10 @@ class ListPartitionReassignmentsRequest_v0(RequestStruct):
             CompactArray(
                 ("name", CompactString("utf-8")),
                 ("partition_index", CompactArray(Int32)),
-                ("tags", TaggedFields),
+                tagged_fields=(),
             ),
         ),
-        ("tags", TaggedFields),
+        tagged_fields=(),
     )
 
 
@@ -1589,17 +1584,15 @@ class ListPartitionReassignmentsRequest(
     def __init__(
         self,
         timeout_ms: int,
-        topics: list[tuple[str, tuple[int, list[int], TaggedFields], TaggedFields]],
-        tags: TaggedFields,
+        topics: list[tuple[str, tuple[int, list[int]]]],
     ):
         self._timeout_ms = timeout_ms
         self._topics = topics
-        self._tags = tags
 
     def build(
         self, request_struct_class: type[ListPartitionReassignmentsRequestStruct]
     ) -> ListPartitionReassignmentsRequestStruct:
-        return request_struct_class(self._timeout_ms, self._topics, self._tags)
+        return request_struct_class(self._timeout_ms, self._topics)
 
 
 class DeleteRecordsResponse_v0(Response):
@@ -1645,13 +1638,13 @@ class DeleteRecordsResponse_v2(Response):
                         ("partition_index", Int32),
                         ("low_watermark", Int64),
                         ("error_code", Int16),
-                        ("tags", TaggedFields),
+                        tagged_fields=(),
                     ),
                 ),
-                ("tags", TaggedFields),
+                tagged_fields=(),
             ),
         ),
-        ("tags", TaggedFields),
+        tagged_fields=(),
     )
 
 
@@ -1687,7 +1680,6 @@ class DeleteRecordsRequest_v1(RequestStruct):
 class DeleteRecordsRequest_v2(RequestStruct):
     API_KEY = 21
     API_VERSION = 2
-    FLEXIBLE_VERSION = True
     RESPONSE_TYPE = DeleteRecordsResponse_v2
     SCHEMA = Schema(
         (
@@ -1699,14 +1691,14 @@ class DeleteRecordsRequest_v2(RequestStruct):
                     CompactArray(
                         ("partition_index", Int32),
                         ("offset", Int64),
-                        ("tags", TaggedFields),
+                        tagged_fields=(),
                     ),
                 ),
-                ("tags", TaggedFields),
+                tagged_fields=(),
             ),
         ),
         ("timeout_ms", Int32),
-        ("tags", TaggedFields),
+        tagged_fields=(),
     )
 
 
@@ -1722,21 +1714,14 @@ class DeleteRecordsRequest(Request[DeleteRecordsRequestStruct]):
         self,
         topics: Iterable[tuple[str, Iterable[tuple[int, int]]]],
         timeout_ms: int,
-        tags: dict[int, bytes] | None = None,
     ) -> None:
         self._topics = topics
         self._timeout_ms = timeout_ms
-        self._tags = tags
 
     def build(
         self, request_struct_class: type[DeleteRecordsRequestStruct]
     ) -> DeleteRecordsRequestStruct:
         if request_struct_class.API_VERSION < 2:
-            if self._tags is not None:
-                raise IncompatibleBrokerVersion(
-                    "tags requires DeleteRecordsRequest >= v2"
-                )
-
             return request_struct_class(
                 [
                     (
@@ -1752,13 +1737,11 @@ class DeleteRecordsRequest(Request[DeleteRecordsRequestStruct]):
                 (
                     topic,
                     [
-                        (partition, before_offset, {})
+                        (partition, before_offset)
                         for partition, before_offset in partitions
                     ],
-                    {},
                 )
                 for (topic, partitions) in self._topics
             ],
             self._timeout_ms,
-            self._tags or {},
         )
