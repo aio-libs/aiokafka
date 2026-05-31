@@ -474,6 +474,7 @@ class TopicPartitionState:
 
         self._paused = False
         self._resume_fut = None
+        self._fetch_backoff_until = 0
 
     @property
     def paused(self):
@@ -553,6 +554,12 @@ class TopicPartitionState:
 
     def wait_for_position(self):
         return shield(self._position_fut)
+
+    def request_fetch_backoff(self, backoff: float):
+        self._fetch_backoff_until = time.monotonic() + backoff
+
+    def fetch_backoff(self):
+        return max(0, self._fetch_backoff_until - time.monotonic())
 
     # Pause/Unpause
     def pause(self):

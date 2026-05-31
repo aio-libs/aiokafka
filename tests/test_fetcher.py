@@ -332,6 +332,84 @@ class TestFetcher(unittest.TestCase):
 
         await fetcher.close()
 
+    @run_until_complete
+    async def test_proc_fetch_request_notleader_partition_backoff(self):
+        client = AIOKafkaClient(bootstrap_servers=[])
+        subscriptions = SubscriptionState()
+        fetcher = Fetcher(client, subscriptions)
+        fetcher._fetch_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await fetcher._fetch_task
+        fetcher._fetch_task = create_task(asyncio.sleep(1000000))
+
+        tp0 = TopicPartition("test", 0)
+        tp1 = TopicPartition("test", 1)
+        tp_info = (
+            tp0.topic,
+            [(tp0.partition, 4, 100000), (tp1.partition, 4, 100000)],
+        )
+        req = FetchRequest(-1, 100, 100, [tp_info])
+
+        def force_metadata_update():
+            fut = create_future()
+            fut.set_result(False)
+            return fut
+
+        client.ready = mock.MagicMock(side_effect=lambda conn: create_future())
+        client.force_metadata_update = mock.MagicMock(side_effect=force_metadata_update)
+        client.cluster.leader_for_partition = mock.MagicMock(return_value=0)
+
+        subscriptions.assign_from_user({tp0, tp1})
+        assignment = subscriptions.subscription.assignment
+        subscriptions.seek(tp0, 4)
+        subscriptions.seek(tp1, 4)
+
+        builder = DefaultRecordBatchBuilder(
+            magic=2, compression_type=0, batch_size=99999999,
+            is_transactional=0, producer_id=-1, producer_epoch=-1,
+            base_sequence=0,
+        )
+        builder.append(offset=4, value=b"ok", key=None, timestamp=None, headers=[])
+        raw_batch = bytes(builder.build())
+        fetch_response = FetchResponse(
+            [
+                (
+                    "test",
+                    [
+                        (0, NotLeaderForPartitionError.errno, 9, b""),
+                        (1, 0, 9, raw_batch),
+                    ],
+                )
+            ]
+        )
+
+        async def send(node, request):
+            return fetch_response
+
+        client.send = mock.MagicMock(side_effect=send)
+        needs_wake_up = await fetcher._proc_fetch_request(assignment, 0, req)
+
+        self.assertTrue(needs_wake_up)
+        self.assertGreater(assignment.state_value(tp0).fetch_backoff(), 0)
+        self.assertEqual(assignment.state_value(tp1).fetch_backoff(), 0)
+
+        fetcher._records.clear()
+        fetch_requests, _, timeout, invalid_metadata, _ = fetcher._get_actions_per_node(
+            assignment
+        )
+
+        self.assertFalse(invalid_metadata)
+        self.assertLessEqual(timeout, fetcher._retry_backoff)
+        self.assertEqual(len(fetch_requests), 1)
+        node_id, request = fetch_requests[0]
+        self.assertEqual(node_id, 0)
+        self.assertEqual(
+            request.topics,
+            [("test", [(1, 4, fetcher._max_partition_fetch_bytes)])],
+        )
+
+        await fetcher.close()
+
     def _setup_error_after_data(self):
         subscriptions = SubscriptionState()
         client = AIOKafkaClient(bootstrap_servers=[])

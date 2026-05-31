@@ -72,6 +72,7 @@ def _make_assignment(fetcher, tps):
         state.has_valid_position = True
         state.paused = False
         state.position = 0
+        state.fetch_backoff.return_value = 0
         return state
 
     assignment.state_value = state_value
