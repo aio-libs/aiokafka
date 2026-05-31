@@ -2247,3 +2247,25 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             await _wait_mock_count(listener1, 4)
         self.assertEqual(listener1.revoke_mock.call_count, 5)
         self.assertEqual(listener1.assign_mock.call_count, 5)
+
+
+class TestConsumerNotStarted:
+    """Unit tests that do not require a running Kafka broker."""
+
+    @pytest.mark.asyncio
+    async def test_getone_before_start_raises_illegal_state(self):
+        consumer = AIOKafkaConsumer(
+            "some_topic",
+            bootstrap_servers="localhost:9092",
+        )
+        with pytest.raises(IllegalStateError, match="not started"):
+            await consumer.getone()
+
+    @pytest.mark.asyncio
+    async def test_getmany_before_start_raises_illegal_state(self):
+        consumer = AIOKafkaConsumer(
+            "some_topic",
+            bootstrap_servers="localhost:9092",
+        )
+        with pytest.raises(IllegalStateError, match="not started"):
+            await consumer.getmany()

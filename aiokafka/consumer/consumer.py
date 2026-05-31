@@ -1136,6 +1136,11 @@ class AIOKafkaConsumer:
         assert all(isinstance(k, TopicPartition) for k in partitions)
         if self._closed:
             raise ConsumerStoppedError()
+        if self._fetcher is None:
+            raise IllegalStateError(
+                "AIOKafkaConsumer is not started. Use `await consumer.start()` "
+                "or the `async with` context manager."
+            )
 
         # Raise coordination errors if any
         self._coordinator.check_errors()
@@ -1183,6 +1188,11 @@ class AIOKafkaConsumer:
         assert all(isinstance(k, TopicPartition) for k in partitions)
         if self._closed:
             raise ConsumerStoppedError()
+        if self._fetcher is None:
+            raise IllegalStateError(
+                "AIOKafkaConsumer is not started. Use `await consumer.start()` "
+                "or the `async with` context manager."
+            )
 
         if max_records is not None and (
             not isinstance(max_records, int) or max_records < 1
