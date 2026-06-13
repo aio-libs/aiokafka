@@ -1272,42 +1272,43 @@ class CoordinatorGroupRebalance:
                 metadata = metadata.encode()
             group_protocol = (assignor.name, metadata)
             metadata_list.append(group_protocol)
-            # for KIP-394 we may have to send a second join request
-            try_join = True
-            while try_join:
-                try_join = False
+        
+        # for KIP-394 we may have to send a second join request
+        try_join = True
+        while try_join:
+            try_join = False
 
-                request = JoinGroupRequest(
-                    self.group_id,
-                    self._session_timeout_ms,
-                    self._rebalance_timeout_ms,
-                    self._coordinator.member_id,
-                    self._coordinator._group_instance_id,
-                    ConsumerProtocol.PROTOCOL_TYPE,
-                    metadata_list,
-                )
+            request = JoinGroupRequest(
+                self.group_id,
+                self._session_timeout_ms,
+                self._rebalance_timeout_ms,
+                self._coordinator.member_id,
+                self._coordinator._group_instance_id,
+                ConsumerProtocol.PROTOCOL_TYPE,
+                metadata_list,
+            )
 
-                # create the request for the coordinator
-                log.debug(
-                    "Sending JoinGroup (%s) to coordinator %s",
-                    request,
-                    self.coordinator_id,
-                )
-                try:
-                    response = await self._coordinator._send_req(request)
-                except Errors.KafkaError:
-                    # Return right away. It's a connection error, so backoff will be
-                    # handled by coordinator lookup
-                    return None
-                if not self._subscription.active:
-                    # Subscription changed. Ignore response and restart group join
-                    return None
+            # create the request for the coordinator
+            log.debug(
+                "Sending JoinGroup (%s) to coordinator %s",
+                request,
+                self.coordinator_id,
+            )
+            try:
+                response = await self._coordinator._send_req(request)
+            except Errors.KafkaError:
+                # Return right away. It's a connection error, so backoff will be
+                # handled by coordinator lookup
+                return None
+            if not self._subscription.active:
+                # Subscription changed. Ignore response and restart group join
+                return None
 
-                error_type = Errors.for_code(response.error_code)
+            error_type = Errors.for_code(response.error_code)
 
-                if error_type is Errors.MemberIdRequired:
-                    self._coordinator.member_id = response.member_id
-                    try_join = True
+            if error_type is Errors.MemberIdRequired:
+                self._coordinator.member_id = response.member_id
+                try_join = True
 
         if error_type is Errors.NoError:
             log.debug("Join group response %s", response)
