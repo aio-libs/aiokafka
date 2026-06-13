@@ -1272,7 +1272,7 @@ class CoordinatorGroupRebalance:
                 metadata = metadata.encode()
             group_protocol = (assignor.name, metadata)
             metadata_list.append(group_protocol)
-        
+
         # for KIP-394 we may have to send a second join request
         try_join = True
         while try_join:
