@@ -1481,12 +1481,8 @@ async def test_join_group_sent_once_with_multiple_assignors():
     coordinator._group_instance_id = None
     coordinator._rebalance_timeout_ms = 30000
 
-    send_req_call_count = 0
-
-    async def mock_send_req(request):
-        nonlocal send_req_call_count
-        send_req_call_count += 1
-        return JoinGroupResponse_v0(
+    coordinator._send_req = mock.AsyncMock(
+        return_value=JoinGroupResponse_v0(
             error_code=Errors.NoError.errno,
             generation_id=1,
             group_protocol="roundrobin",
@@ -1494,8 +1490,7 @@ async def test_join_group_sent_once_with_multiple_assignors():
             member_id="member-1",
             members=[],
         )
-
-    coordinator._send_req = mock_send_req
+    )
 
     subscription = mock.MagicMock()
     subscription.topics = {"topic1"}
@@ -1520,7 +1515,4 @@ async def test_join_group_sent_once_with_multiple_assignors():
 
     await rebalance.perform_group_join()
 
-    assert send_req_call_count == 1, (
-        f"Expected 1 JoinGroupRequest, got {send_req_call_count}. "
-        "The join loop may have been incorrectly nested inside the assignors loop."
-    )
+    coordinator._send_req.assert_awaited_once()
