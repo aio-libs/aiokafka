@@ -1,6 +1,7 @@
 import pytest
 
 from aiokafka.partitioner import DefaultPartitioner, murmur2
+from aiokafka.producer import AIOKafkaProducer
 
 
 def test_default_partitioner():
@@ -41,3 +42,42 @@ def test_murmur2_not_ascii():
     # Verify no regression of murmur2() bug encoding py2 bytes that don't ascii encode
     murmur2(b"\xa4")
     murmur2(b"\x81" * 1000)
+
+
+class _FakeMetadata:
+    def __init__(self, order):
+        self._order = order
+
+    def partitions_for_topic(self, topic):
+        return list(self._order)
+
+    def available_partitions_for_topic(self, topic):
+        return list(self._order)
+
+
+class _FakeProducer:
+    # _partition() only touches these two attributes, so we can drive the real
+    # method without spinning up a broker.
+    def __init__(self, order):
+        self._metadata = _FakeMetadata(order)
+        self._partitioner = DefaultPartitioner()
+
+
+def test_partition_selection_is_order_independent():
+    # partitions_for_topic() returns a set, so the list handed to the
+    # partitioner can come out in any iteration order (see issue #1127). A given
+    # key must still map to the same partition regardless of that order.
+    key = b"user-42"
+    front = [7, 3, 40, 1, 22, 0, 15]
+    orders = [
+        list(range(50)),
+        list(reversed(range(50))),
+        front + [p for p in range(50) if p not in front],
+    ]
+    chosen = set()
+    for order in orders:
+        producer = _FakeProducer(order)
+        chosen.add(
+            AIOKafkaProducer._partition(producer, "t", None, key, None, key, None)
+        )
+    assert len(chosen) == 1

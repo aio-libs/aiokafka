@@ -1,0 +1,1 @@
+Make key-based partition selection deterministic. The producer indexed the murmur2 hash into a partition list built from a ``set``, whose iteration order is not stable, so the same key could map to different partitions and break key ordering (issue #1127).
