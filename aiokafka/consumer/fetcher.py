@@ -924,7 +924,7 @@ class Fetcher:
         """
         log.debug("Updating fetch positions for partitions %s", tps)
         needs_wakeup = False
-        # The list of partitions provided can consist of paritions that are
+        # The list of partitions provided can consist of partitions that are
         # awaiting reset already and freshly assigned partitions. The second
         # ones can yet have no commit point fetched, so we will check that.
         for tp in tps:
