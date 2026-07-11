@@ -6,7 +6,7 @@ import pytest
 
 from aiokafka import AIOKafkaProducer, NullMetricsCollector, ProducerMetricsCollector
 from aiokafka.cluster import ClusterMetadata
-from aiokafka.errors import KafkaTimeoutError
+from aiokafka.errors import KafkaTimeoutError, NotLeaderForPartitionError
 from aiokafka.producer.message_accumulator import MessageAccumulator
 from aiokafka.structs import TopicPartition
 
@@ -48,6 +48,12 @@ class RaisingMetricsCollector(RecordingMetricsCollector):
 def make_cluster():
     cluster = ClusterMetadata(metadata_max_age_ms=10000)
     cluster.leader_for_partition = mock.Mock(return_value=0)
+    return cluster
+
+
+def make_cluster_without_leader():
+    cluster = ClusterMetadata(metadata_max_age_ms=10000)
+    cluster.leader_for_partition = mock.Mock(return_value=None)
     return cluster
 
 
@@ -181,10 +187,51 @@ async def test_metrics_not_reported_after_batch_already_completed():
     batch.failure(RuntimeError("late failure"))
 
     assert await future is None
-    assert [event[0] for event in collector.events] == [
-        "batch_drained",
-        "batch_drained",
-    ]
+    assert [event[0] for event in collector.events] == ["batch_drained"]
+
+
+@pytest.mark.asyncio
+async def test_metrics_not_drained_for_expired_batch_without_leader():
+    tp = TopicPartition("test-topic", 0)
+    collector = RecordingMetricsCollector()
+    accumulator = MessageAccumulator(
+        make_cluster_without_leader(),
+        batch_size=1000,
+        compression_type=0,
+        batch_ttl=-1,
+        metrics_collector=collector,
+    )
+
+    future = await accumulator.add_message(tp, None, b"value", timeout=2)
+    batches, unknown_leaders_exist = accumulator.drain_by_nodes(ignore_nodes=[])
+
+    assert batches == {}
+    assert unknown_leaders_exist
+    assert future.done()
+    future_exception = future.exception()
+    assert isinstance(future_exception, NotLeaderForPartitionError)
+    assert [event[0] for event in collector.events] == ["batch_failure"]
+
+
+@pytest.mark.asyncio
+async def test_metrics_not_drained_for_empty_batch():
+    tp = TopicPartition("test-topic", 0)
+    collector = RecordingMetricsCollector()
+    accumulator = MessageAccumulator(
+        make_cluster(),
+        batch_size=1000,
+        compression_type=0,
+        batch_ttl=30,
+        metrics_collector=collector,
+    )
+
+    future = await accumulator.add_batch(accumulator.create_builder(), tp, timeout=2)
+    batches, unknown_leaders_exist = accumulator.drain_by_nodes(ignore_nodes=[])
+
+    assert batches == {}
+    assert not unknown_leaders_exist
+    assert await future is None
+    assert collector.events == []
 
 
 @pytest.mark.asyncio

@@ -320,11 +320,14 @@ class MessageBatch:
         return (time.monotonic() - self._ctime) > self._ttl
 
     def drain_ready(self):
-        """Compress batch to be ready for send"""
-        self._drained_at = time.monotonic()
+        """Mark batch as drained from the accumulator."""
         if not self._drain_waiter.done():
             self._drain_waiter.set_result(None)
         self._retry_count += 1
+
+    def send_ready(self):
+        """Record that batch is handed to the sender."""
+        self._drained_at = time.monotonic()
         _call_metrics(
             self._metrics_collector.on_batch_drained,
             self._tp.topic,
@@ -563,6 +566,7 @@ class MessageAccumulator:
             # with validation...
             if not batch.is_empty():
                 nodes[leader][tp] = batch
+                batch.send_ready()
             else:
                 # XXX: use something more graceful. We just want to trigger
                 # delivery future here, no message futures.
