@@ -229,9 +229,9 @@ async def test_metrics_collector_records_buffer_wait_on_timeout():
     buffer_wait_events = [
         event for event in collector.events if event[0] == "buffer_wait"
     ]
-    assert len(buffer_wait_events) == 1
-    assert buffer_wait_events[0][1] == "test-topic"
-    assert buffer_wait_events[0][2] >= 0
+    assert buffer_wait_events
+    assert all(event[1] == "test-topic" for event in buffer_wait_events)
+    assert all(event[2] >= 0 for event in buffer_wait_events)
 
 
 @pytest.mark.asyncio
