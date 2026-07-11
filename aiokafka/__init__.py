@@ -4,6 +4,7 @@ from .abc import ConsumerRebalanceListener
 from .client import AIOKafkaClient
 from .consumer import AIOKafkaConsumer
 from .errors import ConsumerStoppedError, IllegalOperation
+from .metrics import NullMetricsCollector, ProducerMetricsCollector
 from .producer import AIOKafkaProducer
 from .structs import (
     ConsumerRecord,
@@ -17,6 +18,9 @@ __all__ = [  # noqa: RUF022
     "AIOKafkaProducer",
     "AIOKafkaConsumer",
     "AIOKafkaClient",
+    # Metrics
+    "ProducerMetricsCollector",
+    "NullMetricsCollector",
     # ABC's
     "ConsumerRebalanceListener",
     # Errors

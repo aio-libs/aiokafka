@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import copy
+import logging
 import time
 from collections.abc import Sequence
 
@@ -10,9 +11,19 @@ from aiokafka.errors import (
     NotLeaderForPartitionError,
     ProducerClosed,
 )
+from aiokafka.metrics import NullMetricsCollector
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
 from aiokafka.structs import RecordMetadata
 from aiokafka.util import create_future, get_running_loop
+
+log = logging.getLogger(__name__)
+
+
+def _call_metrics(callback, *args):
+    try:
+        callback(*args)
+    except Exception:
+        log.exception("Producer metrics collector callback failed")
 
 
 class BatchBuilder:
@@ -136,12 +147,14 @@ class BatchBuilder:
 class MessageBatch:
     """This class encapsulate operations with batch of produce messages"""
 
-    def __init__(self, tp, builder, ttl, linger_time):
+    def __init__(self, tp, builder, ttl, linger_time, metrics_collector):
         self._builder = builder
         self._tp = tp
         self._ttl = ttl
         self._linger_time = linger_time
+        self._metrics_collector = metrics_collector
         self._ctime = time.monotonic()
+        self._drained_at = None
 
         # Waiters
         # Set when messages are delivered to Kafka based on ACK setting
@@ -200,6 +213,9 @@ class MessageBatch:
         else:
             timestamp_type = 1
 
+        drained_at = self._drained_at
+        should_report = drained_at is not None and not self.future.done()
+
         # Set main batch future
         if not self.future.done():
             self.future.set_result(
@@ -235,6 +251,14 @@ class MessageBatch:
                 )
             )
 
+        if should_report:
+            _call_metrics(
+                self._metrics_collector.on_batch_done,
+                topic,
+                time.monotonic() - drained_at,
+                self.record_count,
+            )
+
     def done_noack(self):
         """Resolve all pending futures to None"""
         # Faster resolve for base_offset=None case.
@@ -246,6 +270,8 @@ class MessageBatch:
             future.set_result(None)
 
     def failure(self, exception):
+        should_report = not self.future.done()
+
         if not self.future.done():
             self.future.set_exception(exception)
         for future, _ in self._msg_futures:
@@ -264,6 +290,14 @@ class MessageBatch:
         # reset also.
         if not self._drain_waiter.done():
             self._drain_waiter.set_exception(exception)
+
+        if should_report:
+            _call_metrics(
+                self._metrics_collector.on_batch_failure,
+                self._tp.topic,
+                exception,
+                self.record_count,
+            )
 
     async def wait_drain(self, timeout=None):
         """Wait until all message from this batch is processed"""
@@ -287,14 +321,23 @@ class MessageBatch:
 
     def drain_ready(self):
         """Compress batch to be ready for send"""
+        self._drained_at = time.monotonic()
         if not self._drain_waiter.done():
             self._drain_waiter.set_result(None)
         self._retry_count += 1
+        _call_metrics(
+            self._metrics_collector.on_batch_drained,
+            self._tp.topic,
+            self._drained_at - self._ctime,
+            self._builder.size(),
+            self.record_count,
+        )
 
     def reset_drain(self):
         """Reset drain waiter, until we will do another retry"""
         assert self._drain_waiter.done()
         self._drain_waiter = create_future()
+        self._drained_at = None
 
     def set_producer_state(self, producer_id, producer_epoch, base_sequence):
         assert not self._drain_waiter.done()
@@ -328,6 +371,7 @@ class MessageAccumulator:
         txn_manager=None,
         loop=None,
         linger_ms=0,
+        metrics_collector=None,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -343,6 +387,9 @@ class MessageAccumulator:
         self._closed = False
         self._txn_manager = txn_manager
         self._linger_time = linger_ms / 1000
+        if metrics_collector is None:
+            metrics_collector = NullMetricsCollector()
+        self._metrics_collector = metrics_collector
 
         self._exception = None  # Critical exception
 
@@ -423,8 +470,16 @@ class MessageAccumulator:
                 self._waiter_future.set_result(None)
 
             start = time.monotonic()
-            await batch.wait_drain(timeout)
-            timeout -= time.monotonic() - start
+            try:
+                await batch.wait_drain(timeout)
+            finally:
+                wait_time = time.monotonic() - start
+                _call_metrics(
+                    self._metrics_collector.on_buffer_wait,
+                    tp.topic,
+                    wait_time,
+                )
+            timeout -= wait_time
             if timeout <= 0:
                 raise KafkaTimeoutError()
 
@@ -558,7 +613,13 @@ class MessageAccumulator:
         if self._txn_manager is not None:
             self._txn_manager.maybe_add_partition_to_txn(tp)
 
-        batch = MessageBatch(tp, builder, self._batch_ttl, self._linger_time)
+        batch = MessageBatch(
+            tp,
+            builder,
+            self._batch_ttl,
+            self._linger_time,
+            self._metrics_collector,
+        )
         self._batches[tp].append(batch)
         if not self._waiter_future.done():
             self._waiter_future.set_result(None)

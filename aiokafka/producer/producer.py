@@ -10,6 +10,7 @@ from aiokafka.errors import (
     IllegalOperation,
     MessageSizeTooLargeError,
 )
+from aiokafka.metrics import NullMetricsCollector
 from aiokafka.partitioner import DefaultPartitioner
 from aiokafka.record.default_records import (
     DefaultRecordBatch,
@@ -174,6 +175,9 @@ class AIOKafkaProducer:
         sasl_oauth_token_provider (:class:`~aiokafka.abc.AbstractTokenProvider`):
             OAuthBearer token provider instance.
             Default: :data:`None`
+        metrics_collector (:class:`~aiokafka.metrics.ProducerMetricsCollector`):
+            Optional synchronous callback object for producer batch lifecycle
+            metrics. Defaults to a no-op collector.
 
     Note:
         Many configuration parameters are taken from the Java client:
@@ -222,6 +226,7 @@ class AIOKafkaProducer:
         sasl_kerberos_service_name="kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
+        metrics_collector=None,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -292,6 +297,9 @@ class AIOKafkaProducer:
         self._partitioner = partitioner
         self._max_request_size = max_request_size
         self._request_timeout_ms = request_timeout_ms
+        if metrics_collector is None:
+            metrics_collector = NullMetricsCollector()
+        self._metrics_collector = metrics_collector
 
         self.client = AIOKafkaClient(
             loop=loop,
@@ -319,6 +327,7 @@ class AIOKafkaProducer:
             txn_manager=self._txn_manager,
             loop=loop,
             linger_ms=linger_ms,
+            metrics_collector=self._metrics_collector,
         )
         self._sender = Sender(
             self.client,
