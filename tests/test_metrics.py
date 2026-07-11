@@ -252,8 +252,10 @@ async def test_metrics_collector_records_batch_failure():
     exc = RuntimeError("delivery failed")
     batches[0][tp].failure(exc)
 
-    with pytest.raises(RuntimeError, match="delivery failed"):
-        await future
+    assert future.done()
+    future_exception = future.exception()
+    assert isinstance(future_exception, RuntimeError)
+    assert str(future_exception) == "delivery failed"
     assert ("batch_failure", "test-topic", exc, 1) in collector.events
 
 
