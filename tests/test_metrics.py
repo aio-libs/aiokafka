@@ -4,7 +4,11 @@ from unittest import mock
 
 import pytest
 
-from aiokafka import AIOKafkaProducer, NullMetricsCollector, ProducerMetricsCollector
+from aiokafka import (
+    AIOKafkaProducer,
+    NullProducerMetricsCollector,
+    ProducerMetricsCollector,
+)
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.errors import KafkaTimeoutError, NotLeaderForPartitionError
 from aiokafka.producer.message_accumulator import MessageAccumulator
@@ -135,7 +139,7 @@ async def test_message_accumulator_uses_null_metrics_collector_by_default():
         batch_ttl=30,
     )
 
-    assert isinstance(accumulator._metrics_collector, NullMetricsCollector)
+    assert isinstance(accumulator._metrics_collector, NullProducerMetricsCollector)
 
 
 @pytest.mark.asyncio
@@ -318,7 +322,7 @@ async def test_producer_passes_metrics_collector_to_accumulator():
 
 
 def test_null_metrics_collector_is_protocol_implementation():
-    collector = NullMetricsCollector()
+    collector = NullProducerMetricsCollector()
 
     assert isinstance(collector, ProducerMetricsCollector)
     collector.on_batch_drained("topic", 0.1, 1, 1)

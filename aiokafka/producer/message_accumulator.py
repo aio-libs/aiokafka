@@ -11,7 +11,7 @@ from aiokafka.errors import (
     NotLeaderForPartitionError,
     ProducerClosed,
 )
-from aiokafka.metrics import NullMetricsCollector
+from aiokafka.metrics import NullProducerMetricsCollector
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
 from aiokafka.structs import RecordMetadata
 from aiokafka.util import create_future, get_running_loop
@@ -391,7 +391,7 @@ class MessageAccumulator:
         self._txn_manager = txn_manager
         self._linger_time = linger_ms / 1000
         if metrics_collector is None:
-            metrics_collector = NullMetricsCollector()
+            metrics_collector = NullProducerMetricsCollector()
         self._metrics_collector = metrics_collector
 
         self._exception = None  # Critical exception

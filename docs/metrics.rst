@@ -124,6 +124,6 @@ API reference
     :members:
     :no-index:
 
-.. autoclass:: aiokafka.metrics.NullMetricsCollector
+.. autoclass:: aiokafka.metrics.NullProducerMetricsCollector
     :members:
     :no-index:

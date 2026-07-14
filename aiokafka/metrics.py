@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Protocol, runtime_checkable
 
 
@@ -49,7 +47,7 @@ class ProducerMetricsCollector(Protocol):
         ...
 
 
-class NullMetricsCollector:
+class NullProducerMetricsCollector:
     """Default no-op producer metrics collector."""
 
     def on_batch_drained(

@@ -10,7 +10,7 @@ from aiokafka.errors import (
     IllegalOperation,
     MessageSizeTooLargeError,
 )
-from aiokafka.metrics import NullMetricsCollector
+from aiokafka.metrics import NullProducerMetricsCollector
 from aiokafka.partitioner import DefaultPartitioner
 from aiokafka.record.default_records import (
     DefaultRecordBatch,
@@ -298,7 +298,7 @@ class AIOKafkaProducer:
         self._max_request_size = max_request_size
         self._request_timeout_ms = request_timeout_ms
         if metrics_collector is None:
-            metrics_collector = NullMetricsCollector()
+            metrics_collector = NullProducerMetricsCollector()
         self._metrics_collector = metrics_collector
 
         self.client = AIOKafkaClient(
