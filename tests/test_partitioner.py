@@ -1,7 +1,9 @@
 import pytest
 
+from aiokafka.cluster import ClusterMetadata
 from aiokafka.partitioner import DefaultPartitioner, murmur2
 from aiokafka.producer import AIOKafkaProducer
+from aiokafka.protocol.metadata import MetadataResponse_v0
 
 
 def test_default_partitioner():
@@ -44,29 +46,35 @@ def test_murmur2_not_ascii():
     murmur2(b"\x81" * 1000)
 
 
-class _FakeMetadata:
-    def __init__(self, order):
-        self._order = order
-
-    def partitions_for_topic(self, topic):
-        return list(self._order)
-
-    def available_partitions_for_topic(self, topic):
-        return list(self._order)
+def _cluster_with_partition_order(topic, order):
+    # Build a real cluster from a MetadataResponse listing the partitions in
+    # `order`, so the ordering the producer sees is the one the cluster derives
+    # from the broker reply rather than one a stub asserts into existence.
+    cluster = ClusterMetadata()
+    cluster.update_metadata(
+        MetadataResponse_v0(
+            [(0, "host", 9092)],
+            [(0, topic, [(0, p, 0, [0], [0]) for p in order])],
+        )
+    )
+    return cluster
 
 
 class _FakeProducer:
     # _partition() only touches these two attributes, so we can drive the real
     # method without spinning up a broker.
-    def __init__(self, order):
-        self._metadata = _FakeMetadata(order)
+    def __init__(self, cluster):
+        self._metadata = cluster
         self._partitioner = DefaultPartitioner()
 
 
 def test_partition_selection_is_order_independent():
-    # partitions_for_topic() returns a set, so the list handed to the
-    # partitioner can come out in any iteration order (see issue #1127). A given
-    # key must still map to the same partition regardless of that order.
+    # Nothing requires brokers to report partitions in a fixed order, and the
+    # default partitioner indexes murmur2(key) % len(all_partitions) into the
+    # list it is handed, so an unstable order maps the same key to different
+    # partitions (see issue #1127). A given key must pick the same partition no
+    # matter what order the metadata arrived in.
+    topic = "t"
     key = b"user-42"
     front = [7, 3, 40, 1, 22, 0, 15]
     orders = [
@@ -76,8 +84,8 @@ def test_partition_selection_is_order_independent():
     ]
     chosen = set()
     for order in orders:
-        producer = _FakeProducer(order)
+        producer = _FakeProducer(_cluster_with_partition_order(topic, order))
         chosen.add(
-            AIOKafkaProducer._partition(producer, "t", None, key, None, key, None)
+            AIOKafkaProducer._partition(producer, topic, None, key, None, key, None)
         )
     assert len(chosen) == 1

@@ -419,14 +419,12 @@ class AIOKafkaProducer:
             )
             return partition
 
-        # partitions_for_topic() and available_partitions_for_topic() return
-        # sets, whose iteration order is not stable across processes and
-        # interpreters. The default partitioner indexes into this list with
-        # murmur2(key) % len(partitions), so an unstable order would map the
-        # same key to different partitions and break key ordering (issue #1127).
-        # Sort by partition id to keep the mapping deterministic.
-        all_partitions = sorted(self._metadata.partitions_for_topic(topic))
-        available = sorted(self._metadata.available_partitions_for_topic(topic))
+        # The default partitioner indexes into all_partitions with
+        # murmur2(key) % len(all_partitions), so the order has to be stable or
+        # the same key maps to different partitions (issue #1127). The ordered
+        # accessors are sorted by partition id once per metadata refresh.
+        all_partitions = self._metadata.ordered_partitions_for_topic(topic)
+        available = self._metadata.ordered_available_partitions_for_topic(topic)
         return self._partitioner(serialized_key, all_partitions, available)
 
     async def send(

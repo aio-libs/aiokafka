@@ -108,6 +108,20 @@ class ClusterMetadata:
             return None
         return set(self._partitions[topic].keys())
 
+    def ordered_partitions_for_topic(self, topic: str) -> list[int] | None:
+        """Return list of all partitions for topic, sorted by partition id
+
+        Arguments:
+            topic (str): topic to check for partitions
+
+        Returns:
+            list: [partition (int), ...] sorted by partition id
+            None if topic not found.
+        """
+        if topic not in self._partitions:
+            return None
+        return list(self._partitions[topic].keys())
+
     def available_partitions_for_topic(self, topic):
         """Return set of partitions with known leaders
 
@@ -125,6 +139,24 @@ class ClusterMetadata:
             for partition, metadata in self._partitions[topic].items()
             if metadata.leader != -1
         }
+
+    def ordered_available_partitions_for_topic(self, topic: str) -> list[int] | None:
+        """Return list of partitions with known leaders, sorted by partition id
+
+        Arguments:
+            topic (str): topic to check for partitions
+
+        Returns:
+            list: [partition (int), ...] sorted by partition id
+            None if topic not found.
+        """
+        if topic not in self._partitions:
+            return None
+        return [
+            partition
+            for partition, metadata in self._partitions[topic].items()
+            if metadata.leader != -1
+        ]
 
     def leader_for_partition(self, partition):
         """Return node_id of leader, -1 unavailable, None if unknown."""
@@ -234,8 +266,15 @@ class ClusterMetadata:
             error_type = Errors.for_code(error_code)
             if error_type is Errors.NoError:
                 _new_partitions[topic] = {}
+                # Sort by partition id so the dict insertion order is
+                # deterministic. Nothing in the protocol requires brokers to
+                # return partitions in a fixed order, and ordered_*_for_topic()
+                # rely on that insertion order to keep key-based partitioning
+                # stable across metadata refreshes and processes (issue #1127).
                 # Starting with v5, MetadataResponse contains more than 5 fields
-                for p_error, partition, leader, replicas, isr, *_ in partitions:
+                for p_error, partition, leader, replicas, isr, *_ in sorted(
+                    partitions, key=lambda p: p[1]
+                ):
                     _new_partitions[topic][partition] = PartitionMetadata(
                         topic=topic,
                         partition=partition,
