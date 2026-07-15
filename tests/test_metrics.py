@@ -15,36 +15,39 @@ from aiokafka.producer.message_accumulator import MessageAccumulator
 from aiokafka.structs import TopicPartition
 
 
-class RecordingMetricsCollector:
+class RecordingMetricsCollector(ProducerMetricsCollector):
     def __init__(self):
         self.events = []
 
     def on_batch_drained(
-        self, topic, queue_time_seconds, batch_size_bytes, record_count
+        self, *, topic, partition, queue_time_seconds, batch_size_bytes, record_count
     ):
         self.events.append(
             (
                 "batch_drained",
                 topic,
+                partition,
                 queue_time_seconds,
                 batch_size_bytes,
                 record_count,
             )
         )
 
-    def on_batch_done(self, topic, request_latency_seconds, record_count):
-        self.events.append(("batch_done", topic, request_latency_seconds, record_count))
+    def on_batch_done(self, *, topic, partition, request_latency_seconds, record_count):
+        self.events.append(
+            ("batch_done", topic, partition, request_latency_seconds, record_count)
+        )
 
-    def on_batch_failure(self, topic, exception, record_count):
-        self.events.append(("batch_failure", topic, exception, record_count))
+    def on_batch_failure(self, *, topic, partition, exception, record_count):
+        self.events.append(("batch_failure", topic, partition, exception, record_count))
 
-    def on_buffer_wait(self, topic, wait_seconds):
-        self.events.append(("buffer_wait", topic, wait_seconds))
+    def on_buffer_wait(self, *, topic, partition, wait_seconds):
+        self.events.append(("buffer_wait", topic, partition, wait_seconds))
 
 
 class RaisingMetricsCollector(RecordingMetricsCollector):
     def on_batch_drained(
-        self, topic, queue_time_seconds, batch_size_bytes, record_count
+        self, *, topic, partition, queue_time_seconds, batch_size_bytes, record_count
     ):
         raise RuntimeError("collector failed")
 
@@ -92,10 +95,10 @@ async def test_metrics_collector_records_batch_lifecycle():
 
     metadata = await future
     assert metadata.topic == "test-topic"
-    assert collector.events[0][:3] == ("batch_drained", "test-topic", 0.75)
-    assert collector.events[0][3] > 0
-    assert collector.events[0][4] == 1
-    assert collector.events[1] == ("batch_done", "test-topic", 0.25, 1)
+    assert collector.events[0][:4] == ("batch_drained", "test-topic", 0, 0.75)
+    assert collector.events[0][4] > 0
+    assert collector.events[0][5] == 1
+    assert collector.events[1] == ("batch_done", "test-topic", 0, 0.25, 1)
 
 
 @pytest.mark.asyncio
@@ -127,7 +130,8 @@ async def test_metrics_collector_records_buffer_wait():
     ]
     assert len(buffer_wait_events) == 1
     assert buffer_wait_events[0][1] == "test-topic"
-    assert buffer_wait_events[0][2] >= 0
+    assert buffer_wait_events[0][2] == 0
+    assert buffer_wait_events[0][3] >= 0
 
 
 @pytest.mark.asyncio
@@ -256,7 +260,7 @@ async def test_metrics_collector_records_batch_failure_before_drain():
 
     with pytest.raises(RuntimeError, match="sender failed"):
         await future
-    assert ("batch_failure", "test-topic", exc, 1) in collector.events
+    assert ("batch_failure", "test-topic", 0, exc, 1) in collector.events
 
 
 @pytest.mark.asyncio
@@ -282,7 +286,8 @@ async def test_metrics_collector_records_buffer_wait_on_timeout():
     ]
     assert buffer_wait_events
     assert all(event[1] == "test-topic" for event in buffer_wait_events)
-    assert all(event[2] >= 0 for event in buffer_wait_events)
+    assert all(event[2] == 0 for event in buffer_wait_events)
+    assert all(event[3] >= 0 for event in buffer_wait_events)
 
 
 @pytest.mark.asyncio
@@ -307,7 +312,7 @@ async def test_metrics_collector_records_batch_failure():
     future_exception = future.exception()
     assert isinstance(future_exception, RuntimeError)
     assert str(future_exception) == "delivery failed"
-    assert ("batch_failure", "test-topic", exc, 1) in collector.events
+    assert ("batch_failure", "test-topic", 0, exc, 1) in collector.events
 
 
 @pytest.mark.asyncio
@@ -321,11 +326,32 @@ async def test_producer_passes_metrics_collector_to_accumulator():
         await producer.stop()
 
 
-def test_null_metrics_collector_is_protocol_implementation():
+def test_null_metrics_collector_is_abc_implementation():
     collector = NullProducerMetricsCollector()
 
     assert isinstance(collector, ProducerMetricsCollector)
-    collector.on_batch_drained("topic", 0.1, 1, 1)
-    collector.on_batch_done("topic", 0.2, 1)
-    collector.on_batch_failure("topic", RuntimeError("boom"), 1)
-    collector.on_buffer_wait("topic", 0.3)
+    collector.on_batch_drained(
+        topic="topic",
+        partition=0,
+        queue_time_seconds=0.1,
+        batch_size_bytes=1,
+        record_count=1,
+    )
+    collector.on_batch_done(
+        topic="topic",
+        partition=0,
+        request_latency_seconds=0.2,
+        record_count=1,
+    )
+    collector.on_batch_failure(
+        topic="topic",
+        partition=0,
+        exception=RuntimeError("boom"),
+        record_count=1,
+    )
+    collector.on_buffer_wait(topic="topic", partition=0, wait_seconds=0.3)
+
+
+def test_producer_metrics_collector_is_abstract():
+    with pytest.raises(TypeError, match="abstract class"):
+        ProducerMetricsCollector()

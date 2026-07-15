@@ -19,9 +19,9 @@ from aiokafka.util import create_future, get_running_loop
 log = logging.getLogger(__name__)
 
 
-def _call_metrics(callback, *args):
+def _call_metrics(callback, **kwargs):
     try:
-        callback(*args)
+        callback(**kwargs)
     except Exception:
         log.exception("Producer metrics collector callback failed")
 
@@ -254,9 +254,10 @@ class MessageBatch:
         if should_report:
             _call_metrics(
                 self._metrics_collector.on_batch_done,
-                topic,
-                time.monotonic() - drained_at,
-                self.record_count,
+                topic=topic,
+                partition=partition,
+                request_latency_seconds=time.monotonic() - drained_at,
+                record_count=self.record_count,
             )
 
     def done_noack(self):
@@ -294,9 +295,10 @@ class MessageBatch:
         if should_report:
             _call_metrics(
                 self._metrics_collector.on_batch_failure,
-                self._tp.topic,
-                exception,
-                self.record_count,
+                topic=self._tp.topic,
+                partition=self._tp.partition,
+                exception=exception,
+                record_count=self.record_count,
             )
 
     async def wait_drain(self, timeout=None):
@@ -330,10 +332,11 @@ class MessageBatch:
         self._drained_at = time.monotonic()
         _call_metrics(
             self._metrics_collector.on_batch_drained,
-            self._tp.topic,
-            self._drained_at - self._ctime,
-            self._builder.size(),
-            self.record_count,
+            topic=self._tp.topic,
+            partition=self._tp.partition,
+            queue_time_seconds=self._drained_at - self._ctime,
+            batch_size_bytes=self._builder.size(),
+            record_count=self.record_count,
         )
 
     def reset_drain(self):
@@ -479,8 +482,9 @@ class MessageAccumulator:
                 wait_time = time.monotonic() - start
                 _call_metrics(
                     self._metrics_collector.on_buffer_wait,
-                    tp.topic,
-                    wait_time,
+                    topic=tp.topic,
+                    partition=tp.partition,
+                    wait_seconds=wait_time,
                 )
             timeout -= wait_time
             if timeout <= 0:
