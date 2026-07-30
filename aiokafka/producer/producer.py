@@ -10,7 +10,10 @@ from aiokafka.errors import (
     IllegalOperation,
     MessageSizeTooLargeError,
 )
-from aiokafka.metrics import NullProducerMetricsCollector
+from aiokafka.metrics import (
+    NullProducerMetricsCollector,
+    ProducerMetricsCollector,
+)
 from aiokafka.partitioner import DefaultPartitioner
 from aiokafka.record.default_records import (
     DefaultRecordBatch,
@@ -177,7 +180,8 @@ class AIOKafkaProducer:
             Default: :data:`None`
         metrics_collector (:class:`~aiokafka.metrics.ProducerMetricsCollector`):
             Optional synchronous callback object for producer batch lifecycle
-            metrics. Defaults to a no-op collector.
+            metrics. Defaults to a no-op collector. This API is experimental
+            and may change without a deprecation period.
 
     Note:
         Many configuration parameters are taken from the Java client:
@@ -299,6 +303,10 @@ class AIOKafkaProducer:
         self._request_timeout_ms = request_timeout_ms
         if metrics_collector is None:
             metrics_collector = NullProducerMetricsCollector()
+        if not isinstance(metrics_collector, ProducerMetricsCollector):
+            raise TypeError(
+                "metrics_collector must be an instance of ProducerMetricsCollector"
+            )
         self._metrics_collector = metrics_collector
 
         self.client = AIOKafkaClient(

@@ -7,7 +7,7 @@ Changelog
 
 New features:
 
-* Add a lightweight callback-based producer metrics collector protocol
+* Add an experimental lightweight callback-based producer metrics collector API
   (issue #1166)
 * Change the way tagged fields are managed in the protocol definitions
   (pr #1162 by @vmaurin)
