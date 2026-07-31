@@ -596,3 +596,14 @@ def test_producer_metrics_collector_allows_partial_implementation():
     )
 
     assert collector.completed["topic"] == "topic"
+
+
+def test_producer_metrics_collector_warns_about_unknown_callback():
+    with pytest.warns(
+        UserWarning,
+        match="Unknown producer metrics callbacks.*on_batch_complete",
+    ):
+
+        class TypoMetricsCollector(ProducerMetricsCollector):
+            def on_batch_complete(self, **kwargs):
+                self.completed = kwargs
