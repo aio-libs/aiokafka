@@ -16,13 +16,15 @@ aggregate, sample, export, or depend on a metrics backend.
 Implementations should keep callbacks fast and non-blocking. If you need to do
 asynchronous work, push the event into an internal queue and process it from a
 separate task. Exceptions raised by collectors are logged and ignored.
+Every callback has a no-op default, so implementations only need to override
+the callbacks they use.
 
 .. code:: python
 
-    from aiokafka import AIOKafkaProducer, NullProducerMetricsCollector
+    from aiokafka import AIOKafkaProducer, ProducerMetricsCollector
 
 
-    class CompletionMetrics(NullProducerMetricsCollector):
+    class CompletionMetrics(ProducerMetricsCollector):
         def on_batch_completed(
             self,
             *,
@@ -209,9 +211,5 @@ API reference
 -------------
 
 .. autoclass:: aiokafka.metrics.ProducerMetricsCollector
-    :members:
-    :no-index:
-
-.. autoclass:: aiokafka.metrics.NullProducerMetricsCollector
     :members:
     :no-index:

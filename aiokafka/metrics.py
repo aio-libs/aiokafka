@@ -1,9 +1,7 @@
 """Experimental producer metrics collector API."""
 
-import abc
 
-
-class ProducerMetricsCollector(abc.ABC):
+class ProducerMetricsCollector:
     """Receive experimental producer batch lifecycle events.
 
     All methods are synchronous and called from the producer hot path.
@@ -12,13 +10,15 @@ class ProducerMetricsCollector(abc.ABC):
 
     Exceptions raised by collectors are logged and ignored.
 
+    Each callback has a no-op default implementation. Subclasses only need to
+    override the callbacks they use.
+
     All time-valued arguments are in seconds.
 
     .. warning::
         This API is experimental and may change without a deprecation period.
     """
 
-    @abc.abstractmethod
     def on_batch_dispatched(
         self,
         *,
@@ -37,7 +37,6 @@ class ProducerMetricsCollector(abc.ABC):
         batches.
         """
 
-    @abc.abstractmethod
     def on_batch_completed(
         self,
         *,
@@ -55,7 +54,6 @@ class ProducerMetricsCollector(abc.ABC):
         records in the batch and includes retries.
         """
 
-    @abc.abstractmethod
     def on_batch_failed(
         self,
         *,
@@ -71,56 +69,7 @@ class ProducerMetricsCollector(abc.ABC):
         the batch and includes retries.
         """
 
-    @abc.abstractmethod
     def on_buffer_wait(
         self, *, topic: str, partition: int, wait_seconds: float
     ) -> None:
         """Called once when a send operation waited for accumulator space."""
-
-
-class NullProducerMetricsCollector(ProducerMetricsCollector):
-    """Default no-op implementation of the experimental metrics API.
-
-    .. warning::
-        This API is experimental and may change without a deprecation period.
-    """
-
-    def on_batch_dispatched(
-        self,
-        *,
-        topic: str,
-        partition: int,
-        queue_time_seconds: float,
-        batch_size_bytes: int,
-        record_count: int,
-        attempt: int,
-    ) -> None:
-        pass
-
-    def on_batch_completed(
-        self,
-        *,
-        topic: str,
-        partition: int,
-        send_to_completion_seconds: float,
-        record_count: int,
-        acknowledged: bool,
-        batch_age_seconds: float,
-    ) -> None:
-        pass
-
-    def on_batch_failed(
-        self,
-        *,
-        topic: str,
-        partition: int,
-        exception: BaseException,
-        record_count: int,
-        batch_age_seconds: float,
-    ) -> None:
-        pass
-
-    def on_buffer_wait(
-        self, *, topic: str, partition: int, wait_seconds: float
-    ) -> None:
-        pass

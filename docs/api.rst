@@ -38,9 +38,6 @@ Metrics
 .. autoclass:: aiokafka.metrics.ProducerMetricsCollector
     :members:
 
-.. autoclass:: aiokafka.metrics.NullProducerMetricsCollector
-    :members:
-
 Abstracts
 ---------
 

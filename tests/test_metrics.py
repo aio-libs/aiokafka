@@ -6,7 +6,6 @@ import pytest
 
 from aiokafka import (
     AIOKafkaProducer,
-    NullProducerMetricsCollector,
     ProducerMetricsCollector,
 )
 from aiokafka.cluster import ClusterMetadata
@@ -340,7 +339,7 @@ async def test_metrics_collector_records_add_batch_buffer_wait():
 
 
 @pytest.mark.asyncio
-async def test_message_accumulator_uses_null_metrics_collector_by_default():
+async def test_message_accumulator_uses_metrics_collector_by_default():
     accumulator = MessageAccumulator(
         make_cluster(),
         batch_size=1000,
@@ -348,7 +347,7 @@ async def test_message_accumulator_uses_null_metrics_collector_by_default():
         batch_ttl=30,
     )
 
-    assert isinstance(accumulator._metrics_collector, NullProducerMetricsCollector)
+    assert type(accumulator._metrics_collector) is ProducerMetricsCollector
 
 
 @pytest.mark.asyncio
@@ -551,10 +550,9 @@ async def test_producer_rejects_invalid_metrics_collector():
         AIOKafkaProducer(metrics_collector=object())
 
 
-def test_null_metrics_collector_is_abc_implementation():
-    collector = NullProducerMetricsCollector()
+def test_producer_metrics_collector_has_noop_defaults():
+    collector = ProducerMetricsCollector()
 
-    assert isinstance(collector, ProducerMetricsCollector)
     collector.on_batch_dispatched(
         topic="topic",
         partition=0,
@@ -581,6 +579,20 @@ def test_null_metrics_collector_is_abc_implementation():
     collector.on_buffer_wait(topic="topic", partition=0, wait_seconds=0.3)
 
 
-def test_producer_metrics_collector_is_abstract():
-    with pytest.raises(TypeError, match="abstract class"):
-        ProducerMetricsCollector()
+def test_producer_metrics_collector_allows_partial_implementation():
+    class CompletionMetricsCollector(ProducerMetricsCollector):
+        def on_batch_completed(self, **kwargs):
+            self.completed = kwargs
+
+    collector = CompletionMetricsCollector()
+    collector.on_buffer_wait(topic="topic", partition=0, wait_seconds=0.1)
+    collector.on_batch_completed(
+        topic="topic",
+        partition=0,
+        send_to_completion_seconds=0.2,
+        record_count=1,
+        acknowledged=True,
+        batch_age_seconds=0.3,
+    )
+
+    assert collector.completed["topic"] == "topic"

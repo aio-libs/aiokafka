@@ -10,10 +10,7 @@ from aiokafka.errors import (
     IllegalOperation,
     MessageSizeTooLargeError,
 )
-from aiokafka.metrics import (
-    NullProducerMetricsCollector,
-    ProducerMetricsCollector,
-)
+from aiokafka.metrics import ProducerMetricsCollector
 from aiokafka.partitioner import DefaultPartitioner
 from aiokafka.record.default_records import (
     DefaultRecordBatch,
@@ -302,7 +299,7 @@ class AIOKafkaProducer:
         self._max_request_size = max_request_size
         self._request_timeout_ms = request_timeout_ms
         if metrics_collector is None:
-            metrics_collector = NullProducerMetricsCollector()
+            metrics_collector = ProducerMetricsCollector()
         if not isinstance(metrics_collector, ProducerMetricsCollector):
             raise TypeError(
                 "metrics_collector must be an instance of ProducerMetricsCollector"
