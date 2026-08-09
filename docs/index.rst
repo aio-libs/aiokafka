@@ -159,6 +159,7 @@ Contents:
    :maxdepth: 3
 
    producer
+   metrics
    consumer
    kafka-python_difference
    api
