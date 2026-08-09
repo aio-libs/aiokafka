@@ -121,7 +121,7 @@ will handle those differently. Possible consumer errors include:
 * :exc:`~aiokafka.errors.TopicAuthorizationFailedError` - topic requires authorization.
   Always raised
 * :exc:`~aiokafka.errors.OffsetOutOfRangeError` - if you don't specify `auto_offset_reset` policy
-  and started cosumption from not valid offset. Always raised
+  and started consumption from not valid offset. Always raised
 * :exc:`~aiokafka.errors.RecordTooLargeError` - broker has a *MessageSet* larger than
   `max_partition_fetch_bytes`. **async for** - log error, **get*** will
   raise it.

@@ -480,7 +480,7 @@ class GroupCoordinator(BaseCoordinator):
 
         # update partition assignment
         self._subscription.assign_from_subscribed(assignment.partitions())
-        # The await bellow can change subscription, remember the ongoing one.
+        # The await below can change subscription, remember the ongoing one.
         subscription = self._subscription.subscription
 
         # give the assignor a chance to update internal state

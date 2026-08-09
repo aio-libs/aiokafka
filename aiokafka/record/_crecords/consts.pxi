@@ -16,7 +16,7 @@ DEF _CONTROL_MASK = 0x20
 #       return to user.
 DEF _LEGACY_RECORD_METADATA_FREELIST_SIZE = 20
 # Fetcher will only use 1 parser per partition, so this is based on how much
-# partitions can be used simultaniously.
+# partitions can be used simultaneously.
 DEF _LEGACY_RECORD_BATCH_FREELIST_SIZE = 100
 DEF _LEGACY_RECORD_FREELIST_SIZE = 100
 

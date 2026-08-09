@@ -503,7 +503,7 @@ the consumer's configuration::
         isolation_level="read_committed"
     )
     await consumer.start()
-    async for msg in consumer:  # Only read committed tranasctions
+    async for msg in consumer:  # Only read committed transactions
         pass
 
 In `read_committed` mode, the consumer will read only those transactional
@@ -523,7 +523,7 @@ of which are in each method's documentation. Finally,
 :meth:`~.AIOKafkaConsumer.highwater` API to query the lSO on a currently
 assigned transaction::
 
-    async for msg in consumer:  # Only read committed tranasctions
+    async for msg in consumer:  # Only read committed transactions
         tp = TopicPartition(msg.topic, msg.partition)
         lso = consumer.last_stable_offset(tp)
         lag = lso - msg.offset

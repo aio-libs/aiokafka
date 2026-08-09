@@ -6,7 +6,7 @@ Transactional Consume-Process-Produce
 If you have a pattern where you want to consume from one topic, process data
 and produce to a different one, you would really like to do it with using
 Transactional Producer. In the example below we read from ``IN_TOPIC``,
-process data and produce the resut to ``OUT_TOPIC`` in a transactional manner.
+process data and produce the result to ``OUT_TOPIC`` in a transactional manner.
 
 
 .. code:: python
