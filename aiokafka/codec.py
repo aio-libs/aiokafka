@@ -29,33 +29,22 @@ def has_lz4() -> bool:
     return cramjam is not None
 
 
-def gzip_encode(payload: Buffer, compresslevel: int | None = None) -> bytes:
-    if not compresslevel:
-        compresslevel = 9
+def gzip_encode(payload: Buffer, level: int | None = None) -> bytes:
+    if not level:
+        # using the fastest compression,
+        # as higher levels are only 1-3% better in size
+        level = 1
 
     buf = io.BytesIO()
-
-    # Gzip context manager introduced in python 2.7
-    # so old-fashioned way until we decide to not support 2.6
-    gzipper = gzip.GzipFile(fileobj=buf, mode="w", compresslevel=compresslevel)
-    try:
+    with gzip.GzipFile(fileobj=buf, mode="w", compresslevel=level) as gzipper:
         gzipper.write(payload)
-    finally:
-        gzipper.close()
-
     return buf.getvalue()
 
 
 def gzip_decode(payload: Buffer) -> bytes:
     buf = io.BytesIO(payload)
-
-    # Gzip context manager introduced in python 2.7
-    # so old-fashioned way until we decide to not support 2.6
-    gzipper = gzip.GzipFile(fileobj=buf, mode="r")
-    try:
+    with gzip.GzipFile(fileobj=buf, mode="r") as gzipper:
         return gzipper.read()
-    finally:
-        gzipper.close()
 
 
 def snappy_encode(
@@ -163,11 +152,16 @@ def snappy_decode(payload: Buffer) -> bytes:
         return bytes(cramjam.snappy.decompress_raw(payload))
 
 
-def lz4_encode(payload: Buffer, level: int = 9) -> bytes:
+def lz4_encode(payload: Buffer, level: int  | None = None) -> bytes:
     # level=9 is used by default by broker itself
     # https://cwiki.apache.org/confluence/display/KAFKA/KIP-390%3A+Support+Compression+Level
     if not has_lz4():
         raise NotImplementedError("LZ4 codec is not available")
+
+    if not level:
+        # using the fastest compression,
+        # as higher levels are just 1-2% better in size
+        level = 1
 
     # Kafka broker doesn't support linked-block compression
     # https://cwiki.apache.org/confluence/display/KAFKA/KIP-57+-+Interoperable+LZ4+Framing
@@ -190,9 +184,9 @@ def zstd_encode(payload: Buffer, level: int | None = None) -> bytes:
         raise NotImplementedError("Zstd codec is not available")
 
     if level is None:
-        # Default for kafka broker
-        # https://cwiki.apache.org/confluence/display/KAFKA/KIP-390%3A+Support+Compression+Level
-        level = 3
+        # using the fastest compression,
+        # as higher levels are just 1% better in size
+        level = 1
 
     return bytes(cramjam.zstd.compress(payload, level=level))
 
