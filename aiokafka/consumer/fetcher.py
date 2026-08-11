@@ -725,6 +725,12 @@ class Fetcher:
                 time.monotonic() + self._preferred_replica_ttl,
             )
 
+    def _jittered_backoff(self) -> float:
+        # Full jitter: spreads concurrent retriers across [0.5×, 1.5×] of the
+        # base backoff so they don't all wake at the same instant after a
+        # leader election or broker restart (thundering herd).
+        return self._retry_backoff * random.uniform(0.5, 1.5)
+
     def _invalidate_preferred_read_replica_for_node(self, node_id, request):
         """Drop cached preferred-replica entries that point to ``node_id``.
 
@@ -752,7 +758,7 @@ class Fetcher:
             # entries so the next attempt falls back to the leader instead of
             # repeatedly hitting the unreachable follower until TTL expiry.
             self._invalidate_preferred_read_replica_for_node(node_id, request)
-            await asyncio.sleep(self._retry_backoff)
+            await asyncio.sleep(self._jittered_backoff())
             return False
         except asyncio.CancelledError:
             # Either `close()` or partition unassigned. Either way the result
@@ -985,7 +991,7 @@ class Fetcher:
                 offsets = await self._proc_offset_request(node_id, topic_data)
             except Errors.KafkaError as err:
                 log.error("Failed fetch offsets from %s: %s", node_id, err)
-                await asyncio.sleep(self._retry_backoff)
+                await asyncio.sleep(self._jittered_backoff())
                 return needs_wakeup
         except asyncio.CancelledError:
             return needs_wakeup
@@ -1030,7 +1036,7 @@ class Fetcher:
                             raise
                         if error.invalid_metadata:
                             self._client.force_metadata_update()
-                        await asyncio.sleep(self._retry_backoff)
+                        await asyncio.sleep(self._jittered_backoff())
                     else:
                         return offsets
         except asyncio.TimeoutError as exc:
