@@ -5,6 +5,8 @@ import logging
 import time
 from collections.abc import Sequence
 
+import async_timeout
+
 from aiokafka.errors import (
     KafkaTimeoutError,
     LeaderNotAvailableError,
@@ -323,9 +325,19 @@ class MessageBatch:
             )
 
     async def wait_drain(self, timeout=None):
-        """Wait until all message from this batch is processed"""
+        """Wait until all message from this batch is processed.
+
+        This implementation uses async_timeout directly instead of
+        asyncio.wait([single_future]) for better performance. The original
+        asyncio.wait() approach is inefficient for a single future as it
+        creates sets and registers/removes callbacks on each call.
+        """
         waiter = self._drain_waiter
-        await asyncio.wait([waiter], timeout=timeout)
+        try:
+            async with async_timeout.timeout(timeout):
+                await waiter
+        except asyncio.TimeoutError:
+            pass
         if waiter.done():
             waiter.result()  # Check for exception
 
