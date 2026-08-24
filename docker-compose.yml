@@ -1,0 +1,64 @@
+# Network and IPs are hard coded otherwise a broker might be confused on restarting from a different IP
+
+services:
+  kafka1:
+    build:
+      context: ./docker/kafka
+    command: "start-broker.sh"
+    environment:
+      BROKER_ID: "1"
+      KAFKA_HEAP_OPTS: "-Xmx256M -Xms128M"
+      CONTROLLER_QUORUM_VOTERS: "1@kafka1:9093,2@kafka2:9093,3@kafka3:9093"
+    networks:
+      aiokafka-test-network:
+        ipv4_address: 172.16.23.11
+    stop_grace_period: 30s
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1" ]
+      retries: 30
+      interval: 1s
+
+  kafka2:
+    extends:
+      service: kafka1
+    environment:
+      BROKER_ID: "2"
+    networks:
+      aiokafka-test-network:
+        ipv4_address: 172.16.23.12
+
+  kafka3:
+    extends:
+      service: kafka1
+    environment:
+      BROKER_ID: "3"
+    networks:
+      aiokafka-test-network:
+        ipv4_address: 172.16.23.13
+
+
+  aiokafka:
+    build:
+      context: .
+      dockerfile: docker/aiokafka/Dockerfile
+    command: [ "python", "-u", "-m", "tests.manual.topic_management" ]
+    environment:
+      BOOTSTRAP_SERVERS: "kafka3:9092,kafka2:9092,kafka1:9092"
+    networks:
+      aiokafka-test-network:
+        ipv4_address: 172.16.23.100
+    depends_on:
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+
+networks:
+  aiokafka-test-network:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.16.23.0/24
+          ip_range: 172.28.23.0/24
