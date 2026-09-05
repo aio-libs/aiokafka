@@ -51,7 +51,7 @@ from aiokafka.protocol.transaction import (
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.util import get_running_loop
 
-from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_complete
+from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 LOG_APPEND_TIME = 1
 
@@ -101,7 +101,6 @@ class TestSender(KafkaIntegrationTestCase):
         sender._do_init_pid = mock.Mock(side_effect=mocked_call)
         return sender
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_sender_maybe_wait_for_pid_non_transactional(self):
         sender = await self._setup_sender_with_init_mocked()
@@ -111,7 +110,6 @@ class TestSender(KafkaIntegrationTestCase):
         await sender._maybe_wait_for_pid()
         sender._do_init_pid.assert_not_called()
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_sender_maybe_wait_for_pid_on_failure(self):
         sender = await self._setup_sender_with_init_mocked()
@@ -123,7 +121,6 @@ class TestSender(KafkaIntegrationTestCase):
         self.assertNotEqual(sender._do_init_pid.call_count, 0)
         self.assertNotEqual(sender.client.force_metadata_update.call_count, 0)
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_sender__find_coordinator(self):
         sender = await self._setup_sender()

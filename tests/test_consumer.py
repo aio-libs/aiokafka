@@ -297,7 +297,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         actual_messages = {m.value for m in actual_messages}
         self.assertEqual(expected_messages, set(actual_messages))
 
-    @kafka_versions(">=0.10.1")
     @run_until_complete
     async def test_large_messages_getone(self):
         msgs = [
@@ -317,7 +316,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         m = await consumer.getone()
         self.assertEqual(m.value, messages[2])
 
-    @kafka_versions(">=0.10.1")
     @run_until_complete
     async def test_large_messages_getmany(self):
         msgs = [
@@ -484,7 +482,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
     async def test_compress_decompress_snappy(self):
         await self._test_compress_decompress("snappy")
 
-    @kafka_versions(">=0.10.0.0")
     @run_until_complete
     async def test_compress_decompress_lz4(self):
         await self._test_compress_decompress("lz4")
@@ -672,7 +669,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             result.append(msg.value)
         self.assertEqual(set(available_msgs), set(result))
 
-    @kafka_versions(">=0.10.0")
     @run_until_complete
     async def test_check_extended_message_record(self):
         s_time_ms = time.time() * 1000
@@ -1415,7 +1411,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertFalse(long_poll_task.done())
         self.assertLess(end_time - start_time, 500)
 
-    @kafka_versions(">=0.10.1")
     @run_until_complete
     async def test_offsets_for_times_single(self):
         high_time = int(get_running_loop().time() * 1000)
@@ -1465,7 +1460,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         offsets = await consumer.end_offsets([tp])
         self.assertEqual(offsets, {tp: msg2.offset + 1})
 
-    @kafka_versions(">=0.10.1")
     @run_until_complete
     async def test_kafka_consumer_offsets_search_many_partitions(self):
         tp0 = TopicPartition(self.topic, 0)
@@ -1508,7 +1502,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             },
         )
 
-    @kafka_versions(">=0.10.1")
     @run_until_complete
     async def test_kafka_consumer_offsets_errors(self):
         consumer = await self.consumer_factory()
@@ -1916,7 +1909,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             refresh_event = subscription.assignment.commit_refresh_needed
             self.assertTrue(refresh_event.is_set())
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_consumer_with_headers(self):
         await self.send_messages(0, [0], headers=[("header1", b"17")])

@@ -44,7 +44,7 @@ AIOKafkaConsumer
 
 AIOKafkaConsumer is a high-level, asynchronous message consumer.
 It interacts with the assigned Kafka Group Coordinator node to allow multiple
-consumers to load balance consumption of topics (requires kafka >= 0.11).
+consumers to load balance consumption of topics (requires kafka >= 1.0).
 
 Example of AIOKafkaConsumer usage:
 
@@ -97,7 +97,7 @@ Running tests with coverage::
 
 To run tests with a specific version of Kafka (default one is 2.8.1) use KAFKA_VERSION variable::
 
-    make cov SCALA_VERSION=2.11 KAFKA_VERSION=0.10.2.1
+    make cov SCALA_VERSION=2.12 KAFKA_VERSION=1.1.1
 
 Test running cheat-sheet:
 
@@ -105,4 +105,3 @@ Test running cheat-sheet:
  * ``make test FLAGS="-k consumer"`` - run only the consumer tests.
  * ``make test FLAGS="-m 'not ssl'"`` - run tests excluding ssl.
  * ``make test FLAGS="--no-pull"`` - do not try to pull new docker image before test run.
-

@@ -5,11 +5,10 @@ from aiokafka.producer import AIOKafkaProducer
 from aiokafka.structs import TopicPartition
 from aiokafka.util import create_task
 
-from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_complete
+from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
 class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_consumer_transactional_commit(self):
         producer = AIOKafkaProducer(
@@ -78,7 +77,6 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(consumer.last_stable_offset(tp), 3)
         self.assertEqual(consumer.highwater(tp), 3)
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_consumer_transactional_abort(self):
         producer = AIOKafkaProducer(
@@ -184,17 +182,14 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.value, b"Hello from transaction 2")
         self.assertEqual(msg.key, None)
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_consumer_transactional_read_only_control_record(self):
         await self._test_control_record("read_committed")
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_consumer_simple_read_only_control_record(self):
         await self._test_control_record("read_uncommitted")
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_consumer_several_transactions(self):
         producer = AIOKafkaProducer(
