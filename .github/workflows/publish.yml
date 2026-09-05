@@ -343,8 +343,7 @@ jobs:
               deactivate'
 
   deploy:
-
-    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'release' }}
     needs:
       - test-wheels-linux
       - test-wheels-aarch64-linux
@@ -352,6 +351,7 @@ jobs:
       - test-wheels-arm64-mac
       - test-wheels-windows
       - test-wheels-arm64-windows
+    runs-on: ubuntu-latest
 
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
