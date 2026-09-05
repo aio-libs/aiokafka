@@ -5,7 +5,7 @@ requires = ["setuptools >=77", "Cython >=3.0.5"]
 name = "aiokafka"
 description = "Kafka integration with asyncio"
 readme = "README.rst"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [
     { name = "Andrew Svetlov", email = "andrew.svetlov@gmail.com" },
@@ -13,7 +13,6 @@ authors = [
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -28,7 +27,6 @@ classifiers = [
 dynamic = ["version"]
 
 dependencies = [
-    "async-timeout",
     "packaging",
     "typing_extensions >=4.10.0",
 ]
@@ -131,8 +129,6 @@ ignore = [
     "S311",  # Standard pseudo-random generators are not suitable for cryptographic purposes
     "B011",  # Do not `assert False`
     "SIM108",  # Use ternary operator
-    # TODO Remove when we drop support for Python <=3.10
-    "SIM117",  # Use a single `with` statement with multiple contexts
     "PLR0913",  # Too many arguments in function definition
     "PLR2004",  # Magic value used in comparison
     # TODO Reduce complexity
@@ -158,7 +154,7 @@ pyupgrade.keep-runtime-typing = true
 docstring-code-format = true
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 disable_error_code = "import-untyped"
 check_untyped_defs = true
 disallow_any_generics = true

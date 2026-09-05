@@ -5,9 +5,7 @@ import time
 from binascii import crc32
 from collections.abc import Generator
 from dataclasses import dataclass
-from typing import Any, Literal, final
-
-from typing_extensions import Never
+from typing import Any, Literal, Never, final
 
 import aiokafka.codec as codecs
 from aiokafka.codec import (

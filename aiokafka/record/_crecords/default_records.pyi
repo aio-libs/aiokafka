@@ -1,6 +1,4 @@
-from typing import ClassVar, Literal, final
-
-from typing_extensions import Self
+from typing import ClassVar, Literal, Self, final
 
 from aiokafka.record._protocols import (
     DefaultRecordBatchBuilderProtocol,

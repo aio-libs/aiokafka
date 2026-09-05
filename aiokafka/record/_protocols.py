@@ -5,11 +5,10 @@ from typing import (
     Any,
     ClassVar,
     Literal,
+    Never,
     Protocol,
     runtime_checkable,
 )
-
-from typing_extensions import Never
 
 
 class DefaultRecordBatchBuilderProtocol(Protocol):

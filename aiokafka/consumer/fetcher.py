@@ -6,8 +6,6 @@ import random
 import time
 from itertools import chain
 
-import async_timeout
-
 import aiokafka.errors as Errors
 from aiokafka.errors import ConsumerStoppedError, KafkaTimeoutError, RecordTooLargeError
 from aiokafka.protocol.fetch import FetchRequest
@@ -1021,7 +1019,7 @@ class Fetcher:
 
         timeout = None if timeout_ms is None else timeout_ms / 1000
         try:
-            async with async_timeout.timeout(timeout):
+            async with asyncio.timeout(timeout):
                 while True:
                     try:
                         offsets = await self._proc_offset_requests(timestamps)

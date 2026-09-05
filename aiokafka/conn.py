@@ -17,8 +17,6 @@ import warnings
 import weakref
 from enum import IntEnum
 
-import async_timeout
-
 import aiokafka.errors as Errors
 from aiokafka.abc import AbstractTokenProvider
 from aiokafka.protocol.admin import (
@@ -212,7 +210,7 @@ class AIOKafkaConnection:
         # Create streams same as `open_connection`, but using custom protocol
         reader = asyncio.StreamReader(limit=READER_LIMIT, loop=loop)
         protocol = AIOKafkaProtocol(self._closed_fut, reader, loop=loop)
-        async with async_timeout.timeout(self._request_timeout):
+        async with asyncio.timeout(self._request_timeout):
             transport, _ = await loop.create_connection(
                 lambda: protocol, self.host, self.port, ssl=ssl
             )

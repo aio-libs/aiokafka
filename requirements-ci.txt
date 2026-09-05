@@ -9,5 +9,4 @@ docker==7.1.0
 docutils==0.21.2
 Pygments==2.19.2
 gssapi==1.10.1
-async-timeout==5.0.1
 cramjam==2.11.0

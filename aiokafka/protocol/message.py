@@ -2,9 +2,7 @@ import io
 import time
 from binascii import crc32
 from collections.abc import Iterable
-from typing import Literal, cast, overload
-
-from typing_extensions import Self
+from typing import Literal, Self, cast, overload
 
 from aiokafka.codec import (
     gzip_decode,

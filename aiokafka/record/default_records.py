@@ -58,9 +58,7 @@ import struct
 import time
 from collections.abc import Callable, Collection, Sized
 from dataclasses import dataclass
-from typing import Any, final
-
-from typing_extensions import Self
+from typing import Any, Self, final
 
 import aiokafka.codec as codecs
 from aiokafka.codec import (

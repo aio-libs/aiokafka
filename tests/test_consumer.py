@@ -5,7 +5,6 @@ import time
 from contextlib import contextmanager
 from unittest import mock
 
-import async_timeout
 import pytest
 
 from aiokafka.abc import ConsumerRebalanceListener
@@ -188,11 +187,13 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer = AIOKafkaConsumer(group_id=None, bootstrap_servers=self.hosts)
         await consumer.start()
 
-        with self.silence_loop_exception_handler():
-            with self.assertWarnsRegex(ResourceWarning, "Unclosed AIOKafkaConsumer"):
-                del consumer
-                await asyncio.sleep(0)
-                gc.collect()
+        with (
+            self.silence_loop_exception_handler(),
+            self.assertWarnsRegex(ResourceWarning, "Unclosed AIOKafkaConsumer"),
+        ):
+            del consumer
+            await asyncio.sleep(0)
+            gc.collect()
 
     @run_until_complete
     async def test_get_by_partition(self):
@@ -2133,7 +2134,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # partitions after rebalance
         all_partitions = frozenset(list(c1_partitions) + list(c2_partitions))
         await consumer2.stop()
-        async with async_timeout.timeout(15):
+        async with asyncio.timeout(15):
             await _wait_mock_count(listener1, 2)
         # this is the last rebalance for consumer1, so the count should now be
         # 3.
@@ -2211,7 +2212,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         # It should since KIP-345 is inactive.
         consumer2.unsubscribe()
         # need to wait for rebalance
-        async with async_timeout.timeout(15):
+        async with asyncio.timeout(15):
             await _wait_mock_count(listener1, 2)
         self.assertEqual(listener1.revoke_mock.call_count, 3)
         self.assertEqual(listener1.assign_mock.call_count, 3)
@@ -2224,9 +2225,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await consumer2._subscription.wait_for_assignment()
         # since consumer2 rejoins the group, a rebalance should occur
         # for both consumers
-        async with async_timeout.timeout(15):
+        async with asyncio.timeout(15):
             await _wait_mock_count(listener1, 3)
-        async with async_timeout.timeout(15):
+        async with asyncio.timeout(15):
             await _wait_mock_count(listener2, 1)
         self.assertEqual(listener2.revoke_mock.call_count, 2)
         self.assertEqual(listener2.assign_mock.call_count, 2)
@@ -2235,7 +2236,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # stop consumer2, which will trigger yet another rebalance
         await consumer2.stop()
-        async with async_timeout.timeout(15):
+        async with asyncio.timeout(15):
             await _wait_mock_count(listener1, 4)
         self.assertEqual(listener1.revoke_mock.call_count, 5)
         self.assertEqual(listener1.assign_mock.call_count, 5)
