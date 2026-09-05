@@ -6,12 +6,11 @@ from aiokafka.errors import (
     GroupAuthorizationFailedError,
     TopicAuthorizationFailedError,
     TransactionalIdAuthorizationFailed,
-    UnknownTopicOrPartitionError,
 )
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.structs import TopicPartition
 
-from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_complete
+from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
 
 @pytest.mark.usefixtures("setup_test_class")
@@ -177,7 +176,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         await admin_client.start()
         return admin_client
 
-    @kafka_versions(">=0.10.0")
     @run_until_complete
     async def test_sasl_plaintext_basic(self):
         # Produce/consume by SASL_PLAINTEXT
@@ -203,7 +201,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         finally:
             self.kerberos_utils.kdestroy()
 
-    @kafka_versions(">=0.10.2")
     @run_until_complete
     async def test_sasl_plaintext_scram(self):
         self.kafka_config.add_scram_user("test", "test")
@@ -214,14 +211,12 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         msg = await consumer.getone()
         self.assertEqual(msg.value, b"Super scram msg")
 
-    @kafka_versions(">=0.10.0")
     @run_until_complete
     async def test_admin_client_sasl_plaintext_basic(self):
         admin_client = await self.admin_client_factory()
         cluster_info = await admin_client.describe_cluster()
         self.assertGreaterEqual(len(cluster_info["brokers"]), 1)
 
-    @kafka_versions(">=0.10.0")
     @run_until_complete
     async def test_admin_client_sasl_plaintext_gssapi(self):
         self.kerberos_utils.kinit("client/localhost")
@@ -229,7 +224,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         cluster_info = await admin_client.describe_cluster()
         self.assertGreaterEqual(len(cluster_info["brokers"]), 1)
 
-    @kafka_versions(">=0.10.0")
     @run_until_complete
     async def test_admin_client_sasl_plaintext_scrum(self):
         self.kafka_config.add_scram_user("test", "test")
@@ -241,34 +235,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
     # Topic Resource
     ##########################################################################
 
-    @kafka_versions(">=0.10.0")
-    @kafka_versions("<1.0.0")
-    @run_until_complete
-    async def test_sasl_unknown_topic_describe(self):
-        # Before 1.0.0 Kafka if topic does not exist it will not report
-        # Topic authorization errors, so we need to create topic beforehand
-        # See https://kafka.apache.org/documentation/#upgrade_100_notable
-        tmp_producer = await self.producer_factory()
-        await tmp_producer.send_and_wait(self.topic, value=b"Autocreate topic")
-        del tmp_producer
-
-        self.acl_manager.add_acl(
-            allow_principal="test", operation="All", topic=self.topic
-        )
-        self.acl_manager.add_acl(
-            deny_principal="test", operation="DESCRIBE", topic=self.topic
-        )
-
-        producer = await self.producer_factory(request_timeout_ms=10000)
-
-        with self.assertRaises(UnknownTopicOrPartitionError):
-            await producer.send_and_wait(self.topic, value=b"Super sasl msg")
-
-        # This will check for authorization on start()
-        with self.assertRaises(UnknownTopicOrPartitionError):
-            await self.consumer_factory()
-
-    @kafka_versions(">=1.0.0")
     @run_until_complete
     async def test_sasl_deny_topic_describe(self):
         tmp_producer = await self.producer_factory()
@@ -291,7 +257,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         with self.assertRaises(TopicAuthorizationFailedError):
             await self.consumer_factory()
 
-    @kafka_versions(">=0.10.0")
     @run_until_complete
     async def test_sasl_deny_topic_read(self):
         self.acl_manager.add_acl(
@@ -308,7 +273,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         with self.assertRaises(TopicAuthorizationFailedError):
             await consumer.getone()
 
-    @kafka_versions(">=0.10.0")
     @run_until_complete
     async def test_sasl_deny_topic_write(self):
         self.acl_manager.add_acl(
@@ -322,7 +286,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         with self.assertRaises(TopicAuthorizationFailedError):
             await producer.send_and_wait(topic=self.topic, value=b"Super sasl msg")
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_sasl_deny_autocreate_cluster(self):
         self.acl_manager.add_acl(
@@ -349,7 +312,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
     # Group Resource
     ##########################################################################
 
-    @kafka_versions(">=0.10.0")
     @run_until_complete
     async def test_sasl_deny_group_describe(self):
         self.acl_manager.add_acl(
@@ -364,7 +326,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             consumer = await self.consumer_factory()
             await consumer.getone()
 
-    @kafka_versions(">=0.10.0")
     @run_until_complete
     async def test_sasl_deny_group_read(self):
         self.acl_manager.add_acl(
@@ -379,7 +340,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
             consumer = await self.consumer_factory()
             await consumer.getone()
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_sasl_deny_transaction_group_describe(self):
         self.acl_manager.add_acl(
@@ -398,7 +358,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
                     group_id=self.group_id,
                 )
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_sasl_deny_transaction_group_read(self):
         self.acl_manager.add_acl(
@@ -429,7 +388,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
     # Transactional ID resource
     ##########################################################################
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_sasl_deny_txnid_describe(self):
         self.acl_manager.add_acl(
@@ -448,7 +406,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         with self.assertRaises(TransactionalIdAuthorizationFailed):
             await self.producer_factory(transactional_id="test_id")
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_sasl_deny_txnid_write(self):
         self.acl_manager.add_acl(
@@ -467,7 +424,6 @@ class TestKafkaSASL(KafkaIntegrationTestCase):
         with self.assertRaises(TransactionalIdAuthorizationFailed):
             await self.producer_factory(transactional_id="test_id")
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_sasl_deny_txnid_during_transaction(self):
         self.acl_manager.add_acl(

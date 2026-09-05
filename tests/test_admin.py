@@ -16,7 +16,6 @@ class TestAdmin(KafkaIntegrationTestCase):
         self.add_cleanup(admin.close)
         return admin
 
-    @kafka_versions(">=0.10.0.0")
     @run_until_complete
     async def test_metadata(self):
         admin = await self.create_admin()
@@ -25,7 +24,6 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert metadata.topics is not None
         assert len(metadata.brokers) == 1
 
-    @kafka_versions(">=0.10.1.0")
     @run_until_complete
     async def test_create_topics(self):
         admin = await self.create_admin()
@@ -37,7 +35,6 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert error_code == 0
         assert not error
 
-    @kafka_versions(">=0.10.1.0")  # Since we use `create_topics()`
     @run_until_complete
     async def test_list_topics(self):
         admin = await self.create_admin()
@@ -47,7 +44,6 @@ class TestAdmin(KafkaIntegrationTestCase):
         actual = await admin.list_topics()
         assert set(actual) >= topic_names
 
-    @kafka_versions(">=1.0.0")
     @run_until_complete
     async def test_delete_topics(self):
         admin = await self.create_admin()
@@ -64,7 +60,6 @@ class TestAdmin(KafkaIntegrationTestCase):
         topics = await admin.list_topics()
         assert self.topic not in topics
 
-    @kafka_versions(">=0.11.0.0")
     @run_until_complete
     async def test_describe_configs_topic(self):
         admin = await self.create_admin()
@@ -80,7 +75,6 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert resource_type == ConfigResourceType.TOPIC
         assert resource_name == self.topic
 
-    @kafka_versions(">=0.11.0.0")
     @run_until_complete
     async def test_describe_configs_broker(self):
         admin = await self.create_admin()
@@ -96,7 +90,6 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert resource_type == ConfigResourceType.BROKER
         assert resource_name == str(broker_id)
 
-    @kafka_versions(">=0.11.0.0")
     @run_until_complete
     async def test_alter_configs(self):
         admin = await self.create_admin()
@@ -114,7 +107,6 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert name == "cleanup.policy"
         assert value == "delete"
 
-    @kafka_versions(">=0.10.0.0")
     @run_until_complete
     async def test_describe_cluster(self):
         admin = await self.create_admin()
@@ -123,7 +115,6 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert len(resp["brokers"]) == 1
         assert resp["brokers"][0]["node_id"] == broker_id
 
-    @kafka_versions(">=1.0.0")
     @run_until_complete
     async def test_create_partitions(self):
         admin = await self.create_admin()
@@ -139,7 +130,6 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert len(new_partitions) == 2
         assert new_partitions > old_partitions
 
-    @kafka_versions(">=0.10.0.0")
     @run_until_complete
     async def test_list_consumer_groups(self):
         admin = await self.create_admin()
@@ -156,7 +146,6 @@ class TestAdmin(KafkaIntegrationTestCase):
         groups = [group for group, *_ in resp]
         assert group_id in groups
 
-    @kafka_versions(">=0.10.0.0")
     @run_until_complete
     async def test_describe_consumer_groups(self):
         admin = await self.create_admin()
@@ -174,7 +163,6 @@ class TestAdmin(KafkaIntegrationTestCase):
         assert error_code == 0
         assert group == group_id
 
-    @kafka_versions(">=0.10.0.0")
     @run_until_complete
     async def test_list_consumer_group_offsets(self):
         admin = await self.create_admin()

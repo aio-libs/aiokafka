@@ -26,7 +26,6 @@ from aiokafka.util import create_future
 
 from ._testutil import (
     KafkaIntegrationTestCase,
-    kafka_versions,
     run_in_thread,
     run_until_complete,
 )
@@ -469,7 +468,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertTrue(fut1.done())
         self.assertTrue(fut2.done())
 
-    @kafka_versions(">=0.10.0")
     @run_until_complete
     async def test_producer_correct_time_returned(self):
         producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
@@ -569,7 +567,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(producer._sender._acks, -1)  # -1 is set for `all`
         self.assertIsNotNone(producer._txn_manager)
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_indempotence_simple(self):
         # The test here will just check if we can do simple produce with
@@ -596,7 +593,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.value, b"hello, Kafka!")
         self.assertEqual(msg.key, None)
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_indempotence_no_duplicates(self):
         # Idempotent producer should retry produce in case of timeout error
@@ -751,7 +747,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         ):
             await producer.send_and_wait(self.topic, b"hello, Kafka!")
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_send_with_headers(self):
         producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
@@ -764,7 +759,6 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         resp = await fut
         self.assertEqual(resp.partition, 0)
 
-    @kafka_versions(">=0.11.0")
     @run_until_complete
     async def test_producer_send_and_wait_with_headers(self):
         producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
