@@ -251,7 +251,7 @@ class Schema:
 
     def decode(
         self, data: BytesIO
-    ) -> tuple[Any | str | None | list[Any | tuple[Any, ...]], ...]:
+    ) -> tuple[Any | str | list[Any | tuple[Any, ...]] | None, ...]:
         result = [
             self.fields[i].decode(data)
             for i in range(

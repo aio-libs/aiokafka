@@ -684,7 +684,7 @@ DescribeAclsRequestStruct: TypeAlias = DescribeAclsRequest_v0 | DescribeAclsRequ
 class DescribeAclsRequest(Request[DescribeAclsRequestStruct]):
     API_KEY = 29
 
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         resource_type: int,
         resource_name: str,
@@ -788,7 +788,7 @@ CreateAclsRequestStruct: TypeAlias = CreateAclsRequest_v0 | CreateAclsRequest_v1
 class CreateAclsRequest(Request[CreateAclsRequestStruct]):
     API_KEY = 30
 
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         resource_type: int,
         resource_name: str,
@@ -939,7 +939,7 @@ DeleteAclsRequestStruct: TypeAlias = DeleteAclsRequest_v0 | DeleteAclsRequest_v1
 class DeleteAclsRequest(Request[DeleteAclsRequestStruct]):
     API_KEY = 31
 
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         resource_type: int,
         resource_name: str,

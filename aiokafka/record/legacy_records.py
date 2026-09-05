@@ -370,7 +370,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase, LegacyRecordBatchBuilderProt
                 raise TypeError(f"Unsupported type for value: {type(value)}") from exc
             raise
 
-    def _encode_msg(
+    def _encode_msg(  # noqa: PLR0917
         self,
         buf: bytearray,
         offset: int,

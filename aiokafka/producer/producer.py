@@ -423,7 +423,7 @@ class AIOKafkaProducer:
 
         return serialized_key, serialized_value
 
-    def _partition(
+    def _partition(  # noqa: PLR0917
         self, topic, partition, key, value, serialized_key, serialized_value
     ):
         if partition is not None:
@@ -437,7 +437,7 @@ class AIOKafkaProducer:
         available = list(self._metadata.available_partitions_for_topic(topic))
         return self._partitioner(serialized_key, all_partitions, available)
 
-    async def send(
+    async def send(  # noqa: PLR0917
         self,
         topic,
         value=None,
@@ -523,7 +523,7 @@ class AIOKafkaProducer:
         )
         return fut
 
-    async def send_and_wait(
+    async def send_and_wait(  # noqa: PLR0917
         self,
         topic,
         value=None,

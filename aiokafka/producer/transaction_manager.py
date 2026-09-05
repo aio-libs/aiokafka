@@ -1,10 +1,16 @@
-from collections import defaultdict, deque, namedtuple
+from collections import defaultdict, deque
 from enum import Enum, IntEnum
+from typing import NamedTuple
 
 from aiokafka.structs import TopicPartition
 from aiokafka.util import create_future
 
-PidAndEpoch = namedtuple("PidAndEpoch", ["pid", "epoch"])
+
+class PidAndEpoch(NamedTuple):
+    pid: int
+    epoch: int
+
+
 NO_PRODUCER_ID = -1
 NO_PRODUCER_EPOCH = -1
 

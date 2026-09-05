@@ -37,7 +37,7 @@ def create_future(loop: AbstractEventLoop | None = None) -> asyncio.Future[T]:
     return loop.create_future()
 
 
-async def wait_for(fut: Awaitable[T], timeout: None | int | float = None) -> T:
+async def wait_for(fut: Awaitable[T], timeout: float | None = None) -> T:  # noqa: ASYNC109
     # A replacement for buggy (since 3.8.6) `asyncio.wait_for()`
     # https://bugs.python.org/issue42130
     async with asyncio.timeout(timeout):

@@ -611,13 +611,11 @@ class SaslPlainAuthenticator(BaseSaslAuthenticator):
     def authenticator_plain(self):
         """Automaton to authenticate with SASL tokens"""
         # Send PLAIN credentials per RFC-4616
-        data = "\0".join(
-            [
-                self._sasl_plain_username,
-                self._sasl_plain_username,
-                self._sasl_plain_password,
-            ]
-        ).encode("utf-8")
+        data = (
+            f"{self._sasl_plain_username}"
+            f"\0{self._sasl_plain_username}"
+            f"\0{self._sasl_plain_password}"
+        ).encode()
 
         resp = yield data, True
 
@@ -800,7 +798,7 @@ def _address_family(address):
     for af in (socket.AF_INET, socket.AF_INET6):
         try:
             socket.inet_pton(af, address)
-        except (OSError, ValueError, AttributeError):  # noqa: PERF203
+        except (OSError, ValueError, AttributeError):
             continue
         else:
             return af

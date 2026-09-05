@@ -82,56 +82,82 @@ skip_empty = true
 
 [tool.ruff.lint]
 # For the reference, check https://docs.astral.sh/ruff/rules/
+# Ordered the same way as in spec (and in `ruff linter` output)
 select = [
-    "F",  # pyflakes
-    "E", "W",  # pycodestyle
-    "I",  # isort
-    "UP",  # pyupgrade
+    # AIR Airflow
+    # ERA eradicate
+    # FAST FastAPI
     "YTT",  # flake8-2020
-    # TODO Uncomment after adding annotations to all modules
     # All "ANN" rules are covered by mypy, except "ANN204"
+    # ANN flake8-annotations
+    # TODO: Uncomment after adding annotations to all modules
     # "ANN204",  # Missing return type annotation for special method ...
     "ASYNC",  # flake8-async
     "S",  # flake8-bandit
     "BLE",  # flake8-blind-except
+    # FBT flake8-boolean-trap
     "B",  # flake8-bugbear
     "A",  # flake8-builtins
+    # COM flake8-commas
     "C4",  # flake8-comprehensions
+    # CPY flake8-copyright
     "DTZ",  # flake8-datetimez
     "T10",  # flake8-debugger
+    # DJ flake8-django
+    # EM flake8-errmsg
     "EXE",  # flake8-executable
+    # FIX flake8-fixme
     "FA",  # flake8-future-annotations
-    # XXX Causes warning https://github.com/astral-sh/ruff/issues/8272
+    # INT flake8-gettext
     "ISC",  # flake8-implicit-str-concat
+    "ICN",  # flake8-import-conventions
+    "LOG",  # flake8-logging
     "G",  # flake8-logging-format
     "INP",  # flake8-no-pep420
     "PIE",  # flake8-pie
     "T20",  # flake8-print
-    # TODO Uncomment after completely moving to pytest style
-    # "PT",  # flake8-pytest-style
+    "PYI",  # flake8-pyi
+    # TODO: Uncomment (+ enable for test only with `per-file-ignores`?) after
+    # completely moving to pytest style
+    # "PT", # flake8-pytest-style
+    # Q flake8-quotes
+    # RSE flake8-raise
     # The rest of RET rules don't improve code and may even worsen readability
     "RET501", "RET502", "RET503",  # flake8-return
-    "SLOT",  # flake8-slots
+    # SLF flake8-self
     "SIM",  # flake8-simplify
+    "SLOT",  # flake8-slots
     "TID",  # flake8-tidy-imports
+    # TD flake8-todos
+    # TC flake8-type-checking
+    # ARG flake8-unused-arguments
     "PTH",  # flake8-use-pathlib
-    # "FIX",  # flake8-fixme
+    "FLY",  # flynt
+    "I",  # isort
+    # C90 mccabe
+    # NPY NumPy-specific rules
+    # PD pandas-vet
+    # N pep8-naming
+    "PERF",  # Perflint
+    "E", "W",  # pycodestyle
+    # DOC pydoclint
+    # D pydocstyle
+    "F",  # pyflakes
     "PGH",  # pygrep-hooks
     "PL",  # Pylint
-    "TRY",  # tryceratops
-    "PERF",  # Perflint
-    # "LOG",  # flake8-logging
+    "UP",  # pyupgrade
+    "FURB",  # refurb
     "RUF",  # Ruff-specific
+    "TRY",  # tryceratops
 ]
 
 ignore = [
     "S101",  # Use of `assert` detected
-    "S311",  # Standard pseudo-random generators are not suitable for cryptographic purposes
     "B011",  # Do not `assert False`
     "SIM108",  # Use ternary operator
     "PLR0913",  # Too many arguments in function definition
     "PLR2004",  # Magic value used in comparison
-    # TODO Reduce complexity
+    # TODO: Reduce complexity
     "PLR0911", "PLR0912", "PLR0915",  # Too many ...
     # Too many false positives
     "PLW2901",  # ... loop variable ... overwritten by assignment target
@@ -145,9 +171,11 @@ pyupgrade.keep-runtime-typing = true
 [tool.ruff.lint.per-file-ignores]
 "tests/**.py" = [
     "S106", "S107",  # Possible hardcoded password
+    "S311",  # Standard pseudo-random generators are not suitable for cryptographic purposes
     "S603",  # `subprocess` call: check for execution of untrusted input
     "S607",  # Starting a process with a partial executable path
     "T201",  # `print` found
+    "PLR0917",  # more than 5 fixtures is fine
 ]
 
 [tool.ruff.format]

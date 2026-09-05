@@ -12,7 +12,7 @@ from typing import (
 
 
 class DefaultRecordBatchBuilderProtocol(Protocol):
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         magic: int,
         compression_type: int,
@@ -121,7 +121,7 @@ class DefaultRecordBatchProtocol(Iterator["DefaultRecordProtocol"], Protocol):
 
 @runtime_checkable
 class DefaultRecordProtocol(Protocol):
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         offset: int,
         timestamp: int,
@@ -218,7 +218,7 @@ class LegacyRecordBatchProtocol(Iterable["LegacyRecordProtocol"], Protocol):
 
 @runtime_checkable
 class LegacyRecordProtocol(Protocol):
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         offset: int,
         timestamp: int | None,

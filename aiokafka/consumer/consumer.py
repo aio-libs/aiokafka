@@ -1257,7 +1257,7 @@ class AIOKafkaConsumer:
         while True:
             try:
                 return await self.getone()
-            except ConsumerStoppedError:  # noqa: PERF203
+            except ConsumerStoppedError:
                 raise StopAsyncIteration from None
             except RecordTooLargeError:
                 log.exception("error in consumer iterator: %s")
