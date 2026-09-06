@@ -8,6 +8,9 @@ on:
     types: [created]
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
   package-source:
     runs-on: ubuntu-latest
