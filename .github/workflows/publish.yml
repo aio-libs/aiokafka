@@ -309,20 +309,18 @@ jobs:
   test-wheels-aarch64-linux:
     needs: [package-source, package-wheel]
     runs-on: ubuntu-24.04-arm
-    env:
-      py: /opt/python/${{ matrix.pyver }}/bin/python
-      img: quay.io/pypa/manylinux2014_aarch64
 
     strategy:
       matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
         include:
-          - pyver: cp311-cp311
+          - python: "3.11"
             aiokafka_whl: dist/aiokafka-*-cp311-cp311-manylinux*_aarch64.whl
-          - pyver: cp312-cp312
+          - python: "3.12"
             aiokafka_whl: dist/aiokafka-*-cp312-cp312-manylinux*_aarch64.whl
-          - pyver: cp313-cp313
+          - python: "3.13"
             aiokafka_whl: dist/aiokafka-*-cp313-cp313-manylinux*_aarch64.whl
-          - pyver: cp314-cp314
+          - python: "3.14"
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-manylinux*_aarch64.whl
 
     steps:
@@ -334,21 +332,26 @@ jobs:
         with:
           name: dist-ubuntu-24.04-arm-aarch64
           path: dist/
-      - name: Test Wheel
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install system dependencies
         run: |
-              docker run --rm -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
-              ${{ env.img }} \
-              bash -exc '${{ env.py }} -m venv .env && \
-              source .env/bin/activate && \
-              yum install -y epel-release && \
-              yum-config-manager --enable epel && \
-              yum install -y krb5-devel && \
-              pip install --upgrade pip setuptools && \
-              pip install -r requirements-ci.txt && \
-              pip install ${{ matrix.aiokafka_whl }} && \
-              rm -rf aiokafka && \
-              make ci-test-unit && \
-              deactivate'
+          sudo apt-get update
+          sudo apt-get install -y libkrb5-dev
+      - name: Install python dependencies
+        run: |
+          pip install --upgrade pip setuptools
+          pip install -r requirements-ci.txt
+          pip install ${{ matrix.aiokafka_whl }}
+
+      - name: Run Unit Tests
+        run: |
+          # Remove source code to be sure we use wheel code
+          rm -rf aiokafka
+          make ci-test-unit
 
   deploy:
     if: ${{ github.event_name == 'release' }}
