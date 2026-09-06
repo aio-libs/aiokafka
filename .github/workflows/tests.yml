@@ -28,26 +28,16 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: "3.11"
+        cache: pip
+        cache-dependency-path: |
+          requirements-ci.txt
+          requirements-docs.txt
+          setup.py
 
     - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y libkrb5-dev
-
-    - name: Get pip cache dir
-      id: pip-cache
-      run: |
-        python -m pip install -U "pip>=20.1"
-        echo "dir=$(pip cache dir)" >> "$GITHUB_OUTPUT"
-
-    - name: Cache packages
-      uses: actions/cache@v5
-      with:
-        path: ${{ steps.pip-cache.outputs.dir }}
-        key: ${{ runner.os }}-py-3.11-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
-        # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
-        restore-keys: |
-          ${{ runner.os }}-py-3.11-
 
     - name: Install python dependencies
       run: |
@@ -89,21 +79,10 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python }}
-
-    - name: Get pip cache dir
-      id: pip-cache
-      run: |
-        python -m pip install -U "pip>=20.1"
-        "dir=$(pip cache dir)" >> $env:GITHUB_OUTPUT
-
-    - name: Cache packages
-      uses: actions/cache@v5
-      with:
-        path: ${{ steps.pip-cache.outputs.dir }}
-        key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-win-test.txt') }}-${{ hashFiles('setup.py') }}
-        # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
-        restore-keys: |
-         ${{ runner.os }}-py-${{ matrix.python }}-
+        cache: pip
+        cache-dependency-path: |
+          requirements-win-test.txt
+          setup.py
 
     - name: Install python dependencies
       run: |
@@ -158,21 +137,10 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python }}
-
-    - name: Get pip cache dir
-      id: pip-cache
-      run: |
-        python -m pip install -U "pip>=20.1"
-        echo "dir=$(pip cache dir)" >> "$GITHUB_OUTPUT"
-
-    - name: Cache packages
-      uses: actions/cache@v5
-      with:
-        path: ${{ steps.pip-cache.outputs.dir }}
-        key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
-        # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
-        restore-keys: |
-         ${{ runner.os }}-py-${{ matrix.python }}-
+        cache: pip
+        cache-dependency-path: |
+          requirements-ci.txt
+          setup.py
 
     - name: Install python dependencies
       run: |
@@ -264,26 +232,15 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python }}
+        cache: pip
+        cache-dependency-path: |
+          requirements-ci.txt
+          setup.py
 
     - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y libkrb5-dev krb5-user
-
-    - name: Get pip cache dir
-      id: pip-cache
-      run: |
-        python -m pip install -U "pip>=20.1"
-        echo "dir=$(pip cache dir)" >> "$GITHUB_OUTPUT"
-
-    - name: Cache packages
-      uses: actions/cache@v5
-      with:
-        path: ${{ steps.pip-cache.outputs.dir }}
-        key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
-        # If miss on key takes any other cache with different hashes, will download correct ones on next step anyway
-        restore-keys: |
-         ${{ runner.os }}-py-${{ matrix.python }}-
 
     - name: Install python dependencies
       run: |
