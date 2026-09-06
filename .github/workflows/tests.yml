@@ -122,7 +122,7 @@ jobs:
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
       with:
-        file: ./coverage-ext.xml
+        files: ./coverage-ext.xml
         flags: unit,cext
         name: test-windows-${{ matrix.python }}-ext
       if: ${{ always() }}
@@ -130,7 +130,7 @@ jobs:
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
       with:
-        file: ./coverage-py.xml
+        files: ./coverage-py.xml
         flags: unit,purepy
         name: test-windows-${{ matrix.python }}-py
       if: ${{ always() }}
@@ -190,7 +190,7 @@ jobs:
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
       with:
-        file: ./coverage-ext.xml
+        files: ./coverage-ext.xml
         flags: unit,cext
         name: test-mac-${{ matrix.python }}-ext
       if: ${{ always() }}
@@ -198,7 +198,7 @@ jobs:
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
       with:
-        file: ./coverage-py.xml
+        files: ./coverage-py.xml
         flags: unit,purepy
         name: test-mac-${{ matrix.python }}-py
       if: ${{ always() }}
@@ -303,7 +303,7 @@ jobs:
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
       with:
-        file: ./coverage-ext.xml
+        files: ./coverage-ext.xml
         flags: integration,cext
         name: test-linux-${{ matrix.python }}-${{ matrix.kafka }}-${{ matrix.scala }}-ext
       if: ${{ always() }}
@@ -311,7 +311,7 @@ jobs:
     - name: Upload coverage without cext to Codecov
       uses: codecov/codecov-action@v7
       with:
-        file: ./coverage-py.xml
+        files: ./coverage-py.xml
         flags: integration,purepy
         name: test-linux-${{ matrix.python }}-${{ matrix.kafka }}-${{ matrix.scala }}-py
       if: ${{ always() }}
