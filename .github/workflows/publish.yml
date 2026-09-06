@@ -351,7 +351,6 @@ jobs:
         https://pypi.org/project/aiokafka/${{ github.ref_name }}
 
     steps:
-      - uses: actions/checkout@v6
       - name: Download distributions
         uses: actions/download-artifact@v8
         with:
