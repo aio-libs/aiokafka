@@ -153,7 +153,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         correct_response = MetadataResponse([], [])
 
         async def send_exception(*args, **kwargs):
-            raise asyncio.TimeoutError()
+            raise TimeoutError()
 
         async def send(*args, **kwargs):
             return correct_response
@@ -229,7 +229,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         correct_meta = MetadataResponse(brokers, [])
 
         async def send(*args, **kwargs):
-            raise asyncio.TimeoutError()
+            raise TimeoutError()
 
         client = AIOKafkaClient(bootstrap_servers=["broker_1:4567"])
         conn = mock.Mock()
@@ -283,7 +283,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
     async def test_failed_bootstrap_timeout(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         with mock.patch.object(AIOKafkaConnection, "send") as mock_send:
-            mock_send.side_effect = asyncio.TimeoutError("Timeout error")
+            mock_send.side_effect = TimeoutError("Timeout error")
             with self.assertRaises(KafkaConnectionError):
                 await client.bootstrap()
 

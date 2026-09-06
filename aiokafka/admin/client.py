@@ -5,8 +5,6 @@ from collections import defaultdict
 from ssl import SSLContext
 from typing import Any
 
-import async_timeout
-
 from aiokafka import __version__
 from aiokafka.abc import AbstractTokenProvider
 from aiokafka.client import AIOKafkaClient
@@ -158,7 +156,7 @@ class AIOKafkaAdminClient:
         self._started = True
 
     async def _send_request_to_node(self, node_id: int, request: Request) -> Response:
-        async with async_timeout.timeout(self._client._request_timeout_ms / 1000):
+        async with asyncio.timeout(self._client._request_timeout_ms / 1000):
             while True:
                 ready = await self._client.ready(node_id)
                 if ready:

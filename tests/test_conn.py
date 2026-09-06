@@ -63,10 +63,12 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
         host, port = self.kafka_host, self.kafka_port
         conn = await create_conn(host, port, max_idle_ms=100000)
 
-        with self.silence_loop_exception_handler():
-            with self.assertWarnsRegex(ResourceWarning, "Unclosed AIOKafkaConnection"):
-                del conn
-                gc.collect()
+        with (
+            self.silence_loop_exception_handler(),
+            self.assertWarnsRegex(ResourceWarning, "Unclosed AIOKafkaConnection"),
+        ):
+            del conn
+            gc.collect()
 
     @run_until_complete
     async def test_basic_connection_load_meta(self):

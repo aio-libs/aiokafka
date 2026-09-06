@@ -12,6 +12,8 @@ aiokafka
 
 asyncio client for Kafka
 
+Python 3.11 or newer is required.
+
 
 AIOKafkaProducer
 ****************

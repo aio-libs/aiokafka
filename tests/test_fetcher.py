@@ -553,9 +553,11 @@ class TestFetcher(unittest.TestCase):
                 )
 
             mocked.side_effect = mock_send
-            with self.assertLogs("aiokafka.consumer.fetcher", "WARN") as cm:
-                with self.assertRaises(UnknownTopicOrPartitionError):
-                    await fetcher._proc_offset_request(0, {"topic": (0, 1000)})
+            with (
+                self.assertLogs("aiokafka.consumer.fetcher", "WARN") as cm,
+                self.assertRaises(UnknownTopicOrPartitionError),
+            ):
+                await fetcher._proc_offset_request(0, {"topic": (0, 1000)})
             if cm is not None:
                 self.assertIn("Received unknown topic or partition error", cm.output[0])
 

@@ -129,7 +129,7 @@ class JoinGroupRequest(Request[JoinGroupRequestStruct]):
     API_KEY = 11
     UNKNOWN_MEMBER_ID = ""
 
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         group: str,
         session_timeout: int,

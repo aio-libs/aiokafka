@@ -212,13 +212,13 @@ class AIOKafkaClient:
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     sasl_oauth_token_provider=self._sasl_oauth_token_provider,
                 )
-            except (OSError, KafkaError, asyncio.TimeoutError) as err:
+            except (TimeoutError, OSError, KafkaError) as err:
                 log.error('Unable connect to "%s:%s": %s', host, port, err)
                 continue
 
             try:
                 metadata = await bootstrap_conn.send(MetadataRequest([]))
-            except (KafkaError, asyncio.TimeoutError) as err:
+            except (TimeoutError, KafkaError) as err:
                 log.warning(
                     'Unable to request metadata from "%s:%s": %s', host, port, err
                 )
@@ -279,7 +279,7 @@ class AIOKafkaClient:
         nodeids = [b.nodeId for b in self.cluster.brokers()]
         if not nodeids:
             return None
-        return random.choice(nodeids)
+        return random.choice(nodeids)  # noqa: S311
 
     async def _metadata_update(self, cluster_metadata, topics):
         assert isinstance(cluster_metadata, ClusterMetadata)
@@ -300,7 +300,7 @@ class AIOKafkaClient:
 
             try:
                 metadata = await conn.send(metadata_request)
-            except (KafkaError, asyncio.TimeoutError) as err:
+            except (TimeoutError, KafkaError) as err:
                 log.warning(
                     "Unable to request metadata from node with id %s: %r", node_id, err
                 )
@@ -431,7 +431,7 @@ class AIOKafkaClient:
                     sasl_kerberos_domain_name=self._sasl_kerberos_domain_name,
                     sasl_oauth_token_provider=self._sasl_oauth_token_provider,
                 )
-        except (OSError, asyncio.TimeoutError, KafkaError) as err:
+        except (TimeoutError, OSError, KafkaError) as err:
             log.error("Unable connect to node with id %s: %s", node_id, err)
             # Connection failures imply that our metadata is stale, so
             # let's refresh
@@ -476,7 +476,7 @@ class AIOKafkaClient:
         )
         try:
             result = await future
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             # close connection so it is renewed in next request
             self._conns[(node_id, group)].close(reason=CloseReason.CONNECTION_TIMEOUT)
             raise RequestTimedOutError() from exc

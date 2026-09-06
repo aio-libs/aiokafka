@@ -10,7 +10,7 @@ T = TypeVar("T")
 
 
 @final
-class SortedSet(Generic[T], Collection[T]):
+class SortedSet(Collection[T], Generic[T]):
     def __init__(
         self,
         iterable: Iterable[T] | None = None,

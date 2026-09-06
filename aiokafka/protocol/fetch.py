@@ -512,7 +512,7 @@ FetchRequestStruct: TypeAlias = (
 class FetchRequest(Request[FetchRequestStruct]):
     API_KEY = 1
 
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         max_wait_time: int,
         min_bytes: int,

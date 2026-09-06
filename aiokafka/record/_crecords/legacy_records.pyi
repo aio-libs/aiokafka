@@ -1,7 +1,7 @@
-from collections.abc import Generator
-from typing import Any, ClassVar, Literal, final
+from collections.abc import Iterator
+from typing import Any, ClassVar, Literal, Never, final
 
-from typing_extensions import Buffer, Never
+from typing_extensions import Buffer
 
 from aiokafka.record._protocols import (
     LegacyRecordBatchBuilderProtocol,
@@ -52,7 +52,7 @@ class LegacyRecordBatch(LegacyRecordBatchProtocol):
     @property
     def next_offset(self) -> int: ...
     def validate_crc(self) -> bool: ...
-    def __iter__(self) -> Generator[LegacyRecord, None, None]: ...
+    def __iter__(self) -> Iterator[LegacyRecord]: ...
 
 @final
 class LegacyRecordBatchBuilder(LegacyRecordBatchBuilderProtocol):

@@ -322,7 +322,7 @@ class MessageBatch:
                 batch_age_seconds=failed_at - self._ctime,
             )
 
-    async def wait_drain(self, timeout=None):
+    async def wait_drain(self, timeout=None):  # noqa: ASYNC109
         """Wait until all message from this batch is processed"""
         waiter = self._drain_waiter
         await asyncio.wait([waiter], timeout=timeout)
@@ -461,12 +461,12 @@ class MessageAccumulator:
         self._closed = True
         await self.flush()
 
-    async def add_message(
+    async def add_message(  # noqa: PLR0917
         self,
         tp,
         key,
         value,
-        timeout,
+        timeout,  # noqa: ASYNC109
         timestamp_ms=None,
         headers: Sequence = [],
     ):
@@ -664,7 +664,7 @@ class MessageAccumulator:
             self._waiter_future.set_result(None)
         return batch
 
-    async def add_batch(self, builder, tp, timeout):
+    async def add_batch(self, builder, tp, timeout):  # noqa: ASYNC109
         """Add BatchBuilder to queue by topic-partition.
 
         Arguments:

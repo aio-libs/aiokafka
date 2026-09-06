@@ -1233,7 +1233,7 @@ class CoordinatorGroupRebalance:
             display/KAFKA/Kafka+Client-side+Assignment+Proposal
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         coordinator,
         group_id,

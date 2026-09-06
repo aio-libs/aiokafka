@@ -467,7 +467,7 @@ def wait_kafka(kafka_host, kafka_port, timeout=120):
     return res
 
 
-async def _wait_kafka(kafka_host, kafka_port, timeout):
+async def _wait_kafka(kafka_host, kafka_port, timeout):  # noqa: ASYNC109
     hosts = [f"{kafka_host}:{kafka_port}"]
     loop = asyncio.get_event_loop()
 

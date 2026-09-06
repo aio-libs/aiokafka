@@ -5,15 +5,14 @@ from typing import (
     Any,
     ClassVar,
     Literal,
+    Never,
     Protocol,
     runtime_checkable,
 )
 
-from typing_extensions import Never
-
 
 class DefaultRecordBatchBuilderProtocol(Protocol):
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         magic: int,
         compression_type: int,
@@ -122,7 +121,7 @@ class DefaultRecordBatchProtocol(Iterator["DefaultRecordProtocol"], Protocol):
 
 @runtime_checkable
 class DefaultRecordProtocol(Protocol):
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         offset: int,
         timestamp: int,
@@ -219,7 +218,7 @@ class LegacyRecordBatchProtocol(Iterable["LegacyRecordProtocol"], Protocol):
 
 @runtime_checkable
 class LegacyRecordProtocol(Protocol):
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         offset: int,
         timestamp: int | None,

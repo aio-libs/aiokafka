@@ -58,9 +58,7 @@ import struct
 import time
 from collections.abc import Callable, Collection, Sized
 from dataclasses import dataclass
-from typing import Any, final
-
-from typing_extensions import Self
+from typing import Any, Self, final
 
 import aiokafka.codec as codecs
 from aiokafka.codec import (
@@ -383,7 +381,7 @@ class _DefaultRecordBatchBuilderPy(
     # 5 bytes length + 10 bytes timestamp + 5 bytes offset + 1 byte attributes
     MAX_RECORD_OVERHEAD = 21
 
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         magic: int,
         compression_type: int,
@@ -420,7 +418,7 @@ class _DefaultRecordBatchBuilderPy(
         # Control batches are only created by Broker
         return attrs
 
-    def append(
+    def append(  # noqa: PLR0917
         self,
         offset: int,
         timestamp: int | None,

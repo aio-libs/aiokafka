@@ -17,8 +17,6 @@ import warnings
 import weakref
 from enum import IntEnum
 
-import async_timeout
-
 import aiokafka.errors as Errors
 from aiokafka.abc import AbstractTokenProvider
 from aiokafka.protocol.admin import (
@@ -212,7 +210,7 @@ class AIOKafkaConnection:
         # Create streams same as `open_connection`, but using custom protocol
         reader = asyncio.StreamReader(limit=READER_LIMIT, loop=loop)
         protocol = AIOKafkaProtocol(self._closed_fut, reader, loop=loop)
-        async with async_timeout.timeout(self._request_timeout):
+        async with asyncio.timeout(self._request_timeout):
             transport, _ = await loop.create_connection(
                 lambda: protocol, self.host, self.port, ssl=ssl
             )
@@ -613,13 +611,11 @@ class SaslPlainAuthenticator(BaseSaslAuthenticator):
     def authenticator_plain(self):
         """Automaton to authenticate with SASL tokens"""
         # Send PLAIN credentials per RFC-4616
-        data = "\0".join(
-            [
-                self._sasl_plain_username,
-                self._sasl_plain_username,
-                self._sasl_plain_password,
-            ]
-        ).encode("utf-8")
+        data = (
+            f"{self._sasl_plain_username}"
+            f"\0{self._sasl_plain_username}"
+            f"\0{self._sasl_plain_password}"
+        ).encode()
 
         resp = yield data, True
 
@@ -802,7 +798,7 @@ def _address_family(address):
     for af in (socket.AF_INET, socket.AF_INET6):
         try:
             socket.inet_pton(af, address)
-        except (OSError, ValueError, AttributeError):  # noqa: PERF203
+        except (OSError, ValueError, AttributeError):
             continue
         else:
             return af

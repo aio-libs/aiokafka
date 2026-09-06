@@ -1,7 +1,5 @@
 from io import BytesIO
-from typing import Any, ClassVar
-
-from typing_extensions import Self
+from typing import Any, ClassVar, Self
 
 from .types import Schema
 

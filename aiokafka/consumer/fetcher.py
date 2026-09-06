@@ -6,8 +6,6 @@ import random
 import time
 from itertools import chain
 
-import async_timeout
-
 import aiokafka.errors as Errors
 from aiokafka.errors import ConsumerStoppedError, KafkaTimeoutError, RecordTooLargeError
 from aiokafka.protocol.fetch import FetchRequest
@@ -166,7 +164,7 @@ class FetchError:
 
 
 class PartitionRecords:
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         tp,
         records,
@@ -1021,11 +1019,11 @@ class Fetcher:
 
         timeout = None if timeout_ms is None else timeout_ms / 1000
         try:
-            async with async_timeout.timeout(timeout):
+            async with asyncio.timeout(timeout):
                 while True:
                     try:
                         offsets = await self._proc_offset_requests(timestamps)
-                    except Errors.KafkaError as error:  # noqa: PERF203
+                    except Errors.KafkaError as error:
                         if not error.retriable:
                             raise
                         if error.invalid_metadata:
@@ -1033,7 +1031,7 @@ class Fetcher:
                         await asyncio.sleep(self._retry_backoff)
                     else:
                         return offsets
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             raise KafkaTimeoutError(
                 f"Failed to get offsets by times in {timeout_ms} ms"
             ) from exc
@@ -1206,7 +1204,7 @@ class Fetcher:
             waiter = self._create_fetch_waiter()
             await waiter
 
-    async def fetched_records(self, partitions, timeout=0, max_records=None):
+    async def fetched_records(self, partitions, timeout=0, max_records=None):  # noqa: ASYNC109
         """Returns previously fetched records and updates consumed offsets."""
         while True:
             # While the background routine will fetch new records up till new

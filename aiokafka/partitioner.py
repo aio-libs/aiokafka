@@ -20,8 +20,8 @@ class DefaultPartitioner:
         """
         if key is None:
             if available:
-                return random.choice(available)
-            return random.choice(all_partitions)
+                return random.choice(available)  # noqa: S311
+            return random.choice(all_partitions)  # noqa: S311
 
         idx = murmur2(key)
         idx &= 0x7FFFFFFF

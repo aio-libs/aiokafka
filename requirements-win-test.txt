@@ -1,5 +1,5 @@
 -r requirements-cython.txt
-ruff==0.14.8
+ruff==0.16.6
 mypy==1.19.0
 pytest==9.0.2
 pytest-cov==7.0.0
