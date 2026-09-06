@@ -28,7 +28,7 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: "3.11"
-        cache: pip
+        cache: pip  # zizmor: ignore[cache-poisoning]
         cache-dependency-path: |
           requirements-ci.txt
           requirements-docs.txt
@@ -79,7 +79,7 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python }}
-        cache: pip
+        cache: pip  # zizmor: ignore[cache-poisoning]
         cache-dependency-path: |
           requirements-win-test.txt
           setup.py
@@ -137,7 +137,7 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python }}
-        cache: pip
+        cache: pip  # zizmor: ignore[cache-poisoning]
         cache-dependency-path: |
           requirements-ci.txt
           setup.py
@@ -232,7 +232,7 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python }}
-        cache: pip
+        cache: pip  # zizmor: ignore[cache-poisoning]
         cache-dependency-path: |
           requirements-ci.txt
           setup.py

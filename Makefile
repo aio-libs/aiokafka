@@ -36,6 +36,7 @@ lint:
 	ruff format --check aiokafka tests setup.py
 	ruff check aiokafka tests setup.py
 	mypy --install-types --non-interactive $(FORMATTED_AREAS)
+	zizmor .github/workflows
 
 .PHONY: test
 test: lint
