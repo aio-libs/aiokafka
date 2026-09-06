@@ -12,8 +12,8 @@ jobs:
   package-source:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Prepare C files to include
@@ -25,7 +25,7 @@ jobs:
       - name: Build source package
         run: python -m build --sdist
       - name: Upload source package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-source
           path: dist/
@@ -51,8 +51,8 @@ jobs:
           - os: windows-11-arm
             arch: arm64
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           # cibuildwheel requires 3.11+
           python-version: "3.11"
@@ -71,7 +71,7 @@ jobs:
           cibuildwheel --output-dir dist
         shell: bash
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/
@@ -94,14 +94,14 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-win_amd64.whl
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist-windows-latest-amd64
           path: dist/
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
@@ -137,14 +137,14 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-win_arm64.whl
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist-windows-11-arm-arm64
           path: dist/
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
@@ -180,14 +180,14 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-macosx_*_x86_64.whl
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist-macos-15-intel-x86_64
           path: dist/
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
@@ -221,14 +221,14 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-macosx_*_arm64.whl
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist-macos-latest-arm64
           path: dist/
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
@@ -262,14 +262,14 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-manylinux*_x86_64.whl
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist-ubuntu-latest-x86_64
           path: dist/
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
@@ -309,9 +309,9 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-manylinux*_aarch64.whl
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist-ubuntu-24.04-arm-aarch64
           path: dist/
@@ -351,9 +351,9 @@ jobs:
         https://pypi.org/project/aiokafka/${{ github.ref_name }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist/
           pattern: dist-*

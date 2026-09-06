@@ -18,9 +18,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: "3.11"
 
@@ -36,7 +36,7 @@ jobs:
         echo "::set-output name=dir::$(pip cache dir)"
 
     - name: Cache packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
         key: ${{ runner.os }}-py-3.11-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
@@ -76,11 +76,11 @@ jobs:
         python: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         ref: ${{ github.event.pull_request.head.sha }}
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python }}
 
@@ -91,7 +91,7 @@ jobs:
         echo "::set-output name=dir::$(pip cache dir)"
 
     - name: Cache packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
         key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-win-test.txt') }}-${{ hashFiles('setup.py') }}
@@ -120,7 +120,7 @@ jobs:
         AIOKAFKA_NO_EXTENSIONS: "1"
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v7
       with:
         file: ./coverage-ext.xml
         flags: unit,cext
@@ -128,7 +128,7 @@ jobs:
       if: ${{ always() }}
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v7
       with:
         file: ./coverage-py.xml
         flags: unit,purepy
@@ -144,11 +144,11 @@ jobs:
         python: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         ref: ${{ github.event.pull_request.head.sha }}
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python }}
 
@@ -159,7 +159,7 @@ jobs:
         echo "::set-output name=dir::$(pip cache dir)"
 
     - name: Cache packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
         key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
@@ -188,7 +188,7 @@ jobs:
         AIOKAFKA_NO_EXTENSIONS: "1"
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v7
       with:
         file: ./coverage-ext.xml
         flags: unit,cext
@@ -196,7 +196,7 @@ jobs:
       if: ${{ always() }}
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v7
       with:
         file: ./coverage-py.xml
         flags: unit,purepy
@@ -249,11 +249,11 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         ref: ${{ github.event.pull_request.head.sha }}
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python }}
 
@@ -269,7 +269,7 @@ jobs:
         echo "::set-output name=dir::$(pip cache dir)"
 
     - name: Cache packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
         key: ${{ runner.os }}-py-${{ matrix.python }}-${{ hashFiles('requirements-ci.txt') }}-${{ hashFiles('setup.py') }}
@@ -301,7 +301,7 @@ jobs:
         KAFKA_VERSION: ${{ matrix.kafka }}
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v7
       with:
         file: ./coverage-ext.xml
         flags: integration,cext
@@ -309,7 +309,7 @@ jobs:
       if: ${{ always() }}
 
     - name: Upload coverage without cext to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v7
       with:
         file: ./coverage-py.xml
         flags: integration,purepy
