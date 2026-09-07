@@ -32,7 +32,7 @@ jobs:
         cache-dependency-path: |
           requirements-ci.txt
           requirements-docs.txt
-          setup.py
+          pyproject.toml
 
     - name: Install system dependencies
       run: |
@@ -82,7 +82,7 @@ jobs:
         cache: pip  # zizmor: ignore[cache-poisoning]
         cache-dependency-path: |
           requirements-win-test.txt
-          setup.py
+          pyproject.toml
 
     - name: Install python dependencies
       run: |
@@ -140,7 +140,7 @@ jobs:
         cache: pip  # zizmor: ignore[cache-poisoning]
         cache-dependency-path: |
           requirements-ci.txt
-          setup.py
+          pyproject.toml
 
     - name: Install python dependencies
       run: |
@@ -235,7 +235,7 @@ jobs:
         cache: pip  # zizmor: ignore[cache-poisoning]
         cache-dependency-path: |
           requirements-ci.txt
-          setup.py
+          pyproject.toml
 
     - name: Install system dependencies
       run: |

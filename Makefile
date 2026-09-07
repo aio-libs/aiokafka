@@ -36,13 +36,13 @@ setup:
 
 .PHONY: format
 format:
-	ruff format aiokafka tests setup.py
-	ruff check --fix aiokafka tests setup.py
+	ruff format aiokafka tests
+	ruff check --fix aiokafka tests
 
 .PHONY: lint
 lint:
-	ruff format --check aiokafka tests setup.py
-	ruff check aiokafka tests setup.py
+	ruff format --check aiokafka tests
+	ruff check aiokafka tests
 	mypy --install-types --non-interactive $(FORMATTED_AREAS)
 	zizmor --pedantic .github/workflows
 
@@ -77,7 +77,8 @@ diff-cov: coverage.xml
 
 .PHONY: check-readme
 check-readme:
-	python setup.py check -rms
+	python -m build --sdist --wheel
+	python -m twine check --strict dist/*
 
 .PHONY: clean
 clean:

@@ -1,5 +1,6 @@
 [build-system]
 requires = ["setuptools >=77", "Cython >=3.0.5"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "aiokafka"
