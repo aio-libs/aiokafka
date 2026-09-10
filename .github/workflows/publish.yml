@@ -123,9 +123,7 @@ jobs:
 
       - name: Run Unit Tests
         run: |
-          # Remove source code to be sure we use wheel code
-          rm -rf aiokafka
-          make ci-test-unit
+          make ci-test-unit ISOLATED=1
         shell: bash
 
   test-wheels-arm64-windows:
@@ -168,9 +166,7 @@ jobs:
 
       - name: Run Unit Tests
         run: |
-          # Remove source code to be sure we use wheel code
-          rm -rf aiokafka
-          make ci-test-unit
+          make ci-test-unit ISOLATED=1
         shell: bash
 
   test-wheels-mac:
@@ -212,9 +208,7 @@ jobs:
 
       - name: Run Unit Tests
         run: |
-          # Remove source code to be sure we use wheel code
-          rm -rf aiokafka
-          make ci-test-unit
+          make ci-test-unit ISOLATED=1
 
   test-wheels-arm64-mac:
     needs: [package-source, package-wheel]
@@ -255,9 +249,7 @@ jobs:
 
       - name: Run Unit Tests
         run: |
-          # Remove source code to be sure we use wheel code
-          rm -rf aiokafka
-          make ci-test-unit
+          make ci-test-unit ISOLATED=1
 
   test-wheels-linux:
     needs: [package-source, package-wheel]
@@ -302,9 +294,7 @@ jobs:
 
       - name: Run Unit Tests
         run: |
-          # Remove source code to be sure we use wheel code
-          rm -rf aiokafka
-          make ci-test-unit
+          make ci-test-unit ISOLATED=1
 
   test-wheels-aarch64-linux:
     needs: [package-source, package-wheel]
@@ -348,9 +338,7 @@ jobs:
 
       - name: Run Unit Tests
         run: |
-          # Remove source code to be sure we use wheel code
-          rm -rf aiokafka
-          make ci-test-unit
+          make ci-test-unit ISOLATED=1
 
   deploy:
     if: ${{ github.event_name == 'release' }}

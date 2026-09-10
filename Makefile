@@ -1,6 +1,14 @@
 # Some simple testing tasks (sorry, UNIX only).
 
+PYTHON?=python
 FLAGS?=--maxfail=3
+ISOLATED?=0
+ifeq ($(ISOLATED),1)
+PYTEST?=$(PYTHON) -I -m pytest --import-mode=importlib $(FLAGS)
+else
+PYTEST?=$(PYTHON) -m pytest $(FLAGS)
+endif
+
 SCALA_VERSION?=2.13
 KAFKA_VERSION?=2.8.1
 DOCKER_IMAGE=aiolibs/kafka:$(SCALA_VERSION)_$(KAFKA_VERSION)
@@ -40,24 +48,24 @@ lint:
 
 .PHONY: test
 test: lint
-	pytest -s --show-capture=no --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	pytest -s --show-capture=no --docker-image $(DOCKER_IMAGE) tests
 
 .PHONY: vtest
 vtest: lint
-	pytest -s -v --log-level INFO --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	pytest -s -v --log-level INFO --docker-image $(DOCKER_IMAGE) tests
 
 .PHONY: cov cover coverage
 cov cover coverage: lint
-	pytest -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	pytest -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) tests
 	@echo "open file://`pwd`/htmlcov/index.html"
 
 .PHONY: ci-test-unit
 ci-test-unit:
-	pytest -s --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml --color=yes $(FLAGS) tests
+	$(PYTEST) -s --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml --color=yes tests
 
 .PHONY: ci-test-all
 ci-test-all:
-	pytest -s -v --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes --docker-image $(DOCKER_IMAGE) $(FLAGS) tests
+	pytest -s -v --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes --docker-image $(DOCKER_IMAGE) tests
 
 coverage.xml: .coverage
 	coverage xml
