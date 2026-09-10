@@ -48,15 +48,15 @@ lint:
 
 .PHONY: test
 test: lint
-	pytest -s --show-capture=no --docker-image $(DOCKER_IMAGE) tests
+	$(PYTEST) -s --show-capture=no --docker-image $(DOCKER_IMAGE) tests
 
 .PHONY: vtest
 vtest: lint
-	pytest -s -v --log-level INFO --docker-image $(DOCKER_IMAGE) tests
+	$(PYTEST) -s -v --log-level INFO --docker-image $(DOCKER_IMAGE) tests
 
 .PHONY: cov cover coverage
 cov cover coverage: lint
-	pytest -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) tests
+	$(PYTEST) -s --cov aiokafka --cov-report html --docker-image $(DOCKER_IMAGE) tests
 	@echo "open file://`pwd`/htmlcov/index.html"
 
 .PHONY: ci-test-unit
@@ -65,7 +65,7 @@ ci-test-unit:
 
 .PHONY: ci-test-all
 ci-test-all:
-	pytest -s -v --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes --docker-image $(DOCKER_IMAGE) tests
+	$(PYTEST) -s -v --log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG --cov aiokafka --cov-report xml  --color=yes --docker-image $(DOCKER_IMAGE) tests
 
 coverage.xml: .coverage
 	coverage xml
