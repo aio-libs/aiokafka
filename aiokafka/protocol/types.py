@@ -404,8 +404,9 @@ class VarInt32(AbstractType[int]):
     @classmethod
     def encode(cls, value: int) -> bytes:
         # bring it in line with the java binary repr
-        value &= 0xFFFFFFFF
-        return UnsignedVarInt32.encode((value << 1) ^ (value >> 31))
+        # zig-zag first, then mask: masking first turns the arithmetic shift
+        # that carries the sign into a logical one
+        return UnsignedVarInt32.encode(((value << 1) ^ (value >> 31)) & 0xFFFFFFFF)
 
 
 class VarInt64(AbstractType[int]):
@@ -427,11 +428,12 @@ class VarInt64(AbstractType[int]):
     @classmethod
     def encode(cls, value: int) -> bytes:
         # bring it in line with the java binary repr
-        value &= 0xFFFFFFFFFFFFFFFF
-        v = (value << 1) ^ (value >> 63)
+        # zig-zag first, then mask: masking first turns the arithmetic shift
+        # that carries the sign into a logical one
+        v = ((value << 1) ^ (value >> 63)) & 0xFFFFFFFFFFFFFFFF
         ret = b""
         while (v & 0xFFFFFFFFFFFFFF80) != 0:
-            b = (value & 0x7F) | 0x80
+            b = (v & 0x7F) | 0x80
             ret += struct.pack("B", b)
             v >>= 7
         ret += struct.pack("B", v)
