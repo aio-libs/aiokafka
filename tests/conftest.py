@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 import pytest
 
+import aiokafka
 import docker as libdocker
 from aiokafka.record.default_records import (
     DefaultRecordBatchBuilder,
@@ -46,6 +47,15 @@ def pytest_configure(config):
     for name in ["urllib3", "asyncio"]:
         logger = logging.getLogger(name)
         logger.setLevel(logging.INFO)
+
+
+def pytest_report_header(config):
+    package_path = pathlib.Path(aiokafka.__file__).resolve()
+    source_path = pathlib.Path(__file__).resolve().parents[1] / "aiokafka"
+    if package_path.is_relative_to(source_path.resolve()):
+        return f"⚠️ aiokafka imported from checked-out source: {package_path}"
+    else:
+        return f"aiokafka imported from installed package: {package_path}"
 
 
 @pytest.fixture(scope="session")
