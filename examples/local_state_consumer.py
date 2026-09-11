@@ -94,15 +94,15 @@ async def consume():
         auto_offset_reset="none",
         key_deserializer=lambda key: key.decode("utf-8") if key else "",
     )
-    await consumer.start()
 
     local_state = LocalState()
     listener = RebalanceListener(consumer, local_state)
-    consumer.subscribe(topics=["test"], listener=listener)
 
     save_task = asyncio.create_task(save_state_every_second(local_state))
 
     try:
+        await consumer.start()
+        consumer.subscribe(topics=["test"], listener=listener)
 
         while True:
             try:
