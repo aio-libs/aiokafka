@@ -8,6 +8,11 @@ _XERIAL_V1_HEADER = (-126, b"S", b"N", b"A", b"P", b"P", b"Y", 0, 1, 1)
 _XERIAL_V1_FORMAT = "bccccccBii"
 
 try:
+    import compression.zstd as _zstd_stdlib  # added in Python 3.14
+except ImportError:
+    _zstd_stdlib = None
+
+try:
     import cramjam
 except ImportError:
     cramjam = None
@@ -22,7 +27,7 @@ def has_snappy() -> bool:
 
 
 def has_zstd() -> bool:
-    return cramjam is not None
+    return _zstd_stdlib is not None or cramjam is not None
 
 
 def has_lz4() -> bool:
@@ -194,6 +199,8 @@ def zstd_encode(payload: Buffer, level: int | None = None) -> bytes:
         # https://cwiki.apache.org/confluence/display/KAFKA/KIP-390%3A+Support+Compression+Level
         level = 3
 
+    if _zstd_stdlib is not None:
+        return _zstd_stdlib.compress(payload, level=level)
     return bytes(cramjam.zstd.compress(payload, level=level))
 
 
@@ -201,4 +208,6 @@ def zstd_decode(payload: Buffer) -> bytes:
     if not has_zstd():
         raise NotImplementedError("Zstd codec is not available")
 
+    if _zstd_stdlib is not None:
+        return _zstd_stdlib.decompress(payload)
     return bytes(cramjam.zstd.decompress(payload))
