@@ -1,4 +1,7 @@
+import logging
 import random
+
+log = logging.getLogger(__name__)
 
 
 class DefaultPartitioner:
@@ -94,3 +97,37 @@ def murmur2(data):
     h &= 0xFFFFFFFF
 
     return h
+
+
+class RoundRobinPartitioner:
+    """
+    Round robin partitioner.
+
+    If partial ordering is not needed in your use case, round robin partitioning
+    achieves a more even distribution of messages across partitions and enables
+    a higher rate of consumption through a more uniform temporal spacing between
+    messages in a single partition.
+    """
+
+    def __init__(self):
+        self._index = 0
+
+    def __call__(self, key, all_partitions, available_partitions):
+        """
+        Get the next partition according to the round robin algorithm.
+        :param key: partitioning key, expects `None`
+        :param all_partitions: list of all partitions
+        :param available_partitions: list of available partitions
+        :return: one of the values from available_partitions or all_partitions
+        """
+        if key:
+            log.warning(
+                "Partitioning key is ignored by RoundRobinPartitioner - "
+                "use DefaultPartitioner instead."
+            )
+        partitions = available_partitions or all_partitions
+        if self._index >= len(partitions):
+            self._index = 0
+        partition = partitions[self._index]
+        self._index += 1
+        return partition
