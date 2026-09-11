@@ -17,7 +17,8 @@ class ControlRecord:
             return other.version == self.version and other.type_ == self.type_
         return False
 
-    __hash__ = object.__hash__  # unhashable
+    # Explicitly mark as unhashable
+    __hash__ = None  # type: ignore[assignment]
 
     @classmethod
     def parse(cls, data: bytes) -> Self:
