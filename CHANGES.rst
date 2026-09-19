@@ -12,6 +12,12 @@ New features:
 * Change the way tagged fields are managed in the protocol definitions
   (pr #1162 by @vmaurin)
 
+Bugfixes:
+
+* Allow a consumer holding no partitions to rejoin its group after
+  ``max_poll_interval_ms``, and decide whether to rejoin before revoking the
+  assignment and stopping the heartbeat (issue #1187)
+
 Breaking changes:
 
 * Drop support for Python 3.10 due to end of life

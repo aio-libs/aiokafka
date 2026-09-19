@@ -539,6 +539,14 @@ class GroupCoordinator(BaseCoordinator):
         if not self._rejoin_needed_fut.done():
             self._rejoin_needed_fut.set_result(None)
 
+    def _holds_partitions(self):
+        """Whether this member currently has any partitions assigned."""
+        subscription = self._subscription.subscription
+        if subscription is None:
+            return False
+        assignment = subscription.assignment
+        return assignment is not None and bool(assignment.tps)
+
     def need_rejoin(self, subscription):
         """Check whether the group should be rejoined
 
@@ -708,6 +716,23 @@ class GroupCoordinator(BaseCoordinator):
             if not subscription.active:
                 return None
 
+        # We will not attempt rejoin if there is no activity on consumer.
+        # NOTE: This check has to happen *before* ``_on_join_prepare()`` and
+        # ``_stop_heartbeat_task()``. If we bail out after those, we have
+        # already revoked the assignment and torn down the heartbeat, but we
+        # never rejoin -- leaving a member that is silently dead until its
+        # session expires.
+        # NOTE: An assignment with no partitions can never make progress on its
+        # own: nothing is fetched, so ``fetcher_idle_time`` only ever grows and
+        # the member would be stranded here forever. Such a member must always
+        # be allowed to rejoin, which is how it gets partitions in the first
+        # place.
+        if prev_assignment is not None and prev_assignment.tps:
+            idle_time = self._subscription.fetcher_idle_time
+            if idle_time >= self._max_poll_interval:
+                await asyncio.sleep(self._retry_backoff_ms / 1000)
+                return None
+
         if not self._performed_join_prepare:
             # NOTE: We pass the previously used assignment here.
             await self._on_join_prepare(prev_assignment)
@@ -718,12 +743,6 @@ class GroupCoordinator(BaseCoordinator):
         # See the ``RebalanceInProgressError`` case in heartbeat
         # handling.
         await self._stop_heartbeat_task()
-
-        # We will not attempt rejoin if there is no activity on consumer
-        idle_time = self._subscription.fetcher_idle_time
-        if prev_assignment is not None and idle_time >= self._max_poll_interval:
-            await asyncio.sleep(self._retry_backoff_ms / 1000)
-            return None
 
         # We will only try to perform the rejoin once. If it fails,
         # we will spin this loop another time, checking for coordinator
@@ -791,6 +810,14 @@ class GroupCoordinator(BaseCoordinator):
             idle_time = self._subscription.fetcher_idle_time
             if idle_time < self._max_poll_interval:
                 sleep_time = min(sleep_time, self._max_poll_interval - idle_time)
+            elif not self._holds_partitions():
+                # A member that holds no partitions has nothing to consume, so
+                # its idle time says nothing about whether the application is
+                # making progress. Leaving would trigger a rebalance it cannot
+                # benefit from, and ``ensure_active_group()`` rejoins such a
+                # member straight away, so it would leave and rejoin on every
+                # heartbeat. Keep heartbeating instead.
+                pass
             else:
                 await self._maybe_leave_group()
 
