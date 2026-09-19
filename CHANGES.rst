@@ -12,6 +12,12 @@ New features:
 * Change the way tagged fields are managed in the protocol definitions
   (pr #1162 by @vmaurin)
 
+Bugfixes:
+
+* Map Kafka error code 82 to a new ``FencedInstanceIdError`` and handle it in
+  the consumer group coordinator, instead of raising it as an untyped
+  ``KafkaError`` (issue #1186)
+
 Breaking changes:
 
 * Drop support for Python 3.10 due to end of life
