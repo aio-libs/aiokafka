@@ -1,4 +1,4 @@
-#cython: language_level=3
+#cython: language_level=3, freethreading_compatible=True
 # See:
 # https://github.com/apache/kafka/blob/trunk/clients/src/main/java/org/\
 #    apache/kafka/common/record/DefaultRecordBatch.java

@@ -12,6 +12,11 @@ New features:
 * Change the way tagged fields are managed in the protocol definitions
   (pr #1162 by @vmaurin)
 
+Bugfixes:
+
+* Declare the C extensions as safe to run without the GIL, so importing
+  aiokafka on free-threaded Python no longer re-enables it (issue #1198)
+
 Breaking changes:
 
 * Drop support for Python 3.10 due to end of life
