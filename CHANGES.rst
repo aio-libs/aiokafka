@@ -12,6 +12,12 @@ New features:
 * Change the way tagged fields are managed in the protocol definitions
   (pr #1162 by @vmaurin)
 
+Bugfixes:
+
+* Chain the underlying error to ``KafkaConnectionError`` when bootstrap
+  fails, so that authentication failures such as ``SaslAuthenticationFailed``
+  can be told apart from connection errors (issue #1192)
+
 Breaking changes:
 
 * Drop support for Python 3.10 due to end of life
