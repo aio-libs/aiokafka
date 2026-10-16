@@ -7,6 +7,8 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from typing import Any, Literal, Never, final
 
+from typing_extensions import Buffer
+
 import aiokafka.codec as codecs
 from aiokafka.codec import (
     gzip_decode,
@@ -149,7 +151,7 @@ class _LegacyRecordBatchPy(LegacyRecordBase, LegacyRecordBatchProtocol):
         crc = crc32(self._buffer[self.MAGIC_OFFSET :])
         return self._crc == crc
 
-    def _decompress(self, key_offset: int) -> bytes:
+    def _decompress(self, key_offset: int) -> Buffer:
         # Copy of `_read_key_value`, but uses memoryview
         pos = key_offset
         key_size = struct.unpack_from(">i", self._buffer, pos)[0]
@@ -165,10 +167,11 @@ class _LegacyRecordBatchPy(LegacyRecordBase, LegacyRecordBatchProtocol):
 
         compression_type = self._compression_type
         assert self._assert_has_codec(compression_type)
+        uncompressed: Buffer
         if compression_type == self.CODEC_GZIP:
             uncompressed = gzip_decode(data)
         elif compression_type == self.CODEC_SNAPPY:
-            uncompressed = snappy_decode(data.tobytes())
+            uncompressed = snappy_decode(data)
         elif compression_type == self.CODEC_LZ4:
             if self._magic == 0:
                 # https://issues.apache.org/jira/browse/KAFKA-3160
@@ -176,7 +179,7 @@ class _LegacyRecordBatchPy(LegacyRecordBase, LegacyRecordBatchProtocol):
                     "LZ4 is not supported for broker version 0.8/0.9"
                 )
             else:
-                uncompressed = lz4_decode(data.tobytes())
+                uncompressed = lz4_decode(data)
         else:
             # Must not be possible
             raise RuntimeError(f"Invalid compression codec {compression_type:#04x}")
@@ -453,6 +456,7 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase, LegacyRecordBatchBuilderProt
             assert self._buffer is not None
             assert self._assert_has_codec(self._compression_type)
             buf = self._buffer
+            compressed: Buffer
             if self._compression_type == self.CODEC_GZIP:
                 compressed = gzip_encode(buf)
             elif self._compression_type == self.CODEC_SNAPPY:
@@ -471,6 +475,8 @@ class _LegacyRecordBatchBuilderPy(LegacyRecordBase, LegacyRecordBatchBuilderProt
                 raise RuntimeError(
                     f"Invalid compression codec {self._compression_type:#04x}"
                 )
+            # struct.pack_into's "s" format requires bytes or bytearray.
+            compressed = bytes(compressed)
             compressed_size = len(compressed)
             size = self._size_in_bytes(key_size=0, value_size=compressed_size)
             if size > len(self._buffer):

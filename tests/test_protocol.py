@@ -1,8 +1,11 @@
 import io
 import struct
+from collections.abc import Callable
 
 import pytest
+from typing_extensions import Buffer
 
+from aiokafka import codec as codecs
 from aiokafka.protocol.api import RequestHeader_v1, RequestStruct, Response
 from aiokafka.protocol.coordination import FindCoordinatorRequest_v0
 from aiokafka.protocol.fetch import FetchRequest_v0, FetchResponse_v0
@@ -28,6 +31,57 @@ def test_create_message() -> None:
     assert msg.attributes == 0
     assert msg.key == key
     assert msg.value == payload
+
+
+@pytest.mark.parametrize(
+    "compression_type,encode",
+    [
+        pytest.param(
+            Message.CODEC_GZIP,
+            codecs.gzip_encode,
+            marks=pytest.mark.skipif(
+                not codecs.has_gzip(), reason="Gzip not available"
+            ),
+            id="gzip",
+        ),
+        pytest.param(
+            Message.CODEC_SNAPPY,
+            codecs.snappy_encode,
+            marks=pytest.mark.skipif(
+                not codecs.has_snappy(), reason="Snappy not available"
+            ),
+            id="snappy",
+        ),
+        pytest.param(
+            Message.CODEC_LZ4,
+            codecs.lz4_encode,
+            marks=pytest.mark.skipif(not codecs.has_lz4(), reason="LZ4 not available"),
+            id="lz4",
+        ),
+        pytest.param(
+            Message.CODEC_ZSTD,
+            codecs.zstd_encode,
+            marks=pytest.mark.skipif(
+                not codecs.has_zstd(), reason="Zstd not available"
+            ),
+            id="zstd",
+        ),
+    ],
+)
+def test_decompress_message(
+    compression_type: int, encode: Callable[[bytes], Buffer]
+) -> None:
+    message = Message(value=b"test" * 100, key=b"key", magic=0, attributes=0, crc=0)
+    message_set = MessageSet.encode([(0, message.encode())], prepend_size=False)
+    compressed = Message(
+        value=bytes(encode(message_set)),
+        key=None,
+        magic=0,
+        attributes=compression_type,
+        crc=0,
+    )
+
+    assert compressed.decompress() == [(0, len(message.encode()), message)]
 
 
 def test_encode_message_v0() -> None:
