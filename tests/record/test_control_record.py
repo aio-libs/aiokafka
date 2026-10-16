@@ -30,7 +30,7 @@ def test_control_record_parse() -> None:
 
 def test_control_record_other() -> None:
     record = ControlRecord.parse(b"\x00\x00\x00\x01")
-    assert record != 1
+    assert record != 1  # type: ignore[comparison-overlap]
     assert record != object()
 
     assert repr(record) == "ControlRecord(version=0, type_=1)"
