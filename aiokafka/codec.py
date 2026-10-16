@@ -132,7 +132,7 @@ def _detect_xerial_stream(payload: Buffer) -> bool:
     """
 
     payload = memoryview(payload)
-    if len(payload) > 16:
+    if len(payload) >= 16:
         header = struct.unpack("!" + _XERIAL_V1_FORMAT, payload[:16])
         return header == _XERIAL_V1_HEADER
     return False

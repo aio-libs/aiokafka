@@ -36,6 +36,11 @@ def test_snappy() -> None:
 
 
 @pytest.mark.skipif(not has_snappy(), reason="Snappy not available")
+def test_snappy_empty() -> None:
+    assert snappy_decode(snappy_encode(b"")) == b""
+
+
+@pytest.mark.skipif(not has_snappy(), reason="Snappy not available")
 def test_snappy_detect_xerial() -> None:
     _detect_xerial_stream = codecs._detect_xerial_stream
 
@@ -46,6 +51,8 @@ def test_snappy_detect_xerial() -> None:
     short_data = b"\x01\x02\x03\x04"
 
     assert _detect_xerial_stream(header) is True
+    assert _detect_xerial_stream(header[:16]) is True
+    assert _detect_xerial_stream(header[:15]) is False
     assert _detect_xerial_stream(b"") is False
     assert _detect_xerial_stream(b"\x00") is False
     assert _detect_xerial_stream(false_header) is False
