@@ -861,6 +861,15 @@ class MemberIdRequired(BrokerResponseError):
     )
 
 
+class FencedInstanceIdError(BrokerResponseError):
+    errno = 82
+    message = "FENCED_INSTANCE_ID"
+    description = (
+        "The broker rejected this static consumer since another consumer with the"
+        " same group.instance.id has registered with a different member.id."
+    )
+
+
 _T = TypeVar("_T", bound=type)
 
 
