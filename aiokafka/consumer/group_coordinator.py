@@ -7,6 +7,9 @@ import time
 import aiokafka.errors as Errors
 from aiokafka.client import ConnectionGroup, CoordinationType
 from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
+from aiokafka.coordinator.assignors.sticky.sticky_assignor import (
+    StickyPartitionAssignor,
+)
 from aiokafka.coordinator.protocol import ConsumerProtocol
 from aiokafka.protocol.api import Response
 from aiokafka.protocol.commit import OffsetCommitRequest, OffsetFetchRequest
@@ -22,6 +25,37 @@ from aiokafka.util import create_future, create_task
 log = logging.getLogger(__name__)
 
 UNKNOWN_OFFSET = -1
+
+
+def _isolate_sticky_assignor(assignor):
+    assignor_class = assignor if isinstance(assignor, type) else type(assignor)
+    if not issubclass(assignor_class, StickyPartitionAssignor):
+        return assignor
+
+    # Sticky's callbacks are class methods. Give each coordinator its own class
+    # without constructing user-supplied assignors or changing their interface.
+    isolated_class = type(
+        assignor_class.__name__,
+        (assignor_class,),
+        {
+            "__module__": assignor_class.__module__,
+            "__slots__": (),
+            "member_assignment": None,
+            "generation": assignor_class.DEFAULT_GENERATION_ID,
+            "_latest_partition_movements": None,
+        },
+    )
+    if isinstance(assignor, type):
+        return isolated_class
+
+    # Preserve configured instances, including subclasses with required args.
+    isolated = copy.copy(assignor)
+    if isolated is assignor:
+        raise TypeError("A sticky assignor instance must support independent copying")
+    # Only change our private copy's class, bypassing user attribute setters
+    # such as those generated for frozen dataclasses.
+    object.__setattr__(isolated, "__class__", isolated_class)
+    return isolated
 
 
 class BaseCoordinator:
@@ -254,7 +288,7 @@ class GroupCoordinator(BaseCoordinator):
         self._max_poll_interval = max_poll_interval_ms / 1000
         self._rebalance_timeout_ms = rebalance_timeout_ms
         self._retry_backoff_ms = retry_backoff_ms
-        self._assignors = assignors
+        self._assignors = tuple(_isolate_sticky_assignor(a) for a in assignors)
         self._enable_auto_commit = enable_auto_commit
         self._auto_commit_interval_ms = auto_commit_interval_ms
 
