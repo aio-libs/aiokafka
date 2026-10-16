@@ -12,14 +12,6 @@ class ControlRecord:
     version: int
     type_: int
 
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, ControlRecord):
-            return other.version == self.version and other.type_ == self.type_
-        return False
-
-    # Explicitly mark as unhashable
-    __hash__ = None  # type: ignore[assignment]
-
     @classmethod
     def parse(cls, data: bytes) -> Self:
         version, type_ = _SCHEMA.unpack_from(data)
