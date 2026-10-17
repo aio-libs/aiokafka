@@ -1,8 +1,12 @@
 import gzip
 import io
 import struct
+import sys
 
-from typing_extensions import Buffer
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    from typing_extensions import Buffer
 
 _XERIAL_V1_HEADER = (-126, b"S", b"N", b"A", b"P", b"P", b"Y", 0, 1, 1)
 _XERIAL_V1_FORMAT = "bccccccBii"
@@ -10,7 +14,22 @@ _XERIAL_V1_FORMAT = "bccccccBii"
 try:
     import cramjam
 except ImportError:
-    cramjam = None
+    _has_cramjam = False
+else:
+    _has_cramjam = True
+
+if sys.version_info >= (3, 14):
+    # Although compression.zstd is optional in CPython builds, we assume it is
+    # available on Python 3.14+.
+    from compression import zstd
+
+    _has_zstd = True
+elif _has_cramjam:
+    from cramjam import zstd
+
+    _has_zstd = True
+else:
+    _has_zstd = False
 
 
 def has_gzip() -> bool:
@@ -18,49 +37,36 @@ def has_gzip() -> bool:
 
 
 def has_snappy() -> bool:
-    return cramjam is not None
+    return _has_cramjam
 
 
 def has_zstd() -> bool:
-    return cramjam is not None
+    return _has_zstd
 
 
 def has_lz4() -> bool:
-    return cramjam is not None
+    return _has_cramjam
 
 
 def gzip_encode(payload: Buffer, compresslevel: int | None = None) -> bytes:
-    if not compresslevel:
+    if compresslevel is None:
         compresslevel = 9
 
     buf = io.BytesIO()
-
-    # Gzip context manager introduced in python 2.7
-    # so old-fashioned way until we decide to not support 2.6
-    gzipper = gzip.GzipFile(fileobj=buf, mode="w", compresslevel=compresslevel)
-    try:
+    with gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=compresslevel) as gzipper:
         gzipper.write(payload)
-    finally:
-        gzipper.close()
 
     return buf.getvalue()
 
 
 def gzip_decode(payload: Buffer) -> bytes:
-    buf = io.BytesIO(payload)
-
-    # Gzip context manager introduced in python 2.7
-    # so old-fashioned way until we decide to not support 2.6
-    gzipper = gzip.GzipFile(fileobj=buf, mode="r")
-    try:
+    with gzip.GzipFile(fileobj=io.BytesIO(payload), mode="rb") as gzipper:
         return gzipper.read()
-    finally:
-        gzipper.close()
 
 
 def snappy_encode(
     payload: Buffer, xerial_compatible: bool = True, xerial_blocksize: int = 32 * 1024
-) -> bytes:
+) -> Buffer:
     """Encodes the given data with snappy compression.
 
     If xerial_compatible is set then the stream is encoded in a fashion
@@ -132,13 +138,13 @@ def _detect_xerial_stream(payload: Buffer) -> bool:
     """
 
     payload = memoryview(payload)
-    if len(payload) > 16:
+    if len(payload) >= 16:
         header = struct.unpack("!" + _XERIAL_V1_FORMAT, payload[:16])
         return header == _XERIAL_V1_HEADER
     return False
 
 
-def snappy_decode(payload: Buffer) -> bytes:
+def snappy_decode(payload: Buffer) -> Buffer:
     if not has_snappy():
         raise NotImplementedError("Snappy codec is not available")
 
@@ -157,13 +163,12 @@ def snappy_decode(payload: Buffer) -> bytes:
             out.write(cramjam.snappy.decompress_raw(byt[cursor:end]))
             cursor = end
 
-        out.seek(0)
-        return out.read()
+        return out.getvalue()
     else:
-        return bytes(cramjam.snappy.decompress_raw(payload))
+        return cramjam.snappy.decompress_raw(payload)
 
 
-def lz4_encode(payload: Buffer, level: int = 9) -> bytes:
+def lz4_encode(payload: bytes, level: int = 9) -> Buffer:
     # level=9 is used by default by broker itself
     # https://cwiki.apache.org/confluence/display/KAFKA/KIP-390%3A+Support+Compression+Level
     if not has_lz4():
@@ -175,17 +180,17 @@ def lz4_encode(payload: Buffer, level: int = 9) -> bytes:
         level=level, content_checksum=False, block_linked=False
     )
     compressor.compress(payload)
-    return bytes(compressor.finish())
+    return compressor.finish()
 
 
-def lz4_decode(payload: Buffer) -> bytes:
+def lz4_decode(payload: Buffer) -> Buffer:
     if not has_lz4():
         raise NotImplementedError("LZ4 codec is not available")
 
-    return bytes(cramjam.lz4.decompress(payload))
+    return cramjam.lz4.decompress(payload)
 
 
-def zstd_encode(payload: Buffer, level: int | None = None) -> bytes:
+def zstd_encode(payload: Buffer, level: int | None = None) -> Buffer:
     if not has_zstd():
         raise NotImplementedError("Zstd codec is not available")
 
@@ -194,11 +199,11 @@ def zstd_encode(payload: Buffer, level: int | None = None) -> bytes:
         # https://cwiki.apache.org/confluence/display/KAFKA/KIP-390%3A+Support+Compression+Level
         level = 3
 
-    return bytes(cramjam.zstd.compress(payload, level=level))
+    return zstd.compress(payload, level=level)
 
 
-def zstd_decode(payload: Buffer) -> bytes:
+def zstd_decode(payload: Buffer) -> Buffer:
     if not has_zstd():
         raise NotImplementedError("Zstd codec is not available")
 
-    return bytes(cramjam.zstd.decompress(payload))
+    return zstd.decompress(payload)

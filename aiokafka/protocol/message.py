@@ -1,4 +1,5 @@
 import io
+import sys
 import time
 from binascii import crc32
 from collections.abc import Iterable
@@ -17,6 +18,11 @@ from aiokafka.codec import (
 
 from .struct import Struct
 from .types import Bytes, Int8, Int32, Int64, Schema, UInt32
+
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    from typing_extensions import Buffer
 
 
 class Message(Struct):
@@ -210,6 +216,7 @@ class Message(Struct):
             self.CODEC_LZ4,
             self.CODEC_ZSTD,
         )
+        raw_bytes: Buffer
         if codec == self.CODEC_GZIP:
             assert has_gzip(), "Gzip decompression unsupported"
             raw_bytes = gzip_decode(self.value)
@@ -225,7 +232,7 @@ class Message(Struct):
         else:
             raise AssertionError("This should be impossible")
 
-        return MessageSet.decode(raw_bytes, bytes_to_read=len(raw_bytes))
+        return MessageSet.decode(raw_bytes, bytes_to_read=memoryview(raw_bytes).nbytes)
 
 
 class PartialMessage(bytes):
@@ -264,12 +271,12 @@ class MessageSet:
 
     @classmethod
     def decode(
-        cls, data: io.BytesIO | bytes, bytes_to_read: int | None = None
+        cls, data: io.BytesIO | Buffer, bytes_to_read: int | None = None
     ) -> list[tuple[int, int, Message] | tuple[None, None, PartialMessage]]:
         """Compressed messages should pass in bytes_to_read (via message size)
         otherwise, we decode from data as Int32
         """
-        if isinstance(data, bytes):
+        if not isinstance(data, io.BytesIO):
             data = io.BytesIO(data)
         if bytes_to_read is None:
             bytes_to_read = Int32.decode(data)

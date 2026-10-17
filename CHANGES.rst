@@ -7,10 +7,18 @@ Changelog
 
 New features:
 
+* Use standard library Zstandard compression on Python 3.14 and newer, without
+  requiring cramjam for the ``zstd`` extra (issue #1146)
 * Add an experimental lightweight callback-based producer metrics collector API
-  (issue #1166)
+  (issue #1166, pr #1171 by @GlebShipilov)
 * Change the way tagged fields are managed in the protocol definitions
   (pr #1162 by @vmaurin)
+
+Bugfixes:
+
+* Map Kafka error code 82 to a new ``FencedInstanceIdError`` and handle it in
+  the consumer group coordinator, instead of raising it as an untyped
+  ``KafkaError`` (issue #1186, pr #1188 by @vmirz)
 
 Breaking changes:
 

@@ -4,13 +4,7 @@ import asyncio
 import os
 from asyncio import AbstractEventLoop
 from collections.abc import Awaitable, Coroutine
-from typing import (
-    Any,
-    TypeVar,
-    cast,
-)
-
-from packaging.version import Version
+from typing import Any, TypeVar
 
 from .structs import OffsetAndMetadata, TopicPartition
 
@@ -42,17 +36,6 @@ async def wait_for(fut: Awaitable[T], timeout: float | None = None) -> T:  # noq
     # https://bugs.python.org/issue42130
     async with asyncio.timeout(timeout):
         return await fut
-
-
-def parse_kafka_version(api_version: str) -> tuple[int, int, int]:
-    parsed = Version(api_version).release
-    if not 2 <= len(parsed) <= 3:
-        raise ValueError(api_version)
-    version = cast(tuple[int, int, int], (*parsed, 0)[:3])
-
-    if not (0, 9) <= version < (3, 0):
-        raise ValueError(api_version)
-    return version
 
 
 def commit_structure_validate(

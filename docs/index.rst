@@ -115,10 +115,12 @@ To enable Snappy compression/decompression, install **aiokafka** with :code:`sna
     pip install 'aiokafka[snappy]'
 
 
-Optional zstd indtall
+Optional zstd install
 +++++++++++++++++++++
 
-To enable Zstandard compression/decompression, install **aiokafka** with :code:`zstd` extra option:
+Zstandard compression/decompression is available through the standard library on
+Python 3.14 and newer. On older Python versions, install **aiokafka** with the
+:code:`zstd` extra option:
 
 .. code:: bash
 

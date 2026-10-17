@@ -53,4 +53,5 @@ class Struct:
                 return False
         return True
 
-    __hash__ = object.__hash__  # unhashable
+    # Explicitly mark as unhashable
+    __hash__ = None  # type: ignore[assignment]

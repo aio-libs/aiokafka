@@ -29,15 +29,14 @@ classifiers = [
 dynamic = ["version"]
 
 dependencies = [
-    "packaging",
-    "typing_extensions >=4.10.0",
+    "typing-extensions >=4.6.0; python_version <'3.12'",
 ]
 
 [project.optional-dependencies]
 snappy = ["cramjam"]
 # v2.8.0 adds support for independent-block mode
 lz4 = ["cramjam >=2.8.0"]
-zstd = ["cramjam"]
+zstd = ["cramjam; python_version <'3.14'"]
 gssapi = ["gssapi"]
 all = ["cramjam >=2.8.0", "gssapi"]
 
