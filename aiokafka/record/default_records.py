@@ -55,6 +55,7 @@
 # * Compression Type (0-2)
 
 import struct
+import sys
 import time
 from collections.abc import Callable, Collection, Sized
 from dataclasses import dataclass
@@ -81,6 +82,11 @@ from ._protocols import (
     DefaultRecordProtocol,
 )
 from .util import calc_crc32c, decode_varint, encode_varint, size_of_varint
+
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    from typing_extensions import Buffer
 
 
 class DefaultRecordBase:
@@ -219,14 +225,15 @@ class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
             if compression_type != self.CODEC_NONE:
                 assert self._assert_has_codec(compression_type)
                 data = memoryview(self._buffer)[self._pos :]
+                uncompressed: Buffer
                 if compression_type == self.CODEC_GZIP:
                     uncompressed = gzip_decode(data)
                 elif compression_type == self.CODEC_SNAPPY:
-                    uncompressed = snappy_decode(data.tobytes())
+                    uncompressed = snappy_decode(data)
                 elif compression_type == self.CODEC_LZ4:
-                    uncompressed = lz4_decode(data.tobytes())
+                    uncompressed = lz4_decode(data)
                 elif compression_type == self.CODEC_ZSTD:
-                    uncompressed = zstd_decode(data.tobytes())
+                    uncompressed = zstd_decode(data)
                 else:
                     # Must not be possible
                     raise RuntimeError(
@@ -542,6 +549,7 @@ class _DefaultRecordBatchBuilderPy(
             assert self._assert_has_codec(self._compression_type)
             header_size = self.HEADER_STRUCT.size
             data = bytes(self._buffer[header_size:])
+            compressed: Buffer
             if self._compression_type == self.CODEC_GZIP:
                 compressed = gzip_encode(data)
             elif self._compression_type == self.CODEC_SNAPPY:
@@ -555,7 +563,8 @@ class _DefaultRecordBatchBuilderPy(
                 raise RuntimeError(
                     f"Invalid compression codec {self._compression_type:#04x}"
                 )
-            compressed_size = len(compressed)
+            compressed = memoryview(compressed)
+            compressed_size = compressed.nbytes
             if len(data) <= compressed_size:
                 # We did not get any benefit from compression, lets send
                 # uncompressed

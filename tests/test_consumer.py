@@ -9,6 +9,7 @@ import pytest
 
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
+from aiokafka.codec import has_gzip, has_lz4, has_snappy, has_zstd
 from aiokafka.consumer import AIOKafkaConsumer, fetcher
 from aiokafka.consumer.fetcher import FetchRequest
 from aiokafka.errors import (
@@ -475,18 +476,22 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         rmsg2 = await consumer.getone()
         self.assertEqual(rmsg2.value, msg2)
 
+    @pytest.mark.skipif(not has_gzip(), reason="Gzip not available")
     @run_until_complete
     async def test_compress_decompress_gzip(self):
         await self._test_compress_decompress("gzip")
 
+    @pytest.mark.skipif(not has_snappy(), reason="Snappy not available")
     @run_until_complete
     async def test_compress_decompress_snappy(self):
         await self._test_compress_decompress("snappy")
 
+    @pytest.mark.skipif(not has_lz4(), reason="LZ4 not available")
     @run_until_complete
     async def test_compress_decompress_lz4(self):
         await self._test_compress_decompress("lz4")
 
+    @pytest.mark.skipif(not has_zstd(), reason="Zstd not available")
     @kafka_versions(">=2.1.0")
     @run_until_complete
     async def test_compress_decompress_zstd(self):
@@ -1764,6 +1769,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.key, {"key": 1})
         self.assertEqual(msg.value, ["value1", "value2"])
 
+    @pytest.mark.skipif(not has_gzip(), reason="Gzip not available")
     @run_until_complete
     async def test_consumer_compressed_returns_older_msgs(self):
         # If a batch contains 10 elements and we request offset of 1 in the
