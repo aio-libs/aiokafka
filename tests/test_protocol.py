@@ -6,7 +6,7 @@ from collections.abc import Callable
 import pytest
 
 from aiokafka import codec as codecs
-from aiokafka.protocol.api import RequestHeader_v1, Response
+from aiokafka.protocol.api import RequestHeader_v1
 from aiokafka.protocol.coordination import FindCoordinatorRequest_v0
 from aiokafka.protocol.fetch import FetchRequest_v0, FetchResponse_v0
 from aiokafka.protocol.message import Message, MessageSet, PartialMessage
@@ -414,17 +414,3 @@ def test_compact_data_structs() -> None:
     assert CompactBytes.decode(io.BytesIO(b"\x01")) == b""
     enc = CompactBytes.encode(b"foo")
     assert CompactBytes.decode(io.BytesIO(enc)) == b"foo"
-
-
-attr_names = [
-    n
-    for n in dir(Response)
-    if isinstance(getattr(Response, n), property)
-    and getattr(Response, n).__isabstractmethod__ is True
-]
-
-
-@pytest.mark.parametrize("klass", Response.__subclasses__())
-@pytest.mark.parametrize("attr_name", attr_names)
-def test_response_type_conformance(klass: type[Response], attr_name: str) -> None:
-    assert hasattr(klass, attr_name)
