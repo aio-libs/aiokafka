@@ -55,12 +55,11 @@
 # * Compression Type (0-2)
 
 import struct
+import sys
 import time
 from collections.abc import Callable, Collection, Sized
 from dataclasses import dataclass
 from typing import Any, Self, final
-
-from typing_extensions import Buffer
 
 import aiokafka.codec as codecs
 from aiokafka.codec import (
@@ -83,6 +82,11 @@ from ._protocols import (
     DefaultRecordProtocol,
 )
 from .util import calc_crc32c, decode_varint, encode_varint, size_of_varint
+
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    from typing_extensions import Buffer
 
 
 class DefaultRecordBase:

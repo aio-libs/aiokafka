@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import struct
+import sys
 import time
 from binascii import crc32
 from collections.abc import Generator
 from dataclasses import dataclass
 from typing import Any, Literal, Never, final
-
-from typing_extensions import Buffer
 
 import aiokafka.codec as codecs
 from aiokafka.codec import (
@@ -27,6 +26,11 @@ from ._protocols import (
     LegacyRecordMetadataProtocol,
     LegacyRecordProtocol,
 )
+
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    from typing_extensions import Buffer
 
 
 class LegacyRecordBase:

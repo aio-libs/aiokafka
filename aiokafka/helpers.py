@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import logging
+import sys
 from collections.abc import Callable
 from os import PathLike
 from ssl import Purpose, SSLContext, create_default_context
 
-from typing_extensions import Buffer
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    from typing_extensions import Buffer
 
 log = logging.getLogger(__name__)
 

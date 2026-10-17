@@ -1,9 +1,9 @@
 import io
 import struct
+import sys
 from collections.abc import Callable
 
 import pytest
-from typing_extensions import Buffer
 
 from aiokafka import codec as codecs
 from aiokafka.protocol.api import RequestHeader_v1, RequestStruct, Response
@@ -21,6 +21,11 @@ from aiokafka.protocol.types import (
     String,
     UnsignedVarInt32,
 )
+
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    from typing_extensions import Buffer
 
 
 def test_create_message() -> None:

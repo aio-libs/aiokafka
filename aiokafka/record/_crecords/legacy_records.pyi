@@ -1,7 +1,6 @@
+import sys
 from collections.abc import Iterator
 from typing import Any, ClassVar, Literal, Never, final
-
-from typing_extensions import Buffer
 
 from aiokafka.record._protocols import (
     LegacyRecordBatchBuilderProtocol,
@@ -9,6 +8,11 @@ from aiokafka.record._protocols import (
     LegacyRecordMetadataProtocol,
     LegacyRecordProtocol,
 )
+
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    from typing_extensions import Buffer
 
 @final
 class LegacyRecord(LegacyRecordProtocol):

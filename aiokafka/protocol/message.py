@@ -1,10 +1,9 @@
 import io
+import sys
 import time
 from binascii import crc32
 from collections.abc import Iterable
 from typing import Literal, Self, cast, overload
-
-from typing_extensions import Buffer
 
 from aiokafka.codec import (
     gzip_decode,
@@ -19,6 +18,11 @@ from aiokafka.codec import (
 
 from .struct import Struct
 from .types import Bytes, Int8, Int32, Int64, Schema, UInt32
+
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    from typing_extensions import Buffer
 
 
 class Message(Struct):
