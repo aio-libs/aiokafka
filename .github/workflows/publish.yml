@@ -63,7 +63,7 @@ jobs:
       - name: Build wheels
         env:
           CIBW_ARCHS_LINUX: ${{matrix.arch}}
-          CIBW_BUILD: cp311-* cp312-* cp313-* cp314-*
+          CIBW_BUILD: cp311-* cp312-* cp313-* cp314-* cp315-*
           CIBW_SKIP: '*-musllinux*'
           CIBW_BEFORE_BUILD_LINUX: yum install -y zlib-devel
           CIBW_BUILD_VERBOSITY: 2
@@ -84,7 +84,7 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.11", "3.12", "3.13", "3.14"]
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
         include:
           - python: "3.11"
             aiokafka_whl: dist/aiokafka-*-cp311-cp311-win_amd64.whl
@@ -94,6 +94,8 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp313-cp313-win_amd64.whl
           - python: "3.14"
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-win_amd64.whl
+          - python: "3.15"
+            aiokafka_whl: dist/aiokafka-*-cp315-cp315-win_amd64.whl
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -127,7 +129,7 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.11", "3.12", "3.13", "3.14"]
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
         include:
           - python: "3.11"
             aiokafka_whl: dist/aiokafka-*-cp311-cp311-win_arm64.whl
@@ -137,6 +139,8 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp313-cp313-win_arm64.whl
           - python: "3.14"
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-win_arm64.whl
+          - python: "3.15"
+            aiokafka_whl: dist/aiokafka-*-cp315-cp315-win_arm64.whl
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -170,7 +174,7 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.11", "3.12", "3.13", "3.14"]
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
         include:
           - python: "3.11"
             aiokafka_whl: dist/aiokafka-*-cp311-cp311-macosx_*_x86_64.whl
@@ -180,6 +184,8 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp313-cp313-macosx_*_x86_64.whl
           - python: "3.14"
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-macosx_*_x86_64.whl
+          - python: "3.15"
+            aiokafka_whl: dist/aiokafka-*-cp315-cp315-macosx_*_x86_64.whl
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -211,7 +217,7 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.11", "3.12", "3.13", "3.14"]
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
         include:
           - python: "3.11"
             aiokafka_whl: dist/aiokafka-*-cp311-cp311-macosx_*_arm64.whl
@@ -221,6 +227,8 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp313-cp313-macosx_*_arm64.whl
           - python: "3.14"
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-macosx_*_arm64.whl
+          - python: "3.15"
+            aiokafka_whl: dist/aiokafka-*-cp315-cp315-macosx_*_arm64.whl
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -252,7 +260,7 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.11", "3.12", "3.13", "3.14"]
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
         include:
           - python: "3.11"
             aiokafka_whl: dist/aiokafka-*-cp311-cp311-manylinux*_x86_64.whl
@@ -262,6 +270,8 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp313-cp313-manylinux*_x86_64.whl
           - python: "3.14"
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-manylinux*_x86_64.whl
+          - python: "3.15"
+            aiokafka_whl: dist/aiokafka-*-cp315-cp315-manylinux*_x86_64.whl
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -297,7 +307,7 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.11", "3.12", "3.13", "3.14"]
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
         include:
           - python: "3.11"
             aiokafka_whl: dist/aiokafka-*-cp311-cp311-manylinux*_aarch64.whl
@@ -307,6 +317,8 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp313-cp313-manylinux*_aarch64.whl
           - python: "3.14"
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-manylinux*_aarch64.whl
+          - python: "3.15"
+            aiokafka_whl: dist/aiokafka-*-cp315-cp315-manylinux*_aarch64.whl
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
