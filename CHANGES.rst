@@ -13,6 +13,7 @@ New features:
   (issue #1166, pr #1171 by @GlebShipilov)
 * Change the way tagged fields are managed in the protocol definitions
   (pr #1162 by @vmaurin)
+* Build binary packages for Python 3.15
 
 Bugfixes:
 
