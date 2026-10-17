@@ -32,32 +32,19 @@ def has_lz4() -> bool:
 
 
 def gzip_encode(payload: Buffer, compresslevel: int | None = None) -> bytes:
-    if not compresslevel:
+    if compresslevel is None:
         compresslevel = 9
 
     buf = io.BytesIO()
-
-    # Gzip context manager introduced in python 2.7
-    # so old-fashioned way until we decide to not support 2.6
-    gzipper = gzip.GzipFile(fileobj=buf, mode="w", compresslevel=compresslevel)
-    try:
+    with gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=compresslevel) as gzipper:
         gzipper.write(payload)
-    finally:
-        gzipper.close()
 
     return buf.getvalue()
 
 
 def gzip_decode(payload: Buffer) -> bytes:
-    buf = io.BytesIO(payload)
-
-    # Gzip context manager introduced in python 2.7
-    # so old-fashioned way until we decide to not support 2.6
-    gzipper = gzip.GzipFile(fileobj=buf, mode="r")
-    try:
+    with gzip.GzipFile(fileobj=io.BytesIO(payload), mode="rb") as gzipper:
         return gzipper.read()
-    finally:
-        gzipper.close()
 
 
 def snappy_encode(
