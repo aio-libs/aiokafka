@@ -4,6 +4,7 @@ from unittest import mock
 import pytest
 
 import aiokafka.codec
+from aiokafka.codec import has_gzip, has_lz4, has_snappy, has_zstd
 from aiokafka.errors import UnsupportedCodecError
 from aiokafka.record.default_records import (
     DefaultRecordBatch,
@@ -18,12 +19,32 @@ HeadersT = list[tuple[str, bytes | None]]
     [
         pytest.param(DefaultRecordBatch.CODEC_NONE, 3950153926, id="none"),
         # Gzip header includes timestamp, so checksum varies
-        pytest.param(DefaultRecordBatch.CODEC_GZIP, None, id="gzip"),
-        pytest.param(DefaultRecordBatch.CODEC_SNAPPY, 2171068483, id="snappy"),
+        pytest.param(
+            DefaultRecordBatch.CODEC_GZIP,
+            None,
+            marks=pytest.mark.skipif(not has_gzip(), reason="Gzip not available"),
+            id="gzip",
+        ),
+        pytest.param(
+            DefaultRecordBatch.CODEC_SNAPPY,
+            2171068483,
+            marks=pytest.mark.skipif(not has_snappy(), reason="Snappy not available"),
+            id="snappy",
+        ),
         # LZ4 and zstd compression parameters vary across backends and versions,
         # so their checksums vary too.
-        pytest.param(DefaultRecordBatch.CODEC_LZ4, None, id="lz4"),
-        pytest.param(DefaultRecordBatch.CODEC_ZSTD, None, id="zstd"),
+        pytest.param(
+            DefaultRecordBatch.CODEC_LZ4,
+            None,
+            marks=pytest.mark.skipif(not has_lz4(), reason="LZ4 not available"),
+            id="lz4",
+        ),
+        pytest.param(
+            DefaultRecordBatch.CODEC_ZSTD,
+            None,
+            marks=pytest.mark.skipif(not has_zstd(), reason="Zstd not available"),
+            id="zstd",
+        ),
     ],
 )
 def test_read_write_serde_v2(
@@ -235,10 +256,34 @@ def test_default_batch_size_limit() -> None:
 @pytest.mark.parametrize(
     "compression_type,name,checker_name",
     [
-        (DefaultRecordBatch.CODEC_GZIP, "gzip", "has_gzip"),
-        (DefaultRecordBatch.CODEC_SNAPPY, "snappy", "has_snappy"),
-        (DefaultRecordBatch.CODEC_LZ4, "lz4", "has_lz4"),
-        (DefaultRecordBatch.CODEC_ZSTD, "zstd", "has_zstd"),
+        pytest.param(
+            DefaultRecordBatch.CODEC_GZIP,
+            "gzip",
+            "has_gzip",
+            marks=pytest.mark.skipif(not has_gzip(), reason="Gzip not available"),
+            id="gzip",
+        ),
+        pytest.param(
+            DefaultRecordBatch.CODEC_SNAPPY,
+            "snappy",
+            "has_snappy",
+            marks=pytest.mark.skipif(not has_snappy(), reason="Snappy not available"),
+            id="snappy",
+        ),
+        pytest.param(
+            DefaultRecordBatch.CODEC_LZ4,
+            "lz4",
+            "has_lz4",
+            marks=pytest.mark.skipif(not has_lz4(), reason="LZ4 not available"),
+            id="lz4",
+        ),
+        pytest.param(
+            DefaultRecordBatch.CODEC_ZSTD,
+            "zstd",
+            "has_zstd",
+            marks=pytest.mark.skipif(not has_zstd(), reason="Zstd not available"),
+            id="zstd",
+        ),
     ],
 )
 def test_unavailable_codec(
