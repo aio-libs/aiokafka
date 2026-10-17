@@ -25,7 +25,7 @@ cdef class DefaultRecordBatch:
         readonly int32_t base_sequence
 
         readonly char timestamp_type
-        readonly int32_t num_records
+        int32_t num_records
 
     @staticmethod
     cdef inline DefaultRecordBatch new(

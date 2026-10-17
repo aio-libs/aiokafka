@@ -221,10 +221,6 @@ class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
     def next_offset(self) -> int:
         return self.base_offset + self.last_offset_delta + 1
 
-    @property
-    def num_records(self) -> int:
-        return self._num_records
-
     def _maybe_uncompress(self) -> None:
         if not self._decompressed:
             compression_type = self.compression_type

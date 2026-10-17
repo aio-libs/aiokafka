@@ -19,6 +19,8 @@ New features:
 
 Bugfixes:
 
+* Reject incomplete modern record batch headers with ``CorruptRecordException``
+  in both decoders, preventing out-of-bounds header reads in the C extension.
 * Map Kafka error code 82 to a new ``FencedInstanceIdError`` and handle it in
   the consumer group coordinator, instead of raising it as an untyped
   ``KafkaError`` (issue #1186, pr #1188 by @vmirz)

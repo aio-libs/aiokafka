@@ -124,12 +124,12 @@ fetch_latency = Histogram(
 )
 records_fetched = Counter(
     "aiokafka_consumer_records_fetched_total",
-    "Records fetched, including control and aborted records.",
+    "Records fetched when the count is available in batch headers.",
     ["topic", "partition"],
 )
 fetched_bytes = Counter(
     "aiokafka_consumer_bytes_fetched_total",
-    "Encoded record set bytes fetched.",
+    "Encoded record set bytes fetched, including repeated partial batches.",
     ["topic", "partition"],
 )
 fetch_failures = Counter(
@@ -149,7 +149,7 @@ consumed_bytes = Counter(
 )
 records_lag = Gauge(
     "aiokafka_consumer_records_lag",
-    "Highwater minus position at the latest fetch update.",
+    "Highwater minus position at the latest fetch update, clamped to zero.",
     ["topic", "partition"],
 )
 commit_latency = Histogram(
@@ -169,7 +169,8 @@ class PrometheusConsumerMetrics(ConsumerMetricsCollector):
         self, *, topic, partition, fetch_latency_seconds, record_count, bytes_fetched
     ):
         fetch_latency.labels(topic, partition).observe(fetch_latency_seconds)
-        records_fetched.labels(topic, partition).inc(record_count)
+        if record_count is not None:
+            records_fetched.labels(topic, partition).inc(record_count)
         fetched_bytes.labels(topic, partition).inc(bytes_fetched)
 
     def on_fetch_failed(self, *, topic, partition, exception):
@@ -180,7 +181,7 @@ class PrometheusConsumerMetrics(ConsumerMetricsCollector):
         consumed_bytes.labels(topic, partition).inc(bytes_consumed)
 
     def on_records_lag(self, *, topic, partition, lag):
-        records_lag.labels(topic, partition).set(lag)
+        records_lag.labels(topic, partition).set(max(0, lag))
 
     def on_commit_completed(self, *, topic, partition, offset, commit_latency_seconds):
         commit_latency.labels(topic, partition, "completed").observe(

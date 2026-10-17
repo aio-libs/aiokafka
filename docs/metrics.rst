@@ -250,11 +250,16 @@ labels in your collector to control cardinality.
     after reassignment or a position change are excluded.
 
     ``bytes_fetched`` is the encoded record set size, including batch overhead
-    and compression. ``record_count`` counts records in the returned batches,
+    and compression. It includes partial trailing batches that will be fetched
+    again; those bytes are counted on every response, so this is not a measure
+    of unique record bytes. ``record_count`` counts records in complete batches,
     including aborted transactions, control records, and records before the
     requested offset. It does not use offset distance, which can overcount
     compacted records. Modern batch counts come from their headers without
-    decompression; legacy compressed batches require decoding to count records.
+    decompression. If the response contains a legacy (v0/v1) compressed message
+    set, ``record_count`` is ``None``: the outer header has no record count and
+    decompression is deferred to polling. Latency and bytes are still reported.
+    Use ``on_records_consumed`` for delivered record counts in every format.
     This counting is skipped when ``on_fetch_completed`` is not overridden.
     If counting fails, this callback is omitted; normal consumption still
     handles decoding errors. A successful fetch does not guarantee successful
@@ -286,6 +291,10 @@ labels in your collector to control cardinality.
     count, and uses highwater even with ``read_committed`` isolation. Lag is
     not updated on each consumed record, seek, or commit. Collectors should
     expire labels for partitions no longer assigned to the consumer.
+
+    Lag can be negative after log truncation or a seek beyond highwater. The
+    raw difference is preserved so collectors can detect this condition. The
+    Prometheus example clamps the displayed lag to zero.
 
 ``on_commit_completed(*, topic, partition, offset, commit_latency_seconds)``
     Called per successfully committed partition in each offset-commit request

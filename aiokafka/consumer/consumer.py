@@ -15,7 +15,11 @@ from aiokafka.errors import (
     IllegalStateError,
     RecordTooLargeError,
 )
-from aiokafka.metrics import ConsumerMetricsCollector, _call_consumer_metrics
+from aiokafka.metrics import (
+    ConsumerMetricsCollector,
+    _call_metrics,
+    _enabled_callbacks,
+)
 from aiokafka.structs import ConsumerRecord, TopicPartition
 from aiokafka.util import commit_structure_validate, get_running_loop
 
@@ -309,6 +313,13 @@ class AIOKafkaConsumer:
                 "metrics_collector must be an instance of ConsumerMetricsCollector"
             )
         self._metrics_collector = metrics_collector
+        self._metrics_callbacks = _enabled_callbacks(
+            metrics_collector, ConsumerMetricsCollector
+        )
+
+        self._collect_consumed_metrics = (
+            "on_records_consumed" in self._metrics_callbacks
+        )
 
         self._client = AIOKafkaClient(
             loop=loop,
@@ -1159,7 +1170,13 @@ class AIOKafkaConsumer:
 
         with self._subscription.fetch_context():
             msg = await self._fetcher.next_record(partitions)
-        self._record_consumed_metrics(msg.topic, msg.partition, [msg])
+        if self._collect_consumed_metrics:
+            self._record_consumed_metrics(
+                msg.topic,
+                msg.partition,
+                1,
+                max(0, msg.serialized_key_size) + max(0, msg.serialized_value_size),
+            )
         return msg
 
     async def getmany(
@@ -1215,27 +1232,29 @@ class AIOKafkaConsumer:
             records = await self._fetcher.fetched_records(
                 partitions, timeout, max_records=max_records or self._max_poll_records
             )
-        for tp, messages in records.items():
-            self._record_consumed_metrics(tp.topic, tp.partition, messages)
+        if self._collect_consumed_metrics:
+            for tp, messages in records.items():
+                if messages:
+                    self._record_consumed_metrics(
+                        tp.topic,
+                        tp.partition,
+                        len(messages),
+                        sum(
+                            max(0, record.serialized_key_size)
+                            + max(0, record.serialized_value_size)
+                            for record in messages
+                        ),
+                    )
         return records
 
-    def _record_consumed_metrics(self, topic, partition, records):
-        callback = self._metrics_collector.on_records_consumed
-        if not records or (
-            getattr(callback, "__func__", None)
-            is ConsumerMetricsCollector.on_records_consumed
-        ):
-            return
-        _call_consumer_metrics(
-            callback,
+    def _record_consumed_metrics(self, topic, partition, record_count, bytes_consumed):
+        _call_metrics(
+            self._metrics_collector.on_records_consumed,
+            "consumer",
             topic=topic,
             partition=partition,
-            record_count=len(records),
-            bytes_consumed=sum(
-                max(0, record.serialized_key_size)
-                + max(0, record.serialized_value_size)
-                for record in records
-            ),
+            record_count=record_count,
+            bytes_consumed=bytes_consumed,
         )
 
     def pause(self, *partitions):

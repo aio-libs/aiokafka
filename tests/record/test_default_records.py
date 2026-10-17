@@ -5,11 +5,12 @@ import pytest
 
 import aiokafka.codec
 from aiokafka.codec import has_gzip, has_lz4, has_snappy, has_zstd
-from aiokafka.errors import UnsupportedCodecError
+from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from aiokafka.record.default_records import (
     DefaultRecordBatch,
     DefaultRecordBatchBuilder,
 )
+from aiokafka.record.memory_records import MemoryRecords
 
 HeadersT = list[tuple[str, bytes | None]]
 
@@ -374,3 +375,20 @@ def test_set_producer_state() -> None:
     assert reader.producer_id == 700
     assert reader.producer_epoch == 5
     assert reader.base_sequence == 17
+
+
+@pytest.mark.parametrize("size", [0, 12, 17, 26, 60])
+def test_incomplete_batch_header(size: int) -> None:
+    with pytest.raises(CorruptRecordException, match="header is incomplete"):
+        DefaultRecordBatch(bytes(size))
+
+
+@pytest.mark.parametrize("size", [26, 60])
+def test_incomplete_batch_header_from_memory_records(size: int) -> None:
+    data = bytearray(size)
+    data[8:12] = (size - 12).to_bytes(4, "big")
+    data[16] = 2
+    records = MemoryRecords(bytes(data))
+    assert records.has_next()
+    with pytest.raises(CorruptRecordException, match="header is incomplete"):
+        records.next_batch()

@@ -1,4 +1,6 @@
 import asyncio
+import importlib
+import logging
 import time
 from unittest import mock
 
@@ -19,10 +21,11 @@ from aiokafka.errors import (
     RecordTooLargeError,
     TopicAuthorizationFailedError,
 )
+from aiokafka.metrics import _enabled_callbacks
 from aiokafka.protocol.commit import OffsetCommitResponse_v2
 from aiokafka.protocol.fetch import FetchRequest_v4, FetchResponse_v4
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
-from aiokafka.record.legacy_records import LegacyRecordBatchBuilder
+from aiokafka.record.legacy_records import LegacyRecordBatch, LegacyRecordBatchBuilder
 from aiokafka.record.util import calc_crc32c
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 
@@ -158,7 +161,7 @@ async def test_fetch_and_poll_counts(consumer, clock, magic, compression):
         topic=TP.topic,
         partition=0,
         fetch_latency_seconds=0.25,
-        record_count=2,
+        record_count=None if magic < 2 and compression else 2,
         bytes_fetched=len(data),
     )
     collector.on_records_lag.assert_called_once_with(topic=TP.topic, partition=0, lag=8)
@@ -283,11 +286,11 @@ async def test_fetch_metrics_exception_does_not_break_poll(consumer, caplog):
 
 
 async def test_no_counting_for_default_fetch_callback(consumer):
-    collector = ConsumerMetricsCollector()
-    consumer._fetcher._metrics_collector = collector
-    with mock.patch("aiokafka.consumer.fetcher.MemoryRecords") as records:
-        consumer._fetcher._record_fetch_metrics(TP, b"not a record set", 0.1)
-    records.assert_not_called()
+    consumer._fetcher._metrics_collector = ConsumerMetricsCollector()
+    consumer._fetcher._metrics_callbacks = frozenset()
+    with mock.patch("aiokafka.consumer.fetcher._count_records") as count:
+        await fetch(consumer, batch_data())
+    count.assert_not_called()
 
 
 @pytest.mark.parametrize("kind", ["aborted", "control"])
@@ -466,6 +469,158 @@ async def test_partial_collector_skips_unused_consumption_count(consumer):
         def on_records_lag(self, *, topic, partition, lag):
             pass
 
-    consumer._metrics_collector = LagCollector()
-    # No attribute reads or iteration are needed for an unused callback.
-    consumer._record_consumed_metrics(TP.topic, TP.partition, [object()])
+    # Detect callbacks at construction, before any polling.
+    instance = AIOKafkaConsumer(metrics_collector=LagCollector())
+    try:
+        assert not instance._collect_consumed_metrics
+        instance._coordinator = mock.Mock()
+        instance._fetcher = mock.Mock()
+        # The record has no size fields; the unused callback must not read them.
+        record = mock.Mock(spec=["topic", "partition"])
+        instance._fetcher.next_record = mock.AsyncMock(return_value=record)
+        instance._fetcher.fetched_records = mock.AsyncMock(return_value={TP: [record]})
+        instance._fetcher.close = mock.AsyncMock()
+        instance._coordinator.close = mock.AsyncMock()
+        with mock.patch.object(instance, "_record_consumed_metrics") as report:
+            assert await instance.getone() is record
+            assert await instance.getmany() == {TP: [record]}
+        report.assert_not_called()
+    finally:
+        await instance.stop()
+
+
+@pytest.mark.parametrize("base", [ConsumerMetricsCollector, ProducerMetricsCollector])
+def test_enabled_callbacks_handle_inheritance_and_instance_overrides(base):
+    name = next(iter(base._callback_names))
+    callback = mock.Mock()
+    parent = type("PartialCollector", (base,), {name: callback})
+    child = type("InheritedCollector", (parent,), {})
+    reset = type("ResetCollector", (child,), {name: getattr(base, name)})
+    assert _enabled_callbacks(base(), base) == frozenset()
+    assert _enabled_callbacks(child(), base) == {name}
+    assert _enabled_callbacks(reset(), base) == frozenset()
+    instance = base()
+    setattr(instance, name, callback)
+    assert _enabled_callbacks(instance, base) == {name}
+
+
+@pytest.mark.parametrize("magic", [0, 1])
+async def test_legacy_fetch_does_not_decompress_until_poll(consumer, magic):
+    data = batch_data(magic, compression=1)
+    module = importlib.import_module(LegacyRecordBatch.__module__)
+    with mock.patch.object(module, "gzip_decode", wraps=module.gzip_decode) as decode:
+        await fetch(consumer, data)
+        decode.assert_not_called()
+        assert (
+            consumer._metrics_collector.on_fetch_completed.call_args.kwargs[
+                "record_count"
+            ]
+            is None
+        )
+        assert len((await consumer.getmany())[TP]) == 2
+        decode.assert_called_once()
+
+
+async def test_partial_trailing_batch_bytes_counted_on_each_fetch(consumer):
+    complete = batch_data()
+    data = complete + complete[:30]
+    await fetch(consumer, data)
+    first = consumer._metrics_collector.on_fetch_completed.call_args.kwargs
+    assert first["record_count"] == 2
+    assert first["bytes_fetched"] == len(data)
+    assert len((await consumer.getmany())[TP]) == 2
+    # Seeking back fetches the same wire bytes and reports them again.
+    consumer.seek(TP, 4)
+    await fetch(consumer, data)
+    second = consumer._metrics_collector.on_fetch_completed.call_args.kwargs
+    assert second["record_count"] == 2
+    assert second["bytes_fetched"] == len(data)
+
+
+async def test_negative_lag_is_preserved(consumer):
+    response = FetchResponse_v4(0, [(TP.topic, [(0, 0, 3, 3, [], b"")])])
+    consumer._client.send = mock.AsyncMock(return_value=response)
+    request = FetchRequest_v4(-1, 100, 1, 10000, 0, [(TP.topic, [(0, 4, 10000)])])
+    await consumer._fetcher._proc_fetch_request(
+        consumer._subscription.subscription.assignment, 0, request
+    )
+    consumer._metrics_collector.on_records_lag.assert_called_once_with(
+        topic=TP.topic, partition=0, lag=-1
+    )
+
+
+async def test_counting_error_has_no_error_log(consumer, caplog):
+    caplog.set_level(logging.ERROR)
+    with mock.patch(
+        "aiokafka.consumer.fetcher._count_records",
+        side_effect=CorruptRecordException("invalid header"),
+    ):
+        await fetch(consumer, batch_data())
+    assert not caplog.records
+
+
+async def test_noop_callbacks_skip_dispatch(consumer, clock):
+    collector = ConsumerMetricsCollector()
+    for component in (consumer._fetcher, consumer._coordinator):
+        component._metrics_collector = collector
+        component._metrics_callbacks = frozenset()
+    with (
+        mock.patch("aiokafka.consumer.fetcher._call_metrics") as fetch_report,
+        mock.patch(
+            "aiokafka.consumer.group_coordinator._call_metrics"
+        ) as commit_report,
+    ):
+        await fetch(consumer, batch_data())
+        consumer._fetcher._record_fetch_error(TP, CorruptRecordException())
+        await commit_response(consumer, clock)
+        await consumer.commit({TP: 5, OTHER_TP: 9})
+        await commit_response(
+            consumer, clock, transport_error=TopicAuthorizationFailedError()
+        )
+        with pytest.raises(TopicAuthorizationFailedError):
+            await consumer.commit({TP: 5, OTHER_TP: 9})
+    fetch_report.assert_not_called()
+    commit_report.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "error_name",
+    [
+        "GroupAuthorizationFailedError",
+        "TopicAuthorizationFailedError",
+        "OffsetMetadataTooLargeError",
+        "InvalidCommitOffsetSizeError",
+        "GroupLoadInProgressError",
+        "GroupCoordinatorNotAvailableError",
+        "NotCoordinatorForGroupError",
+        "RequestTimedOutError",
+        "UnknownMemberIdError",
+        "IllegalGenerationError",
+        "RebalanceInProgressError",
+        "UnknownError",
+    ],
+)
+async def test_commit_callback_reports_actual_partition_error(
+    consumer, clock, error_name
+):
+    errors = importlib.import_module("aiokafka.errors")
+    error_type = getattr(errors, error_name)
+    await commit_response(consumer, clock, codes=(error_type.errno, 0))
+    assignment = consumer._subscription.subscription.assignment
+    offsets = {TP: OffsetAndMetadata(5, ""), OTHER_TP: OffsetAndMetadata(9, "")}
+    with pytest.raises(error_type) as raised:
+        await consumer._coordinator._do_commit_offsets(assignment, offsets)
+    collector = consumer._metrics_collector
+    collector.on_commit_failed.assert_called_once()
+    failure = collector.on_commit_failed.call_args.kwargs
+    assert type(failure["exception"]) is error_type
+    assert failure["partition"] == TP.partition
+    assert failure["offset"] == 5
+    if error_type is not TopicAuthorizationFailedError:
+        assert failure["exception"] is raised.value
+    collector.on_commit_completed.assert_called_once_with(
+        topic=OTHER_TP.topic,
+        partition=OTHER_TP.partition,
+        offset=9,
+        commit_latency_seconds=0.5,
+    )

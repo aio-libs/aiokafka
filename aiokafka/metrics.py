@@ -13,7 +13,46 @@ _CALLBACK_NAMES = frozenset(
 )
 
 
-class ProducerMetricsCollector:
+class _MetricsCollectorBase:
+    _callback_names = frozenset()
+    _kind = ""
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        unknown_callbacks = sorted(
+            name
+            for name in vars(cls)
+            if name.startswith("on_") and name not in cls._callback_names
+        )
+        if unknown_callbacks:
+            warnings.warn(
+                f"Unknown {cls._kind} metrics callbacks (possible typo): "
+                f"{', '.join(unknown_callbacks)}",
+                UserWarning,
+                stacklevel=2,
+            )
+
+
+def _enabled_callbacks(collector, base):
+    """Snapshot enabled callbacks at construction, including instance overrides."""
+    return frozenset(
+        name
+        for name in base._callback_names
+        if getattr(getattr(collector, name), "__func__", None)
+        is not getattr(base, name)
+    )
+
+
+def _call_metrics(callback, kind, **kwargs):
+    try:
+        callback(**kwargs)
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "%s metrics collector callback failed", kind.capitalize()
+        )
+
+
+class ProducerMetricsCollector(_MetricsCollectorBase):
     """Receive experimental producer batch lifecycle events.
 
     All methods are synchronous and called from the producer hot path.
@@ -33,20 +72,8 @@ class ProducerMetricsCollector:
         This API is experimental and may change without a deprecation period.
     """
 
-    def __init_subclass__(cls, **kwargs) -> None:
-        super().__init_subclass__(**kwargs)
-        unknown_callbacks = sorted(
-            name
-            for name in vars(cls)
-            if name.startswith("on_") and name not in _CALLBACK_NAMES
-        )
-        if unknown_callbacks:
-            warnings.warn(
-                "Unknown producer metrics callbacks (possible typo): "
-                f"{', '.join(unknown_callbacks)}",
-                UserWarning,
-                stacklevel=2,
-            )
+    _callback_names = _CALLBACK_NAMES
+    _kind = "producer"
 
     def on_batch_dispatched(
         self,
@@ -116,7 +143,7 @@ _CONSUMER_CALLBACK_NAMES = frozenset(
 )
 
 
-class ConsumerMetricsCollector:
+class ConsumerMetricsCollector(_MetricsCollectorBase):
     """Receive experimental consumer fetch, consumption, and commit events.
 
     Callbacks are synchronous and should be fast and non-blocking. Defer
@@ -131,20 +158,8 @@ class ConsumerMetricsCollector:
         This API is experimental and may change without a deprecation period.
     """
 
-    def __init_subclass__(cls, **kwargs) -> None:
-        super().__init_subclass__(**kwargs)
-        unknown_callbacks = sorted(
-            name
-            for name in vars(cls)
-            if name.startswith("on_") and name not in _CONSUMER_CALLBACK_NAMES
-        )
-        if unknown_callbacks:
-            warnings.warn(
-                "Unknown consumer metrics callbacks (possible typo): "
-                f"{', '.join(unknown_callbacks)}",
-                UserWarning,
-                stacklevel=2,
-            )
+    _callback_names = _CONSUMER_CALLBACK_NAMES
+    _kind = "consumer"
 
     def on_fetch_completed(
         self,
@@ -152,17 +167,19 @@ class ConsumerMetricsCollector:
         topic: str,
         partition: int,
         fetch_latency_seconds: float,
-        record_count: int,
+        record_count: int | None,
         bytes_fetched: int,
     ) -> None:
         """Called for each accepted successful partition fetch, even if empty.
 
         Latency measures the request round trip, including broker fetch wait.
-        Bytes are the encoded record set size, including batch overhead.
+        Bytes are the encoded record set size, including batch overhead and
+        partial trailing batches. Re-fetched bytes are counted again.
         Record count includes control and aborted records and records before
         the requested offset. It need not equal the count delivered to the
-        application. Discarded responses and record sets that cannot be counted
-        are omitted.
+        application. The count is None for legacy compressed message sets,
+        which would require decompression to count. Discarded responses and
+        record sets with malformed headers are omitted.
         """
 
     def on_fetch_failed(
@@ -194,6 +211,8 @@ class ConsumerMetricsCollector:
         Position is the next offset to consume, so buffered records contribute
         to lag. This is offset distance, not a count of deliverable records;
         it uses highwater even with ``read_committed`` isolation.
+        Negative values are possible after log truncation or seeking beyond
+        highwater. Collectors may clamp them for display if desired.
         """
 
     def on_commit_completed(
@@ -224,12 +243,3 @@ class ConsumerMetricsCollector:
         Retried attempts are reported individually. Transport errors are
         reported for every requested partition. Cancellation is excluded.
         """
-
-
-def _call_consumer_metrics(callback, **kwargs):
-    try:
-        callback(**kwargs)
-    except Exception:
-        logging.getLogger(__name__).exception(
-            "Consumer metrics collector callback failed"
-        )
