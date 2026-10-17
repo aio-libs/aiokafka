@@ -20,8 +20,8 @@ HeadersT = list[tuple[str, bytes | None]]
         # Gzip header includes timestamp, so checksum varies
         pytest.param(DefaultRecordBatch.CODEC_GZIP, None, id="gzip"),
         pytest.param(DefaultRecordBatch.CODEC_SNAPPY, 2171068483, id="snappy"),
-        # cramjam uses different parameters for LZ4 and zstd, so checksum varies
-        # from version to version
+        # LZ4 and zstd compression parameters vary across backends and versions,
+        # so their checksums vary too.
         pytest.param(DefaultRecordBatch.CODEC_LZ4, None, id="lz4"),
         pytest.param(DefaultRecordBatch.CODEC_ZSTD, None, id="zstd"),
     ],

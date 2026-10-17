@@ -1,6 +1,7 @@
 import gzip
 import io
 import struct
+import sys
 
 from typing_extensions import Buffer
 
@@ -14,6 +15,19 @@ except ImportError:
 else:
     _has_cramjam = True
 
+if sys.version_info >= (3, 14):
+    # Although compression.zstd is optional in CPython builds, we assume it is
+    # available on Python 3.14+.
+    from compression import zstd
+
+    _has_zstd = True
+elif _has_cramjam:
+    from cramjam import zstd
+
+    _has_zstd = True
+else:
+    _has_zstd = False
+
 
 def has_gzip() -> bool:
     return True
@@ -24,7 +38,7 @@ def has_snappy() -> bool:
 
 
 def has_zstd() -> bool:
-    return _has_cramjam
+    return _has_zstd
 
 
 def has_lz4() -> bool:
@@ -182,11 +196,11 @@ def zstd_encode(payload: Buffer, level: int | None = None) -> Buffer:
         # https://cwiki.apache.org/confluence/display/KAFKA/KIP-390%3A+Support+Compression+Level
         level = 3
 
-    return cramjam.zstd.compress(payload, level=level)
+    return zstd.compress(payload, level=level)
 
 
 def zstd_decode(payload: Buffer) -> Buffer:
     if not has_zstd():
         raise NotImplementedError("Zstd codec is not available")
 
-    return cramjam.zstd.decompress(payload)
+    return zstd.decompress(payload)
