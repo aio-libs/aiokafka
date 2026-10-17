@@ -2,6 +2,8 @@
 
 import logging
 import warnings
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 _CALLBACK_NAMES = frozenset(
     {
@@ -14,10 +16,10 @@ _CALLBACK_NAMES = frozenset(
 
 
 class _MetricsCollectorBase:
-    _callback_names = frozenset()
+    _callback_names: ClassVar[frozenset[str]] = frozenset()
     _kind = ""
 
-    def __init_subclass__(cls, **kwargs) -> None:
+    def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         unknown_callbacks = sorted(
             name
@@ -33,7 +35,9 @@ class _MetricsCollectorBase:
             )
 
 
-def _enabled_callbacks(collector, base):
+def _enabled_callbacks(
+    collector: _MetricsCollectorBase, base: type[_MetricsCollectorBase]
+) -> frozenset[str]:
     """Snapshot enabled callbacks at construction, including instance overrides."""
     return frozenset(
         name
@@ -43,7 +47,7 @@ def _enabled_callbacks(collector, base):
     )
 
 
-def _call_metrics(callback, kind, **kwargs):
+def _call_metrics(callback: Callable[..., None], kind: str, **kwargs: Any) -> None:
     try:
         callback(**kwargs)
     except Exception:

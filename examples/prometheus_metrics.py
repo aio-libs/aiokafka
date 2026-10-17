@@ -7,6 +7,7 @@ from aiokafka import (
     AIOKafkaConsumer,
     AIOKafkaProducer,
     ConsumerMetricsCollector,
+    ConsumerRebalanceListener,
     ProducerMetricsCollector,
 )
 
@@ -197,15 +198,26 @@ class PrometheusConsumerMetrics(ConsumerMetricsCollector):
         commit_failures.labels(topic, partition, type(exception).__name__).inc()
 
 
+class LagMetricsRebalanceListener(ConsumerRebalanceListener):
+    def on_partitions_revoked(self, revoked):
+        for tp in revoked:
+            records_lag.remove(tp.topic, tp.partition)
+
+    def on_partitions_assigned(self, assigned):
+        # The next successful fetch supplies a fresh lag measurement.
+        pass
+
+
 async def consume():
     start_http_server(8000)
-    async with AIOKafkaConsumer(
-        "test-topic",
+    consumer = AIOKafkaConsumer(
         bootstrap_servers="localhost:9092",
         group_id="prometheus-example",
         auto_offset_reset="earliest",
         metrics_collector=PrometheusConsumerMetrics(),
-    ) as consumer:
+    )
+    consumer.subscribe(["test-topic"], listener=LagMetricsRebalanceListener())
+    async with consumer:
         while True:
             await consumer.getmany(timeout_ms=1000)
 

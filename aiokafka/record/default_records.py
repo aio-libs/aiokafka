@@ -150,9 +150,9 @@ class DefaultRecordBase:
 @final
 class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
     def __init__(self, buffer: bytes | bytearray | memoryview) -> None:
-        if len(buffer) < self.HEADER_STRUCT.size:
-            raise CorruptRecordException("Record batch header is incomplete")
         self._buffer = bytearray(buffer)
+        if len(self._buffer) < self.HEADER_STRUCT.size:
+            raise CorruptRecordException("Record batch header is incomplete")
         self._header_data: tuple[
             int, int, int, int, int, int, int, int, int, int, int, int, int
         ] = self.HEADER_STRUCT.unpack_from(self._buffer)

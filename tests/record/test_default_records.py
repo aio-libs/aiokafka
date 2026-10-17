@@ -392,3 +392,38 @@ def test_incomplete_batch_header_from_memory_records(size: int) -> None:
     assert records.has_next()
     with pytest.raises(CorruptRecordException, match="header is incomplete"):
         records.next_batch()
+
+
+@pytest.mark.parametrize("format_code", ["B", "I", "Q"])
+@pytest.mark.parametrize("multidimensional", [False, True])
+def test_read_batch_from_memoryview(
+    format_code: Literal["B", "I", "Q"], multidimensional: bool
+) -> None:
+    builder = DefaultRecordBatchBuilder(
+        magic=2,
+        compression_type=0,
+        is_transactional=0,
+        producer_id=-1,
+        producer_epoch=-1,
+        base_sequence=-1,
+        batch_size=1024,
+    )
+    builder.append(offset=0, timestamp=1, key=None, value=b"view", headers=[])
+    data = builder.build()
+    view = memoryview(data).cast(format_code)
+    if multidimensional:
+        view = memoryview(data).cast(format_code, shape=[1, len(view)])
+
+    batch = DefaultRecordBatch(view)
+    assert batch.validate_crc()
+    records = list(batch)
+    assert len(records) == 1
+    assert records[0].offset == 0
+    assert records[0].value == b"view"
+
+
+@pytest.mark.parametrize("size", [12, 60])
+def test_incomplete_batch_header_from_typed_memoryview(size: int) -> None:
+    view = memoryview(bytes(size)).cast("I")
+    with pytest.raises(CorruptRecordException, match="header is incomplete"):
+        DefaultRecordBatch(view)

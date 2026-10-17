@@ -315,6 +315,9 @@ labels in your collector to control cardinality.
 See ``examples/prometheus_metrics.py`` for producer and consumer collectors
 using Prometheus histograms, counters, and a lag gauge. Run it with
 ``--mode consumer`` to expose consumer metrics on port 8000.
+The example registers a rebalance listener before starting the consumer and
+removes lag labels for revoked partitions, so the previous owner does not
+continue exporting stale lag after a partition moves to another consumer.
 
 .. autoclass:: aiokafka.metrics.ConsumerMetricsCollector
     :members:
