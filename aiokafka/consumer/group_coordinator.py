@@ -8,6 +8,7 @@ import aiokafka.errors as Errors
 from aiokafka.client import ConnectionGroup, CoordinationType
 from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from aiokafka.coordinator.protocol import ConsumerProtocol
+from aiokafka.metrics import ConsumerMetricsCollector, _call_consumer_metrics
 from aiokafka.protocol.api import Response
 from aiokafka.protocol.commit import OffsetCommitRequest, OffsetFetchRequest
 from aiokafka.protocol.group import (
@@ -235,6 +236,7 @@ class GroupCoordinator(BaseCoordinator):
         exclude_internal_topics=True,
         max_poll_interval_ms=300000,
         rebalance_timeout_ms=30000,
+        metrics_collector=None,
     ):
         """Initialize the coordination manager.
 
@@ -242,6 +244,9 @@ class GroupCoordinator(BaseCoordinator):
         """
         # Leader node will keep track of the whole group's metadata.
         self._group_subscription = None
+        if metrics_collector is None:
+            metrics_collector = ConsumerMetricsCollector()
+        self._metrics_collector = metrics_collector
 
         super().__init__(
             client,
@@ -1053,7 +1058,22 @@ class GroupCoordinator(BaseCoordinator):
             self.coordinator_id,
         )
 
-        response = await self._send_req(request)
+        started = time.monotonic()
+        try:
+            response = await self._send_req(request)
+        except Errors.KafkaError as error:
+            latency = time.monotonic() - started
+            for tp, offset in offsets.items():
+                _call_consumer_metrics(
+                    self._metrics_collector.on_commit_failed,
+                    topic=tp.topic,
+                    partition=tp.partition,
+                    offset=offset.offset,
+                    commit_latency_seconds=latency,
+                    exception=error,
+                )
+            raise
+        latency = time.monotonic() - started
 
         errored = collections.OrderedDict()
         unauthorized_topics = set()
@@ -1064,6 +1084,13 @@ class GroupCoordinator(BaseCoordinator):
                 offset = offsets[tp]
                 if error_type is Errors.NoError:
                     log.debug("Committed offset %s for partition %s", offset, tp)
+                    _call_consumer_metrics(
+                        self._metrics_collector.on_commit_completed,
+                        topic=tp.topic,
+                        partition=tp.partition,
+                        offset=offset.offset,
+                        commit_latency_seconds=latency,
+                    )
                 elif error_type is Errors.GroupAuthorizationFailedError:
                     log.error(
                         "OffsetCommit failed for group %s - %s",
@@ -1138,6 +1165,19 @@ class GroupCoordinator(BaseCoordinator):
                         error_type.__name__,
                     )
                     errored[tp] = error_type()
+
+                if error_type is not Errors.NoError:
+                    error = errored.get(tp)
+                    if error is None:
+                        error = Errors.TopicAuthorizationFailedError(topic)
+                    _call_consumer_metrics(
+                        self._metrics_collector.on_commit_failed,
+                        topic=tp.topic,
+                        partition=tp.partition,
+                        offset=offset.offset,
+                        commit_latency_seconds=latency,
+                        exception=error,
+                    )
 
         if errored:
             first_error, *_ = errored.values()

@@ -1,8 +1,14 @@
+import argparse
 import asyncio
 
-from prometheus_client import Counter, Histogram, start_http_server
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
-from aiokafka import AIOKafkaProducer, ProducerMetricsCollector
+from aiokafka import (
+    AIOKafkaConsumer,
+    AIOKafkaProducer,
+    ConsumerMetricsCollector,
+    ProducerMetricsCollector,
+)
 
 queue_time = Histogram(
     "aiokafka_producer_batch_queue_time_seconds",
@@ -111,4 +117,100 @@ async def produce():
         await producer.stop()
 
 
-asyncio.run(produce())
+fetch_latency = Histogram(
+    "aiokafka_consumer_fetch_latency_seconds",
+    "Fetch request round trip per partition, including broker wait.",
+    ["topic", "partition"],
+)
+records_fetched = Counter(
+    "aiokafka_consumer_records_fetched_total",
+    "Records fetched, including control and aborted records.",
+    ["topic", "partition"],
+)
+fetched_bytes = Counter(
+    "aiokafka_consumer_bytes_fetched_total",
+    "Encoded record set bytes fetched.",
+    ["topic", "partition"],
+)
+fetch_failures = Counter(
+    "aiokafka_consumer_fetch_failures_total",
+    "Partition fetch errors surfaced to the application.",
+    ["topic", "partition", "exception"],
+)
+records_consumed = Counter(
+    "aiokafka_consumer_records_consumed_total",
+    "Records handed to the application.",
+    ["topic", "partition"],
+)
+consumed_bytes = Counter(
+    "aiokafka_consumer_bytes_consumed_total",
+    "Serialized key and value bytes handed to the application.",
+    ["topic", "partition"],
+)
+records_lag = Gauge(
+    "aiokafka_consumer_records_lag",
+    "Highwater minus position at the latest fetch update.",
+    ["topic", "partition"],
+)
+commit_latency = Histogram(
+    "aiokafka_consumer_commit_latency_seconds",
+    "Offset commit request round trip per partition and attempt.",
+    ["topic", "partition", "outcome"],
+)
+commit_failures = Counter(
+    "aiokafka_consumer_commit_failures_total",
+    "Failed partition offset commit attempts, including retries.",
+    ["topic", "partition", "exception"],
+)
+
+
+class PrometheusConsumerMetrics(ConsumerMetricsCollector):
+    def on_fetch_completed(
+        self, *, topic, partition, fetch_latency_seconds, record_count, bytes_fetched
+    ):
+        fetch_latency.labels(topic, partition).observe(fetch_latency_seconds)
+        records_fetched.labels(topic, partition).inc(record_count)
+        fetched_bytes.labels(topic, partition).inc(bytes_fetched)
+
+    def on_fetch_failed(self, *, topic, partition, exception):
+        fetch_failures.labels(topic, partition, type(exception).__name__).inc()
+
+    def on_records_consumed(self, *, topic, partition, record_count, bytes_consumed):
+        records_consumed.labels(topic, partition).inc(record_count)
+        consumed_bytes.labels(topic, partition).inc(bytes_consumed)
+
+    def on_records_lag(self, *, topic, partition, lag):
+        records_lag.labels(topic, partition).set(lag)
+
+    def on_commit_completed(self, *, topic, partition, offset, commit_latency_seconds):
+        commit_latency.labels(topic, partition, "completed").observe(
+            commit_latency_seconds
+        )
+
+    def on_commit_failed(
+        self, *, topic, partition, offset, commit_latency_seconds, exception
+    ):
+        commit_latency.labels(topic, partition, "failed").observe(
+            commit_latency_seconds
+        )
+        commit_failures.labels(topic, partition, type(exception).__name__).inc()
+
+
+async def consume():
+    start_http_server(8000)
+    async with AIOKafkaConsumer(
+        "test-topic",
+        bootstrap_servers="localhost:9092",
+        group_id="prometheus-example",
+        auto_offset_reset="earliest",
+        metrics_collector=PrometheusConsumerMetrics(),
+    ) as consumer:
+        while True:
+            await consumer.getmany(timeout_ms=1000)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=("producer", "consumer"), default="producer")
+    args = parser.parse_args()
+    asyncio.run(consume() if args.mode == "consumer" else produce())

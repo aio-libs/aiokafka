@@ -150,6 +150,8 @@ class DefaultRecordBase:
 @final
 class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
     def __init__(self, buffer: bytes | bytearray | memoryview) -> None:
+        if len(buffer) < self.HEADER_STRUCT.size:
+            raise CorruptRecordException("Record batch header is incomplete")
         self._buffer = bytearray(buffer)
         self._header_data: tuple[
             int, int, int, int, int, int, int, int, int, int, int, int, int
@@ -218,6 +220,10 @@ class _DefaultRecordBatchPy(DefaultRecordBase, DefaultRecordBatchProtocol):
     @property
     def next_offset(self) -> int:
         return self.base_offset + self.last_offset_delta + 1
+
+    @property
+    def num_records(self) -> int:
+        return self._num_records
 
     def _maybe_uncompress(self) -> None:
         if not self._decompressed:

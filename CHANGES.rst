@@ -7,6 +7,8 @@ Changelog
 
 New features:
 
+* Add an experimental lightweight consumer metrics collector for fetches,
+  consumption, lag, and offset commits (issue #1177)
 * Use standard library Zstandard compression on Python 3.14 and newer, without
   requiring cramjam for the ``zstd`` extra (issue #1146)
 * Add an experimental lightweight callback-based producer metrics collector API

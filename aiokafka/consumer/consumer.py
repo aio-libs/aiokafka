@@ -15,6 +15,7 @@ from aiokafka.errors import (
     IllegalStateError,
     RecordTooLargeError,
 )
+from aiokafka.metrics import ConsumerMetricsCollector, _call_consumer_metrics
 from aiokafka.structs import ConsumerRecord, TopicPartition
 from aiokafka.util import commit_structure_validate, get_running_loop
 
@@ -218,6 +219,11 @@ class AIOKafkaConsumer:
             the consumer will fetch from the closest in-sync replica
             instead of the leader (KIP-392). Default: ``None`` (disabled).
 
+        metrics_collector (:class:`~aiokafka.metrics.ConsumerMetricsCollector`):
+            Optional synchronous collector for fetch, consumption, lag, and
+            commit metrics. Defaults to a no-op collector. This API is
+            experimental and may change without a deprecation period.
+
     Note:
         Many configuration parameters are taken from Java Client:
         https://kafka.apache.org/documentation.html#newconsumerconfigs
@@ -268,6 +274,7 @@ class AIOKafkaConsumer:
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
         client_rack=None,
+        metrics_collector=None,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -294,6 +301,14 @@ class AIOKafkaConsumer:
 
         if rebalance_timeout_ms is None:
             rebalance_timeout_ms = session_timeout_ms
+
+        if metrics_collector is None:
+            metrics_collector = ConsumerMetricsCollector()
+        if not isinstance(metrics_collector, ConsumerMetricsCollector):
+            raise TypeError(
+                "metrics_collector must be an instance of ConsumerMetricsCollector"
+            )
+        self._metrics_collector = metrics_collector
 
         self._client = AIOKafkaClient(
             loop=loop,
@@ -396,6 +411,7 @@ class AIOKafkaConsumer:
             auto_offset_reset=self._auto_offset_reset,
             isolation_level=self._isolation_level,
             client_rack=self._client_rack,
+            metrics_collector=self._metrics_collector,
         )
 
         if self._group_id is not None:
@@ -414,6 +430,7 @@ class AIOKafkaConsumer:
                 exclude_internal_topics=self._exclude_internal_topics,
                 rebalance_timeout_ms=self._rebalance_timeout_ms,
                 max_poll_interval_ms=self._max_poll_interval_ms,
+                metrics_collector=self._metrics_collector,
             )
             if self._subscription.subscription is not None:
                 if self._subscription.partitions_auto_assigned():
@@ -1142,6 +1159,7 @@ class AIOKafkaConsumer:
 
         with self._subscription.fetch_context():
             msg = await self._fetcher.next_record(partitions)
+        self._record_consumed_metrics(msg.topic, msg.partition, [msg])
         return msg
 
     async def getmany(
@@ -1197,7 +1215,28 @@ class AIOKafkaConsumer:
             records = await self._fetcher.fetched_records(
                 partitions, timeout, max_records=max_records or self._max_poll_records
             )
+        for tp, messages in records.items():
+            self._record_consumed_metrics(tp.topic, tp.partition, messages)
         return records
+
+    def _record_consumed_metrics(self, topic, partition, records):
+        callback = self._metrics_collector.on_records_consumed
+        if not records or (
+            getattr(callback, "__func__", None)
+            is ConsumerMetricsCollector.on_records_consumed
+        ):
+            return
+        _call_consumer_metrics(
+            callback,
+            topic=topic,
+            partition=partition,
+            record_count=len(records),
+            bytes_consumed=sum(
+                max(0, record.serialized_key_size)
+                + max(0, record.serialized_value_size)
+                for record in records
+            ),
+        )
 
     def pause(self, *partitions):
         """Suspend fetching from the requested partitions.
