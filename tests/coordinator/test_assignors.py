@@ -9,6 +9,7 @@ from pytest_mock import MockerFixture
 from aiokafka.coordinator.assignors.range import RangePartitionAssignor
 from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from aiokafka.coordinator.assignors.sticky.sticky_assignor import (
+    StickyAssignmentExecutor,
     StickyPartitionAssignor,
 )
 from aiokafka.coordinator.protocol import (
@@ -970,6 +971,70 @@ def test_assignment_with_conflicting_previous_generations(
 
     assignment = StickyPartitionAssignor.assign(cluster, member_metadata)
     verify_validity_and_balance({"C1": {"t"}, "C2": {"t"}, "C3": {"t"}}, assignment)
+    assert StickyPartitionAssignor._latest_partition_movements
+    assert StickyPartitionAssignor._latest_partition_movements.are_sticky()
+
+
+def test_sticky_mixed_subscriptions_terminates(mocker: MockerFixture) -> None:
+    # Regression test: this group used to make `_perform_reassignments` loop forever
+    topics_partitions = {
+        "t5": 1,
+        "t8": 12,
+        "t10": 6,
+        "t11": 11,
+        "t12": 24,
+        "t15": 1,
+        "t17": 4,
+    }
+    cluster = create_cluster(
+        mocker,
+        topics=set(topics_partitions),
+        topic_partitions_lambda=lambda t: set(range(topics_partitions[t])),
+    )
+    subscriptions = {
+        "C10": {"t11"},
+        "C11": {"t15", "t10"},
+        "C12": {"t11", "t8"},
+        "C01": {"t10", "t17"},
+        **{f"C0{i}": {"t12", "t11"} for i in range(2, 6)},
+        "C06": {"t8", "t10"},
+        "C07": {"t5", "t8", "t10"},
+        "C08": {"t8", "t10"},
+        "C09": {"t8", "t10"},
+    }
+    previous_assignment = {
+        "C01": [("t10", 4)],
+        "C02": [("t11", 4), ("t11", 8)],
+        "C03": [("t11", 5), ("t11", 9)],
+        "C04": [("t11", 6), ("t11", 10)],
+        "C05": [("t11", 3), ("t11", 7)],
+        "C06": [("t8", 0), ("t8", 4), ("t8", 8)],
+        "C07": [("t8", 1), ("t8", 5), ("t8", 9)],
+        "C08": [("t8", 2), ("t8", 6), ("t8", 10)],
+        "C09": [("t8", 3), ("t8", 7), ("t8", 11)],
+    }
+    member_metadata = {
+        member: StickyPartitionAssignor._metadata(
+            topics,
+            [TopicPartition(t, p) for t, p in previous_assignment.get(member, [])],
+        )
+        for member, topics in subscriptions.items()
+    }
+
+    # Fail instead of hanging if the reassignment loop does not terminate
+    is_balanced = StickyAssignmentExecutor._is_balanced
+    calls = 0
+
+    def guarded_is_balanced(self: StickyAssignmentExecutor) -> bool:
+        nonlocal calls
+        calls += 1
+        assert calls < 10_000, "reassignment loop does not terminate"
+        return is_balanced(self)
+
+    mocker.patch.object(StickyAssignmentExecutor, "_is_balanced", guarded_is_balanced)
+
+    assignment = StickyPartitionAssignor.assign(cluster, member_metadata)
+    verify_validity_and_balance(subscriptions, assignment)
     assert StickyPartitionAssignor._latest_partition_movements
     assert StickyPartitionAssignor._latest_partition_movements.are_sticky()
 
