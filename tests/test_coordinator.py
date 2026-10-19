@@ -28,6 +28,8 @@ from aiokafka.protocol.group import (
 )
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from aiokafka.util import create_future, create_task, get_running_loop
+from aiokafka.coordinator.assignors.range import RangePartitionAssignor
+from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -1471,3 +1473,46 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         await coordinator.close()
         await client.close()
+
+
+async def test_join_group_sent_once_with_multiple_assignors():
+    coordinator = mock.MagicMock()
+    coordinator.member_id = JoinGroupRequest.UNKNOWN_MEMBER_ID
+    coordinator._group_instance_id = None
+    coordinator._rebalance_timeout_ms = 30000
+
+    coordinator._send_req = mock.AsyncMock(
+        return_value=JoinGroupResponse_v0(
+            error_code=Errors.NoError.errno,
+            generation_id=1,
+            group_protocol="roundrobin",
+            leader_id="leader-1",
+            member_id="member-1",
+            members=[],
+        )
+    )
+
+    subscription = mock.MagicMock()
+    subscription.topics = {"topic1"}
+    subscription.active = True
+
+    assignors = (RoundRobinPartitionAssignor, RangePartitionAssignor)
+
+    rebalance = CoordinatorGroupRebalance(
+        coordinator,
+        group_id="test-group",
+        coordinator_id=1,
+        subscription=subscription,
+        assignors=assignors,
+        session_timeout_ms=10000,
+        retry_backoff_ms=100,
+    )
+
+    async def _on_join_follower():
+        return b"assignment"
+
+    rebalance._on_join_follower = _on_join_follower
+
+    await rebalance.perform_group_join()
+
+    coordinator._send_req.assert_awaited_once()

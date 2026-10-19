@@ -25,6 +25,9 @@ Breaking changes:
 
 * Drop support for Python 3.10 due to end of life
 
+Bugfixes:
+
+* Don't send more than one JoinGroup request when more than one Assignors are specified (pr #1168 by @ilolis)
 
 0.14.0 (2026-04-29)
 ===================
