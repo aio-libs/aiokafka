@@ -541,11 +541,7 @@ class GroupCoordinator(BaseCoordinator):
 
     def _holds_partitions(self):
         """Whether this member currently has any partitions assigned."""
-        subscription = self._subscription.subscription
-        if subscription is None:
-            return False
-        assignment = subscription.assignment
-        return assignment is not None and bool(assignment.tps)
+        return bool(self._subscription.assigned_partitions())
 
     def need_rejoin(self, subscription):
         """Check whether the group should be rejoined

@@ -1558,6 +1558,22 @@ class TestGroupCoordinatorIdleMember:
         coordinator._stop_heartbeat_task.assert_not_awaited()
         coordinator._do_rejoin_group.assert_not_awaited()
 
+    async def test_member_with_partitions_keeps_its_idle_time_when_it_rejoins(
+        self, idle_member
+    ):
+        tp = TopicPartition("topic1", 0)
+        coordinator = await idle_member(tp, max_poll_interval_ms=60000)
+        subscription = coordinator._subscription.subscription
+        rejoin_with(coordinator, tp)
+
+        assignment = await coordinator.ensure_active_group(
+            subscription, subscription.assignment
+        )
+
+        assert assignment.tps == {tp}
+        # Only a member that held no partitions counts its idle time afresh
+        assert coordinator._subscription.fetcher_idle_time >= 10
+
     async def test_heartbeat_keeps_member_without_partitions_in_group(
         self, idle_member
     ):
