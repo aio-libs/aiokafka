@@ -20,6 +20,9 @@ Bugfixes:
 * Map Kafka error code 82 to a new ``FencedInstanceIdError`` and handle it in
   the consumer group coordinator, instead of raising it as an untyped
   ``KafkaError`` (issue #1186, pr #1188 by @vmirz)
+* Keep a consumer holding no partitions in its group past
+  ``max_poll_interval_ms`` and let it rejoin, and count ``max_poll_interval_ms``
+  from the moment it is given partitions (issue #1187, pr #1189 by @vmirz)
 
 Breaking changes:
 

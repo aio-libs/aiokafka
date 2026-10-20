@@ -303,6 +303,10 @@ class SubscriptionState:
         else:
             return 0
 
+    def reset_fetcher_idle_time(self):
+        """Count :attr:`fetcher_idle_time` from now on"""
+        self._last_fetch_ended = time.monotonic()
+
 
 class Subscription:
     """Describes current subscription to a list of topics. In case of pattern
