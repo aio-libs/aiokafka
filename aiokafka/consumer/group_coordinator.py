@@ -754,6 +754,13 @@ class GroupCoordinator(BaseCoordinator):
         success = await self._do_rejoin_group(subscription)
         if success:
             self._performed_join_prepare = False
+            if prev_assignment is None or not prev_assignment.tps:
+                # A member that held no partitions had nothing to fetch, so its
+                # ``fetcher_idle_time`` only tells how long it went without
+                # partitions. Count ``max_poll_interval_ms`` from now on, or the
+                # first heartbeat would take a member that was just given
+                # partitions for stuck, and make it leave the group again.
+                self._subscription.reset_fetcher_idle_time()
             self._start_heartbeat_task()
             return subscription.assignment
         return None

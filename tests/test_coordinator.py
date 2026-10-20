@@ -3,6 +3,8 @@ import contextlib
 import re
 from unittest import mock
 
+import pytest
+
 import aiokafka.errors as Errors
 from aiokafka import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
@@ -1471,3 +1473,123 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
 
         await coordinator.close()
         await client.close()
+
+
+@pytest.fixture
+async def idle_member():
+    """Makes coordinators driven by the test instead of their coordination
+    routine. Each one's subscription holds the given partitions and hasn't
+    fetched in a while."""
+    coordinators = []
+
+    async def make(*partitions, **kwargs):
+        subscription = SubscriptionState()
+        subscription.subscribe(topics={"topic1"})
+        subscription.assign_from_subscribed(set(partitions))
+        subscription._last_fetch_ended -= 10
+
+        client = AIOKafkaClient(bootstrap_servers=[])
+        coordinator = GroupCoordinator(client, subscription, **kwargs)
+        coordinators.append(coordinator)
+        coordinator._coordination_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await coordinator._coordination_task
+        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
+
+        coordinator.coordinator_id = 15
+        coordinator.member_id = "member-1"
+        coordinator.ensure_coordinator_known = mock.AsyncMock()
+        coordinator._do_heartbeat = mock.AsyncMock(return_value=True)
+        coordinator._maybe_leave_group = mock.AsyncMock()
+        coordinator._on_join_prepare = mock.AsyncMock()
+        return coordinator
+
+    yield make
+    for coordinator in coordinators:
+        await coordinator.close()
+
+
+def rejoin_with(coordinator, *partitions):
+    """Make the next join of ``coordinator`` assign it ``partitions``"""
+
+    async def do_rejoin_group(subscription):
+        coordinator._subscription.assign_from_subscribed(set(partitions))
+        return True
+
+    coordinator._do_rejoin_group = mock.AsyncMock(side_effect=do_rejoin_group)
+
+
+class TestGroupCoordinatorIdleMember:
+    """``max_poll_interval_ms`` for a member that holds no partitions"""
+
+    async def test_member_without_partitions_rejoins_after_max_poll_interval(
+        self, idle_member
+    ):
+        coordinator = await idle_member(max_poll_interval_ms=1000)
+        subscription = coordinator._subscription.subscription
+        prev_assignment = subscription.assignment
+        tp = TopicPartition("topic1", 0)
+        rejoin_with(coordinator, tp)
+
+        assignment = await coordinator.ensure_active_group(
+            subscription, prev_assignment
+        )
+
+        assert assignment.tps == {tp}
+        coordinator._on_join_prepare.assert_awaited_once_with(prev_assignment)
+        # The idle time it gathered without partitions doesn't count against them
+        assert coordinator._subscription.fetcher_idle_time < 1
+
+    async def test_idle_member_with_partitions_keeps_its_assignment(self, idle_member):
+        coordinator = await idle_member(
+            TopicPartition("topic1", 0), max_poll_interval_ms=1000, retry_backoff_ms=10
+        )
+        subscription = coordinator._subscription.subscription
+        coordinator._stop_heartbeat_task = mock.AsyncMock()
+        coordinator._do_rejoin_group = mock.AsyncMock()
+
+        assignment = await coordinator.ensure_active_group(
+            subscription, subscription.assignment
+        )
+
+        # Declined before anything was revoked or the heartbeat stopped
+        assert assignment is None
+        coordinator._on_join_prepare.assert_not_awaited()
+        coordinator._stop_heartbeat_task.assert_not_awaited()
+        coordinator._do_rejoin_group.assert_not_awaited()
+
+    async def test_heartbeat_keeps_member_without_partitions_in_group(
+        self, idle_member
+    ):
+        coordinator = await idle_member(
+            heartbeat_interval_ms=20, max_poll_interval_ms=50
+        )
+        coordinator._start_heartbeat_task()
+
+        await asyncio.sleep(0.1)
+        assert coordinator._do_heartbeat.await_count > 1
+        coordinator._maybe_leave_group.assert_not_awaited()
+
+        # A member that holds partitions and doesn't fetch them leaves
+        coordinator._subscription.assign_from_subscribed({TopicPartition("topic1", 0)})
+        await asyncio.sleep(0.2)
+        coordinator._maybe_leave_group.assert_awaited()
+
+    async def test_member_given_partitions_has_max_poll_interval_to_fetch(
+        self, idle_member
+    ):
+        coordinator = await idle_member(
+            heartbeat_interval_ms=20, max_poll_interval_ms=500
+        )
+        subscription = coordinator._subscription.subscription
+        rejoin_with(coordinator, TopicPartition("topic1", 0))
+
+        # Joins and starts heartbeating with the partitions it was given
+        await coordinator.ensure_active_group(subscription, subscription.assignment)
+        await asyncio.sleep(0.1)
+        assert coordinator._do_heartbeat.await_count > 1
+        coordinator._maybe_leave_group.assert_not_awaited()
+
+        # Not fetching them for max_poll_interval_ms still makes it leave
+        await asyncio.sleep(0.8)
+        coordinator._maybe_leave_group.assert_awaited()
