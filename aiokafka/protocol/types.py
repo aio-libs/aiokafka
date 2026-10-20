@@ -1,4 +1,5 @@
 import struct
+import sys
 from collections.abc import Callable, Iterable, Sequence
 from io import BytesIO
 from struct import error
@@ -11,9 +12,12 @@ from typing import (
     overload,
 )
 
-from typing_extensions import Buffer
-
 from .abstract import AbstractType
+
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    from typing_extensions import Buffer
 
 T = TypeVar("T")
 

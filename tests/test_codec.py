@@ -28,11 +28,23 @@ def test_gzip() -> None:
 
 
 @pytest.mark.skipif(not has_snappy(), reason="Snappy not available")
-def test_snappy() -> None:
+@pytest.mark.parametrize("xerial_compatible", [True, False])
+def test_snappy(xerial_compatible: bool) -> None:
     for _ in range(1000):
         b1 = random_string(100)
-        b2 = snappy_decode(snappy_encode(b1))
+        b2 = bytes(
+            snappy_decode(snappy_encode(b1, xerial_compatible=xerial_compatible))
+        )
         assert b1 == b2
+
+
+@pytest.mark.skipif(not has_snappy(), reason="Snappy not available")
+@pytest.mark.parametrize("xerial_compatible", [True, False])
+def test_snappy_empty(xerial_compatible: bool) -> None:
+    assert (
+        bytes(snappy_decode(snappy_encode(b"", xerial_compatible=xerial_compatible)))
+        == b""
+    )
 
 
 @pytest.mark.skipif(not has_snappy(), reason="Snappy not available")
@@ -42,10 +54,12 @@ def test_snappy_detect_xerial() -> None:
     header = b"\x82SNAPPY\x00\x00\x00\x00\x01\x00\x00\x00\x01Some extra bytes"
     false_header = b"\x01SNAPPY\x00\x00\x00\x01\x00\x00\x00\x01"
     default_snappy = snappy_encode(b"foobar" * 50)
-    random_snappy = snappy_encode(b"SNAPPY" * 50, xerial_compatible=False)
+    random_snappy = bytes(snappy_encode(b"SNAPPY" * 50, xerial_compatible=False))
     short_data = b"\x01\x02\x03\x04"
 
     assert _detect_xerial_stream(header) is True
+    assert _detect_xerial_stream(header[:16]) is True
+    assert _detect_xerial_stream(header[:15]) is False
     assert _detect_xerial_stream(b"") is False
     assert _detect_xerial_stream(b"\x00") is False
     assert _detect_xerial_stream(false_header) is False
@@ -57,9 +71,9 @@ def test_snappy_detect_xerial() -> None:
 @pytest.mark.skipif(not has_snappy(), reason="Snappy not available")
 def test_snappy_decode_xerial() -> None:
     header = b"\x82SNAPPY\x00\x00\x00\x00\x01\x00\x00\x00\x01"
-    random_snappy = snappy_encode(b"SNAPPY" * 50, xerial_compatible=False)
+    random_snappy = bytes(snappy_encode(b"SNAPPY" * 50, xerial_compatible=False))
     block_len = len(random_snappy)
-    random_snappy2 = snappy_encode(b"XERIAL" * 50, xerial_compatible=False)
+    random_snappy2 = bytes(snappy_encode(b"XERIAL" * 50, xerial_compatible=False))
     block_len2 = len(random_snappy2)
 
     to_test = (
@@ -69,7 +83,7 @@ def test_snappy_decode_xerial() -> None:
         + struct.pack("!i", block_len2)
         + random_snappy2
     )
-    assert snappy_decode(to_test) == (b"SNAPPY" * 50) + (b"XERIAL" * 50)
+    assert bytes(snappy_decode(to_test)) == (b"SNAPPY" * 50) + (b"XERIAL" * 50)
 
 
 @pytest.mark.skipif(not has_snappy(), reason="Snappy not available")
@@ -84,14 +98,14 @@ def test_snappy_encode_xerial() -> None:
     to_test = (b"SNAPPY" * 50) + (b"XERIAL" * 50)
 
     compressed = snappy_encode(to_test, xerial_compatible=True, xerial_blocksize=300)
-    assert compressed == to_ensure
+    assert bytes(compressed) == to_ensure
 
 
 @pytest.mark.skipif(not has_lz4(), reason="LZ4 not available")
 def test_lz4() -> None:
     for _ in range(1000):
         b1 = random_string(100)
-        b2 = lz4_decode(lz4_encode(b1))
+        b2 = bytes(lz4_decode(lz4_encode(b1)))
         assert len(b1) == len(b2)
         assert b1 == b2
 
@@ -102,7 +116,7 @@ def test_lz4_incremental() -> None:
         # lz4 max single block size is 4MB
         # make sure we test with multiple-blocks
         b1 = random_string(100) * 50000
-        b2 = lz4_decode(lz4_encode(b1))
+        b2 = bytes(lz4_decode(lz4_encode(b1)))
         assert len(b1) == len(b2)
         assert b1 == b2
 
@@ -111,5 +125,5 @@ def test_lz4_incremental() -> None:
 def test_zstd() -> None:
     for _ in range(1000):
         b1 = random_string(100)
-        b2 = zstd_decode(zstd_encode(b1))
+        b2 = bytes(zstd_decode(zstd_encode(b1)))
         assert b1 == b2

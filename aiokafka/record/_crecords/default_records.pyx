@@ -240,11 +240,11 @@ cdef class DefaultRecordBatch:
                 if compression_type == _ATTR_CODEC_GZIP:
                     uncompressed = gzip_decode(data)
                 elif compression_type == _ATTR_CODEC_SNAPPY:
-                    uncompressed = snappy_decode(data.tobytes())
+                    uncompressed = snappy_decode(data)
                 elif compression_type == _ATTR_CODEC_LZ4:
-                    uncompressed = lz4_decode(data.tobytes())
+                    uncompressed = lz4_decode(data)
                 elif compression_type == _ATTR_CODEC_ZSTD:
-                    uncompressed = zstd_decode(data.tobytes())
+                    uncompressed = zstd_decode(data)
 
                 PyBuffer_Release(&self._buffer)
                 PyObject_GetBuffer(uncompressed, &self._buffer, PyBUF_SIMPLE)

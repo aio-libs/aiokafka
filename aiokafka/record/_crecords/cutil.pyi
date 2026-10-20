@@ -1,6 +1,10 @@
+import sys
 from collections.abc import Callable
 
-from typing_extensions import Buffer
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    from typing_extensions import Buffer
 
 def crc32c_cython(data: Buffer) -> int: ...
 def decode_varint_cython(buffer: bytearray, pos: int) -> tuple[int, int]: ...

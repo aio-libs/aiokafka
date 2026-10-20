@@ -873,6 +873,17 @@ class GroupCoordinator(BaseCoordinator):
                 " resetting and re-joining group"
             )
             self.reset_generation()
+        elif error_type is Errors.FencedInstanceIdError:
+            # See the matching case in ``perform_group_join``: we have been
+            # superseded by another consumer using the same group.instance.id.
+            log.error(
+                "Heartbeat failed for group %s: group.instance.id %s is now"
+                " owned by another member. This consumer has been fenced and"
+                " must be restarted.",
+                self.group_id,
+                self._group_instance_id,
+            )
+            raise error_type()
         elif error_type is Errors.GroupAuthorizationFailedError:
             raise error_type(self.group_id)
         else:
@@ -1372,6 +1383,19 @@ class CoordinatorGroupRebalance:
                 "Attempt to join group %s failed due to unknown member id",
                 self.group_id,
             )
+        elif error_type is Errors.FencedInstanceIdError:
+            # Another consumer has claimed our group.instance.id. We have been
+            # superseded and must not try to take it back -- rejoining would
+            # fence the consumer that replaced us and the two would trade the
+            # instance id back and forth indefinitely.
+            log.error(
+                "Attempt to join group %s failed: group.instance.id %s is now"
+                " owned by another member. This consumer has been fenced and"
+                " must be restarted.",
+                self.group_id,
+                self._coordinator._group_instance_id,
+            )
+            raise error_type()
         elif error_type in (
             Errors.GroupCoordinatorNotAvailableError,
             Errors.NotCoordinatorForGroupError,
@@ -1498,6 +1522,17 @@ class CoordinatorGroupRebalance:
             err = error_type()
             log.debug("SyncGroup for group %s failed due to %s,", self.group_id, err)
             self._coordinator.reset_generation()
+        elif error_type is Errors.FencedInstanceIdError:
+            # See the matching case in ``perform_group_join``: we have been
+            # superseded by another consumer using the same group.instance.id.
+            log.error(
+                "SyncGroup for group %s failed: group.instance.id %s is now"
+                " owned by another member. This consumer has been fenced and"
+                " must be restarted.",
+                self.group_id,
+                self._coordinator._group_instance_id,
+            )
+            raise error_type()
         elif error_type in (
             Errors.GroupCoordinatorNotAvailableError,
             Errors.NotCoordinatorForGroupError,

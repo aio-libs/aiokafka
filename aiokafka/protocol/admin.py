@@ -216,7 +216,7 @@ class CreateTopicsRequest(Request[CreateTopicsRequestStruct]):
 
     def __init__(
         self,
-        create_topic_requests: list[tuple[Any]],
+        create_topic_requests: list[tuple[Any, ...]],
         timeout: int | None,
         validate_only: bool,
     ):

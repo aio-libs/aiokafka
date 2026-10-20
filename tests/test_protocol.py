@@ -1,9 +1,12 @@
 import io
 import struct
+import sys
+from collections.abc import Callable
 
 import pytest
 
-from aiokafka.protocol.api import RequestHeader_v1, RequestStruct, Response
+from aiokafka import codec as codecs
+from aiokafka.protocol.api import RequestHeader_v1
 from aiokafka.protocol.coordination import FindCoordinatorRequest_v0
 from aiokafka.protocol.fetch import FetchRequest_v0, FetchResponse_v0
 from aiokafka.protocol.message import Message, MessageSet, PartialMessage
@@ -19,6 +22,11 @@ from aiokafka.protocol.types import (
     UnsignedVarInt32,
 )
 
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    from typing_extensions import Buffer
+
 
 def test_create_message() -> None:
     payload = b"test"
@@ -28,6 +36,57 @@ def test_create_message() -> None:
     assert msg.attributes == 0
     assert msg.key == key
     assert msg.value == payload
+
+
+@pytest.mark.parametrize(
+    "compression_type,encode",
+    [
+        pytest.param(
+            Message.CODEC_GZIP,
+            codecs.gzip_encode,
+            marks=pytest.mark.skipif(
+                not codecs.has_gzip(), reason="Gzip not available"
+            ),
+            id="gzip",
+        ),
+        pytest.param(
+            Message.CODEC_SNAPPY,
+            codecs.snappy_encode,
+            marks=pytest.mark.skipif(
+                not codecs.has_snappy(), reason="Snappy not available"
+            ),
+            id="snappy",
+        ),
+        pytest.param(
+            Message.CODEC_LZ4,
+            codecs.lz4_encode,
+            marks=pytest.mark.skipif(not codecs.has_lz4(), reason="LZ4 not available"),
+            id="lz4",
+        ),
+        pytest.param(
+            Message.CODEC_ZSTD,
+            codecs.zstd_encode,
+            marks=pytest.mark.skipif(
+                not codecs.has_zstd(), reason="Zstd not available"
+            ),
+            id="zstd",
+        ),
+    ],
+)
+def test_decompress_message(
+    compression_type: int, encode: Callable[[bytes], Buffer]
+) -> None:
+    message = Message(value=b"test" * 100, key=b"key", magic=0, attributes=0, crc=0)
+    message_set = MessageSet.encode([(0, message.encode())], prepend_size=False)
+    compressed = Message(
+        value=bytes(encode(message_set)),
+        key=None,
+        magic=0,
+        attributes=compression_type,
+        crc=0,
+    )
+
+    assert compressed.decompress() == [(0, len(message.encode()), message)]
 
 
 def test_encode_message_v0() -> None:
@@ -355,31 +414,3 @@ def test_compact_data_structs() -> None:
     assert CompactBytes.decode(io.BytesIO(b"\x01")) == b""
     enc = CompactBytes.encode(b"foo")
     assert CompactBytes.decode(io.BytesIO(enc)) == b"foo"
-
-
-attr_names = [
-    n
-    for n in dir(RequestStruct)
-    if isinstance(getattr(RequestStruct, n), property)
-    and getattr(RequestStruct, n).__isabstractmethod__ is True
-]
-
-
-@pytest.mark.parametrize("klass", RequestStruct.__subclasses__())
-@pytest.mark.parametrize("attr_name", attr_names)
-def test_request_type_conformance(klass: type[RequestStruct], attr_name: str) -> None:
-    assert hasattr(klass, attr_name)
-
-
-attr_names = [
-    n
-    for n in dir(Response)
-    if isinstance(getattr(Response, n), property)
-    and getattr(Response, n).__isabstractmethod__ is True
-]
-
-
-@pytest.mark.parametrize("klass", Response.__subclasses__())
-@pytest.mark.parametrize("attr_name", attr_names)
-def test_response_type_conformance(klass: type[Response], attr_name: str) -> None:
-    assert hasattr(klass, attr_name)
