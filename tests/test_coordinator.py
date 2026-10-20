@@ -1540,23 +1540,26 @@ class TestGroupCoordinatorIdleMember:
         # The idle time it gathered without partitions doesn't count against them
         assert coordinator._subscription.fetcher_idle_time < 1
 
-    async def test_idle_member_with_partitions_keeps_its_assignment(self, idle_member):
+    async def test_idle_member_with_partitions_does_not_rejoin(self, idle_member):
         coordinator = await idle_member(
-            TopicPartition("topic1", 0), max_poll_interval_ms=1000, retry_backoff_ms=10
+            TopicPartition("topic1", 0),
+            max_poll_interval_ms=1000,
+            retry_backoff_ms=10,
+            enable_auto_commit=False,
         )
+        del coordinator._on_join_prepare  # the real one, which revokes
         subscription = coordinator._subscription.subscription
-        coordinator._stop_heartbeat_task = mock.AsyncMock()
         coordinator._do_rejoin_group = mock.AsyncMock()
 
         assignment = await coordinator.ensure_active_group(
             subscription, subscription.assignment
         )
 
-        # Declined before anything was revoked or the heartbeat stopped
         assert assignment is None
-        coordinator._on_join_prepare.assert_not_awaited()
-        coordinator._stop_heartbeat_task.assert_not_awaited()
         coordinator._do_rejoin_group.assert_not_awaited()
+        # Its partitions may go to another member, so it must not hand out
+        # their records until it rejoins
+        assert coordinator._subscription.reassignment_in_progress
 
     async def test_member_with_partitions_keeps_its_idle_time_when_it_rejoins(
         self, idle_member

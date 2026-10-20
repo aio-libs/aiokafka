@@ -712,23 +712,6 @@ class GroupCoordinator(BaseCoordinator):
             if not subscription.active:
                 return None
 
-        # We will not attempt rejoin if there is no activity on consumer.
-        # NOTE: This check has to happen *before* ``_on_join_prepare()`` and
-        # ``_stop_heartbeat_task()``. If we bail out after those, we have
-        # already revoked the assignment and torn down the heartbeat, but we
-        # never rejoin -- leaving a member that is silently dead until its
-        # session expires.
-        # NOTE: An assignment with no partitions can never make progress on its
-        # own: nothing is fetched, so ``fetcher_idle_time`` only ever grows and
-        # the member would be stranded here forever. Such a member must always
-        # be allowed to rejoin, which is how it gets partitions in the first
-        # place.
-        if prev_assignment is not None and prev_assignment.tps:
-            idle_time = self._subscription.fetcher_idle_time
-            if idle_time >= self._max_poll_interval:
-                await asyncio.sleep(self._retry_backoff_ms / 1000)
-                return None
-
         if not self._performed_join_prepare:
             # NOTE: We pass the previously used assignment here.
             await self._on_join_prepare(prev_assignment)
@@ -740,6 +723,16 @@ class GroupCoordinator(BaseCoordinator):
         # handling.
         await self._stop_heartbeat_task()
 
+        # We will not attempt rejoin if there is no activity on consumer.
+        # NOTE: A member that held no partitions had nothing to fetch, so its
+        # ``fetcher_idle_time`` only ever grows, and rejoining is how it gets
+        # partitions in the first place. It may always rejoin.
+        idle_time = self._subscription.fetcher_idle_time
+        held_partitions = prev_assignment is not None and prev_assignment.tps
+        if held_partitions and idle_time >= self._max_poll_interval:
+            await asyncio.sleep(self._retry_backoff_ms / 1000)
+            return None
+
         # We will only try to perform the rejoin once. If it fails,
         # we will spin this loop another time, checking for coordinator
         # and subscription changes.
@@ -750,7 +743,7 @@ class GroupCoordinator(BaseCoordinator):
         success = await self._do_rejoin_group(subscription)
         if success:
             self._performed_join_prepare = False
-            if prev_assignment is None or not prev_assignment.tps:
+            if not held_partitions:
                 # A member that held no partitions had nothing to fetch, so its
                 # ``fetcher_idle_time`` only tells how long it went without
                 # partitions. Count ``max_poll_interval_ms`` from now on, or the

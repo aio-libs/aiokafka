@@ -14,10 +14,9 @@ New features:
 
 Bugfixes:
 
-* Allow a consumer holding no partitions to rejoin its group after
-  ``max_poll_interval_ms``, count ``max_poll_interval_ms`` from the moment it
-  joins with partitions, and decide whether to rejoin before revoking the
-  assignment and stopping the heartbeat (issue #1187, pr #1189 by @vmirz)
+* Keep a consumer holding no partitions in its group past
+  ``max_poll_interval_ms`` and let it rejoin, and count ``max_poll_interval_ms``
+  from the moment it is given partitions (issue #1187, pr #1189 by @vmirz)
 
 Breaking changes:
 
