@@ -2162,7 +2162,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await self.send_messages(0, [1], topic=other_topic)
 
         def static_consumer(*topics):
-            return AIOKafkaConsumer(
+            consumer = AIOKafkaConsumer(
                 *topics,
                 group_id="test-kip-345-fewer-topics",
                 bootstrap_servers=self.hosts,
@@ -2171,6 +2171,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
                 session_timeout_ms=30000,
                 enable_auto_commit=False,
             )
+            # Stopped however the test ends, ``start()`` failing included
+            self.add_cleanup(consumer.stop)
+            return consumer
 
         consumer = static_consumer(self.topic, other_topic)
         await consumer.start()
@@ -2186,7 +2189,6 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         consumer = static_consumer(self.topic)
         await consumer.start()
-        self.add_cleanup(consumer.stop)
 
         msg = await asyncio.wait_for(consumer.getone(), timeout=30)
         self.assertEqual(msg.topic, self.topic)
