@@ -947,10 +947,78 @@ class GroupCoordinator(BaseCoordinator):
             return False
 
         protocol, member_assignment_bytes = assignment
+        if not await self._accept_assignment(subscription, member_assignment_bytes):
+            return False
         await self._on_join_complete(
             self.generation, self.member_id, protocol, member_assignment_bytes
         )
         return True
+
+    async def _accept_assignment(self, subscription, member_assignment_bytes):
+        assignment = ConsumerProtocol.ASSIGNMENT.decode(member_assignment_bytes)
+        unsubscribed = {tp.topic for tp in assignment.partitions()} - set(
+            subscription.topics
+        )
+        if not unsubscribed:
+            return True
+
+        if self._group_instance_id is None:
+            # Like the Java client, rejoin rather than fail. A dynamic member's
+            # assignment is made from the subscription its join carried, so
+            # only an assignor that ignores subscriptions gets here.
+            log.info(
+                "Assignment for group %s includes topics %s this consumer is"
+                " not subscribed to, rejoining",
+                self.group_id,
+                sorted(unsubscribed),
+            )
+        else:
+            log.warning(
+                "Static member %s was handed back its previous assignment in"
+                " group %s, which includes topics it is no longer subscribed"
+                " to: %s. Leaving the group so it rebalances with the current"
+                " subscription",
+                self._group_instance_id,
+                self.group_id,
+                sorted(unsubscribed),
+            )
+            if await self._leave_group_as_static_member():
+                self.reset_generation()
+                return False
+        await asyncio.sleep(self._retry_backoff_ms / 1000)
+        self.request_rejoin()
+        return False
+
+    async def _leave_group_as_static_member(self):
+        request = LeaveGroupRequest(
+            self.group_id, self.member_id, group_instance_id=self._group_instance_id
+        )
+        try:
+            response = await self._send_req(request)
+        except Errors.KafkaError as err:
+            if not err.retriable:
+                raise
+            log.error("LeaveGroup request for static member failed: %s", err)
+            return False
+
+        codes = [response.error_code] + [member[-1] for member in response.members]
+        # A member the broker doesn't know any more has nothing left to forget
+        errors = [
+            error_type
+            for error_type in map(Errors.for_code, codes)
+            if error_type not in (Errors.NoError, Errors.UnknownMemberIdError)
+        ]
+        if not errors:
+            log.info("LeaveGroup request for static member succeeded")
+            return True
+        for error_type in errors:
+            if not error_type.retriable:
+                raise error_type()
+        log.error(
+            "LeaveGroup request for static member failed: %s",
+            ", ".join(error_type.__name__ for error_type in errors),
+        )
+        return False
 
     async def _maybe_do_autocommit(self, assignment):
         if not self._enable_auto_commit:
