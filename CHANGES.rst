@@ -25,6 +25,11 @@ Breaking changes:
 
 * Drop support for Python 3.10 due to end of life
 
+Bugfixes:
+
+* Fix consumer never leaving the group on `max_poll_interval_ms` after a
+  `getone()`/`getmany()` call raised or was cancelled (pr #1190 by @kratos0718)
+
 
 0.14.0 (2026-04-29)
 ===================

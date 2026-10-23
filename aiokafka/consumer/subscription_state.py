@@ -290,10 +290,12 @@ class SubscriptionState:
     @contextlib.contextmanager
     def fetch_context(self):
         self._fetch_count += 1
-        yield
-        self._fetch_count -= 1
-        if self._fetch_count == 0:
-            self._last_fetch_ended = time.monotonic()
+        try:
+            yield
+        finally:
+            self._fetch_count -= 1
+            if self._fetch_count == 0:
+                self._last_fetch_ended = time.monotonic()
 
     @property
     def fetcher_idle_time(self):
