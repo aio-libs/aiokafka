@@ -410,6 +410,29 @@ class TestFetcher(unittest.TestCase):
             await closing
         self.assertTrue(closing.cancelled())
 
+    @run_until_complete
+    async def test_close_propagates_cancellation_during_fetch_task_wait(self):
+        fetcher, tasks = await self._start_fetches_in_retry_backoff()
+        cancel_seen = asyncio.Event()
+
+        async def slow_to_cancel():
+            try:
+                await asyncio.sleep(60)
+            finally:
+                cancel_seen.set()
+                await asyncio.Event().wait()
+
+        fetcher._fetch_task.cancel()
+        fetcher._fetch_task = create_task(slow_to_cancel())
+        closing = create_task(fetcher.close())
+        await cancel_seen.wait()
+        closing.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await closing
+        self.assertTrue(closing.cancelled())
+        for task in tasks:
+            self.assertTrue(task.cancelled())
+
     def _setup_error_after_data(self):
         subscriptions = SubscriptionState()
         client = AIOKafkaClient(bootstrap_servers=[])
