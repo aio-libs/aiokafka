@@ -20,6 +20,8 @@ Bugfixes:
 * Map Kafka error code 82 to a new ``FencedInstanceIdError`` and handle it in
   the consumer group coordinator, instead of raising it as an untyped
   ``KafkaError`` (issue #1186, pr #1188 by @vmirz)
+* Fix ``AIOKafkaConsumer.stop()`` raising ``CancelledError`` when called while
+  the brokers are unreachable (issue #1210)
 
 Breaking changes:
 

@@ -18,6 +18,7 @@ from aiokafka.consumer.fetcher import (
 )
 from aiokafka.consumer.subscription_state import SubscriptionState
 from aiokafka.errors import (
+    KafkaConnectionError,
     KafkaTimeoutError,
     NotLeaderForPartitionError,
     OffsetOutOfRangeError,
@@ -331,6 +332,83 @@ class TestFetcher(unittest.TestCase):
             await fetcher.next_record([])
 
         await fetcher.close()
+
+    async def _create_fetcher_without_routine(self, **kwargs):
+        client = AIOKafkaClient(bootstrap_servers=[])
+        fetcher = Fetcher(client, SubscriptionState(), **kwargs)
+        fetcher._fetch_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await fetcher._fetch_task
+        fetcher._fetch_task = create_task(asyncio.sleep(1000000))
+        return client, fetcher
+
+    async def _start_fetches_in_retry_backoff(self):
+        client, fetcher = await self._create_fetcher_without_routine(
+            retry_backoff_ms=60000
+        )
+        client.send = mock.AsyncMock(side_effect=KafkaConnectionError())
+        req = FetchRequest(-1, 100, 100, [("test", [(0, 4, 100000)])])
+        tasks = {
+            create_task(fetcher._proc_fetch_request(mock.Mock(), node_id, req))
+            for node_id in range(3)
+        }
+        fetcher._pending_tasks.update(tasks)
+        await asyncio.sleep(0)
+        self.assertEqual(client.send.await_count, 3)
+        return fetcher, tasks
+
+    @run_until_complete
+    async def test_close_cancels_fetches_in_retry_backoff(self):
+        fetcher, tasks = await self._start_fetches_in_retry_backoff()
+
+        await fetcher.close()
+
+        for task in tasks:
+            self.assertTrue(task.cancelled())
+
+    @run_until_complete
+    async def test_close_from_cancelled_task_cancels_fetches(self):
+        fetcher, tasks = await self._start_fetches_in_retry_backoff()
+        closed = False
+
+        async def close_on_cancel():
+            nonlocal closed
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                await fetcher.close()
+                closed = True
+                raise
+
+        runner = create_task(close_on_cancel())
+        await asyncio.sleep(0)
+        runner.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await runner
+
+        self.assertTrue(closed)
+        for task in tasks:
+            self.assertTrue(task.cancelled())
+
+    @run_until_complete
+    async def test_close_propagates_cancellation_of_caller(self):
+        _, fetcher = await self._create_fetcher_without_routine()
+        cancel_seen = asyncio.Event()
+
+        async def slow_to_cancel():
+            try:
+                await asyncio.sleep(60)
+            finally:
+                cancel_seen.set()
+                await asyncio.Event().wait()
+
+        fetcher._pending_tasks.add(create_task(slow_to_cancel()))
+        closing = create_task(fetcher.close())
+        await cancel_seen.wait()
+        closing.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await closing
+        self.assertTrue(closing.cancelled())
 
     def _setup_error_after_data(self):
         subscriptions = SubscriptionState()
