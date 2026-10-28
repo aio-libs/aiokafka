@@ -8,10 +8,15 @@ from itertools import chain
 
 import aiokafka.errors as Errors
 from aiokafka.errors import ConsumerStoppedError, KafkaTimeoutError, RecordTooLargeError
+from aiokafka.metrics import (
+    ConsumerMetricsCollector,
+    _call_metrics,
+    _enabled_callbacks,
+)
 from aiokafka.protocol.fetch import FetchRequest
 from aiokafka.protocol.offset import OffsetRequest
 from aiokafka.record.control_record import ABORT_MARKER, ControlRecord
-from aiokafka.record.memory_records import MemoryRecords
+from aiokafka.record.memory_records import MemoryRecords, _count_records
 from aiokafka.structs import ConsumerRecord, OffsetAndTimestamp, TopicPartition
 from aiokafka.util import create_future, create_task
 
@@ -395,8 +400,15 @@ class Fetcher:
         auto_offset_reset="latest",
         isolation_level="read_uncommitted",
         client_rack=None,
+        metrics_collector=None,
     ):
         self._client = client
+        if metrics_collector is None:
+            metrics_collector = ConsumerMetricsCollector()
+        self._metrics_collector = metrics_collector
+        self._metrics_callbacks = _enabled_callbacks(
+            metrics_collector, ConsumerMetricsCollector
+        )
         self._loop = client._loop
         self._key_deserializer = key_deserializer
         self._value_deserializer = value_deserializer
@@ -741,6 +753,8 @@ class Fetcher:
 
     async def _proc_fetch_request(self, assignment, node_id, request):
         needs_wakeup = False
+        collect_fetch = "on_fetch_completed" in self._metrics_callbacks
+        started = time.monotonic() if collect_fetch else None
         try:
             response = await self._client.send(node_id, request)
         except Errors.KafkaError as err:
@@ -757,6 +771,7 @@ class Fetcher:
             # is no longer of interest.
             return False
 
+        fetch_latency = time.monotonic() - started if started is not None else 0
         if not assignment.active:
             log.debug(
                 "Discarding fetch response since the assignment changed during fetch"
@@ -825,11 +840,22 @@ class Fetcher:
                     tp_state.highwater = highwater
                     tp_state.lso = lso
                     tp_state.timestamp = now_ms
+                    if "on_records_lag" in self._metrics_callbacks:
+                        _call_metrics(
+                            self._metrics_collector.on_records_lag,
+                            "consumer",
+                            topic=tp.topic,
+                            partition=tp.partition,
+                            lag=highwater - tp_state.position,
+                        )
 
                     # part_data also contains lso, aborted_transactions.
                     # message_set is last
                     records = MemoryRecords(part_data[-1])
-                    if records.has_next():
+                    has_records = records.has_next()
+                    if collect_fetch and (has_records or not part_data[-1]):
+                        self._record_fetch_metrics(tp, part_data[-1], fetch_latency)
+                    if has_records:
                         log.debug(
                             "Adding fetched record for partition %s with"
                             " offset %d to buffered record list",
@@ -914,6 +940,36 @@ class Fetcher:
     def _set_error(self, tp, error):
         assert tp not in self._records, self._records[tp]
         self._records[tp] = FetchError(error=error, backoff=self._prefetch_backoff)
+        self._record_fetch_error(tp, error)
+
+    def _record_fetch_error(self, tp, error):
+        if "on_fetch_failed" not in self._metrics_callbacks:
+            return
+        _call_metrics(
+            self._metrics_collector.on_fetch_failed,
+            "consumer",
+            topic=tp.topic,
+            partition=tp.partition,
+            exception=error,
+        )
+
+    def _record_fetch_metrics(self, tp, data, latency):
+        try:
+            count = _count_records(data)
+        except Errors.CorruptRecordException:
+            # Leave decoding errors to the normal poll path. Metrics must not
+            # turn a corrupt batch into a failed background fetch task.
+            log.debug("Failed to count fetched records for consumer metrics")
+            return
+        _call_metrics(
+            self._metrics_collector.on_fetch_completed,
+            "consumer",
+            topic=tp.topic,
+            partition=tp.partition,
+            fetch_latency_seconds=latency,
+            record_count=count,
+            bytes_fetched=len(data),
+        )
 
     async def _update_fetch_positions(self, assignment, node_id, tps):
         """This task will be called if there is no valid position for
@@ -1187,7 +1243,11 @@ class Fetcher:
                     continue
                 res_or_error = self._records[tp]
                 if type(res_or_error) is FetchResult:
-                    message = res_or_error.getone()
+                    try:
+                        message = res_or_error.getone()
+                    except Errors.KafkaError as error:
+                        self._record_fetch_error(tp, error)
+                        raise
                     if message is None:
                         # We already processed all messages, request new ones
                         del self._records[tp]
@@ -1223,7 +1283,11 @@ class Fetcher:
                     continue
                 res_or_error = self._records[tp]
                 if type(res_or_error) is FetchResult:
-                    records = res_or_error.getall(max_records)
+                    try:
+                        records = res_or_error.getall(max_records)
+                    except Errors.KafkaError as error:
+                        self._record_fetch_error(tp, error)
+                        raise
                     if not res_or_error.has_more():
                         # We processed all messages - request new ones
                         del self._records[tp]

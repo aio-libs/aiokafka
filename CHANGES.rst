@@ -7,6 +7,8 @@ Changelog
 
 New features:
 
+* Add an experimental lightweight consumer metrics collector for fetches,
+  consumption, lag, and offset commits (issue #1177)
 * Use standard library Zstandard compression on Python 3.14 and newer, without
   requiring cramjam for the ``zstd`` extra (issue #1146)
 * Add an experimental lightweight callback-based producer metrics collector API
@@ -17,6 +19,8 @@ New features:
 
 Bugfixes:
 
+* Reject incomplete modern record batch headers with ``CorruptRecordException``
+  in both decoders, preventing out-of-bounds header reads in the C extension.
 * Map Kafka error code 82 to a new ``FencedInstanceIdError`` and handle it in
   the consumer group coordinator, instead of raising it as an untyped
   ``KafkaError`` (issue #1186, pr #1188 by @vmirz)

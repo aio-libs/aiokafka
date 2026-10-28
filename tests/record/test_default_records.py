@@ -5,11 +5,12 @@ import pytest
 
 import aiokafka.codec
 from aiokafka.codec import has_gzip, has_lz4, has_snappy, has_zstd
-from aiokafka.errors import UnsupportedCodecError
+from aiokafka.errors import CorruptRecordException, UnsupportedCodecError
 from aiokafka.record.default_records import (
     DefaultRecordBatch,
     DefaultRecordBatchBuilder,
 )
+from aiokafka.record.memory_records import MemoryRecords
 
 HeadersT = list[tuple[str, bytes | None]]
 
@@ -374,3 +375,55 @@ def test_set_producer_state() -> None:
     assert reader.producer_id == 700
     assert reader.producer_epoch == 5
     assert reader.base_sequence == 17
+
+
+@pytest.mark.parametrize("size", [0, 12, 17, 26, 60])
+def test_incomplete_batch_header(size: int) -> None:
+    with pytest.raises(CorruptRecordException, match="header is incomplete"):
+        DefaultRecordBatch(bytes(size))
+
+
+@pytest.mark.parametrize("size", [26, 60])
+def test_incomplete_batch_header_from_memory_records(size: int) -> None:
+    data = bytearray(size)
+    data[8:12] = (size - 12).to_bytes(4, "big")
+    data[16] = 2
+    records = MemoryRecords(bytes(data))
+    assert records.has_next()
+    with pytest.raises(CorruptRecordException, match="header is incomplete"):
+        records.next_batch()
+
+
+@pytest.mark.parametrize("format_code", ["B", "I", "Q"])
+@pytest.mark.parametrize("multidimensional", [False, True])
+def test_read_batch_from_memoryview(
+    format_code: Literal["B", "I", "Q"], multidimensional: bool
+) -> None:
+    builder = DefaultRecordBatchBuilder(
+        magic=2,
+        compression_type=0,
+        is_transactional=0,
+        producer_id=-1,
+        producer_epoch=-1,
+        base_sequence=-1,
+        batch_size=1024,
+    )
+    builder.append(offset=0, timestamp=1, key=None, value=b"view", headers=[])
+    data = builder.build()
+    view = memoryview(data).cast(format_code)
+    if multidimensional:
+        view = memoryview(data).cast(format_code, shape=[1, len(view)])
+
+    batch = DefaultRecordBatch(view)
+    assert batch.validate_crc()
+    records = list(batch)
+    assert len(records) == 1
+    assert records[0].offset == 0
+    assert records[0].value == b"view"
+
+
+@pytest.mark.parametrize("size", [12, 60])
+def test_incomplete_batch_header_from_typed_memoryview(size: int) -> None:
+    view = memoryview(bytes(size)).cast("I")
+    with pytest.raises(CorruptRecordException, match="header is incomplete"):
+        DefaultRecordBatch(view)

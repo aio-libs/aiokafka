@@ -1,11 +1,11 @@
 .. _metrics:
 
-Producer metrics
-================
+Producer and consumer metrics
+=============================
 
 .. warning::
 
-    The producer metrics API is experimental and may change without a
+    The metrics collector APIs are experimental and may change without a
     deprecation period.
 
 ``AIOKafkaProducer`` can emit lightweight producer batch lifecycle metrics via
@@ -212,5 +212,113 @@ API reference
 -------------
 
 .. autoclass:: aiokafka.metrics.ProducerMetricsCollector
+    :members:
+    :no-index:
+
+
+Consumer metrics
+----------------
+
+``AIOKafkaConsumer`` accepts a ``metrics_collector`` derived from
+``ConsumerMetricsCollector``. It follows the same synchronous, non-blocking,
+no-op default and exception-handling conventions as the producer collector.
+Callbacks use keyword-only arguments, and durations are in seconds. No metrics
+backend is required. ``topic`` and ``partition`` are always supplied; choose
+labels in your collector to control cardinality.
+
+.. code:: python
+
+    from aiokafka import AIOKafkaConsumer, ConsumerMetricsCollector
+
+
+    class LagMetrics(ConsumerMetricsCollector):
+        def on_records_lag(self, *, topic, partition, lag):
+            print(topic, partition, lag)
+
+
+    consumer = AIOKafkaConsumer(
+        "test-topic",
+        bootstrap_servers="localhost:9092",
+        group_id="example",
+        metrics_collector=LagMetrics(),
+    )
+
+``on_fetch_completed(*, topic, partition, fetch_latency_seconds, record_count, bytes_fetched)``
+    Called per accepted successful partition response, including empty responses.
+    Latency measures the request round trip (including the broker's fetch wait),
+    so partitions in one request share the same latency. Responses discarded
+    after reassignment or a position change are excluded.
+
+    ``bytes_fetched`` is the encoded record set size, including batch overhead
+    and compression. It includes partial trailing batches that will be fetched
+    again; those bytes are counted on every response, so this is not a measure
+    of unique record bytes. ``record_count`` counts records in complete batches,
+    including aborted transactions, control records, and records before the
+    requested offset. It does not use offset distance, which can overcount
+    compacted records. Modern batch counts come from their headers without
+    decompression. If the response contains a legacy (v0/v1) compressed message
+    set, ``record_count`` is ``None``: the outer header has no record count and
+    decompression is deferred to polling. Latency and bytes are still reported.
+    Use ``on_records_consumed`` for delivered record counts in every format.
+    This counting is skipped when ``on_fetch_completed`` is not overridden.
+    If counting fails, this callback is omitted; normal consumption still
+    handles decoding errors. A successful fetch does not guarantee successful
+    CRC validation or deserialization during a later poll.
+
+``on_fetch_failed(*, topic, partition, exception)``
+    Called when the fetcher queues a partition error for the application, or
+    when polling encounters a Kafka error while decoding records. Internal
+    retries, recoverable routing errors, automatic offset resets, and
+    cancellation do not emit failures. The fetcher retries transport failures
+    indefinitely, so those failures have no terminal callback. Each queued
+    error is reported once; a subsequent fetch can fail again.
+
+``on_records_consumed(*, topic, partition, record_count, bytes_consumed)``
+    Called once per non-empty partition returned by ``getmany()``, or once for
+    each record returned by ``getone()`` (including async iteration). Counts
+    represent records handed to the application, not successfully processed
+    or committed records. Paused, discarded, and buffered records are excluded.
+
+    ``bytes_consumed`` sums serialized key and value sizes before user
+    deserialization. Null keys and values contribute zero. Headers, record
+    overhead, and compression are excluded, so these bytes are not directly
+    comparable to ``bytes_fetched``.
+
+``on_records_lag(*, topic, partition, lag)``
+    Called after each accepted successful fetch updates the highwater, even
+    for empty responses. Lag is ``highwater - position`` at that moment and
+    includes buffered records. It is an offset distance, not an exact record
+    count, and uses highwater even with ``read_committed`` isolation. Lag is
+    not updated on each consumed record, seek, or commit. Collectors should
+    expire labels for partitions no longer assigned to the consumer.
+
+    Lag can be negative after log truncation or a seek beyond highwater. The
+    raw difference is preserved so collectors can detect this condition. The
+    Prometheus example clamps the displayed lag to zero.
+
+``on_commit_completed(*, topic, partition, offset, commit_latency_seconds)``
+    Called per successfully committed partition in each offset-commit request
+    attempt. ``offset`` is the committed next offset to consume. Latency
+    measures the request round trip, excluding coordinator discovery, lock
+    wait, retry backoff, and earlier attempts.
+
+``on_commit_failed(*, topic, partition, offset, commit_latency_seconds, exception)``
+    Called per failed partition in each offset-commit request attempt. Transport
+    failures emit a failure for every requested partition. Mixed responses can
+    emit both success and failure callbacks for different partitions.
+
+    Both commit callbacks cover manual, periodic automatic, and final automatic
+    commits. Retries are separate attempts: a partition successfully committed
+    in a partially failed request can be reported again on retry. Empty commits,
+    validation failures before a request, and cancelled requests emit no event.
+
+See ``examples/prometheus_metrics.py`` for producer and consumer collectors
+using Prometheus histograms, counters, and a lag gauge. Run it with
+``--mode consumer`` to expose consumer metrics on port 8000.
+The example registers a rebalance listener before starting the consumer and
+removes lag labels for revoked partitions, so the previous owner does not
+continue exporting stale lag after a partition moves to another consumer.
+
+.. autoclass:: aiokafka.metrics.ConsumerMetricsCollector
     :members:
     :no-index:

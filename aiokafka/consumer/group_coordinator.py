@@ -8,6 +8,11 @@ import aiokafka.errors as Errors
 from aiokafka.client import ConnectionGroup, CoordinationType
 from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from aiokafka.coordinator.protocol import ConsumerProtocol
+from aiokafka.metrics import (
+    ConsumerMetricsCollector,
+    _call_metrics,
+    _enabled_callbacks,
+)
 from aiokafka.protocol.api import Response
 from aiokafka.protocol.commit import OffsetCommitRequest, OffsetFetchRequest
 from aiokafka.protocol.group import (
@@ -235,6 +240,7 @@ class GroupCoordinator(BaseCoordinator):
         exclude_internal_topics=True,
         max_poll_interval_ms=300000,
         rebalance_timeout_ms=30000,
+        metrics_collector=None,
     ):
         """Initialize the coordination manager.
 
@@ -242,6 +248,12 @@ class GroupCoordinator(BaseCoordinator):
         """
         # Leader node will keep track of the whole group's metadata.
         self._group_subscription = None
+        if metrics_collector is None:
+            metrics_collector = ConsumerMetricsCollector()
+        self._metrics_collector = metrics_collector
+        self._metrics_callbacks = _enabled_callbacks(
+            metrics_collector, ConsumerMetricsCollector
+        )
 
         super().__init__(
             client,
@@ -1053,7 +1065,18 @@ class GroupCoordinator(BaseCoordinator):
             self.coordinator_id,
         )
 
-        response = await self._send_req(request)
+        collect_commit = bool(
+            self._metrics_callbacks & {"on_commit_completed", "on_commit_failed"}
+        )
+        started = time.monotonic() if collect_commit else None
+        try:
+            response = await self._send_req(request)
+        except Errors.KafkaError as error:
+            latency = time.monotonic() - started if started is not None else 0
+            for tp, offset in offsets.items():
+                self._report_commit_failed(tp, offset.offset, latency, error)
+            raise
+        latency = time.monotonic() - started if started is not None else 0
 
         errored = collections.OrderedDict()
         unauthorized_topics = set()
@@ -1062,17 +1085,28 @@ class GroupCoordinator(BaseCoordinator):
                 tp = TopicPartition(topic, partition)
                 error_type = Errors.for_code(error_code)
                 offset = offsets[tp]
+                error = None
                 if error_type is Errors.NoError:
                     log.debug("Committed offset %s for partition %s", offset, tp)
+                    if "on_commit_completed" in self._metrics_callbacks:
+                        _call_metrics(
+                            self._metrics_collector.on_commit_completed,
+                            "consumer",
+                            topic=tp.topic,
+                            partition=tp.partition,
+                            offset=offset.offset,
+                            commit_latency_seconds=latency,
+                        )
                 elif error_type is Errors.GroupAuthorizationFailedError:
                     log.error(
                         "OffsetCommit failed for group %s - %s",
                         self.group_id,
                         error_type.__name__,
                     )
-                    errored[tp] = error_type(self.group_id)
+                    error = error_type(self.group_id)
                 elif error_type is Errors.TopicAuthorizationFailedError:
                     unauthorized_topics.add(topic)
+                    error = error_type(topic)
                 elif error_type in (
                     Errors.OffsetMetadataTooLargeError,
                     Errors.InvalidCommitOffsetSizeError,
@@ -1085,7 +1119,7 @@ class GroupCoordinator(BaseCoordinator):
                         tp,
                         error_type.__name__,
                     )
-                    errored[tp] = error_type()
+                    error = error_type()
                 elif error_type is Errors.GroupLoadInProgressError:
                     # just retry
                     log.info(
@@ -1094,7 +1128,7 @@ class GroupCoordinator(BaseCoordinator):
                         self.group_id,
                         error_type.__name__,
                     )
-                    errored[tp] = error_type()
+                    error = error_type()
                 elif error_type in (
                     Errors.GroupCoordinatorNotAvailableError,
                     Errors.NotCoordinatorForGroupError,
@@ -1108,7 +1142,7 @@ class GroupCoordinator(BaseCoordinator):
                         error_type.__name__,
                     )
                     self.coordinator_dead()
-                    errored[tp] = error_type()
+                    error = error_type()
                 elif error_type in (
                     Errors.UnknownMemberIdError,
                     Errors.IllegalGenerationError,
@@ -1126,7 +1160,6 @@ class GroupCoordinator(BaseCoordinator):
                         self.request_rejoin()
                     else:
                         self.reset_generation()
-                    errored[tp] = error
 
                 else:
                     log.error(
@@ -1137,7 +1170,12 @@ class GroupCoordinator(BaseCoordinator):
                         offset,
                         error_type.__name__,
                     )
-                    errored[tp] = error_type()
+                    error = error_type()
+
+                if error is not None:
+                    if error_type is not Errors.TopicAuthorizationFailedError:
+                        errored[tp] = error
+                    self._report_commit_failed(tp, offset.offset, latency, error)
 
         if errored:
             first_error, *_ = errored.values()
@@ -1147,6 +1185,19 @@ class GroupCoordinator(BaseCoordinator):
                 "OffsetCommit failed for unauthorized topics %s", unauthorized_topics
             )
             raise Errors.TopicAuthorizationFailedError(unauthorized_topics)
+
+    def _report_commit_failed(self, tp, offset, latency, error):
+        if "on_commit_failed" not in self._metrics_callbacks:
+            return
+        _call_metrics(
+            self._metrics_collector.on_commit_failed,
+            "consumer",
+            topic=tp.topic,
+            partition=tp.partition,
+            offset=offset,
+            commit_latency_seconds=latency,
+            exception=error,
+        )
 
     async def _maybe_refresh_commit_offsets(self, assignment):
         need_update = assignment.requesting_committed()

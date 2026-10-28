@@ -201,6 +201,9 @@ cdef class DefaultRecordBatch:
         cdef:
             char* buf
 
+        if self._buffer.len < FIRST_RECORD_OFFSET:
+            raise CorruptRecordException("Record batch header is incomplete")
+
         buf = <char*> self._buffer.buf
         self.base_offset = hton.unpack_int64(&buf[BASE_OFFSET_OFFSET])
         self.length = hton.unpack_int32(&buf[LENGTH_OFFSET])
