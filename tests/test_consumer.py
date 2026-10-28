@@ -2246,3 +2246,21 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             await _wait_mock_count(listener1, 4)
         self.assertEqual(listener1.revoke_mock.call_count, 5)
         self.assertEqual(listener1.assign_mock.call_count, 5)
+
+
+async def test_stop_closes_client_when_cancelled_during_fetcher_close():
+    consumer = AIOKafkaConsumer(bootstrap_servers=[])
+    close_started = asyncio.Event()
+
+    async def slow_close():
+        close_started.set()
+        await asyncio.Event().wait()
+
+    consumer._fetcher = mock.Mock(close=slow_close)
+    consumer._client.close = mock.AsyncMock()
+    stopping = create_task(consumer.stop())
+    await close_started.wait()
+    stopping.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await stopping
+    consumer._client.close.assert_awaited_once()
