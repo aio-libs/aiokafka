@@ -130,8 +130,8 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
             consumer = AIOKafkaConsumer(
                 self.topic, bootstrap_servers=self.hosts, loop=loop
             )
-        loop.run_until_complete(consumer.start())
         try:
+            loop.run_until_complete(consumer.start())
             loop.run_until_complete(self.send_messages(0, list(range(10))))
             for _ in range(10):
                 loop.run_until_complete(consumer.getone())

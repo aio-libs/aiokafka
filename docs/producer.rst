@@ -9,8 +9,8 @@ Producer client
 to the Kafka cluster. Most simple usage would be::
 
     producer = aiokafka.AIOKafkaProducer(bootstrap_servers="localhost:9092")
-    await producer.start()
     try:
+        await producer.start()
         await producer.send_and_wait("my_topic", b"Super message")
     finally:
         await producer.stop()
@@ -103,8 +103,8 @@ by passing the parameter ``enable_idempotence=True`` to :class:`~.AIOKafkaProduc
     producer = aiokafka.AIOKafkaProducer(
         bootstrap_servers='localhost:9092',
         enable_idempotence=True)
-    await producer.start()
     try:
+        await producer.start()
         await producer.send_and_wait("my_topic", b"Super message")
     finally:
         await producer.stop()
@@ -134,8 +134,8 @@ attendant APIs, you must set the ``transactional_id`` configuration property::
     producer = aiokafka.AIOKafkaProducer(
         bootstrap_servers='localhost:9092',
         transactional_id="transactional_test")
-    await producer.start()
     try:
+        await producer.start()
         async with producer.transaction():
             res = await producer.send_and_wait(
                 "test-topic", b"Super transactional message")
