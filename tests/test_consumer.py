@@ -397,6 +397,34 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(set(available_msgs), set(result))
 
     @run_until_complete
+    async def test_seek_to_committed_zero(self):
+        await self.send_messages(0, range(3))
+        await self.send_messages(1, range(3))
+        consumer = await self.consumer_factory(enable_auto_commit=False)
+        tp0 = TopicPartition(self.topic, 0)
+        tp1 = TopicPartition(self.topic, 1)
+        await consumer.commit({tp0: 0})
+
+        for partitions in [(tp0,), ()]:
+            with self.subTest(partitions=partitions):
+                consumer.seek(tp0, 0)
+                consumer.seek(tp1, 0)
+                await consumer.getone(tp0)
+                await consumer.getone(tp1)
+                self.assertEqual(await consumer.position(tp0), 1)
+                self.assertIsNone(await consumer.committed(tp1))
+
+                offsets = await consumer.seek_to_committed(*partitions)
+                expected = {tp0: 0} if partitions else {tp0: 0, tp1: None}
+                self.assertEqual(offsets, expected)
+                self.assertEqual(await consumer.position(tp0), 0)
+                self.assertEqual(await consumer.position(tp1), 1)
+
+                message = await consumer.getone(tp0)
+                self.assertEqual(message.offset, 0)
+                self.assertEqual(message.value, b"0")
+
+    @run_until_complete
     async def test_manual_subscribe_pattern(self):
         msgs1 = await self.send_messages(0, range(10))
         msgs2 = await self.send_messages(1, range(10, 20))
