@@ -20,6 +20,10 @@ Bugfixes:
 * Map Kafka error code 82 to a new ``FencedInstanceIdError`` and handle it in
   the consumer group coordinator, instead of raising it as an untyped
   ``KafkaError`` (issue #1186, pr #1188 by @vmirz)
+* Rejoin the group instead of failing the coordination routine when handed an
+  assignment of topics the consumer is no longer subscribed to. A static member
+  first leaves the group under its ``group_instance_id`` (LeaveGroup v3, Kafka
+  2.4+), as the broker would hand it the same assignment again (issue #1208)
 
 Breaking changes:
 

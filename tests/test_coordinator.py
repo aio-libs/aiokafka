@@ -3,6 +3,8 @@ import contextlib
 import re
 from unittest import mock
 
+import pytest
+
 import aiokafka.errors as Errors
 from aiokafka import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
@@ -12,6 +14,7 @@ from aiokafka.consumer.group_coordinator import (
     NoGroupCoordinator,
 )
 from aiokafka.consumer.subscription_state import SubscriptionState
+from aiokafka.coordinator.protocol import ConsumerProtocol
 from aiokafka.protocol.commit import (
     OffsetCommitRequest,
     OffsetCommitResponse_v2,
@@ -24,6 +27,8 @@ from aiokafka.protocol.group import (
     JoinGroupRequest,
     JoinGroupResponse_v0,
     LeaveGroupRequest,
+    LeaveGroupRequest_v3,
+    LeaveGroupResponse_v3,
     SyncGroupResponse_v0,
 )
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
@@ -46,6 +51,162 @@ class RebalanceListenerForTest(ConsumerRebalanceListener):
     def on_partitions_assigned(self, assigned):
         self.assigned.append(assigned)
         raise Exception("coordinator should ignore this exception")  # noqa: TRY002
+
+
+@pytest.fixture
+async def rejoining_member():
+    """Makes coordinators subscribed to ``topic1``, driven by the test instead
+    of their coordination routine. Their LeaveGroup is answered with
+    ``leave_errors``: the request's error code and the member's."""
+    coordinators = []
+
+    async def make(group_instance_id=None, leave_errors=(0, 0)):
+        client = AIOKafkaClient(bootstrap_servers=[])
+        subscription = SubscriptionState()
+        subscription.subscribe(topics={"topic1"})
+        coordinator = GroupCoordinator(
+            client,
+            subscription,
+            group_instance_id=group_instance_id,
+            retry_backoff_ms=10,
+        )
+        coordinators.append(coordinator)
+        coordinator._coordination_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await coordinator._coordination_task
+        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
+
+        coordinator.coordinator_id = 15
+        coordinator.member_id = "member-1"
+        coordinator.generation = 3
+        coordinator._on_join_complete = mock.AsyncMock()
+        top_error, member_error = leave_errors
+        coordinator._send_req = mock.AsyncMock(
+            return_value=LeaveGroupResponse_v3(
+                0, top_error, [("member-1", group_instance_id, member_error)]
+            )
+        )
+        return coordinator
+
+    yield make
+    for coordinator in coordinators:
+        await coordinator.close()
+
+
+async def rejoin(coordinator, **partitions):
+    """Join, with the group answering with ``partitions`` by topic"""
+    assignment = ConsumerProtocol.ASSIGNMENT(0, list(partitions.items()), b"").encode()
+    rebalance = mock.Mock()
+    rebalance.perform_group_join = mock.AsyncMock(
+        return_value=("roundrobin", assignment)
+    )
+    with mock.patch(
+        "aiokafka.consumer.group_coordinator.CoordinatorGroupRebalance",
+        return_value=rebalance,
+    ):
+        return await coordinator._do_rejoin_group(
+            coordinator._subscription.subscription
+        )
+
+
+class TestGroupCoordinatorStaleAssignment:
+    """An assignment with topics the member isn't subscribed to"""
+
+    async def test_assignment_within_subscription_is_taken(self, rejoining_member):
+        coordinator = await rejoining_member(group_instance_id="static-1")
+
+        assert await rejoin(coordinator, topic1=[0, 1])
+
+        coordinator._on_join_complete.assert_awaited_once()
+        coordinator._send_req.assert_not_awaited()
+
+    async def test_static_member_leaves_and_rejoins_as_new_member(
+        self, rejoining_member
+    ):
+        coordinator = await rejoining_member(group_instance_id="static-1")
+
+        assert not await rejoin(coordinator, topic1=[0], topic2=[0])
+
+        coordinator._on_join_complete.assert_not_awaited()
+        (request,), _ = coordinator._send_req.await_args
+        assert request.prepare(
+            {LeaveGroupRequest.API_KEY: (0, 5)}
+        ) == LeaveGroupRequest_v3(coordinator.group_id, [("member-1", "static-1")])
+        # Rejoins without a member id, as a new member of the group
+        assert coordinator.member_id == UNKNOWN_MEMBER_ID
+        assert coordinator.need_rejoin(coordinator._subscription.subscription)
+
+    async def test_static_member_the_broker_no_longer_knows_has_left(
+        self, rejoining_member
+    ):
+        coordinator = await rejoining_member(
+            group_instance_id="static-1",
+            leave_errors=(0, Errors.UnknownMemberIdError.errno),
+        )
+
+        assert not await rejoin(coordinator, topic1=[0], topic2=[0])
+
+        assert coordinator.member_id == UNKNOWN_MEMBER_ID
+
+    async def test_static_member_that_fails_to_leave_tries_again(
+        self, rejoining_member
+    ):
+        coordinator = await rejoining_member(group_instance_id="static-1")
+        coordinator._send_req.side_effect = Errors.RequestTimedOutError()
+
+        with mock.patch.object(asyncio, "sleep", mock.AsyncMock()) as sleep:
+            assert not await rejoin(coordinator, topic1=[0], topic2=[0])
+
+        # Backs off, or it would spin on being handed the same assignment
+        sleep.assert_awaited_once_with(0.01)
+        coordinator._on_join_complete.assert_not_awaited()
+        assert coordinator.member_id == "member-1"
+        assert coordinator.need_rejoin(coordinator._subscription.subscription)
+
+    async def test_static_member_refused_leaving_for_now_tries_again(
+        self, rejoining_member
+    ):
+        coordinator = await rejoining_member(
+            group_instance_id="static-1",
+            leave_errors=(Errors.GroupCoordinatorNotAvailableError.errno, 0),
+        )
+
+        assert not await rejoin(coordinator, topic1=[0], topic2=[0])
+
+        assert coordinator.member_id == "member-1"
+        assert coordinator.need_rejoin(coordinator._subscription.subscription)
+
+    async def test_static_member_fenced_while_leaving_raises(self, rejoining_member):
+        coordinator = await rejoining_member(
+            group_instance_id="static-1",
+            leave_errors=(0, Errors.FencedInstanceIdError.errno),
+        )
+
+        with pytest.raises(Errors.FencedInstanceIdError):
+            await rejoin(coordinator, topic1=[0], topic2=[0])
+        coordinator._on_join_complete.assert_not_awaited()
+
+    async def test_static_member_without_leave_group_v3_raises(self, rejoining_member):
+        coordinator = await rejoining_member(group_instance_id="static-1")
+        # A broker before Kafka 2.4 stops at LeaveGroup v2
+        coordinator._send_req.side_effect = lambda request: request.prepare(
+            {LeaveGroupRequest.API_KEY: (0, 2)}
+        )
+
+        with pytest.raises(Errors.IncompatibleBrokerVersion):
+            await rejoin(coordinator, topic1=[0], topic2=[0])
+        coordinator._on_join_complete.assert_not_awaited()
+
+    async def test_dynamic_member_rejoins_with_its_subscription(self, rejoining_member):
+        coordinator = await rejoining_member()
+
+        with mock.patch.object(asyncio, "sleep", mock.AsyncMock()) as sleep:
+            assert not await rejoin(coordinator, topic1=[0], topic2=[0])
+
+        sleep.assert_awaited_once_with(0.01)
+        coordinator._on_join_complete.assert_not_awaited()
+        coordinator._send_req.assert_not_awaited()
+        assert coordinator.need_rejoin(coordinator._subscription.subscription)
 
 
 class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):

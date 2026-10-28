@@ -2151,6 +2151,49 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         listener1.assign_mock.assert_called_with(c1_assignment.union(c2_assignment))
         assert all_partitions == consumer1.assignment()
 
+    @kafka_versions(">=2.4.0")
+    @run_until_complete
+    async def test_kip_345_rejoin_with_fewer_topics(self):
+        # A static member restarted within its session timeout is handed back the
+        # assignment it held. Restarted subscribed to fewer topics, that assignment
+        # has partitions of a topic it no longer subscribes to.
+        other_topic = f"{self.topic}-other"
+        await self.send_messages(0, [0])
+        await self.send_messages(0, [1], topic=other_topic)
+
+        def static_consumer(*topics):
+            consumer = AIOKafkaConsumer(
+                *topics,
+                group_id="test-kip-345-fewer-topics",
+                bootstrap_servers=self.hosts,
+                auto_offset_reset="earliest",
+                group_instance_id="static-member",
+                session_timeout_ms=30000,
+                enable_auto_commit=False,
+            )
+            # Stopped however the test ends, ``start()`` failing included
+            self.add_cleanup(consumer.stop)
+            return consumer
+
+        consumer = static_consumer(self.topic, other_topic)
+        await consumer.start()
+
+        async def assigned_both_topics():
+            topics = {self.topic, other_topic}
+            while {tp.topic for tp in consumer.assignment()} != topics:
+                await consumer.getmany(timeout_ms=100)
+
+        await asyncio.wait_for(assigned_both_topics(), timeout=30)
+        # A static member doesn't leave the group when it stops
+        await consumer.stop()
+
+        consumer = static_consumer(self.topic)
+        await consumer.start()
+
+        msg = await asyncio.wait_for(consumer.getone(), timeout=30)
+        self.assertEqual(msg.topic, self.topic)
+        self.assertEqual({tp.topic for tp in consumer.assignment()}, {self.topic})
+
     @kafka_versions(">=2.3.0")
     @run_until_complete
     async def test_kip_345_disabled(self):
