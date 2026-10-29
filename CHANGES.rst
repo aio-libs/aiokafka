@@ -20,6 +20,10 @@ Bugfixes:
 * Map Kafka error code 82 to a new ``FencedInstanceIdError`` and handle it in
   the consumer group coordinator, instead of raising it as an untyped
   ``KafkaError`` (issue #1186, pr #1188 by @vmirz)
+* Handle the group-level ``error_code`` of ``OffsetFetch`` v2+ responses. A
+  coordinator that was loading or had moved was read as "no committed
+  offsets", which reset the consumer to ``auto_offset_reset``; regression
+  from pr #1136 (issue #1206)
 
 Breaking changes:
 
