@@ -21,6 +21,11 @@ Bugfixes:
   the consumer group coordinator, instead of raising it as an untyped
   ``KafkaError`` (issue #1186, pr #1188 by @vmirz)
 
+Bugfixes:
+
+* Declare the C extensions as safe to run without the GIL, so importing
+  aiokafka on free-threaded Python no longer re-enables it (issue #1198)
+
 Breaking changes:
 
 * Drop support for Python 3.10 due to end of life
