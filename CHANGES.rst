@@ -2,6 +2,23 @@
 Changelog
 =========
 
+0.16.0 (2026-??-??)
+===================
+
+New features:
+
+* Introduce ``ProducerListener`` in ``aiokafka.listeners`` and allow multiple
+  producer event listeners through ``listeners=[...]``. Preserve batch callback
+  arguments and synchronous delivery (pr #1213 by @Gleb-Shipilov).
+
+Breaking changes:
+
+* Replace the experimental ``ProducerMetricsCollector`` / ``metrics_collector``
+  API released in 0.15.0 with ``ProducerListener`` / ``listeners=[listener]``
+  and remove the ``aiokafka.metrics`` module, without compatibility aliases
+  (pr #1213 by @Gleb-Shipilov).
+
+
 0.15.0 (2026-10-28)
 ===================
 
