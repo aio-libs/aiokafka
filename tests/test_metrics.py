@@ -603,6 +603,17 @@ def test_producer_listener_allows_partial_implementation():
 async def test_multiple_producer_listeners_receive_batch_events(outcome, caplog):
     first = RaisingMetricsCollector()
     second = RecordingMetricsCollector()
+    calls = mock.Mock()
+    for name, listener in (("first", first), ("second", second)):
+        for event in (
+            "on_batch_dispatched",
+            "on_batch_completed",
+            "on_batch_failed",
+            "on_buffer_wait",
+        ):
+            callback = mock.Mock(wraps=getattr(listener, event))
+            setattr(listener, event, callback)
+            calls.attach_mock(callback, f"{name}_{event}")
     producer = AIOKafkaProducer(listeners=[first, second])
     accumulator = producer._message_accumulator
     accumulator._cluster = make_cluster()
@@ -638,5 +649,16 @@ async def test_multiple_producer_listeners_receive_batch_events(outcome, caplog)
                 0.5,
             )
         )
+        terminal_event = (
+            "on_batch_failed" if outcome == "failure" else "on_batch_completed"
+        )
+        assert [call[0] for call in calls.mock_calls] == [
+            "first_on_batch_dispatched",
+            "second_on_batch_dispatched",
+            f"first_{terminal_event}",
+            f"second_{terminal_event}",
+            "first_on_buffer_wait",
+            "second_on_buffer_wait",
+        ]
     finally:
         await producer.stop()
