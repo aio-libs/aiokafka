@@ -8,24 +8,27 @@ Producer metrics
     The producer metrics API is experimental and may change without a
     deprecation period.
 
-``AIOKafkaProducer`` can emit lightweight producer batch lifecycle metrics via
-the ``metrics_collector`` constructor argument. The collector is a synchronous
-callback object derived from ``ProducerMetricsCollector``; aiokafka does not
-aggregate, sample, export, or depend on a metrics backend.
+``AIOKafkaProducer`` emits producer batch lifecycle events through
+``ProducerListener`` instances registered with ``listeners=[listener]``.
+Metrics collection is one use of these events; aiokafka does not aggregate,
+sample, export, or depend on a metrics backend. See :ref:`listeners` for the
+producer listener registration.
+
+The experimental ``ProducerMetricsCollector`` name and ``metrics_collector``
+argument have been replaced by ``ProducerListener`` and ``listeners``.
 
 Implementations should keep callbacks fast and non-blocking. If you need to do
 asynchronous work, push the event into an internal queue and process it from a
 separate task. Exceptions raised by collectors are logged and ignored.
 Every callback has a no-op default, so implementations only need to override
-the callbacks they use. Defining an unknown method whose name starts with
-``on_`` emits a warning to help catch callback name typos.
+the callbacks they use.
 
 .. code:: python
 
-    from aiokafka import AIOKafkaProducer, ProducerMetricsCollector
+    from aiokafka import AIOKafkaProducer, ProducerListener
 
 
-    class CompletionMetrics(ProducerMetricsCollector):
+    class CompletionMetrics(ProducerListener):
         def on_batch_completed(
             self,
             *,
@@ -47,7 +50,7 @@ the callbacks they use. Defining an unknown method whose name starts with
 
     producer = AIOKafkaProducer(
         bootstrap_servers="localhost:9092",
-        metrics_collector=CompletionMetrics(),
+        listeners=[CompletionMetrics()],
     )
 
 Callbacks
@@ -108,7 +111,7 @@ Prometheus example
 
 .. code:: python
 
-    from aiokafka import ProducerMetricsCollector
+    from aiokafka import ProducerListener
     from prometheus_client import Counter, Histogram
 
 
@@ -154,7 +157,7 @@ Prometheus example
     )
 
 
-    class PrometheusProducerMetrics(ProducerMetricsCollector):
+    class PrometheusProducerMetrics(ProducerListener):
         def on_batch_dispatched(
             self,
             *,
@@ -211,6 +214,6 @@ Prometheus example
 API reference
 -------------
 
-.. autoclass:: aiokafka.metrics.ProducerMetricsCollector
+.. autoclass:: aiokafka.ProducerListener
     :members:
     :no-index:

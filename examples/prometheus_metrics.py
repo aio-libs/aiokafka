@@ -2,7 +2,7 @@ import asyncio
 
 from prometheus_client import Counter, Histogram, start_http_server
 
-from aiokafka import AIOKafkaProducer, ProducerMetricsCollector
+from aiokafka import AIOKafkaProducer, ProducerListener
 
 queue_time = Histogram(
     "aiokafka_producer_batch_queue_time_seconds",
@@ -46,7 +46,7 @@ buffer_wait = Counter(
 )
 
 
-class PrometheusProducerMetrics(ProducerMetricsCollector):
+class PrometheusProducerMetrics(ProducerListener):
     def on_batch_dispatched(
         self,
         *,
@@ -100,7 +100,7 @@ async def produce():
     start_http_server(8000)
     producer = AIOKafkaProducer(
         bootstrap_servers="localhost:9092",
-        metrics_collector=PrometheusProducerMetrics(),
+        listeners=[PrometheusProducerMetrics()],
     )
     await producer.start()
     try:

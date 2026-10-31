@@ -32,10 +32,10 @@ Helpers
     :member-order: alphabetical
     :members:
 
-Metrics
--------
+Producer listeners
+------------------
 
-.. autoclass:: aiokafka.metrics.ProducerMetricsCollector
+.. autoclass:: aiokafka.ProducerListener
     :members:
 
 Abstracts
