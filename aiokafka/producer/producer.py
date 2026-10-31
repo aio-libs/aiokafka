@@ -11,7 +11,7 @@ from aiokafka.errors import (
     IllegalOperation,
     MessageSizeTooLargeError,
 )
-from aiokafka.listeners import ProducerListener, _validate_listeners
+from aiokafka.listeners import ConnectionListener
 from aiokafka.partitioner import DefaultPartitioner
 from aiokafka.record.default_records import (
     DefaultRecordBatch,
@@ -176,7 +176,7 @@ class AIOKafkaProducer:
         sasl_oauth_token_provider (:class:`~aiokafka.abc.AbstractTokenProvider`):
             OAuthBearer token provider instance.
             Default: :data:`None`
-        listeners (Iterable[ProducerListener]): Optional event listeners.
+        listeners (Iterable[ConnectionListener]): Optional event listeners.
             Defaults to an empty tuple. See :ref:`listeners` for the listener
             registration and callback semantics.
 
@@ -227,7 +227,7 @@ class AIOKafkaProducer:
         sasl_kerberos_service_name="kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
-        listeners: Iterable[ProducerListener] = (),
+        listeners: Iterable[ConnectionListener] = (),
     ):
         if loop is None:
             loop = get_running_loop()
@@ -298,7 +298,7 @@ class AIOKafkaProducer:
         self._partitioner = partitioner
         self._max_request_size = max_request_size
         self._request_timeout_ms = request_timeout_ms
-        listeners = _validate_listeners(listeners, ProducerListener)
+        listeners = tuple(listeners)
 
         self.client = AIOKafkaClient(
             loop=loop,
@@ -316,6 +316,7 @@ class AIOKafkaProducer:
             sasl_kerberos_service_name=sasl_kerberos_service_name,
             sasl_kerberos_domain_name=sasl_kerberos_domain_name,
             sasl_oauth_token_provider=sasl_oauth_token_provider,
+            listeners=listeners,
         )
         self._metadata = self.client.cluster
         self._message_accumulator = MessageAccumulator(

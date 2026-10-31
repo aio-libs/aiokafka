@@ -4,9 +4,15 @@ from .abc import ConsumerRebalanceListener
 from .client import AIOKafkaClient
 from .consumer import AIOKafkaConsumer
 from .errors import ConsumerStoppedError, IllegalOperation
-from .listeners import ProducerListener
+from .listeners import (
+    ConnectionListener,
+    ProducerListener,
+)
 from .producer import AIOKafkaProducer
 from .structs import (
+    ConnectionCloseReason,
+    ConnectionGroup,
+    ConnectionInfo,
     ConsumerRecord,
     OffsetAndMetadata,
     OffsetAndTimestamp,
@@ -19,7 +25,11 @@ __all__ = [  # noqa: RUF022
     "AIOKafkaConsumer",
     "AIOKafkaClient",
     # Event listeners
+    "ConnectionInfo",
+    "ConnectionListener",
     "ProducerListener",
+    "ConnectionGroup",
+    "ConnectionCloseReason",
     # ABC's
     "ConsumerRebalanceListener",
     # Errors

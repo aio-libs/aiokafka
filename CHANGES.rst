@@ -7,11 +7,20 @@ Changelog
 
 New features:
 
+* Add ``ConnectionListener`` for connection opened, closed, and failed events
+  on consumers, producers, and the low-level client. Extend ``ProducerListener``
+  with these events and expose connection details in ``aiokafka.structs``
+  (issue #1197, pr #1205 by @Gleb-Shipilov).
+
 * Introduce ``ProducerListener`` in ``aiokafka.listeners`` and allow multiple
   producer event listeners through ``listeners=[...]``. Preserve batch callback
   arguments and synchronous delivery (pr #1213 by @Gleb-Shipilov).
 
 Breaking changes:
+
+* Move ``aiokafka.conn.CloseReason`` to
+  ``aiokafka.structs.ConnectionCloseReason`` without a compatibility alias;
+  enum values are unchanged (issue #1197, pr #1205 by @Gleb-Shipilov).
 
 * Replace the experimental ``ProducerMetricsCollector`` / ``metrics_collector``
   API released in 0.15.0 with ``ProducerListener`` / ``listeners=[listener]``
