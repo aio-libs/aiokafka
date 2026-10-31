@@ -2,18 +2,62 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import IntEnum
 from typing import Generic, NamedTuple, TypeVar
 
 from aiokafka.errors import KafkaError
 
 __all__ = [
     "BrokerMetadata",
+    "ConnectionCloseReason",
+    "ConnectionGroup",
+    "ConnectionInfo",
     "ConsumerRecord",
     "OffsetAndMetadata",
     "PartitionMetadata",
     "RecordMetadata",
     "TopicPartition",
 ]
+
+
+class ConnectionCloseReason(IntEnum):
+    """Reason a Kafka connection was closed.
+
+    ``AUTH_FAILURE`` is used during authentication by the low-level connection.
+    Public observers receive authentication errors through
+    ``on_connection_failed``, rather than ``on_connection_closed``.
+    """
+
+    CONNECTION_BROKEN = 0
+    CONNECTION_TIMEOUT = 1
+    OUT_OF_SYNC = 2
+    IDLE_DROP = 3
+    SHUTDOWN = 4
+    AUTH_FAILURE = 5
+
+
+class ConnectionGroup(IntEnum):
+    """Purpose of a connection to a Kafka node."""
+
+    DEFAULT = 0
+    COORDINATION = 1
+
+
+@dataclass(frozen=True)
+class ConnectionInfo:
+    """Immutable description of one connection attempt and its connection.
+
+    ``connection_id`` is an opaque identifier, unique to each attempt.
+    ``node_id`` is ``None`` for bootstrap connections. The description stays
+    unchanged for the lifetime of the connection, including after bootstrap.
+    """
+
+    client_id: str
+    connection_id: str
+    node_id: int | None
+    host: str
+    port: int
+    connection_group: ConnectionGroup
 
 
 class TopicPartition(NamedTuple):

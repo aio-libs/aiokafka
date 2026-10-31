@@ -3,6 +3,7 @@ import logging
 import sys
 import traceback
 import warnings
+from collections.abc import Iterable
 
 from aiokafka.client import AIOKafkaClient
 from aiokafka.codec import has_gzip, has_lz4, has_snappy, has_zstd
@@ -10,7 +11,7 @@ from aiokafka.errors import (
     IllegalOperation,
     MessageSizeTooLargeError,
 )
-from aiokafka.metrics import ProducerMetricsCollector
+from aiokafka.listeners import ConnectionListener
 from aiokafka.partitioner import DefaultPartitioner
 from aiokafka.record.default_records import (
     DefaultRecordBatch,
@@ -175,10 +176,9 @@ class AIOKafkaProducer:
         sasl_oauth_token_provider (:class:`~aiokafka.abc.AbstractTokenProvider`):
             OAuthBearer token provider instance.
             Default: :data:`None`
-        metrics_collector (:class:`~aiokafka.metrics.ProducerMetricsCollector`):
-            Optional synchronous callback object for producer batch lifecycle
-            metrics. Defaults to a no-op collector. This API is experimental
-            and may change without a deprecation period.
+        listeners (Iterable[ConnectionListener]): Optional event listeners.
+            Defaults to an empty tuple. See :ref:`listeners` for the listener
+            registration and callback semantics.
 
     Note:
         Many configuration parameters are taken from the Java client:
@@ -227,7 +227,7 @@ class AIOKafkaProducer:
         sasl_kerberos_service_name="kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
-        metrics_collector=None,
+        listeners: Iterable[ConnectionListener] = (),
     ):
         if loop is None:
             loop = get_running_loop()
@@ -298,13 +298,7 @@ class AIOKafkaProducer:
         self._partitioner = partitioner
         self._max_request_size = max_request_size
         self._request_timeout_ms = request_timeout_ms
-        if metrics_collector is None:
-            metrics_collector = ProducerMetricsCollector()
-        if not isinstance(metrics_collector, ProducerMetricsCollector):
-            raise TypeError(
-                "metrics_collector must be an instance of ProducerMetricsCollector"
-            )
-        self._metrics_collector = metrics_collector
+        listeners = tuple(listeners)
 
         self.client = AIOKafkaClient(
             loop=loop,
@@ -322,6 +316,7 @@ class AIOKafkaProducer:
             sasl_kerberos_service_name=sasl_kerberos_service_name,
             sasl_kerberos_domain_name=sasl_kerberos_domain_name,
             sasl_oauth_token_provider=sasl_oauth_token_provider,
+            listeners=listeners,
         )
         self._metadata = self.client.cluster
         self._message_accumulator = MessageAccumulator(
@@ -332,7 +327,7 @@ class AIOKafkaProducer:
             txn_manager=self._txn_manager,
             loop=loop,
             linger_ms=linger_ms,
-            metrics_collector=self._metrics_collector,
+            listeners=listeners,
         )
         self._sender = Sender(
             self.client,

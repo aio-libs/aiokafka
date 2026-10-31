@@ -11,7 +11,7 @@ from aiokafka.errors import (
     NotLeaderForPartitionError,
     ProducerClosed,
 )
-from aiokafka.metrics import ProducerMetricsCollector
+from aiokafka.listeners import ProducerListener, _collect_callbacks
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
 from aiokafka.structs import RecordMetadata
 from aiokafka.util import create_future, get_running_loop
@@ -19,11 +19,12 @@ from aiokafka.util import create_future, get_running_loop
 log = logging.getLogger(__name__)
 
 
-def _call_metrics(callback, **kwargs):
-    try:
-        callback(**kwargs)
-    except Exception:
-        log.exception("Producer metrics collector callback failed")
+def _call_listeners(callbacks, **kwargs):
+    for callback in callbacks:
+        try:
+            callback(**kwargs)
+        except Exception:
+            log.exception("Producer listener callback failed")
 
 
 class BatchBuilder:
@@ -147,12 +148,12 @@ class BatchBuilder:
 class MessageBatch:
     """This class encapsulate operations with batch of produce messages"""
 
-    def __init__(self, tp, builder, ttl, linger_time, metrics_collector):
+    def __init__(self, tp, builder, ttl, linger_time, callbacks):
         self._builder = builder
         self._tp = tp
         self._ttl = ttl
         self._linger_time = linger_time
-        self._metrics_collector = metrics_collector
+        self._callbacks = callbacks
         self._ctime = time.monotonic()
         self._queued_at = self._ctime
         self._dispatched_at = None
@@ -254,8 +255,8 @@ class MessageBatch:
 
         if should_report:
             completed_at = time.monotonic()
-            _call_metrics(
-                self._metrics_collector.on_batch_completed,
+            _call_listeners(
+                self._callbacks.get("on_batch_completed", ()),
                 topic=topic,
                 partition=partition,
                 send_to_completion_seconds=completed_at - dispatched_at,
@@ -279,8 +280,8 @@ class MessageBatch:
 
         if should_report:
             completed_at = time.monotonic()
-            _call_metrics(
-                self._metrics_collector.on_batch_completed,
+            _call_listeners(
+                self._callbacks.get("on_batch_completed", ()),
                 topic=self._tp.topic,
                 partition=self._tp.partition,
                 send_to_completion_seconds=completed_at - dispatched_at,
@@ -313,8 +314,8 @@ class MessageBatch:
 
         if should_report:
             failed_at = time.monotonic()
-            _call_metrics(
-                self._metrics_collector.on_batch_failed,
+            _call_listeners(
+                self._callbacks.get("on_batch_failed", ()),
                 topic=self._tp.topic,
                 partition=self._tp.partition,
                 exception=exception,
@@ -351,8 +352,8 @@ class MessageBatch:
     def mark_dispatched(self):
         """Record that the batch is handed to the sender."""
         self._dispatched_at = time.monotonic()
-        _call_metrics(
-            self._metrics_collector.on_batch_dispatched,
+        _call_listeners(
+            self._callbacks.get("on_batch_dispatched", ()),
             topic=self._tp.topic,
             partition=self._tp.partition,
             queue_time_seconds=self._dispatched_at - self._queued_at,
@@ -400,7 +401,7 @@ class MessageAccumulator:
         txn_manager=None,
         loop=None,
         linger_ms=0,
-        metrics_collector=None,
+        listeners=(),
     ):
         if loop is None:
             loop = get_running_loop()
@@ -416,9 +417,16 @@ class MessageAccumulator:
         self._closed = False
         self._txn_manager = txn_manager
         self._linger_time = linger_ms / 1000
-        if metrics_collector is None:
-            metrics_collector = ProducerMetricsCollector()
-        self._metrics_collector = metrics_collector
+        self._callbacks = _collect_callbacks(
+            listeners,
+            ProducerListener,
+            (
+                "on_batch_dispatched",
+                "on_batch_completed",
+                "on_batch_failed",
+                "on_buffer_wait",
+            ),
+        )
 
         self._exception = None  # Critical exception
 
@@ -514,8 +522,8 @@ class MessageAccumulator:
 
     def _report_buffer_wait(self, tp, wait_seconds):
         if wait_seconds > 0:
-            _call_metrics(
-                self._metrics_collector.on_buffer_wait,
+            _call_listeners(
+                self._callbacks.get("on_buffer_wait", ()),
                 topic=tp.topic,
                 partition=tp.partition,
                 wait_seconds=wait_seconds,
@@ -657,7 +665,7 @@ class MessageAccumulator:
             builder,
             self._batch_ttl,
             self._linger_time,
-            self._metrics_collector,
+            self._callbacks,
         )
         self._batches[tp].append(batch)
         if not self._waiter_future.done():

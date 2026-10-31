@@ -6,7 +6,7 @@ import pytest
 
 from aiokafka import (
     AIOKafkaProducer,
-    ProducerMetricsCollector,
+    ProducerListener,
 )
 from aiokafka.cluster import ClusterMetadata
 from aiokafka.errors import KafkaTimeoutError, NotLeaderForPartitionError
@@ -15,7 +15,7 @@ from aiokafka.producer.sender import SendProduceReqHandler
 from aiokafka.structs import TopicPartition
 
 
-class RecordingMetricsCollector(ProducerMetricsCollector):
+class RecordingMetricsCollector(ProducerListener):
     def __init__(self):
         self.events = []
 
@@ -108,7 +108,7 @@ def make_cluster_without_leader():
 
 
 @pytest.mark.asyncio
-async def test_metrics_collector_records_batch_lifecycle():
+async def test_producer_listener_records_batch_lifecycle():
     tp = TopicPartition("test-topic", 0)
     collector = RecordingMetricsCollector()
     clock = [10.0]
@@ -122,7 +122,7 @@ async def test_metrics_collector_records_batch_lifecycle():
             batch_size=1000,
             compression_type=0,
             batch_ttl=30,
-            metrics_collector=collector,
+            listeners=[collector],
         )
 
         future = await accumulator.add_message(
@@ -154,7 +154,7 @@ async def test_metrics_collector_records_batch_lifecycle():
 
 
 @pytest.mark.asyncio
-async def test_metrics_collector_records_each_dispatch_attempt():
+async def test_producer_listener_records_each_dispatch_attempt():
     tp = TopicPartition("test-topic", 0)
     collector = RecordingMetricsCollector()
     clock = [10.0]
@@ -168,7 +168,7 @@ async def test_metrics_collector_records_each_dispatch_attempt():
             batch_size=1000,
             compression_type=0,
             batch_ttl=30,
-            metrics_collector=collector,
+            listeners=[collector],
         )
 
         future = await accumulator.add_message(tp, None, b"value", timeout=2)
@@ -208,7 +208,7 @@ async def test_metrics_collector_records_each_dispatch_attempt():
 
 
 @pytest.mark.asyncio
-async def test_metrics_collector_records_unacknowledged_completion():
+async def test_producer_listener_records_unacknowledged_completion():
     tp = TopicPartition("test-topic", 0)
     collector = RecordingMetricsCollector()
     clock = [20.0]
@@ -222,7 +222,7 @@ async def test_metrics_collector_records_unacknowledged_completion():
             batch_size=1000,
             compression_type=0,
             batch_ttl=30,
-            metrics_collector=collector,
+            listeners=[collector],
         )
 
         future = await accumulator.add_message(tp, None, b"value", timeout=2)
@@ -244,10 +244,10 @@ async def test_metrics_collector_records_unacknowledged_completion():
 
 
 @pytest.mark.asyncio
-async def test_metrics_collector_records_acks_zero_completion():
+async def test_producer_listener_records_acks_zero_completion():
     tp = TopicPartition("test-topic", 0)
     collector = RecordingMetricsCollector()
-    producer = AIOKafkaProducer(acks=0, metrics_collector=collector)
+    producer = AIOKafkaProducer(acks=0, listeners=[collector])
     producer._metadata.leader_for_partition = mock.Mock(return_value=0)
     producer.client.send = mock.AsyncMock(return_value=None)
 
@@ -271,7 +271,7 @@ async def test_metrics_collector_records_acks_zero_completion():
 
 
 @pytest.mark.asyncio
-async def test_metrics_collector_records_buffer_wait():
+async def test_producer_listener_records_buffer_wait():
     tp = TopicPartition("test-topic", 0)
     collector = RecordingMetricsCollector()
     accumulator = MessageAccumulator(
@@ -279,7 +279,7 @@ async def test_metrics_collector_records_buffer_wait():
         batch_size=90,
         compression_type=0,
         batch_ttl=30,
-        metrics_collector=collector,
+        listeners=[collector],
     )
 
     await accumulator.add_message(tp, None, b"hello", timeout=2)
@@ -304,7 +304,7 @@ async def test_metrics_collector_records_buffer_wait():
 
 
 @pytest.mark.asyncio
-async def test_metrics_collector_records_add_batch_buffer_wait():
+async def test_producer_listener_records_add_batch_buffer_wait():
     tp = TopicPartition("test-topic", 0)
     collector = RecordingMetricsCollector()
     accumulator = MessageAccumulator(
@@ -312,7 +312,7 @@ async def test_metrics_collector_records_add_batch_buffer_wait():
         batch_size=1000,
         compression_type=0,
         batch_ttl=30,
-        metrics_collector=collector,
+        listeners=[collector],
     )
 
     await accumulator.add_message(tp, None, b"value", timeout=2)
@@ -339,7 +339,7 @@ async def test_metrics_collector_records_add_batch_buffer_wait():
 
 
 @pytest.mark.asyncio
-async def test_message_accumulator_uses_metrics_collector_by_default():
+async def test_message_accumulator_skips_callbacks_by_default():
     accumulator = MessageAccumulator(
         make_cluster(),
         batch_size=1000,
@@ -347,11 +347,11 @@ async def test_message_accumulator_uses_metrics_collector_by_default():
         batch_ttl=30,
     )
 
-    assert type(accumulator._metrics_collector) is ProducerMetricsCollector
+    assert not accumulator._callbacks
 
 
 @pytest.mark.asyncio
-async def test_metrics_collector_exceptions_are_logged_and_ignored(caplog):
+async def test_producer_listener_exceptions_are_logged_and_ignored(caplog):
     tp = TopicPartition("test-topic", 0)
     collector = RaisingMetricsCollector()
     accumulator = MessageAccumulator(
@@ -359,7 +359,7 @@ async def test_metrics_collector_exceptions_are_logged_and_ignored(caplog):
         batch_size=1000,
         compression_type=0,
         batch_ttl=30,
-        metrics_collector=collector,
+        listeners=[collector],
     )
     caplog.set_level(logging.ERROR, logger="aiokafka.producer.message_accumulator")
 
@@ -369,7 +369,7 @@ async def test_metrics_collector_exceptions_are_logged_and_ignored(caplog):
 
     assert not unknown_leaders_exist
     assert not future.done()
-    assert "Producer metrics collector callback failed" in caplog.text
+    assert "Producer listener callback failed" in caplog.text
 
     batch.done(base_offset=10)
     metadata = await future
@@ -385,7 +385,7 @@ async def test_metrics_not_reported_after_batch_already_completed():
         batch_size=1000,
         compression_type=0,
         batch_ttl=30,
-        metrics_collector=collector,
+        listeners=[collector],
     )
 
     future = await accumulator.add_message(tp, None, b"value", timeout=2)
@@ -415,7 +415,7 @@ async def test_metrics_not_dispatched_for_expired_batch_without_leader():
         batch_size=1000,
         compression_type=0,
         batch_ttl=-1,
-        metrics_collector=collector,
+        listeners=[collector],
     )
 
     future = await accumulator.add_message(tp, None, b"value", timeout=2)
@@ -439,7 +439,7 @@ async def test_metrics_not_dispatched_for_empty_batch():
         batch_size=1000,
         compression_type=0,
         batch_ttl=30,
-        metrics_collector=collector,
+        listeners=[collector],
     )
 
     future = await accumulator.add_batch(accumulator.create_builder(), tp, timeout=2)
@@ -452,7 +452,7 @@ async def test_metrics_not_dispatched_for_empty_batch():
 
 
 @pytest.mark.asyncio
-async def test_metrics_collector_records_batch_failure_before_drain():
+async def test_producer_listener_records_batch_failure_before_drain():
     tp = TopicPartition("test-topic", 0)
     collector = RecordingMetricsCollector()
     accumulator = MessageAccumulator(
@@ -460,7 +460,7 @@ async def test_metrics_collector_records_batch_failure_before_drain():
         batch_size=1000,
         compression_type=0,
         batch_ttl=30,
-        metrics_collector=collector,
+        listeners=[collector],
     )
 
     future = await accumulator.add_message(tp, None, b"value", timeout=2)
@@ -476,7 +476,7 @@ async def test_metrics_collector_records_batch_failure_before_drain():
 
 
 @pytest.mark.asyncio
-async def test_metrics_collector_records_buffer_wait_on_timeout():
+async def test_producer_listener_records_buffer_wait_on_timeout():
     tp = TopicPartition("test-topic", 0)
     collector = RecordingMetricsCollector()
     accumulator = MessageAccumulator(
@@ -484,7 +484,7 @@ async def test_metrics_collector_records_buffer_wait_on_timeout():
         batch_size=90,
         compression_type=0,
         batch_ttl=30,
-        metrics_collector=collector,
+        listeners=[collector],
     )
 
     await accumulator.add_message(tp, None, b"hello", timeout=2)
@@ -503,7 +503,7 @@ async def test_metrics_collector_records_buffer_wait_on_timeout():
 
 
 @pytest.mark.asyncio
-async def test_metrics_collector_records_batch_failure():
+async def test_producer_listener_records_batch_failure():
     tp = TopicPartition("test-topic", 0)
     collector = RecordingMetricsCollector()
     accumulator = MessageAccumulator(
@@ -511,7 +511,7 @@ async def test_metrics_collector_records_batch_failure():
         batch_size=1000,
         compression_type=0,
         batch_ttl=30,
-        metrics_collector=collector,
+        listeners=[collector],
     )
 
     future = await accumulator.add_message(tp, None, b"value", timeout=2)
@@ -531,27 +531,28 @@ async def test_metrics_collector_records_batch_failure():
 
 
 @pytest.mark.asyncio
-async def test_producer_passes_metrics_collector_to_accumulator():
+async def test_producer_passes_listener_to_accumulator():
     collector = RecordingMetricsCollector()
-    producer = AIOKafkaProducer(metrics_collector=collector)
+    producer = AIOKafkaProducer(listeners=[collector])
     try:
-        assert producer._metrics_collector is collector
-        assert producer._message_accumulator._metrics_collector is collector
+        assert producer._message_accumulator._callbacks["on_batch_completed"] == (
+            collector.on_batch_completed,
+        )
     finally:
         await producer.stop()
 
 
 @pytest.mark.asyncio
-async def test_producer_rejects_invalid_metrics_collector():
+async def test_producer_rejects_invalid_listener():
     with pytest.raises(
         TypeError,
-        match="metrics_collector must be an instance of ProducerMetricsCollector",
+        match="listeners must contain ConnectionListener instances",
     ):
-        AIOKafkaProducer(metrics_collector=object())
+        AIOKafkaProducer(listeners=[object()])
 
 
-def test_producer_metrics_collector_has_noop_defaults():
-    collector = ProducerMetricsCollector()
+def test_producer_listener_has_noop_defaults():
+    collector = ProducerListener()
 
     collector.on_batch_dispatched(
         topic="topic",
@@ -579,8 +580,8 @@ def test_producer_metrics_collector_has_noop_defaults():
     collector.on_buffer_wait(topic="topic", partition=0, wait_seconds=0.3)
 
 
-def test_producer_metrics_collector_allows_partial_implementation():
-    class CompletionMetricsCollector(ProducerMetricsCollector):
+def test_producer_listener_allows_partial_implementation():
+    class CompletionMetricsCollector(ProducerListener):
         def on_batch_completed(self, **kwargs):
             self.completed = kwargs
 
@@ -598,12 +599,66 @@ def test_producer_metrics_collector_allows_partial_implementation():
     assert collector.completed["topic"] == "topic"
 
 
-def test_producer_metrics_collector_warns_about_unknown_callback():
-    with pytest.warns(
-        UserWarning,
-        match="Unknown producer metrics callbacks.*on_batch_complete",
-    ):
-
-        class TypoMetricsCollector(ProducerMetricsCollector):
-            def on_batch_complete(self, **kwargs):
-                self.completed = kwargs
+@pytest.mark.parametrize("outcome", ["success", "failure", "noack"])
+async def test_multiple_producer_listeners_receive_batch_events(outcome, caplog):
+    first = RaisingMetricsCollector()
+    second = RecordingMetricsCollector()
+    calls = mock.Mock()
+    for name, listener in (("first", first), ("second", second)):
+        for event in (
+            "on_batch_dispatched",
+            "on_batch_completed",
+            "on_batch_failed",
+            "on_buffer_wait",
+        ):
+            callback = mock.Mock(wraps=getattr(listener, event))
+            setattr(listener, event, callback)
+            calls.attach_mock(callback, f"{name}_{event}")
+    producer = AIOKafkaProducer(listeners=[first, second])
+    accumulator = producer._message_accumulator
+    accumulator._cluster = make_cluster()
+    tp = TopicPartition("test-topic", 0)
+    try:
+        future = await accumulator.add_message(tp, b"key", b"value", timeout=2)
+        batches, _ = accumulator.drain_by_nodes(ignore_nodes=[])
+        batch = batches[0][tp]
+        if outcome == "failure":
+            batch.failure(RuntimeError("failed batch"))
+            with pytest.raises(RuntimeError, match="failed batch"):
+                await future
+        else:
+            if outcome == "noack":
+                batch.done_noack()
+            else:
+                batch.done(base_offset=0)
+            await future
+        assert "collector failed" in caplog.text
+        assert second.events[0][0] == "batch_dispatched"
+        assert first.events[-1] == second.events[-1]
+        assert second.events[-1][0] == (
+            "batch_failed" if outcome == "failure" else "batch_completed"
+        )
+        accumulator._report_buffer_wait(tp, 0.5)
+        assert (
+            first.events[-1]
+            == second.events[-1]
+            == (
+                "buffer_wait",
+                "test-topic",
+                0,
+                0.5,
+            )
+        )
+        terminal_event = (
+            "on_batch_failed" if outcome == "failure" else "on_batch_completed"
+        )
+        assert [call[0] for call in calls.mock_calls] == [
+            "first_on_batch_dispatched",
+            "second_on_batch_dispatched",
+            f"first_{terminal_event}",
+            f"second_{terminal_event}",
+            "first_on_buffer_wait",
+            "second_on_buffer_wait",
+        ]
+    finally:
+        await producer.stop()

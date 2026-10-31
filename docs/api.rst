@@ -32,11 +32,32 @@ Helpers
     :member-order: alphabetical
     :members:
 
-Metrics
--------
+Event listeners
+---------------
 
-.. autoclass:: aiokafka.metrics.ProducerMetricsCollector
+See :ref:`listeners` for registration and migration from producer metrics.
+
+.. autoclass:: aiokafka.ProducerListener
     :members:
+
+Connection lifecycle
+--------------------
+
+See :ref:`connection-lifecycle` for callback semantics and examples.
+
+.. autoclass:: aiokafka.ConnectionListener
+   :members:
+
+.. autoclass:: aiokafka.ConnectionInfo
+    :members:
+
+.. autoclass:: aiokafka.ConnectionCloseReason
+    :members:
+    :undoc-members:
+
+.. autoclass:: aiokafka.ConnectionGroup
+    :members:
+    :undoc-members:
 
 Abstracts
 ---------

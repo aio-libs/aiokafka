@@ -161,6 +161,8 @@ Contents:
    :maxdepth: 3
 
    producer
+   listeners
+   connections
    metrics
    consumer
    kafka-python_difference
