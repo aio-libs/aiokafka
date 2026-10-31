@@ -546,7 +546,7 @@ async def test_producer_passes_listener_to_accumulator():
 async def test_producer_rejects_invalid_listener():
     with pytest.raises(
         TypeError,
-        match="listeners must contain ProducerListener instances",
+        match="listeners must contain ConnectionListener instances",
     ):
         AIOKafkaProducer(listeners=[object()])
 

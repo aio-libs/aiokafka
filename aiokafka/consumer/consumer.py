@@ -4,6 +4,7 @@ import re
 import sys
 import traceback
 import warnings
+from collections.abc import Iterable
 
 from aiokafka import __version__
 from aiokafka.abc import ConsumerRebalanceListener
@@ -15,6 +16,7 @@ from aiokafka.errors import (
     IllegalStateError,
     RecordTooLargeError,
 )
+from aiokafka.listeners import ConnectionListener
 from aiokafka.structs import ConsumerRecord, TopicPartition
 from aiokafka.util import commit_structure_validate, get_running_loop
 
@@ -218,6 +220,10 @@ class AIOKafkaConsumer:
             the consumer will fetch from the closest in-sync replica
             instead of the leader (KIP-392). Default: ``None`` (disabled).
 
+        listeners (Iterable[ConnectionListener]): Optional event listeners.
+            Defaults to an empty tuple. See :ref:`listeners` for the listener
+            hierarchy, supported events, and dispatch semantics.
+
     Note:
         Many configuration parameters are taken from Java Client:
         https://kafka.apache.org/documentation.html#newconsumerconfigs
@@ -268,6 +274,7 @@ class AIOKafkaConsumer:
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
         client_rack=None,
+        listeners: Iterable[ConnectionListener] = (),
     ):
         if loop is None:
             loop = get_running_loop()
@@ -311,6 +318,7 @@ class AIOKafkaConsumer:
             sasl_kerberos_service_name=sasl_kerberos_service_name,
             sasl_kerberos_domain_name=sasl_kerberos_domain_name,
             sasl_oauth_token_provider=sasl_oauth_token_provider,
+            listeners=listeners,
         )
 
         self._group_id = group_id

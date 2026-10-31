@@ -1,19 +1,51 @@
-"""Experimental listeners for producer events."""
+"""Experimental listeners for connection and producer events."""
 
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from typing import Any, TypeVar
 
-__all__ = ["ProducerListener"]
+from aiokafka.structs import ConnectionCloseReason, ConnectionInfo
+
+__all__ = ["ConnectionListener", "ProducerListener"]
 
 _ListenerT = TypeVar("_ListenerT")
 
 
-class ProducerListener:
-    """Receive producer batch events through optional method overrides.
+class ConnectionListener:
+    """Observe Kafka connections through optional method overrides.
 
-    Callbacks are synchronous and run on the producer hot path. Keep them fast
-    and non-blocking; defer asynchronous work to an application queue. Callback
-    exceptions are logged and ignored. All durations are in seconds.
+    Each method has a no-op default. Overrides may be synchronous or return
+    an awaitable. Methods run in background tasks, in order per connection.
+    Exceptions are logged and do not affect Kafka requests or recovery.
+    This API is experimental and may change without a deprecation period.
+    See :ref:`connection-lifecycle` for capacity and shutdown semantics.
+    """
+
+    def on_connection_opened(
+        self, connection: ConnectionInfo
+    ) -> Awaitable[None] | None:
+        """Called after connection establishment, including TLS/SASL negotiation."""
+
+    def on_connection_closed(
+        self,
+        connection: ConnectionInfo,
+        reason: ConnectionCloseReason | None,
+        error: BaseException | None,
+    ) -> Awaitable[None] | None:
+        """Called when an established connection closes."""
+
+    def on_connection_failed(
+        self, connection: ConnectionInfo, error: Exception
+    ) -> Awaitable[None] | None:
+        """Called when connection establishment fails."""
+
+
+class ProducerListener(ConnectionListener):
+    """Receive connection and producer batch events through optional overrides.
+
+    Batch callbacks are synchronous and run on the producer hot path. Keep them
+    fast and non-blocking; defer asynchronous work to an application queue.
+    Connection callbacks use the background dispatch described on the base
+    class. Callback exceptions are logged and ignored. All durations are seconds.
 
     This API is experimental and may change without a deprecation period.
     """
