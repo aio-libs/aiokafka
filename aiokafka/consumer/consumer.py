@@ -8,6 +8,7 @@ import warnings
 from aiokafka import __version__
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.client import AIOKafkaClient
+from aiokafka.conn import DEFAULT_RECEIVE_MESSAGE_MAX_BYTES
 from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from aiokafka.errors import (
     ConsumerStoppedError,
@@ -97,6 +98,12 @@ class AIOKafkaConsumer:
             single call to :meth:`.getmany`. Defaults ``None``, no limit.
         request_timeout_ms (int): Client request timeout in milliseconds.
             Default: 40000.
+        receive_message_max_bytes (int): Maximum response frame size in bytes,
+            excluding the four-byte length prefix. Negative or oversized frames
+            close the connection. Allow room for fetch data and protocol overhead,
+            including a first batch larger than the requested fetch limits.
+            This is a strict cap and does not limit decompressed record size.
+            Default: 104857600 (100 MiB).
         retry_backoff_ms (int): Milliseconds to backoff when retrying on
             errors. Default: 100.
         auto_offset_reset (str): A policy for resetting offsets on
@@ -268,6 +275,7 @@ class AIOKafkaConsumer:
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
         client_rack=None,
+        receive_message_max_bytes=DEFAULT_RECEIVE_MESSAGE_MAX_BYTES,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -301,6 +309,7 @@ class AIOKafkaConsumer:
             client_id=client_id,
             metadata_max_age_ms=metadata_max_age_ms,
             request_timeout_ms=request_timeout_ms,
+            receive_message_max_bytes=receive_message_max_bytes,
             retry_backoff_ms=retry_backoff_ms,
             ssl_context=ssl_context,
             security_protocol=security_protocol,

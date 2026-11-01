@@ -8,6 +8,7 @@ from typing import Any
 from aiokafka import __version__
 from aiokafka.abc import AbstractTokenProvider
 from aiokafka.client import AIOKafkaClient
+from aiokafka.conn import DEFAULT_RECEIVE_MESSAGE_MAX_BYTES
 from aiokafka.errors import (
     LeaderNotAvailableError,
     NotControllerError,
@@ -60,6 +61,9 @@ class AIOKafkaAdminClient:
             consumer group administration. Default: 'aiokafka-{version}'
         request_timeout_ms (int): Client request timeout in milliseconds.
             Default: 40000.
+        receive_message_max_bytes (int): Maximum response frame size in bytes,
+            excluding the four-byte length prefix. Negative or oversized frames
+            close the connection. Default: 104857600 (100 MiB).
         connections_max_idle_ms: Close idle connections after the number of
             milliseconds specified by this config. The broker closes idle
             connections after connections.max.idle.ms, so this avoids hitting
@@ -98,6 +102,7 @@ class AIOKafkaAdminClient:
         sasl_kerberos_service_name: str = "kafka",
         sasl_kerberos_domain_name: str | None = None,
         sasl_oauth_token_provider: AbstractTokenProvider | None = None,
+        receive_message_max_bytes: int = DEFAULT_RECEIVE_MESSAGE_MAX_BYTES,
     ):
         if api_version is not None:
             warnings.warn(
@@ -117,6 +122,7 @@ class AIOKafkaAdminClient:
             client_id=client_id,
             metadata_max_age_ms=metadata_max_age_ms,
             request_timeout_ms=request_timeout_ms,
+            receive_message_max_bytes=receive_message_max_bytes,
             retry_backoff_ms=retry_backoff_ms,
             ssl_context=ssl_context,
             security_protocol=security_protocol,
