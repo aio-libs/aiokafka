@@ -30,8 +30,8 @@ from ._protocols import (
     LegacyRecordBatchProtocol,
     MemoryRecordsProtocol,
 )
-from .default_records import DefaultRecordBatch
-from .legacy_records import LegacyRecordBatch, _LegacyRecordBatchPy
+from .default_records import DefaultRecordBase, DefaultRecordBatch
+from .legacy_records import LegacyRecordBase, LegacyRecordBatch, _LegacyRecordBatchPy
 
 
 @final
@@ -102,6 +102,51 @@ class _MemoryRecordsPy(MemoryRecordsProtocol):
             return DefaultRecordBatch(next_slice)
         else:
             return LegacyRecordBatch(next_slice, magic)
+
+
+def _count_records(data: bytes) -> int | None:
+    """Count complete batches using only headers, without copying record payloads.
+
+    Legacy compressed message sets do not store their record count in the
+    outer header. Return None for those sets and leave decompression to polling.
+    """
+    position = 0
+    count = 0
+    overhead = _MemoryRecordsPy.LOG_OVERHEAD
+    while len(data) - position >= overhead:
+        length = struct.unpack_from(
+            ">i", data, position + _MemoryRecordsPy.LENGTH_OFFSET
+        )[0]
+        if length < LegacyRecordBase.RECORD_OVERHEAD_V0:
+            raise CorruptRecordException(
+                "Record size is less than the minimum overhead"
+            )
+        end = position + overhead + length
+        if end > len(data):
+            break  # A partial trailing batch will be fetched again.
+        magic = data[position + _MemoryRecordsPy.MAGIC_OFFSET]
+        if magic >= 2:
+            header = DefaultRecordBase.HEADER_STRUCT
+            if end - position < header.size:
+                raise CorruptRecordException("Record batch header is incomplete")
+            record_count = header.unpack_from(data, position)[-1]
+            if record_count < 0:
+                raise CorruptRecordException("Record batch count is negative")
+            count += record_count
+        else:
+            if length < LegacyRecordBase.RECORD_OVERHEAD[magic]:
+                raise CorruptRecordException("Record header is incomplete")
+            header = (
+                LegacyRecordBase.HEADER_STRUCT_V0
+                if magic == 0
+                else LegacyRecordBase.HEADER_STRUCT_V1
+            )
+            attributes = header.unpack_from(data, position)[4]
+            if attributes & LegacyRecordBase.CODEC_MASK:
+                return None
+            count += 1
+        position = end
+    return count
 
 
 MemoryRecords: type[MemoryRecordsProtocol]

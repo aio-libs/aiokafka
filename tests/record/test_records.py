@@ -3,6 +3,7 @@ import pytest
 from aiokafka.errors import CorruptRecordException
 from aiokafka.record import MemoryRecords
 from aiokafka.record._protocols import DefaultRecordProtocol, LegacyRecordProtocol
+from aiokafka.record.memory_records import _count_records
 
 # This is real live data from Kafka 11 broker
 record_batch_data_v2 = [
@@ -178,3 +179,33 @@ def test_memory_records_corrupt() -> None:
             b"\xfe\xb0\x1d",  # Some random bytes
         )
         records.next_batch()
+
+
+@pytest.mark.parametrize(
+    "data", [record_batch_data_v0, record_batch_data_v1, record_batch_data_v2]
+)
+def test_count_records_from_headers(data: list[bytes]) -> None:
+    encoded = b"".join(data)
+    assert _count_records(encoded) == 4
+    for size in (4, 12, len(data[0]) - 1):
+        assert _count_records(encoded + data[0][:size]) == 4
+
+
+def test_count_records_with_no_complete_batch() -> None:
+    assert _count_records(b"") == 0
+    assert _count_records(record_batch_data_v2[0][:30]) == 0
+
+
+@pytest.mark.parametrize("length", [-1, 0, 13])
+def test_count_records_rejects_invalid_batch_length(length: int) -> None:
+    data = bytearray(record_batch_data_v2[0])
+    data[8:12] = length.to_bytes(4, "big", signed=True)
+    with pytest.raises(CorruptRecordException):
+        _count_records(bytes(data))
+
+
+def test_count_records_rejects_negative_count() -> None:
+    data = bytearray(record_batch_data_v2[0])
+    data[57:61] = (-1).to_bytes(4, "big", signed=True)
+    with pytest.raises(CorruptRecordException, match="count is negative"):
+        _count_records(bytes(data))

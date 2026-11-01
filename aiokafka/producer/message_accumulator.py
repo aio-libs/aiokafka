@@ -11,19 +11,12 @@ from aiokafka.errors import (
     NotLeaderForPartitionError,
     ProducerClosed,
 )
-from aiokafka.metrics import ProducerMetricsCollector
+from aiokafka.metrics import ProducerMetricsCollector, _call_metrics
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
 from aiokafka.structs import RecordMetadata
 from aiokafka.util import create_future, get_running_loop
 
 log = logging.getLogger(__name__)
-
-
-def _call_metrics(callback, **kwargs):
-    try:
-        callback(**kwargs)
-    except Exception:
-        log.exception("Producer metrics collector callback failed")
 
 
 class BatchBuilder:
@@ -256,6 +249,7 @@ class MessageBatch:
             completed_at = time.monotonic()
             _call_metrics(
                 self._metrics_collector.on_batch_completed,
+                "producer",
                 topic=topic,
                 partition=partition,
                 send_to_completion_seconds=completed_at - dispatched_at,
@@ -281,6 +275,7 @@ class MessageBatch:
             completed_at = time.monotonic()
             _call_metrics(
                 self._metrics_collector.on_batch_completed,
+                "producer",
                 topic=self._tp.topic,
                 partition=self._tp.partition,
                 send_to_completion_seconds=completed_at - dispatched_at,
@@ -315,6 +310,7 @@ class MessageBatch:
             failed_at = time.monotonic()
             _call_metrics(
                 self._metrics_collector.on_batch_failed,
+                "producer",
                 topic=self._tp.topic,
                 partition=self._tp.partition,
                 exception=exception,
@@ -353,6 +349,7 @@ class MessageBatch:
         self._dispatched_at = time.monotonic()
         _call_metrics(
             self._metrics_collector.on_batch_dispatched,
+            "producer",
             topic=self._tp.topic,
             partition=self._tp.partition,
             queue_time_seconds=self._dispatched_at - self._queued_at,
@@ -516,6 +513,7 @@ class MessageAccumulator:
         if wait_seconds > 0:
             _call_metrics(
                 self._metrics_collector.on_buffer_wait,
+                "producer",
                 topic=tp.topic,
                 partition=tp.partition,
                 wait_seconds=wait_seconds,
