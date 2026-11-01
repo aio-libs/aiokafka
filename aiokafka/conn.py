@@ -37,6 +37,7 @@ __all__ = ["AIOKafkaConnection", "create_conn"]
 log = logging.getLogger(__name__)
 
 DEFAULT_KAFKA_PORT = 9092
+DEFAULT_RECEIVE_MESSAGE_MAX_BYTES = 100 * 1024 * 1024
 
 READER_LIMIT = 2**16
 SASL_QOP_AUTH = 1
@@ -49,6 +50,17 @@ class CloseReason(IntEnum):
     IDLE_DROP = 3
     SHUTDOWN = 4
     AUTH_FAILURE = 5
+
+
+def _validate_receive_message_max_bytes(value):
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or not 0 < value <= 2**31 - 1
+    ):
+        raise ValueError(
+            "`receive_message_max_bytes` must be an integer between 1 and 2147483647"
+        )
 
 
 async def create_conn(
@@ -67,6 +79,7 @@ async def create_conn(
     sasl_kerberos_service_name="kafka",
     sasl_kerberos_domain_name=None,
     sasl_oauth_token_provider=None,
+    receive_message_max_bytes=DEFAULT_RECEIVE_MESSAGE_MAX_BYTES,
 ):
     conn = AIOKafkaConnection(
         host,
@@ -83,6 +96,7 @@ async def create_conn(
         sasl_kerberos_service_name=sasl_kerberos_service_name,
         sasl_kerberos_domain_name=sasl_kerberos_domain_name,
         sasl_oauth_token_provider=sasl_oauth_token_provider,
+        receive_message_max_bytes=receive_message_max_bytes,
     )
     await conn.connect()
     return conn
@@ -122,8 +136,11 @@ class AIOKafkaConnection:
         sasl_kerberos_service_name="kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
+        receive_message_max_bytes=DEFAULT_RECEIVE_MESSAGE_MAX_BYTES,
     ):
         loop = get_running_loop()
+
+        _validate_receive_message_max_bytes(receive_message_max_bytes)
 
         if sasl_mechanism == "GSSAPI":
             assert gssapi is not None, "gssapi library required"
@@ -144,6 +161,7 @@ class AIOKafkaConnection:
         self._host = host
         self._port = port
         self._request_timeout = request_timeout_ms / 1000
+        self._receive_message_max_bytes = receive_message_max_bytes
         self._client_id = client_id
         self._ssl_context = ssl_context
         self._security_protocol = security_protocol
@@ -362,7 +380,9 @@ class AIOKafkaConnection:
         try:
             read_task.result()
         except Exception as exc:
-            if not isinstance(exc, OSError | EOFError | ConnectionError):
+            if not isinstance(
+                exc, OSError | EOFError | ConnectionError | Errors.KafkaProtocolError
+            ):
                 log.exception("Unexpected exception in AIOKafkaConnection")
 
             self = self_ref()
@@ -503,6 +523,13 @@ class AIOKafkaConnection:
         )
         return read_task
 
+    def _validate_frame_size(self, size):
+        if size < 0 or size > self._receive_message_max_bytes:
+            raise Errors.InvalidReceiveError(
+                f"Invalid frame length: {size} "
+                f"(maximum {self._receive_message_max_bytes} bytes)"
+            )
+
     @staticmethod
     async def _read(self_ref):
         # XXX: I know that it become a bit more ugly once cyclic references
@@ -518,6 +545,12 @@ class AIOKafkaConnection:
         while True:
             resp = await reader.readexactly(4)
             (size,) = struct.unpack(">i", resp)
+
+            self = self_ref()
+            if self is None:
+                return
+            self._validate_frame_size(size)
+            del self
 
             resp = await reader.readexactly(size)
 

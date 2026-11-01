@@ -23,6 +23,12 @@ Breaking changes:
   and remove the ``aiokafka.metrics`` module, without compatibility aliases
   (pr #1213 by @Gleb-Shipilov).
 
+Security:
+
+* Reject negative or oversized response frame lengths before reading the frame
+  body. Add a strict ``receive_message_max_bytes`` limit to consumers, producers,
+  and admin clients, defaulting to 100 MiB.
+
 
 0.15.0 (2026-10-28)
 ===================
