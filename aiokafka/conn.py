@@ -380,9 +380,7 @@ class AIOKafkaConnection:
         try:
             read_task.result()
         except Exception as exc:
-            if not isinstance(
-                exc, OSError | EOFError | ConnectionError | Errors.KafkaProtocolError
-            ):
+            if not isinstance(exc, OSError | EOFError | ConnectionError):
                 log.exception("Unexpected exception in AIOKafkaConnection")
 
             self = self_ref()

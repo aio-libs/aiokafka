@@ -33,7 +33,9 @@ async def connected():
 
 
 @pytest.mark.parametrize("size", [-1, FRAME_SIZE_LIMIT + 1])
-async def test_invalid_frame_closes_connection_and_fails_request(connected, size):
+async def test_invalid_frame_closes_connection_and_fails_request(
+    connected, size, caplog
+):
     connected._versions = {MetadataRequest.API_KEY: (0, 0)}
     reader = connected._reader
     writer = connected._writer
@@ -46,6 +48,7 @@ async def test_invalid_frame_closes_connection_and_fails_request(connected, size
         await asyncio.wait_for(response, timeout=1)
 
     assert isinstance(error.value.__cause__, InvalidReceiveError)
+    assert "Invalid frame length" in caplog.text
     reader.readexactly.assert_awaited_once_with(4)
     writer.close.assert_called_once_with()
     assert not connected.connected()
