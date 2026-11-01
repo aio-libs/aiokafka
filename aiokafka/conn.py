@@ -521,13 +521,6 @@ class AIOKafkaConnection:
         )
         return read_task
 
-    def _validate_frame_size(self, size):
-        if size < 0 or size > self._receive_message_max_bytes:
-            raise Errors.InvalidReceiveError(
-                f"Invalid frame length: {size} "
-                f"(maximum {self._receive_message_max_bytes} bytes)"
-            )
-
     @staticmethod
     async def _read(self_ref):
         # XXX: I know that it become a bit more ugly once cyclic references
@@ -538,17 +531,18 @@ class AIOKafkaConnection:
         if self is None:
             return
         reader = self._reader
+        receive_message_max_bytes = self._receive_message_max_bytes
         del self
 
         while True:
             resp = await reader.readexactly(4)
             (size,) = struct.unpack(">i", resp)
 
-            self = self_ref()
-            if self is None:
-                return
-            self._validate_frame_size(size)
-            del self
+            if size < 0 or size > receive_message_max_bytes:
+                raise Errors.InvalidReceiveError(
+                    f"Invalid frame length: {size} "
+                    f"(maximum {receive_message_max_bytes} bytes)"
+                )
 
             resp = await reader.readexactly(size)
 
