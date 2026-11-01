@@ -18,6 +18,7 @@ FORMATTED_AREAS=\
 	aiokafka/coordinator/ \
 	aiokafka/errors.py \
 	aiokafka/helpers.py \
+	aiokafka/listeners.py \
 	aiokafka/structs.py \
 	aiokafka/util.py \
 	aiokafka/protocol/ \
