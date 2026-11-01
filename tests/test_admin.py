@@ -4,6 +4,7 @@ from aiokafka.admin import AIOKafkaAdminClient, NewPartitions, NewTopic, Records
 from aiokafka.admin.config_resource import ConfigResource, ConfigResourceType
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.producer import AIOKafkaProducer
+from aiokafka.protocol.admin import DescribeGroupsResponse_v3
 from aiokafka.structs import TopicPartition
 
 from ._testutil import KafkaIntegrationTestCase, kafka_versions, run_until_complete
@@ -162,6 +163,53 @@ class TestAdmin(KafkaIntegrationTestCase):
         error_code, group, *_ = resp[0].groups[0]
         assert error_code == 0
         assert group == group_id
+
+    @kafka_versions(">=2.3.0")
+    @run_until_complete
+    async def test_describe_multiple_consumer_groups_v3(self):
+        admin = await self.create_admin()
+        group_ids = [f"group-{self.id()}-{i}" for i in range(2)]
+        for group_id in group_ids:
+            consumer = AIOKafkaConsumer(
+                self.topic, group_id=group_id, bootstrap_servers=self.hosts
+            )
+            await consumer.start()
+            self.add_cleanup(consumer.stop)
+
+        # Both groups must be in one response to expose decoding v3 as v2.
+        # Regression for https://github.com/aio-libs/aiokafka/issues/1212
+        coordinators = {
+            await admin.find_coordinator(group_id) for group_id in group_ids
+        }
+        assert len(coordinators) == 1
+        [coordinator_id] = coordinators
+
+        for include_authorized_operations in (False, True):
+            with self.subTest(
+                include_authorized_operations=include_authorized_operations
+            ):
+                responses = await admin.describe_consumer_groups(
+                    group_ids,
+                    group_coordinator_id=coordinator_id,
+                    include_authorized_operations=include_authorized_operations,
+                )
+                assert len(responses) == 1
+                response = responses[0]
+                assert isinstance(response, DescribeGroupsResponse_v3)
+                assert len(response.groups) == len(group_ids)
+                assert {group[1] for group in response.groups} == set(group_ids)
+                for group in response.groups:
+                    (
+                        error_code,
+                        _group_id,
+                        _state,
+                        _protocol_type,
+                        _protocol,
+                        _members,
+                        authorized_operations,
+                    ) = group
+                    assert error_code == 0
+                    assert isinstance(authorized_operations, int)
 
     @run_until_complete
     async def test_list_consumer_group_offsets(self):
