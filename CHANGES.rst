@@ -2,6 +2,15 @@
 Changelog
 =========
 
+Unreleased
+==========
+
+Bugfixes:
+
+* Fix decoding of ``DescribeGroups`` v3 responses when describing multiple
+  consumer groups (issue #1212)
+
+
 0.15.0 (2026-10-28)
 ===================
 

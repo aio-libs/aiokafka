@@ -501,7 +501,7 @@ class DescribeGroupsRequest_v2(RequestStruct):
 class DescribeGroupsRequest_v3(RequestStruct):
     API_KEY = 15
     API_VERSION = 3
-    RESPONSE_TYPE = DescribeGroupsResponse_v2
+    RESPONSE_TYPE = DescribeGroupsResponse_v3
     SCHEMA = Schema(
         ("groups", Array(String("utf-8"))), ("include_authorized_operations", Boolean)
     )
