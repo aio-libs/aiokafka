@@ -10,6 +10,12 @@ Bugfixes:
 * Fix decoding of ``DescribeGroups`` v3 responses when describing multiple
   consumer groups (issue #1212)
 
+Security:
+
+* Reject negative or oversized response frame lengths before reading the frame
+  body. Add a strict ``receive_message_max_bytes`` limit to consumers, producers,
+  and admin clients, defaulting to 100 MiB.
+
 
 0.15.0 (2026-10-28)
 ===================

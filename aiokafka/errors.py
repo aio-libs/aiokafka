@@ -14,6 +14,7 @@ __all__ = [  # noqa: RUF022
     "NoBrokersAvailable",
     "NodeNotReadyError",
     "KafkaProtocolError",
+    "InvalidReceiveError",
     "CorrelationIdError",
     "Cancelled",
     "TooManyInFlightRequests",
@@ -112,6 +113,10 @@ class KafkaProtocolError(KafkaError):
 
 class CorrelationIdError(KafkaProtocolError):
     retriable = True
+
+
+class InvalidReceiveError(KafkaProtocolError):
+    """A response frame has a negative length or exceeds the configured limit."""
 
 
 class Cancelled(KafkaError):
