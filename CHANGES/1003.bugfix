@@ -1,0 +1,1 @@
+Fix ``AIOKafkaConsumer.seek_to_committed()`` leaving the consumer position unchanged when the committed offset is zero.
