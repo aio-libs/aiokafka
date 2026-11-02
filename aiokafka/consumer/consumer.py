@@ -513,11 +513,13 @@ class AIOKafkaConsumer:
             return
         log.debug("Closing the KafkaConsumer.")
         self._closed = True
-        if self._coordinator:
-            await self._coordinator.close()
-        if self._fetcher:
-            await self._fetcher.close()
-        await self._client.close()
+        try:
+            if self._coordinator:
+                await self._coordinator.close()
+            if self._fetcher:
+                await self._fetcher.close()
+        finally:
+            await self._client.close()
         log.debug("The KafkaConsumer has closed.")
 
     async def commit(self, offsets=None):
