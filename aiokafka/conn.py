@@ -15,7 +15,6 @@ import traceback
 import uuid
 import warnings
 import weakref
-from enum import IntEnum
 
 import aiokafka.errors as Errors
 from aiokafka.abc import AbstractTokenProvider
@@ -25,6 +24,7 @@ from aiokafka.protocol.admin import (
     SaslHandShakeRequest,
 )
 from aiokafka.protocol.coordination import FindCoordinatorResponse_v0
+from aiokafka.structs import ConnectionCloseReason
 from aiokafka.util import create_future, create_task, get_running_loop, wait_for
 
 try:
@@ -40,15 +40,6 @@ DEFAULT_KAFKA_PORT = 9092
 
 READER_LIMIT = 2**16
 SASL_QOP_AUTH = 1
-
-
-class CloseReason(IntEnum):
-    CONNECTION_BROKEN = 0
-    CONNECTION_TIMEOUT = 1
-    OUT_OF_SYNC = 2
-    IDLE_DROP = 3
-    SHUTDOWN = 4
-    AUTH_FAILURE = 5
 
 
 async def create_conn(
@@ -169,6 +160,7 @@ class AIOKafkaConnection:
         self._idle_handle = None
 
         self._on_close_cb = on_close
+        self._close_exception = None
 
         if loop.get_debug():
             self._source_traceback = traceback.extract_stack(sys._getframe(1))
@@ -251,7 +243,7 @@ class AIOKafkaConnection:
         error_type = Errors.for_code(handshake_response.error_code)
         if error_type is not Errors.NoError:
             error = error_type(self)
-            self.close(reason=CloseReason.AUTH_FAILURE, exc=error)
+            self.close(reason=ConnectionCloseReason.AUTH_FAILURE, exc=error)
             raise error
 
         if self._sasl_mechanism not in handshake_response.enabled_mechanisms:
@@ -260,7 +252,7 @@ class AIOKafkaConnection:
                 "mechanism. Enabled mechanisms are: "
                 f"{handshake_response.enabled_mechanisms}"
             )
-            self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
+            self.close(reason=ConnectionCloseReason.AUTH_FAILURE, exc=exc)
             raise exc
 
         assert self._sasl_mechanism in (
@@ -303,7 +295,7 @@ class AIOKafkaConnection:
                 error_type = Errors.for_code(resp.error_code)
                 if error_type is not Errors.NoError:
                     exc = error_type(resp.error_message)
-                    self.close(reason=CloseReason.AUTH_FAILURE, exc=exc)
+                    self.close(reason=ConnectionCloseReason.AUTH_FAILURE, exc=exc)
                     raise exc
                 auth_bytes = resp.sasl_auth_bytes
             else:
@@ -367,7 +359,7 @@ class AIOKafkaConnection:
 
             self = self_ref()
             if self is not None:
-                self.close(reason=CloseReason.CONNECTION_BROKEN, exc=exc)
+                self.close(reason=ConnectionCloseReason.CONNECTION_BROKEN, exc=exc)
 
     @staticmethod
     def _idle_check(self_ref):
@@ -380,7 +372,7 @@ class AIOKafkaConnection:
         # If we have any pending requests, we are assumed to be not idle.
         # it's up to `request_timeout_ms` to break those.
         if (idle_for >= timeout) and not self._requests:
-            self.close(CloseReason.IDLE_DROP)
+            self.close(ConnectionCloseReason.IDLE_DROP)
         else:
             if self._requests:
                 # We must wait at least max_idle_ms anyway. Mostly this setting
@@ -420,7 +412,7 @@ class AIOKafkaConnection:
         try:
             self._writer.write(size + message)
         except OSError as err:
-            self.close(reason=CloseReason.CONNECTION_BROKEN)
+            self.close(reason=ConnectionCloseReason.CONNECTION_BROKEN, exc=err)
             raise Errors.KafkaConnectionError(
                 f"Connection at {self._host}:{self._port} broken: {err}"
             ) from err
@@ -450,7 +442,7 @@ class AIOKafkaConnection:
         try:
             self._writer.write(size + payload)
         except OSError as err:
-            self.close(reason=CloseReason.CONNECTION_BROKEN)
+            self.close(reason=ConnectionCloseReason.CONNECTION_BROKEN, exc=err)
             raise Errors.KafkaConnectionError(
                 f"Connection at {self._host}:{self._port} broken: {err}"
             ) from err
@@ -486,8 +478,14 @@ class AIOKafkaConnection:
                     fut.set_exception(error)
             self._requests = collections.deque()
             if self._on_close_cb is not None:
-                self._on_close_cb(self, reason)
-                self._on_close_cb = None
+                on_close, self._on_close_cb = self._on_close_cb, None
+                # Keep the existing two-argument hook compatible. Expose the
+                # error only during notification, without retaining its traceback.
+                self._close_exception = exc
+                try:
+                    on_close(self, reason)
+                finally:
+                    self._close_exception = None
         if self._idle_handle is not None:
             self._idle_handle.cancel()
 
@@ -557,7 +555,7 @@ class AIOKafkaConnection:
                 )
                 if not fut.done():
                     fut.set_exception(error)
-                self.close(reason=CloseReason.OUT_OF_SYNC)
+                self.close(reason=ConnectionCloseReason.OUT_OF_SYNC, exc=error)
                 return
 
             if not fut.done():

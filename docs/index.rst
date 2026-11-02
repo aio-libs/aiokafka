@@ -162,6 +162,7 @@ Contents:
 
    producer
    listeners
+   connections
    metrics
    consumer
    kafka-python_difference
