@@ -17,6 +17,7 @@ from aiokafka.protocol.commit import (
     OffsetCommitResponse_v2,
     OffsetFetchRequest,
     OffsetFetchResponse_v0,
+    OffsetFetchResponse_v3,
 )
 from aiokafka.protocol.group import (
     HeartbeatRequest,
@@ -579,6 +580,53 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             fetch_error = Errors.UnknownError
             with self.assertRaises(Errors.KafkaError):
                 await coordinator.fetch_committed_offsets(partitions)
+
+        await coordinator.close()
+        await client.close()
+
+    @run_until_complete
+    async def test_fetchoffsets_group_level_error(self):
+        # OffsetFetch v2+ returns coordinator errors at group level with no topics
+        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        await client.bootstrap()
+        await self.wait_topic(client, "topic1")
+        subscription = SubscriptionState()
+        subscription.subscribe(topics={"topic1"})
+        coordinator = GroupCoordinator(
+            client, subscription, group_id="fetch-offsets-group-level"
+        )
+        await subscription.wait_for_assignment()
+
+        tp = TopicPartition("topic1", 0)
+        partitions = {tp}
+        _orig_send_req = coordinator._send_req
+        with mock.patch.object(coordinator, "_send_req") as mocked:
+            fetch_error = None
+
+            async def mock_send_req(request):
+                if request.API_KEY == OffsetFetchRequest.API_KEY:
+                    error = fetch_error.pop(0)
+                    if error is Errors.NoError:
+                        return OffsetFetchResponse_v3(
+                            0, [("topic1", [(0, 10, "", 0)])], 0
+                        )
+                    return OffsetFetchResponse_v3(0, [], error.errno)
+                return await _orig_send_req(request)
+
+            mocked.side_effect = mock_send_req
+
+            fetch_error = [
+                Errors.GroupLoadInProgressError,
+                Errors.NotCoordinatorForGroupError,
+                Errors.NoError,
+            ]
+            res = await coordinator.fetch_committed_offsets(partitions)
+            self.assertEqual(res, {tp: OffsetAndMetadata(10, "")})
+
+            fetch_error = [Errors.GroupAuthorizationFailedError]
+            with self.assertRaises(Errors.GroupAuthorizationFailedError) as cm:
+                await coordinator.fetch_committed_offsets(partitions)
+            self.assertEqual(cm.exception.args[0], coordinator.group_id)
 
         await coordinator.close()
         await client.close()
