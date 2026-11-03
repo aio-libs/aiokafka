@@ -1,3 +1,4 @@
+import asyncio
 import re
 
 import pytest
@@ -186,3 +187,17 @@ async def test_begin_reassignment(subscription_state):
 
     # After unsubscribe we should not fail begin_reassignment, just ignore it
     subscription_state.begin_reassignment()
+
+
+async def test_fetch_context_is_released_when_fetch_raises(subscription_state, mocker):
+    # getone()/getmany() await inside fetch_context(), so a cancelled fetch
+    # (e.g. asyncio.wait_for timing out) leaves through an exception.
+    monotonic = mocker.patch(
+        "aiokafka.consumer.subscription_state.time.monotonic", return_value=100.0
+    )
+
+    with pytest.raises(asyncio.CancelledError), subscription_state.fetch_context():
+        raise asyncio.CancelledError()
+
+    monotonic.return_value = 130.0
+    assert subscription_state.fetcher_idle_time == 30.0
