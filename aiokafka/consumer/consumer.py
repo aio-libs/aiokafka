@@ -130,9 +130,10 @@ class AIOKafkaConsumer:
             consume messages (e.g., :meth:`.getmany`). If this interval
             is exceeded the consumer is considered failed and the group will
             rebalance in order to reassign the partitions to another consumer
-            group member. If API methods block waiting for messages, that time
-            does not count against this timeout. See `KIP-62`_ for more
-            information. Default 300000
+            group member. A consumer that holds no partitions is not considered
+            failed, and the interval starts when it is assigned some. If API
+            methods block waiting for messages, that time does not count against
+            this timeout. See `KIP-62`_ for more information. Default 300000
         rebalance_timeout_ms (int): The maximum time server will wait for this
             consumer to rejoin the group in a case of rebalance. In Java client
             this behaviour is bound to `max.poll.interval.ms` configuration,
