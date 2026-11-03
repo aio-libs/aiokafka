@@ -125,6 +125,9 @@ class AIOKafkaConsumer:
             one. The coordinator will choose the old assignment strategy until
             all members have been updated. Then it will choose the new
             strategy. Default: [:class:`.RoundRobinPartitionAssignor`]
+            Sticky assignor state is isolated per consumer. Configured sticky
+            assignor instances must support independent shallow copying.
+            Other custom assignors are used as supplied.
 
         max_poll_interval_ms (int): Maximum allowed time between calls to
             consume messages (e.g., :meth:`.getmany`). If this interval
