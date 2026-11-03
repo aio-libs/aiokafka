@@ -486,6 +486,8 @@ class GroupCoordinator(BaseCoordinator):
         # give the assignor a chance to update internal state
         # based on the received assignment
         assignor.on_assignment(assignment)
+        if hasattr(assignor, "on_generation_assignment"):
+            assignor.on_generation_assignment(generation)
 
         # We need to start this task before callback to avoid deadlocks.
         # Callback can rely on something like ``Consumer.position()`` that
