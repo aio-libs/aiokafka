@@ -14,8 +14,8 @@ from a Kafka cluster. Most simple usage would be::
         "my_topic",
         bootstrap_servers='localhost:9092'
     )
-    await consumer.start()
     try:
+        await consumer.start()
         async for msg in consumer:
             print(
                 "{}:{:d}:{:d}: key={} value={} timestamp_ms={}".format(

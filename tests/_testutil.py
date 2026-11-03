@@ -408,8 +408,8 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         topic = topic or self.topic
         ret = []
         producer = AIOKafkaProducer(bootstrap_servers=self.hosts)
-        await producer.start()
         try:
+            await producer.start()
             await self.wait_topic(producer.client, topic)
 
             for msg in messages:

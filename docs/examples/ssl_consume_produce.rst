@@ -27,8 +27,8 @@ information.
             bootstrap_servers='localhost:9093',
             security_protocol="SSL", ssl_context=context)
 
-        await producer.start()
         try:
+            await producer.start()
             msg = await producer.send_and_wait(
                 'my_topic', b"Super Message", partition=0)
         finally:
@@ -37,8 +37,8 @@ information.
         consumer = AIOKafkaConsumer(
             "my_topic", bootstrap_servers='localhost:9093',
             security_protocol="SSL", ssl_context=context)
-        await consumer.start()
         try:
+            await consumer.start()
             consumer.seek(TopicPartition('my_topic', 0), msg.offset)
             fetch_msg = await consumer.getone()
         finally:
