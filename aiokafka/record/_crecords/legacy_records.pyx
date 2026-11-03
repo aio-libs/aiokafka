@@ -1,4 +1,4 @@
-#cython: language_level=3
+#cython: language_level=3, freethreading_compatible=True
 
 import aiokafka.codec as codecs
 from aiokafka.codec import (
