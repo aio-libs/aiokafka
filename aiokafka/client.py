@@ -193,6 +193,7 @@ class AIOKafkaClient:
             "Please create objects with the same loop as running with"
         )
 
+        last_err = None
         for host, port, _ in self.hosts:
             log.debug("Attempting to bootstrap via node at %s:%s", host, port)
 
@@ -214,6 +215,7 @@ class AIOKafkaClient:
                 )
             except (TimeoutError, OSError, KafkaError) as err:
                 log.error('Unable connect to "%s:%s": %s', host, port, err)
+                last_err = err
                 continue
 
             try:
@@ -223,6 +225,7 @@ class AIOKafkaClient:
                     'Unable to request metadata from "%s:%s": %s', host, port, err
                 )
                 bootstrap_conn.close()
+                last_err = err
                 continue
 
             self.cluster.update_metadata(metadata)
@@ -239,7 +242,9 @@ class AIOKafkaClient:
             log.debug("Received cluster metadata: %s", self.cluster)
             break
         else:
-            raise KafkaConnectionError(f"Unable to bootstrap from {self.hosts}")
+            raise KafkaConnectionError(
+                f"Unable to bootstrap from {self.hosts}"
+            ) from last_err
 
         if self._sync_task is None:
             # starting metadata synchronizer task

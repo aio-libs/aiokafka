@@ -276,16 +276,30 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         with mock.patch.object(AIOKafkaConnection, "send") as mock_send:
             mock_send.side_effect = KafkaError("some kafka error")
-            with self.assertRaises(KafkaConnectionError):
+            with self.assertRaises(KafkaConnectionError) as cm:
                 await client.bootstrap()
+            self.assertIs(cm.exception.__cause__, mock_send.side_effect)
 
     @run_until_complete
     async def test_failed_bootstrap_timeout(self):
         client = AIOKafkaClient(bootstrap_servers=self.hosts)
         with mock.patch.object(AIOKafkaConnection, "send") as mock_send:
             mock_send.side_effect = TimeoutError("Timeout error")
-            with self.assertRaises(KafkaConnectionError):
+            with self.assertRaises(KafkaConnectionError) as cm:
                 await client.bootstrap()
+            self.assertIs(cm.exception.__cause__, mock_send.side_effect)
+
+    @run_until_complete
+    async def test_failed_bootstrap_metadata_request(self):
+        client = AIOKafkaClient(bootstrap_servers=self.hosts)
+        error = KafkaError("metadata request failed")
+        conn = mock.Mock()
+        conn.send = mock.AsyncMock(side_effect=error)
+        with mock.patch("aiokafka.client.create_conn", return_value=conn):
+            with self.assertRaises(KafkaConnectionError) as cm:
+                await client.bootstrap()
+            self.assertIs(cm.exception.__cause__, error)
+        conn.close.assert_called_once()
 
     @run_until_complete
     async def test_send_request(self):
