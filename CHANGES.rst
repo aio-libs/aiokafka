@@ -15,6 +15,12 @@ Bugfixes:
 
 * Fix decoding of ``DescribeGroups`` v3 responses when describing multiple
   consumer groups (issue #1212)
+* Raise ``TypeError`` instead of ``AssertionError`` when ``getone()`` or
+  ``getmany()`` is given partitions that are not ``TopicPartition`` instances,
+  and ``IllegalStateError`` instead of ``AssertionError`` when ``seek_to_*()``
+  is called with no partitions assigned or ``highwater()``,
+  ``last_stable_offset()`` or ``last_poll_timestamp()`` is called with an
+  unassigned partition (issue #160)
 
 Breaking changes:
 
