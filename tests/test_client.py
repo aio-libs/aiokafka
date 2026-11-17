@@ -6,7 +6,7 @@ from unittest import mock
 
 from aiokafka import __version__
 from aiokafka.client import AIOKafkaClient, ConnectionGroup
-from aiokafka.conn import AIOKafkaConnection, CloseReason
+from aiokafka.conn import AIOKafkaConnection
 from aiokafka.errors import (
     KafkaConnectionError,
     KafkaError,
@@ -16,6 +16,7 @@ from aiokafka.errors import (
 from aiokafka.protocol.fetch import FetchRequest
 from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.protocol.metadata import MetadataResponse_v0 as MetadataResponse
+from aiokafka.structs import ConnectionCloseReason
 from aiokafka.util import create_task, get_running_loop
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
@@ -185,7 +186,10 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         with self.assertRaises(RequestTimedOutError):
             await client.send(0, MetadataRequest([]))
 
-        conn.close.assert_called_once_with(reason=CloseReason.CONNECTION_TIMEOUT)
+        conn.close.assert_called_once_with(
+            reason=ConnectionCloseReason.CONNECTION_TIMEOUT, exc=mock.ANY
+        )
+        self.assertIsInstance(conn.close.call_args.kwargs["exc"], TimeoutError)
         # this happens because conn was closed
         conn.connected.return_value = False
 
@@ -416,7 +420,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
 
         # Connection disconnect should trigger an update
         conn = await client._get_conn(node_id)
-        conn.close(reason=CloseReason.CONNECTION_BROKEN)
+        conn.close(reason=ConnectionCloseReason.CONNECTION_BROKEN)
         self.assertTrue(client._md_update_waiter.done())
 
     @run_until_complete
