@@ -7,6 +7,7 @@ from collections.abc import Iterable
 
 from aiokafka.client import AIOKafkaClient
 from aiokafka.codec import has_gzip, has_lz4, has_snappy, has_zstd
+from aiokafka.conn import DEFAULT_RECEIVE_MESSAGE_MAX_BYTES
 from aiokafka.errors import (
     IllegalOperation,
     MessageSizeTooLargeError,
@@ -137,6 +138,9 @@ class AIOKafkaProducer:
             which we force a refresh of metadata even if we haven't seen any
             partition leadership changes to proactively discover any new
             brokers or partitions. Default: 300000
+        receive_message_max_bytes (int): Maximum response frame size in bytes,
+            excluding the four-byte length prefix. Negative or oversized frames
+            close the connection. Default: 104857600 (100 MiB).
         request_timeout_ms (int): Produce request timeout in milliseconds.
             As it's sent as part of
             :class:`~aiokafka.protocol.produce.ProduceRequest` (it's a blocking
@@ -228,6 +232,7 @@ class AIOKafkaProducer:
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
         listeners: Iterable[ProducerListener] = (),
+        receive_message_max_bytes=DEFAULT_RECEIVE_MESSAGE_MAX_BYTES,
     ):
         if loop is None:
             loop = get_running_loop()
@@ -306,6 +311,7 @@ class AIOKafkaProducer:
             client_id=client_id,
             metadata_max_age_ms=metadata_max_age_ms,
             request_timeout_ms=request_timeout_ms,
+            receive_message_max_bytes=receive_message_max_bytes,
             retry_backoff_ms=retry_backoff_ms,
             security_protocol=security_protocol,
             ssl_context=ssl_context,

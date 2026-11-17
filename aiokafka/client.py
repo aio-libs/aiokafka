@@ -9,7 +9,13 @@ from enum import IntEnum
 import aiokafka.errors as Errors
 from aiokafka import __version__
 from aiokafka.cluster import ClusterMetadata
-from aiokafka.conn import CloseReason, collect_hosts, create_conn
+from aiokafka.conn import (
+    DEFAULT_RECEIVE_MESSAGE_MAX_BYTES,
+    CloseReason,
+    _validate_receive_message_max_bytes,
+    collect_hosts,
+    create_conn,
+)
 from aiokafka.errors import (
     KafkaConnectionError,
     KafkaError,
@@ -60,6 +66,10 @@ class AIOKafkaClient:
             consumer group administration. Default: 'aiokafka-{ver}'
         request_timeout_ms (int): Client request timeout in milliseconds.
             Default: 40000.
+        receive_message_max_bytes (int): Maximum response frame size in bytes,
+            excluding the four-byte length prefix. Negative or oversized frames
+            close the connection. This does not limit decompressed record size.
+            Default: 104857600 (100 MiB).
         metadata_max_age_ms (int): The period of time in milliseconds after
             which we force a refresh of metadata even if we haven't seen
             any partition leadership changes to proactively discover any
@@ -96,9 +106,12 @@ class AIOKafkaClient:
         sasl_kerberos_service_name="kafka",
         sasl_kerberos_domain_name=None,
         sasl_oauth_token_provider=None,
+        receive_message_max_bytes=DEFAULT_RECEIVE_MESSAGE_MAX_BYTES,
     ):
         if loop is None:
             loop = get_running_loop()
+
+        _validate_receive_message_max_bytes(receive_message_max_bytes)
 
         if api_version is not None:
             warnings.warn(
@@ -138,6 +151,7 @@ class AIOKafkaClient:
         self._client_id = client_id
         self._metadata_max_age_ms = metadata_max_age_ms
         self._request_timeout_ms = request_timeout_ms
+        self._receive_message_max_bytes = receive_message_max_bytes
         self._security_protocol = security_protocol
         self._ssl_context = ssl_context
         self._retry_backoff = retry_backoff_ms / 1000
@@ -202,6 +216,7 @@ class AIOKafkaClient:
                     port,
                     client_id=self._client_id,
                     request_timeout_ms=self._request_timeout_ms,
+                    receive_message_max_bytes=self._receive_message_max_bytes,
                     ssl_context=self._ssl_context,
                     security_protocol=self._security_protocol,
                     max_idle_ms=self._connections_max_idle_ms,
@@ -420,6 +435,7 @@ class AIOKafkaClient:
                     broker.port,
                     client_id=self._client_id,
                     request_timeout_ms=self._request_timeout_ms,
+                    receive_message_max_bytes=self._receive_message_max_bytes,
                     ssl_context=self._ssl_context,
                     security_protocol=self._security_protocol,
                     on_close=self._on_connection_closed,
