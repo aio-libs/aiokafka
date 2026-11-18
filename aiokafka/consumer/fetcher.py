@@ -1,6 +1,5 @@
 import asyncio
 import collections
-import contextlib
 import logging
 import random
 import time
@@ -13,7 +12,7 @@ from aiokafka.protocol.offset import OffsetRequest
 from aiokafka.record.control_record import ABORT_MARKER, ControlRecord
 from aiokafka.record.memory_records import MemoryRecords
 from aiokafka.structs import ConsumerRecord, OffsetAndTimestamp, TopicPartition
-from aiokafka.util import create_future, create_task
+from aiokafka.util import cancel_and_wait, create_future, create_task
 
 log = logging.getLogger(__name__)
 
@@ -442,17 +441,14 @@ class Fetcher:
     async def close(self):
         self._closed = True
 
-        self._fetch_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._fetch_task
+        await cancel_and_wait(self._fetch_task)
 
         # Fail all pending fetchone/fetchall calls
         for waiter in self._fetch_waiters:
             self._notify(waiter)
 
         for x in self._pending_tasks:
-            x.cancel()
-            await x
+            await cancel_and_wait(x)
 
     def _notify(self, future):
         if future is not None and not future.done():
@@ -506,12 +502,7 @@ class Fetcher:
                 # wait for new assignment and restart the loop
                 if assignment is None or not assignment.active:
                     for task in self._pending_tasks:
-                        # Those tasks should have proper handling for
-                        # cancellation
-                        if not task.done():
-                            task.cancel()
-                        with contextlib.suppress(asyncio.CancelledError):
-                            await task
+                        await cancel_and_wait(task)
                     self._pending_tasks.clear()
                     self._records.clear()
 

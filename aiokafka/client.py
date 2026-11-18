@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import logging
 import random
 import time
@@ -28,6 +27,7 @@ from aiokafka.protocol.coordination import FindCoordinatorRequest
 from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.util import (
+    cancel_and_wait,
     create_future,
     create_task,
     get_running_loop,
@@ -189,9 +189,7 @@ class AIOKafkaClient:
 
     async def close(self):
         if self._sync_task:
-            self._sync_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._sync_task
+            await cancel_and_wait(self._sync_task)
             self._sync_task = None
         # Be careful to wait for graceful closure of all connections, so we
         # process all pending buffers.
