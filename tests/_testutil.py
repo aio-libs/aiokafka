@@ -384,6 +384,12 @@ class KafkaIntegrationTestCase(unittest.TestCase):
         self._cleanup.append((cb_or_coro, args, kw))
 
     async def wait_topic(self, client, topic):
+        """Wait for topic metadata without producing a record.
+
+        Use this before testing short produce or retry timeouts so topic
+        auto-creation has multiple attempts and does not cause CI flakes.
+        Each metadata request still uses the client's request timeout.
+        """
         client.add_topic(topic)
         for _ in range(5):
             ok = await client.force_metadata_update()
