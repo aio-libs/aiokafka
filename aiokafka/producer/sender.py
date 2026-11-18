@@ -33,7 +33,7 @@ from aiokafka.protocol.transaction import (
     TxnOffsetCommitRequest,
 )
 from aiokafka.structs import TopicPartition
-from aiokafka.util import create_task
+from aiokafka.util import cancel_and_wait, create_task
 
 log = logging.getLogger(__name__)
 
@@ -93,8 +93,7 @@ class Sender:
 
     async def close(self):
         if self._sender_task is not None and not self._sender_task.done():
-            self._sender_task.cancel()
-            await self._sender_task
+            await cancel_and_wait(self._sender_task)
 
     async def _sender_routine(self):
         """Background task, that sends pending batches to leader nodes for

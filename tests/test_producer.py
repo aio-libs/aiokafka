@@ -53,6 +53,10 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         producer_ref = weakref.ref(producer)
         await producer.start()
 
+        sender, client = producer._sender, producer.client
+        self.add_cleanup(sender.close)
+        self.add_cleanup(client.close)
+
         with (
             self.silence_loop_exception_handler(),
             self.assertWarnsRegex(ResourceWarning, "Unclosed AIOKafkaProducer"),
