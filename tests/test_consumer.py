@@ -3,6 +3,7 @@ import gc
 import json
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from unittest import mock
 
 import pytest
@@ -12,6 +13,10 @@ from aiokafka.client import AIOKafkaClient
 from aiokafka.codec import has_gzip, has_lz4, has_snappy, has_zstd
 from aiokafka.consumer import AIOKafkaConsumer, fetcher
 from aiokafka.consumer.fetcher import FetchRequest
+from aiokafka.coordinator.assignors.sticky.sticky_assignor import (
+    StickyPartitionAssignor,
+)
+from aiokafka.coordinator.protocol import ConsumerProtocolMemberMetadata
 from aiokafka.errors import (
     ConsumerStoppedError,
     CorruptRecordException,
@@ -122,6 +127,72 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # will ignore, no exception expected
         await consumer.stop()
+
+    @run_until_complete
+    async def test_sticky_metadata_is_isolated_between_consumer_groups(self):
+        await self.check_sticky_metadata_isolation(StickyPartitionAssignor)
+
+    @run_until_complete
+    async def test_frozen_sticky_metadata_is_isolated_between_consumer_groups(self):
+        @dataclass(frozen=True, slots=True)
+        class FrozenStickyAssignor(StickyPartitionAssignor):
+            configuration: str
+
+        await self.check_sticky_metadata_isolation(FrozenStickyAssignor("configured"))
+
+    async def check_sticky_metadata_isolation(self, assignor):
+        second_topic = self.topic + "-second"
+        added_topic = self.topic + "-added"
+        for topic in (self.topic, second_topic, added_topic):
+            await self.send_messages(0, [b"sticky-probe"], topic=topic)
+
+        consumers = []
+        for topic in (self.topic, second_topic):
+            consumer = AIOKafkaConsumer(
+                topic,
+                bootstrap_servers=self.hosts,
+                group_id=topic + "-group",
+                partition_assignment_strategy=(assignor,),
+                enable_auto_commit=False,
+                auto_offset_reset="earliest",
+            )
+            self.add_cleanup(consumer.stop)
+            await consumer.start()
+            await consumer.seek_to_committed()
+            consumers.append(consumer)
+
+        first, second = consumers
+        previous_assignment = first.assignment()
+        sent_metadata = []
+        original_send = first._coordinator._send_req
+
+        async def observe_join(request):
+            if request.API_KEY == 11:  # JoinGroup
+                for name, encoded in request._group_protocols:
+                    if name == "sticky":
+                        metadata = ConsumerProtocolMemberMetadata.decode(encoded)
+                        sent_metadata.append(
+                            StickyPartitionAssignor.parse_member_metadata(metadata)
+                        )
+            return await original_send(request)
+
+        with mock.patch.object(first._coordinator, "_send_req", observe_join):
+            first.subscribe([self.topic, added_topic])
+            async with asyncio.timeout(30):
+                await first._subscription.wait_for_assignment()
+            assert {tp.topic for tp in first.assignment()} == {self.topic, added_topic}
+
+        assert sent_metadata
+        assert set(sent_metadata[0].partitions) == previous_assignment
+        assert not set(sent_metadata[0].partitions) & second.assignment()
+
+        async with asyncio.timeout(30):
+            records = [await first.getone(), await first.getone()]
+            assert {record.topic for record in records} == {self.topic, added_topic}
+            assert all(record.value == b"sticky-probe" for record in records)
+            record = await second.getone()
+            assert record.topic == second_topic
+            assert record.value == b"sticky-probe"
 
     @run_in_thread
     def test_create_consumer_no_running_loop(self):
