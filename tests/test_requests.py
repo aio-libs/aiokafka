@@ -83,6 +83,8 @@ from aiokafka.protocol.group import (
     LeaveGroupRequest,
     LeaveGroupRequest_v0,
     LeaveGroupRequest_v1,
+    LeaveGroupRequest_v2,
+    LeaveGroupRequest_v3,
     SyncGroupRequest,
     SyncGroupRequest_v1,
     SyncGroupRequest_v3,
@@ -553,6 +555,16 @@ cases = [
             Versions(expected=IncompatibleBrokerVersion),
             Versions(max_version=0, expected=LeaveGroupRequest_v0("g", "m")),
             Versions(max_version=1, expected=LeaveGroupRequest_v1("g", "m")),
+            Versions(max_version=2, expected=LeaveGroupRequest_v2("g", "m")),
+            Versions(max_version=3, expected=LeaveGroupRequest_v3("g", [("m", None)])),
+        ],
+    ),
+    (
+        LeaveGroupRequest(group="g", member_id="m", group_instance_id="i"),
+        [
+            Versions(expected=IncompatibleBrokerVersion),
+            Versions(max_version=2, expected=IncompatibleBrokerVersion),
+            Versions(max_version=3, expected=LeaveGroupRequest_v3("g", [("m", "i")])),
         ],
     ),
     (
