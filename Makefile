@@ -27,6 +27,7 @@ FORMATTED_AREAS=\
 	tests/test_helpers.py \
 	tests/test_protocol.py \
 	tests/test_protocol_object_conversion.py \
+	tests/test_util.py \
 	tests/coordinator/ \
 	tests/record/
 
