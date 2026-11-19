@@ -62,3 +62,15 @@ class AbstractPartitionAssignor(abc.ABC):
         Arguments:
             assignment (MemberAssignment): the member's assignment
         """
+
+    @classmethod
+    def on_generation_assignment(cls, generation: int) -> None:
+        """Callback that runs on each assignment.
+
+        This method can be used to update generation state, if any, of the
+        partition assignor.
+
+        Arguments:
+            generation (int): the group generation
+        """
+
