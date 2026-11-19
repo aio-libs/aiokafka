@@ -2074,6 +2074,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await consumer1.start()
         self.add_cleanup(consumer1.stop)
         await consumer1.seek_to_committed()
+        # Assignment is available before the listener callback necessarily completes.
+        async with asyncio.timeout(15):
+            await _wait_mock_count(listener1, 0)
         listener1.revoke_mock.assert_called_with(set())
         self.assertEqual(listener1.revoke_mock.call_count, 1)
         listener1.assign_mock.assert_called_with({tp0, tp1})
@@ -2084,6 +2087,10 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await consumer2.start()
         self.add_cleanup(consumer2.stop)
         await consumer2.seek_to_committed()
+        # Consumer 2's assignment does not mean consumer 1's callback has completed.
+        async with asyncio.timeout(15):
+            await _wait_mock_count(listener1, 1)
+            await _wait_mock_count(listener2, 0)
 
         assert consumer1._group_instance_id == "consumer_1_static_group_member"
         assert consumer2._group_instance_id == "consumer_2_static_group_member"
@@ -2181,6 +2188,9 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await consumer1.start()
         self.add_cleanup(consumer1.stop)
         await consumer1.seek_to_committed()
+        # Assignment is available before the listener callback necessarily completes.
+        async with asyncio.timeout(15):
+            await _wait_mock_count(listener1, 0)
         self.assertEqual(listener1.revoke_mock.call_count, 1)
         listener1.revoke_mock.assert_called_with(set())
         self.assertEqual(listener1.assign_mock.call_count, 1)
@@ -2191,6 +2201,10 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await consumer2.start()
         self.add_cleanup(consumer2.stop)
         await consumer2.seek_to_committed()
+        # Consumer 2's assignment does not mean consumer 1's callback has completed.
+        async with asyncio.timeout(15):
+            await _wait_mock_count(listener1, 1)
+            await _wait_mock_count(listener2, 0)
 
         c1_partitions = consumer1.assignment()
         c2_partitions = consumer2.assignment()

@@ -17,7 +17,7 @@ from aiokafka.protocol.group import (
     SyncGroupRequest,
 )
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from aiokafka.util import create_future, create_task
+from aiokafka.util import cancel_and_wait, create_future, create_task
 
 log = logging.getLogger(__name__)
 
@@ -176,8 +176,7 @@ class NoGroupCoordinator(BaseCoordinator):
         return self._subscription.subscription.topics
 
     async def close(self):
-        self._reset_committed_task.cancel()
-        await self._reset_committed_task
+        await cancel_and_wait(self._reset_committed_task)
         self._reset_committed_task = None
 
     def check_errors(self):
@@ -746,8 +745,7 @@ class GroupCoordinator(BaseCoordinator):
     async def _stop_heartbeat_task(self):
         if self._heartbeat_task is not None:
             if not self._heartbeat_task.done():
-                self._heartbeat_task.cancel()
-                await self._heartbeat_task
+                await cancel_and_wait(self._heartbeat_task)
             self._heartbeat_task = None
 
     async def _heartbeat_routine(self):
@@ -882,8 +880,7 @@ class GroupCoordinator(BaseCoordinator):
         # The previous task should end after assignment changed
         if self._commit_refresh_task is not None:
             if not self._commit_refresh_task.done():
-                self._commit_refresh_task.cancel()
-                await self._commit_refresh_task
+                await cancel_and_wait(self._commit_refresh_task)
             self._commit_refresh_task = None
 
     async def _commit_refresh_routine(self, assignment):

@@ -13,6 +13,8 @@ New features:
 
 Bugfixes:
 
+* Fix unexpected ``CancelledError`` during consumer shutdown after connection
+  failures or immediately after startup (issues #647, #974, #1210).
 * Fix decoding of ``DescribeGroups`` v3 responses when describing multiple
   consumer groups (issue #1212)
 
