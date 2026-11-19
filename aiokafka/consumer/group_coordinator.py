@@ -539,6 +539,10 @@ class GroupCoordinator(BaseCoordinator):
         if not self._rejoin_needed_fut.done():
             self._rejoin_needed_fut.set_result(None)
 
+    def _holds_partitions(self):
+        """Whether this member currently has any partitions assigned."""
+        return bool(self._subscription.assigned_partitions())
+
     def need_rejoin(self, subscription):
         """Check whether the group should be rejoined
 
@@ -719,9 +723,13 @@ class GroupCoordinator(BaseCoordinator):
         # handling.
         await self._stop_heartbeat_task()
 
-        # We will not attempt rejoin if there is no activity on consumer
+        # We will not attempt rejoin if there is no activity on consumer.
+        # NOTE: A member that held no partitions had nothing to fetch, so its
+        # ``fetcher_idle_time`` only ever grows, and rejoining is how it gets
+        # partitions in the first place. It may always rejoin.
         idle_time = self._subscription.fetcher_idle_time
-        if prev_assignment is not None and idle_time >= self._max_poll_interval:
+        held_partitions = prev_assignment is not None and prev_assignment.tps
+        if held_partitions and idle_time >= self._max_poll_interval:
             await asyncio.sleep(self._retry_backoff_ms / 1000)
             return None
 
@@ -735,6 +743,13 @@ class GroupCoordinator(BaseCoordinator):
         success = await self._do_rejoin_group(subscription)
         if success:
             self._performed_join_prepare = False
+            if not held_partitions:
+                # A member that held no partitions had nothing to fetch, so its
+                # ``fetcher_idle_time`` only tells how long it went without
+                # partitions. Count ``max_poll_interval_ms`` from now on, or the
+                # first heartbeat would take a member that was just given
+                # partitions for stuck, and make it leave the group again.
+                self._subscription.reset_fetcher_idle_time()
             self._start_heartbeat_task()
             return subscription.assignment
         return None
@@ -791,6 +806,14 @@ class GroupCoordinator(BaseCoordinator):
             idle_time = self._subscription.fetcher_idle_time
             if idle_time < self._max_poll_interval:
                 sleep_time = min(sleep_time, self._max_poll_interval - idle_time)
+            elif not self._holds_partitions():
+                # A member that holds no partitions has nothing to consume, so
+                # its idle time says nothing about whether the application is
+                # making progress. Leaving would trigger a rebalance it cannot
+                # benefit from, and ``ensure_active_group()`` rejoins such a
+                # member straight away, so it would leave and rejoin on every
+                # heartbeat. Keep heartbeating instead.
+                pass
             else:
                 await self._maybe_leave_group()
 
