@@ -1201,6 +1201,19 @@ class GroupCoordinator(BaseCoordinator):
 
         request = OffsetFetchRequest(self.group_id, list(partitions_by_topic.items()))
         response = await self._send_req(request)
+        # OffsetFetch v2+ reports group-level errors (e.g. COORDINATOR_LOAD_IN_PROGRESS,
+        # NOT_COORDINATOR) in a top-level error_code with an empty topics list.
+        # Without this check it is read as "no committed offsets".
+        error_type = Errors.for_code(getattr(response, "error_code", 0))
+        if error_type is not Errors.NoError:
+            log.debug(
+                "Error fetching offsets for group %s: %s", self.group_id, error_type()
+            )
+            if error_type is Errors.NotCoordinatorForGroupError:
+                self.coordinator_dead()
+            elif error_type is Errors.GroupAuthorizationFailedError:
+                raise error_type(self.group_id)
+            raise error_type()
         offsets = {}
         for topic, topic_partitions in response.topics:
             for partition, offset, metadata, error_code in topic_partitions:
