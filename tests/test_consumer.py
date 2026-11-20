@@ -2,6 +2,7 @@ import asyncio
 import gc
 import json
 import time
+import unittest
 from contextlib import contextmanager
 from unittest import mock
 
@@ -39,6 +40,72 @@ from ._testutil import (
     run_in_thread,
     run_until_complete,
 )
+
+
+@pytest.mark.usefixtures("setup_test_class_serverless")
+class TestConsumerArgumentValidation(unittest.TestCase):
+    # Argument validation happens before any network activity, so these
+    # tests do not need a running Kafka broker.
+
+    def setUp(self):
+        super().setUp()
+        self._cleanup = []
+
+    def tearDown(self):
+        super().tearDown()
+        for coro, args, kw in reversed(self._cleanup):
+            task = asyncio.wait_for(coro(*args, **kw), 30)
+            self.loop.run_until_complete(task)
+
+    def add_cleanup(self, cb_or_coro, *args, **kw):
+        self._cleanup.append((cb_or_coro, args, kw))
+
+    def unstarted_consumer(self):
+        consumer = AIOKafkaConsumer(bootstrap_servers="localhost:9092")
+        self.add_cleanup(consumer.stop)
+        return consumer
+
+    @run_until_complete
+    async def test_get_rejects_non_topic_partition(self):
+        consumer = self.unstarted_consumer()
+        tp = TopicPartition("topic", 0)
+        for method in (consumer.getone, consumer.getmany):
+            with self.subTest(method=method.__name__):
+                with self.assertRaisesRegex(TypeError, "TopicPartition"):
+                    await method("topic")
+                with self.assertRaisesRegex(TypeError, "TopicPartition"):
+                    await method(tp, ("topic", 1))
+
+    @run_until_complete
+    async def test_seek_to_without_assignment(self):
+        consumer = self.unstarted_consumer()
+        for method in (
+            consumer.seek_to_beginning,
+            consumer.seek_to_end,
+            consumer.seek_to_committed,
+        ):
+            with self.subTest(method=method.__name__):
+                with self.assertRaisesRegex(
+                    IllegalStateError, "No partitions are currently assigned"
+                ):
+                    await method()
+                with self.assertRaisesRegex(TypeError, "TopicPartition"):
+                    await method("topic")
+
+    @run_until_complete
+    async def test_partition_state_for_unassigned_partition(self):
+        consumer = self.unstarted_consumer()
+        tp = TopicPartition("topic", 0)
+        for method in (
+            consumer.highwater,
+            consumer.last_stable_offset,
+            consumer.last_poll_timestamp,
+        ):
+            with (
+                self.subTest(method=method.__name__),
+                self.assertRaisesRegex(IllegalStateError, "not assigned"),
+            ):
+                method(tp)
 
 
 class TestConsumerIntegration(KafkaIntegrationTestCase):
