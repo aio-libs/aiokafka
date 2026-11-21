@@ -12,7 +12,7 @@ from aiokafka.protocol.offset import OffsetRequest
 from aiokafka.record.control_record import ABORT_MARKER, ControlRecord
 from aiokafka.record.memory_records import MemoryRecords
 from aiokafka.structs import ConsumerRecord, OffsetAndTimestamp, TopicPartition
-from aiokafka.util import cancel_and_wait, create_future
+from aiokafka.util import cancel_and_wait
 
 log = logging.getLogger(__name__)
 
@@ -519,7 +519,7 @@ class Fetcher:
                 assert assignment is not None and assignment.active
 
                 # Reset consuming signal future.
-                self._wait_consume_future = create_future()
+                self._wait_consume_future = asyncio.get_running_loop().create_future()
                 # Determine what action to take per node
                 (
                     fetch_requests,

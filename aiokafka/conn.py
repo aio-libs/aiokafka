@@ -25,7 +25,7 @@ from aiokafka.protocol.admin import (
     SaslHandShakeRequest,
 )
 from aiokafka.protocol.coordination import FindCoordinatorResponse_v0
-from aiokafka.util import create_future, wait_for
+from aiokafka.util import wait_for
 
 try:
     import gssapi
@@ -218,7 +218,7 @@ class AIOKafkaConnection:
 
     async def connect(self):
         loop = self._loop
-        self._closed_fut = create_future()
+        self._closed_fut = asyncio.get_running_loop().create_future()
         if self._security_protocol in ["PLAINTEXT", "SASL_PLAINTEXT"]:
             ssl = None
         else:

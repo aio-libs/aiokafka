@@ -17,7 +17,7 @@ from aiokafka.protocol.group import (
     SyncGroupRequest,
 )
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from aiokafka.util import cancel_and_wait, create_future
+from aiokafka.util import cancel_and_wait
 
 log = logging.getLogger(__name__)
 
@@ -267,8 +267,8 @@ class GroupCoordinator(BaseCoordinator):
 
         # Coordination flags and futures
         self._performed_join_prepare = False
-        self._rejoin_needed_fut = create_future()
-        self._coordinator_dead_fut = create_future()
+        self._rejoin_needed_fut = asyncio.get_running_loop().create_future()
+        self._coordinator_dead_fut = asyncio.get_running_loop().create_future()
 
         self._coordination_task = asyncio.create_task(self._coordination_routine())
 
@@ -292,7 +292,7 @@ class GroupCoordinator(BaseCoordinator):
         )
 
         # Will be set on close
-        self._closing = create_future()
+        self._closing = asyncio.get_running_loop().create_future()
 
     def _on_metadata_change(self):
         self.request_rejoin()
@@ -347,7 +347,7 @@ class GroupCoordinator(BaseCoordinator):
         exc = copy.copy(exc)
         self._subscription.abort_waiters(exc)
         self._pending_exception = exc
-        self._error_consumed_fut = create_future()
+        self._error_consumed_fut = asyncio.get_running_loop().create_future()
         return asyncio.wait(
             [self._error_consumed_fut, self._closing],
             return_when=asyncio.FIRST_COMPLETED,
@@ -582,7 +582,7 @@ class GroupCoordinator(BaseCoordinator):
                     continue
 
                 self.coordinator_id = coordinator_id
-                self._coordinator_dead_fut = create_future()
+                self._coordinator_dead_fut = asyncio.get_running_loop().create_future()
                 log.info(
                     "Discovered coordinator %s for group %s",
                     self.coordinator_id,
@@ -1463,7 +1463,9 @@ class CoordinatorGroupRebalance:
         # capture metadata changes after join group was performed. We do not
         # set it directly after JoinGroup to avoid a false rejoin in case
         # ``_perform_assignment()`` does a metadata update.
-        self._coordinator._rejoin_needed_fut = create_future()
+        self._coordinator._rejoin_needed_fut = (
+            asyncio.get_running_loop().create_future()
+        )
         req_generation = self._coordinator.generation
         req_member_id = self._coordinator.member_id
 

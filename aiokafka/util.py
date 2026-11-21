@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-from asyncio import AbstractEventLoop
 from collections.abc import Awaitable
 from typing import Any, TypeVar
 
@@ -12,17 +11,10 @@ __all__ = [
     "INTEGER_MAX_VALUE",
     "INTEGER_MIN_VALUE",
     "NO_EXTENSIONS",
-    "create_future",
 ]
 
 
 T = TypeVar("T")
-
-
-def create_future(loop: AbstractEventLoop | None = None) -> asyncio.Future[T]:
-    if loop is None:
-        loop = asyncio.get_running_loop()
-    return loop.create_future()
 
 
 async def cancel_and_wait(fut: asyncio.Future[Any]) -> None:

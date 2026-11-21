@@ -26,10 +26,7 @@ from aiokafka.errors import (
 from aiokafka.protocol.coordination import FindCoordinatorRequest
 from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.protocol.produce import ProduceRequest
-from aiokafka.util import (
-    cancel_and_wait,
-    create_future,
-)
+from aiokafka.util import cancel_and_wait
 
 __all__ = ["AIOKafkaClient"]
 
@@ -267,7 +264,7 @@ class AIOKafkaClient:
 
             topics = self._topics
             if self._md_update_fut is None:
-                self._md_update_fut = create_future()
+                self._md_update_fut = asyncio.get_running_loop().create_future()
             ret = await self._metadata_update(self.cluster, topics)
             # If list of topics changed during metadata update we must update
             # it again right away.
@@ -276,7 +273,7 @@ class AIOKafkaClient:
             # Earlier this waiter was set before sending metadata_request,
             # but that was to avoid topic list changes being unnoticed, which
             # is handled explicitly now.
-            self._md_update_waiter = create_future()
+            self._md_update_waiter = asyncio.get_running_loop().create_future()
 
             self._md_update_fut.set_result(ret)
             self._md_update_fut = None

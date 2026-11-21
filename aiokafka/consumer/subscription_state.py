@@ -13,7 +13,6 @@ from re import Pattern
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.errors import IllegalStateError
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from aiokafka.util import create_future
 
 log = logging.getLogger(__name__)
 
@@ -245,7 +244,7 @@ class SubscriptionState:
         """Wait for subscription change. This will always wait for next
         subscription.
         """
-        fut = create_future()
+        fut = asyncio.get_running_loop().create_future()
         self._subscription_waiters.append(fut)
         return fut
 
@@ -253,7 +252,7 @@ class SubscriptionState:
         """Wait for next assignment. Be careful, as this will always wait for
         next assignment, even if the current one is active.
         """
-        fut = create_future()
+        fut = asyncio.get_running_loop().create_future()
         self._assignment_waiters.append(fut)
         return fut
 
@@ -399,7 +398,7 @@ class Assignment:
         for tp in self._topic_partitions:
             self._tp_state[tp] = TopicPartitionState(self)
 
-        self.unassign_future = create_future()
+        self.unassign_future = asyncio.get_running_loop().create_future()
         self.commit_refresh_needed = Event()
 
     @property
@@ -463,7 +462,7 @@ class TopicPartitionState:
         self.lso = None  # Last fetched stable offset mark
         self.timestamp = None  # timestamp of last poll
         self._position = None  # The current position of the topic
-        self._position_fut = create_future()
+        self._position_fut = asyncio.get_running_loop().create_future()
 
         # Will be set by `seek_to_beginning` or `seek_to_end` if called by user
         # or by Fetcher after confirming that current position is no longer
@@ -508,13 +507,13 @@ class TopicPartitionState:
         self._reset_strategy = strategy
         self._position = None
         if self._position_fut.done():
-            self._position_fut = create_future()
+            self._position_fut = asyncio.get_running_loop().create_future()
         self._status = PartitionStatus.AWAITING_RESET
 
     # Committed manipulation
 
     def fetch_committed(self):
-        fut = create_future()
+        fut = asyncio.get_running_loop().create_future()
         self._committed_futs.append(fut)
         self._assignment.commit_refresh_needed.set()
         return fut
@@ -560,7 +559,7 @@ class TopicPartitionState:
         if not self._paused:
             self._paused = True
             assert self._resume_fut is None
-            self._resume_fut = create_future()
+            self._resume_fut = asyncio.get_running_loop().create_future()
 
     def resume(self):
         if self._paused:

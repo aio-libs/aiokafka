@@ -34,7 +34,6 @@ from aiokafka.record.default_records import (
 )
 from aiokafka.record.memory_records import MemoryRecords
 from aiokafka.structs import OffsetAndMetadata, OffsetAndTimestamp, TopicPartition
-from aiokafka.util import create_future
 
 from ._testutil import run_until_complete
 
@@ -225,7 +224,7 @@ class TestFetcher(unittest.TestCase):
             return True
 
         def force_metadata_update():
-            fut = create_future()
+            fut = asyncio.get_running_loop().create_future()
             fut.set_result(False)
             return fut
 
@@ -409,7 +408,7 @@ class TestFetcher(unittest.TestCase):
             return True
 
         def force_metadata_update():
-            fut = create_future()
+            fut = asyncio.get_running_loop().create_future()
             fut.set_result(True)
             return fut
 

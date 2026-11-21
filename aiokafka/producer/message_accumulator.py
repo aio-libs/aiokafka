@@ -14,7 +14,6 @@ from aiokafka.errors import (
 from aiokafka.listeners import ProducerListener, _collect_callbacks
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
 from aiokafka.structs import RecordMetadata
-from aiokafka.util import create_future
 
 log = logging.getLogger(__name__)
 
@@ -160,10 +159,10 @@ class MessageBatch:
 
         # Waiters
         # Set when messages are delivered to Kafka based on ACK setting
-        self.future = create_future()
+        self.future = asyncio.get_running_loop().create_future()
         self._msg_futures = []
         # Set when sender takes this batch
-        self._drain_waiter = create_future()
+        self._drain_waiter = asyncio.get_running_loop().create_future()
         self._retry_count = 0
 
     @property
@@ -179,7 +178,6 @@ class MessageBatch:
         key,
         value,
         timestamp_ms,
-        _create_future=create_future,
         headers: Sequence = [],
     ):
         """Append message (key and value) to batch
@@ -195,7 +193,7 @@ class MessageBatch:
         if metadata is None:
             return None
 
-        future = _create_future()
+        future = asyncio.get_running_loop().create_future()
         self._msg_futures.append((future, metadata))
         return future
 
@@ -365,7 +363,7 @@ class MessageBatch:
     def reset_drain(self):
         """Reset drain waiter, until we will do another retry"""
         assert self._drain_waiter.done()
-        self._drain_waiter = create_future()
+        self._drain_waiter = asyncio.get_running_loop().create_future()
         self._queued_at = time.monotonic()
         self._dispatched_at = None
 
