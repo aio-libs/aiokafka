@@ -354,10 +354,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 
     @contextmanager
     def silence_loop_exception_handler(self):
-        if hasattr(self.loop, "get_exception_handler"):
-            orig_handler = self.loop.get_exception_handler()
-        else:
-            orig_handler = None  # Will set default handler
+        orig_handler = self.loop.get_exception_handler()
         self.loop.set_exception_handler(lambda loop, ctx: None)
         yield
         self.loop.set_exception_handler(orig_handler)
