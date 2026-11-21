@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import copy
 import logging
@@ -12,7 +13,7 @@ from re import Pattern
 from aiokafka.abc import ConsumerRebalanceListener
 from aiokafka.errors import IllegalStateError
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from aiokafka.util import create_future, get_running_loop
+from aiokafka.util import create_future
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class SubscriptionState:
 
     def __init__(self, loop=None):
         if loop is None:
-            loop = get_running_loop()
+            loop = asyncio.get_running_loop()
         self._loop = loop
 
         self._subscription_waiters = []  # type: List[Future]
@@ -317,7 +318,7 @@ class Subscription:
 
     def __init__(self, topics: Iterable[str], loop=None):
         if loop is None:
-            loop = get_running_loop()
+            loop = asyncio.get_running_loop()
 
         self._topics = frozenset(topics)  # type: FrozenSet[str]
         self._assignment = None  # type: Assignment

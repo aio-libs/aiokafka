@@ -27,7 +27,7 @@ from aiokafka.protocol.group import (
     SyncGroupResponse_v0,
 )
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from aiokafka.util import create_future, create_task, get_running_loop
+from aiokafka.util import create_future, create_task
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -1245,7 +1245,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator._enable_auto_commit = True
 
         # Successful case should count time to next autocommit
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
         now = loop.time()
         interval = 1
         coordinator._next_autocommit_deadline = 0

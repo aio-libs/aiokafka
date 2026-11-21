@@ -27,7 +27,7 @@ from aiokafka.errors import (
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.record import MemoryRecords
 from aiokafka.structs import OffsetAndMetadata, OffsetAndTimestamp, TopicPartition
-from aiokafka.util import create_task, get_running_loop
+from aiokafka.util import create_task
 
 from ._testutil import (
     DetectRebalanceListener,
@@ -1409,7 +1409,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         await asyncio.sleep(0.2)
         self.assertFalse(long_poll_task.done())
 
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
         start_time = loop.time()
         await consumer.commit()
         end_time = loop.time()
@@ -1419,7 +1419,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_offsets_for_times_single(self):
-        high_time = int(get_running_loop().time() * 1000)
+        high_time = int(asyncio.get_running_loop().time() * 1000)
         middle_time = high_time - 1000
         low_time = high_time - 2000
         tp = TopicPartition(self.topic, 0)
@@ -2020,7 +2020,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
 
         # After 3 seconds the first consumer should be considered stuck and
         # leave the group as per configuration.
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
         start_time = loop.time()
         seen = []
         for _ in range(20):

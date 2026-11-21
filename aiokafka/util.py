@@ -21,13 +21,13 @@ T = TypeVar("T")
 
 
 def create_task(coro: Coroutine[Any, Any, T]) -> asyncio.Task[T]:
-    loop = get_running_loop()
+    loop = asyncio.get_running_loop()
     return loop.create_task(coro)
 
 
 def create_future(loop: AbstractEventLoop | None = None) -> asyncio.Future[T]:
     if loop is None:
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
     return loop.create_future()
 
 
@@ -83,16 +83,6 @@ def commit_structure_validate(
 
         formatted_offsets[tp] = OffsetAndMetadata(offset, metadata)
     return formatted_offsets
-
-
-def get_running_loop() -> asyncio.AbstractEventLoop:
-    loop = asyncio.get_event_loop()
-    if not loop.is_running():
-        raise RuntimeError(
-            "The object should be created within an async function or "
-            "provide loop directly."
-        )
-    return loop
 
 
 NO_EXTENSIONS = bool(os.environ.get("AIOKAFKA_NO_EXTENSIONS"))

@@ -34,7 +34,7 @@ from aiokafka.record.default_records import (
 )
 from aiokafka.record.memory_records import MemoryRecords
 from aiokafka.structs import OffsetAndMetadata, OffsetAndTimestamp, TopicPartition
-from aiokafka.util import create_future, create_task, get_running_loop
+from aiokafka.util import create_future, create_task
 
 from ._testutil import run_until_complete
 
@@ -168,7 +168,7 @@ class TestFetcher(unittest.TestCase):
 
         # CASE: reset using default strategy if committed offset undefined
         assignment, tp_state = reset_assignment()
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
         loop.call_later(0.01, tp_state.update_committed, OffsetAndMetadata(-1, ""))
         await fetcher._update_fetch_positions(assignment, 0, [partition])
         self.assertEqual(tp_state._position, 12)

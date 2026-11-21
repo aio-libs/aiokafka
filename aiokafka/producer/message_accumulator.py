@@ -14,7 +14,7 @@ from aiokafka.errors import (
 from aiokafka.listeners import ProducerListener, _collect_callbacks
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
 from aiokafka.structs import RecordMetadata
-from aiokafka.util import create_future, get_running_loop
+from aiokafka.util import create_future
 
 log = logging.getLogger(__name__)
 
@@ -404,7 +404,7 @@ class MessageAccumulator:
         listeners=(),
     ):
         if loop is None:
-            loop = get_running_loop()
+            loop = asyncio.get_running_loop()
         self._loop = loop
         self._batches = collections.defaultdict(collections.deque)
         self._pending_batches = set()

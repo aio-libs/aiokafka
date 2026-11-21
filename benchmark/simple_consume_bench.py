@@ -17,7 +17,7 @@ class Benchmark:
         self._use_iter = args.use_iter
 
     async def _stats_report(self, start):
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         interval = self._stats_interval
         i = 1
         try:
@@ -45,7 +45,7 @@ class Benchmark:
 
     async def bench_simple(self):
         topic = self._topic
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         consumer = AIOKafkaConsumer(
             topic, group_id="test_group", auto_offset_reset="earliest",

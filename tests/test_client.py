@@ -16,7 +16,7 @@ from aiokafka.errors import (
 from aiokafka.protocol.fetch import FetchRequest
 from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.protocol.metadata import MetadataResponse_v0 as MetadataResponse
-from aiokafka.util import create_task, get_running_loop
+from aiokafka.util import create_task
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -437,7 +437,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         )
         vanila_request = MetadataRequest([])
 
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
         send_time = loop.time()
         long_task = create_task(client.send(node_id, wait_request))
         await asyncio.sleep(0.0001)
@@ -485,7 +485,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         )
         vanila_request = MetadataRequest([])
 
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
         send_time = loop.time()
         long_task = create_task(client.send(node_id, wait_request))
         await asyncio.sleep(0.0001)

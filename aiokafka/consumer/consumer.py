@@ -17,7 +17,7 @@ from aiokafka.errors import (
     RecordTooLargeError,
 )
 from aiokafka.structs import ConsumerRecord, TopicPartition
-from aiokafka.util import commit_structure_validate, get_running_loop
+from aiokafka.util import commit_structure_validate
 
 from .fetcher import Fetcher, OffsetResetStrategy
 from .group_coordinator import GroupCoordinator, NoGroupCoordinator
@@ -278,7 +278,7 @@ class AIOKafkaConsumer:
         receive_message_max_bytes=DEFAULT_RECEIVE_MESSAGE_MAX_BYTES,
     ):
         if loop is None:
-            loop = get_running_loop()
+            loop = asyncio.get_running_loop()
         else:
             warnings.warn(
                 "The loop argument is deprecated since 0.7.1, "
@@ -383,7 +383,7 @@ class AIOKafkaConsumer:
         * Wait for possible topic autocreation
         * Join group if ``group_id`` provided
         """
-        assert self._loop is get_running_loop(), (
+        assert self._loop is asyncio.get_running_loop(), (
             "Please create objects with the same loop as running with"
         )
         assert self._fetcher is None, "Did you call `start` twice?"

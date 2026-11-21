@@ -475,7 +475,7 @@ def wait_kafka(kafka_host, kafka_port, timeout=120):
 
 async def _wait_kafka(kafka_host, kafka_port, timeout):  # noqa: ASYNC109
     hosts = [f"{kafka_host}:{kafka_port}"]
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # Reconnecting until Kafka in docker becomes available
     start = loop.time()

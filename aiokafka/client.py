@@ -30,7 +30,6 @@ from aiokafka.util import (
     cancel_and_wait,
     create_future,
     create_task,
-    get_running_loop,
 )
 
 __all__ = ["AIOKafkaClient"]
@@ -109,7 +108,7 @@ class AIOKafkaClient:
         receive_message_max_bytes=DEFAULT_RECEIVE_MESSAGE_MAX_BYTES,
     ):
         if loop is None:
-            loop = get_running_loop()
+            loop = asyncio.get_running_loop()
 
         _validate_receive_message_max_bytes(receive_message_max_bytes)
 
@@ -201,7 +200,7 @@ class AIOKafkaClient:
 
     async def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
-        assert self._loop is get_running_loop(), (
+        assert self._loop is asyncio.get_running_loop(), (
             "Please create objects with the same loop as running with"
         )
 

@@ -31,7 +31,6 @@ from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.protocol.metadata import MetadataResponse_v0 as MetadataResponse
 from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
-from aiokafka.util import get_running_loop
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -49,7 +48,7 @@ class ConnIntegrationTest(KafkaIntegrationTestCase):
 
     @run_until_complete
     async def test_global_loop_for_create_conn(self):
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
         host, port = self.kafka_host, self.kafka_port
         conn = await create_conn(host, port)
         self.assertIs(conn._loop, loop)
