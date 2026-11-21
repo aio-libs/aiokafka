@@ -396,7 +396,7 @@ class TestFetcher(unittest.TestCase):
         with self.assertRaises(OffsetOutOfRangeError):
             msg = await fetcher.next_record([])
 
-        with self.assertRaises(asyncio.TimeoutError):
+        with self.assertRaises(TimeoutError):
             await asyncio.wait_for(fetcher.next_record([]), timeout=0.1)
 
     @run_until_complete
@@ -505,7 +505,7 @@ class TestFetcher(unittest.TestCase):
 
         # Timeouting will result in KafkaTimeoutError
         with mock.patch.object(fetcher, "_proc_offset_requests") as mocked:
-            mocked.side_effect = asyncio.TimeoutError
+            mocked.side_effect = TimeoutError
 
             with self.assertRaises(KafkaTimeoutError):
                 await fetcher.get_offsets_by_times({tp0: 0}, 1000)

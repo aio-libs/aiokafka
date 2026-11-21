@@ -1465,7 +1465,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         subscription.subscribe(topics={"topic2"})
         metadata_fut = client.set_topics(("topic2",))
 
-        with contextlib.suppress(asyncio.TimeoutError):
+        with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(metadata_fut, timeout=0.2)
 
         self.assertFalse(client._sync_task.done())

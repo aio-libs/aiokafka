@@ -629,7 +629,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.value, b"hello, Kafka!")
         self.assertEqual(msg.key, None)
 
-        with self.assertRaises(asyncio.TimeoutError):
+        with self.assertRaises(TimeoutError):
             await asyncio.wait_for(consumer.getone(), timeout=0.5)
 
     @run_until_complete

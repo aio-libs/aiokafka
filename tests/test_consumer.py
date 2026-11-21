@@ -1968,7 +1968,7 @@ class TestConsumerIntegration(KafkaIntegrationTestCase):
         consumer.pause(tp0)
         await self.send_messages(0, [10])
 
-        with self.assertRaises(asyncio.TimeoutError):
+        with self.assertRaises(TimeoutError):
             await asyncio.wait_for(get_task, timeout=0.5)
 
     @run_until_complete

@@ -162,7 +162,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
         # Transaction marker will be next after the message
         consumer.seek(meta.topic_partition, meta.offset + 1)
 
-        with self.assertRaises(asyncio.TimeoutError):
+        with self.assertRaises(TimeoutError):
             await asyncio.wait_for(consumer.getone(), timeout=0.5)
 
         # We must not be stuck on previous position
@@ -223,5 +223,5 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
             if not msgs:
                 break
 
-        with self.assertRaises(asyncio.TimeoutError):
+        with self.assertRaises(TimeoutError):
             await asyncio.wait_for(consumer.getone(), timeout=0.5)
