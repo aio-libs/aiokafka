@@ -29,7 +29,6 @@ from aiokafka.protocol.produce import ProduceRequest
 from aiokafka.util import (
     cancel_and_wait,
     create_future,
-    create_task,
 )
 
 __all__ = ["AIOKafkaClient"]
@@ -255,7 +254,7 @@ class AIOKafkaClient:
 
         if self._sync_task is None:
             # starting metadata synchronizer task
-            self._sync_task = create_task(self._md_synchronizer())
+            self._sync_task = asyncio.create_task(self._md_synchronizer())
 
     async def _md_synchronizer(self):
         """routine (async task) for synchronize cluster metadata every

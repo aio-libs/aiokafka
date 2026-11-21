@@ -2,7 +2,6 @@ import asyncio
 
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.errors import ConsumerStoppedError, NoOffsetForPartitionError
-from aiokafka.util import create_task
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -59,7 +58,7 @@ class TestConsumerIteratorIntegration(KafkaIntegrationTestCase):
             async for msg in consumer:  # pragma: no cover
                 raise AssertionError(f"No items should be here, got {msg}")
 
-        task = create_task(iterator())
+        task = asyncio.create_task(iterator())
         await asyncio.sleep(0.1)
         # As we didn't input any data into Kafka
         self.assertFalse(task.done())

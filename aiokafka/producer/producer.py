@@ -22,7 +22,6 @@ from aiokafka.structs import TopicPartition
 from aiokafka.util import (
     INTEGER_MAX_VALUE,
     commit_structure_validate,
-    create_task,
 )
 
 from .message_accumulator import MessageAccumulator
@@ -385,7 +384,7 @@ class AIOKafkaProducer:
         if self._sender is not None and self._sender.sender_task is not None:
             await asyncio.wait(
                 [
-                    create_task(self._message_accumulator.close()),
+                    asyncio.create_task(self._message_accumulator.close()),
                     self._sender.sender_task,
                 ],
                 return_when=asyncio.FIRST_COMPLETED,

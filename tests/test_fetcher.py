@@ -34,7 +34,7 @@ from aiokafka.record.default_records import (
 )
 from aiokafka.record.memory_records import MemoryRecords
 from aiokafka.structs import OffsetAndMetadata, OffsetAndTimestamp, TopicPartition
-from aiokafka.util import create_future, create_task
+from aiokafka.util import create_future
 
 from ._testutil import run_until_complete
 
@@ -91,7 +91,7 @@ class TestFetcher(unittest.TestCase):
         fetcher._fetch_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await fetcher._fetch_task
-        fetcher._fetch_task = create_task(asyncio.sleep(1000000))
+        fetcher._fetch_task = asyncio.create_task(asyncio.sleep(1000000))
 
         partition = TopicPartition("test", 0)
         offsets = {partition: OffsetAndTimestamp(12, -1)}
@@ -114,7 +114,7 @@ class TestFetcher(unittest.TestCase):
 
         # CASE: reset from committed
         # In basic case we will need to wait for committed
-        update_task = create_task(
+        update_task = asyncio.create_task(
             fetcher._update_fetch_positions(assignment, 0, [partition]),
         )
         await asyncio.sleep(0.1)
@@ -140,7 +140,7 @@ class TestFetcher(unittest.TestCase):
 
         # CASE: seeked while waiting for committed to be resolved
         assignment, tp_state = reset_assignment()
-        update_task = create_task(
+        update_task = asyncio.create_task(
             fetcher._update_fetch_positions(assignment, 0, [partition]),
         )
         await asyncio.sleep(0.1)
@@ -154,7 +154,7 @@ class TestFetcher(unittest.TestCase):
 
         # CASE: awaiting_reset during waiting for committed
         assignment, tp_state = reset_assignment()
-        update_task = create_task(
+        update_task = asyncio.create_task(
             fetcher._update_fetch_positions(assignment, 0, [partition]),
         )
         await asyncio.sleep(0.1)

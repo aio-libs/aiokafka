@@ -12,7 +12,7 @@ from aiokafka.protocol.offset import OffsetRequest
 from aiokafka.record.control_record import ABORT_MARKER, ControlRecord
 from aiokafka.record.memory_records import MemoryRecords
 from aiokafka.structs import ConsumerRecord, OffsetAndTimestamp, TopicPartition
-from aiokafka.util import cancel_and_wait, create_future, create_task
+from aiokafka.util import cancel_and_wait, create_future
 
 log = logging.getLogger(__name__)
 
@@ -434,7 +434,7 @@ class Fetcher:
         # waiters directly
         self._subscriptions.register_fetch_waiters(self._fetch_waiters)
 
-        self._fetch_task = create_task(self._fetch_requests_routine())
+        self._fetch_task = asyncio.create_task(self._fetch_requests_routine())
 
         self._closed = False
 
@@ -488,7 +488,7 @@ class Fetcher:
             assignment = None
 
             def start_pending_task(coro, node_id, self=self):
-                task = create_task(coro)
+                task = asyncio.create_task(coro)
                 self._pending_tasks.add(task)
                 self._in_flight.add(node_id)
 

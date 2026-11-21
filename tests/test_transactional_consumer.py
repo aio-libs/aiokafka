@@ -3,7 +3,6 @@ import asyncio
 from aiokafka.consumer import AIOKafkaConsumer
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.structs import TopicPartition
-from aiokafka.util import create_task
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -44,7 +43,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
         )
 
         # The transaction blocked consumption
-        task = create_task(consumer.getone())
+        task = asyncio.create_task(consumer.getone())
         await asyncio.sleep(1)
         self.assertFalse(task.done())
 
@@ -110,7 +109,7 @@ class TestKafkaConsumerIntegration(KafkaIntegrationTestCase):
         )
 
         # The transaction blocked consumption
-        task = create_task(consumer.getone())
+        task = asyncio.create_task(consumer.getone())
         await asyncio.sleep(1)
         self.assertFalse(task.done())
 

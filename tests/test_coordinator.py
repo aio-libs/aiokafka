@@ -27,7 +27,7 @@ from aiokafka.protocol.group import (
     SyncGroupResponse_v0,
 )
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from aiokafka.util import create_future, create_task
+from aiokafka.util import create_future
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -135,7 +135,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator._coordination_task.cancel()  # disable for test
         with contextlib.suppress(asyncio.CancelledError):
             await coordinator._coordination_task
-        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
+        coordinator._coordination_task = asyncio.create_task(asyncio.sleep(0.1))
         coordinator.coordinator_id = 15
         self.add_cleanup(coordinator.close)
 
@@ -252,7 +252,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator._coordination_task.cancel()  # disable for test
         with contextlib.suppress(asyncio.CancelledError):
             await coordinator._coordination_task
-        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
+        coordinator._coordination_task = asyncio.create_task(asyncio.sleep(0.1))
         coordinator.coordinator_id = 15
         self.add_cleanup(coordinator.close)
 
@@ -878,7 +878,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         subscription.subscribe(topics={"topic1"}, listener=WaitingListener())
 
         # Close task should be loyal to rebalance and wait for it to finish
-        close_task = create_task(coordinator.close())
+        close_task = asyncio.create_task(coordinator.close())
         await asyncio.sleep(0.1)
         self.assertFalse(close_task.done())
 
@@ -914,7 +914,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         mocked.side_effect = commit_offsets
 
         # Close task should call autocommit last time
-        close_task = create_task(coordinator.close())
+        close_task = asyncio.create_task(coordinator.close())
         await asyncio.sleep(0.1)
         # self.assertFalse(close_task.done())
 
@@ -936,7 +936,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator._coordination_task.cancel()  # disable for test
         with contextlib.suppress(asyncio.CancelledError):
             await coordinator._coordination_task
-        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
+        coordinator._coordination_task = asyncio.create_task(asyncio.sleep(0.1))
         self.add_cleanup(coordinator.close)
 
         def force_metadata_update():
@@ -1006,7 +1006,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator._coordination_task.cancel()  # disable for test
         with contextlib.suppress(asyncio.CancelledError):
             await coordinator._coordination_task
-        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
+        coordinator._coordination_task = asyncio.create_task(asyncio.sleep(0.1))
         self.add_cleanup(coordinator.close)
 
         _orig_send_req = coordinator._send_req
@@ -1089,7 +1089,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator._coordination_task.cancel()  # disable for test
         with contextlib.suppress(asyncio.CancelledError):
             await coordinator._coordination_task
-        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
+        coordinator._coordination_task = asyncio.create_task(asyncio.sleep(0.1))
         self.add_cleanup(coordinator.close)
 
         coordinator._do_heartbeat = mocked = mock.Mock()
@@ -1111,7 +1111,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator.ensure_coordinator_known = mock.Mock()
         coordinator.ensure_coordinator_known.side_effect = ensure_coordinator_known
 
-        routine = create_task(coordinator._heartbeat_routine())
+        routine = asyncio.create_task(coordinator._heartbeat_routine())
 
         def cleanup():
             routine.cancel()
@@ -1154,7 +1154,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator._coordination_task.cancel()  # disable for test
         with contextlib.suppress(asyncio.CancelledError):
             await coordinator._coordination_task
-        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
+        coordinator._coordination_task = asyncio.create_task(asyncio.sleep(0.1))
         self.add_cleanup(coordinator.close)
 
         coordinator._do_fetch_commit_offsets = mocked = mock.Mock()
@@ -1219,7 +1219,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         coordinator._coordination_task.cancel()  # disable for test
         with contextlib.suppress(asyncio.CancelledError):
             await coordinator._coordination_task
-        coordinator._coordination_task = create_task(asyncio.sleep(0.1))
+        coordinator._coordination_task = asyncio.create_task(asyncio.sleep(0.1))
         self.add_cleanup(coordinator.close)
 
         coordinator._do_commit_offsets = mocked = mock.Mock()
@@ -1300,7 +1300,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
         def start_coordination():
             if coordinator._coordination_task:
                 coordinator._coordination_task.cancel()
-            coordinator._coordination_task = task = create_task(
+            coordinator._coordination_task = task = asyncio.create_task(
                 coordinator._coordination_routine()
             )
             return task
@@ -1309,7 +1309,7 @@ class TestKafkaCoordinatorIntegration(KafkaIntegrationTestCase):
             coordinator._coordination_task.cancel()  # disable for test
             with contextlib.suppress(asyncio.CancelledError):
                 await coordinator._coordination_task
-            coordinator._coordination_task = create_task(asyncio.sleep(0.1))
+            coordinator._coordination_task = asyncio.create_task(asyncio.sleep(0.1))
 
         await stop_coordination()
 

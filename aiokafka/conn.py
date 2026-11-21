@@ -25,7 +25,7 @@ from aiokafka.protocol.admin import (
     SaslHandShakeRequest,
 )
 from aiokafka.protocol.coordination import FindCoordinatorResponse_v0
-from aiokafka.util import create_future, create_task, wait_for
+from aiokafka.util import create_future, wait_for
 
 try:
     import gssapi
@@ -515,7 +515,7 @@ class AIOKafkaConnection:
 
     def _create_reader_task(self):
         self_ref = weakref.ref(self)
-        read_task = create_task(self._read(self_ref))
+        read_task = asyncio.create_task(self._read(self_ref))
         read_task.add_done_callback(
             functools.partial(self._on_read_task_error, self_ref)
         )

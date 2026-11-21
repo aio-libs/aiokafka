@@ -33,7 +33,7 @@ from aiokafka.protocol.transaction import (
     TxnOffsetCommitRequest,
 )
 from aiokafka.structs import TopicPartition
-from aiokafka.util import cancel_and_wait, create_task
+from aiokafka.util import cancel_and_wait
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class Sender:
     async def start(self):
         # If producer is idempotent we need to assure we have PID found
         await self._maybe_wait_for_pid()
-        self._sender_task = create_task(self._sender_routine())
+        self._sender_task = asyncio.create_task(self._sender_routine())
         self._sender_task.add_done_callback(self._fail_all)
 
     def _fail_all(self, task):
@@ -143,7 +143,9 @@ class Sender:
 
                 # create produce task for every batch
                 for node_id, node_batches in batches.items():
-                    task = create_task(self._send_produce_req(node_id, node_batches))
+                    task = asyncio.create_task(
+                        self._send_produce_req(node_id, node_batches)
+                    )
                     self._in_flight.add(node_id)
                     for tp in node_batches:
                         self._muted_partitions.add(tp)
@@ -301,22 +303,22 @@ class Sender:
         # we need to do that before committing
         tps = txn_manager.partitions_to_add()
         if tps:
-            return create_task(self._do_add_partitions_to_txn(tps))
+            return asyncio.create_task(self._do_add_partitions_to_txn(tps))
 
         # We need to add group to transaction before we can commit the offset
         group_id = txn_manager.consumer_group_to_add()
         if group_id is not None:
-            return create_task(self._do_add_offsets_to_txn(group_id))
+            return asyncio.create_task(self._do_add_offsets_to_txn(group_id))
 
         # Now commit the added group's offset
         commit_data = txn_manager.offsets_to_commit()
         if commit_data is not None:
             offsets, group_id = commit_data
-            return create_task(self._do_txn_offset_commit(offsets, group_id))
+            return asyncio.create_task(self._do_txn_offset_commit(offsets, group_id))
 
         commit_result = txn_manager.needs_transaction_commit()
         if commit_result is not None:
-            return create_task(self._do_txn_commit(commit_result))
+            return asyncio.create_task(self._do_txn_commit(commit_result))
 
         return None
 

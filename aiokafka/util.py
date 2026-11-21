@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from asyncio import AbstractEventLoop
-from collections.abc import Awaitable, Coroutine
+from collections.abc import Awaitable
 from typing import Any, TypeVar
 
 from .structs import OffsetAndMetadata, TopicPartition
@@ -13,16 +13,10 @@ __all__ = [
     "INTEGER_MIN_VALUE",
     "NO_EXTENSIONS",
     "create_future",
-    "create_task",
 ]
 
 
 T = TypeVar("T")
-
-
-def create_task(coro: Coroutine[Any, Any, T]) -> asyncio.Task[T]:
-    loop = asyncio.get_running_loop()
-    return loop.create_task(coro)
 
 
 def create_future(loop: AbstractEventLoop | None = None) -> asyncio.Future[T]:
