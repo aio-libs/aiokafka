@@ -718,8 +718,18 @@ class AIOKafkaConsumer:
 
         Returns:
             int or None: offset if available
+
+        Raises:
+            IllegalStateError: partition is not assigned
+
+        .. versionchanged:: 0.16.0
+
+            Changed :exc:`AssertionError` to
+            :exc:`~aiokafka.errors.IllegalStateError` in case of unassigned
+            partition
         """
-        assert self._subscription.is_assigned(partition), "Partition is not assigned"
+        if not self._subscription.is_assigned(partition):
+            raise IllegalStateError(f"Partition {partition} is not assigned")
         assignment = self._subscription.subscription.assignment
         return assignment.state_value(partition).highwater
 
@@ -738,8 +748,18 @@ class AIOKafkaConsumer:
 
         Returns:
             int or None: offset if available
+
+        Raises:
+            IllegalStateError: partition is not assigned
+
+        .. versionchanged:: 0.16.0
+
+            Changed :exc:`AssertionError` to
+            :exc:`~aiokafka.errors.IllegalStateError` in case of unassigned
+            partition
         """
-        assert self._subscription.is_assigned(partition), "Partition is not assigned"
+        if not self._subscription.is_assigned(partition):
+            raise IllegalStateError(f"Partition {partition} is not assigned")
         assignment = self._subscription.subscription.assignment
         return assignment.state_value(partition).lso
 
@@ -756,8 +776,18 @@ class AIOKafkaConsumer:
 
         Returns:
             int or None: timestamp if available
+
+        Raises:
+            IllegalStateError: partition is not assigned
+
+        .. versionchanged:: 0.16.0
+
+            Changed :exc:`AssertionError` to
+            :exc:`~aiokafka.errors.IllegalStateError` in case of unassigned
+            partition
         """
-        assert self._subscription.is_assigned(partition), "Partition is not assigned"
+        if not self._subscription.is_assigned(partition):
+            raise IllegalStateError(f"Partition {partition} is not assigned")
         assignment = self._subscription.subscription.assignment
         return assignment.state_value(partition).timestamp
 
@@ -801,10 +831,17 @@ class AIOKafkaConsumer:
                 otherwise default to all assigned partitions.
 
         Raises:
-            IllegalStateError: If any partition is not currently assigned
+            IllegalStateError: If any partition is not currently assigned, or
+                no partitions are assigned at all
             TypeError: If partitions are not instances of :class:`.TopicPartition`
 
         .. versionadded:: 0.3.0
+
+        .. versionchanged:: 0.16.0
+
+            Changed :exc:`AssertionError` to
+            :exc:`~aiokafka.errors.IllegalStateError` in case no partitions
+            are assigned
 
         """
         if not all(isinstance(p, TopicPartition) for p in partitions):
@@ -812,7 +849,8 @@ class AIOKafkaConsumer:
 
         if not partitions:
             partitions = self._subscription.assigned_partitions()
-            assert partitions, "No partitions are currently assigned"
+            if not partitions:
+                raise IllegalStateError("No partitions are currently assigned")
         else:
             not_assigned = set(partitions) - self._subscription.assigned_partitions()
             if not_assigned:
@@ -841,10 +879,17 @@ class AIOKafkaConsumer:
                 otherwise default to all assigned partitions.
 
         Raises:
-            IllegalStateError: If any partition is not currently assigned
+            IllegalStateError: If any partition is not currently assigned, or
+                no partitions are assigned at all
             TypeError: If partitions are not instances of :class:`.TopicPartition`
 
         .. versionadded:: 0.3.0
+
+        .. versionchanged:: 0.16.0
+
+            Changed :exc:`AssertionError` to
+            :exc:`~aiokafka.errors.IllegalStateError` in case no partitions
+            are assigned
 
         """
         if not all(isinstance(p, TopicPartition) for p in partitions):
@@ -852,7 +897,8 @@ class AIOKafkaConsumer:
 
         if not partitions:
             partitions = self._subscription.assigned_partitions()
-            assert partitions, "No partitions are currently assigned"
+            if not partitions:
+                raise IllegalStateError("No partitions are currently assigned")
         else:
             not_assigned = set(partitions) - self._subscription.assigned_partitions()
             if not_assigned:
@@ -882,21 +928,30 @@ class AIOKafkaConsumer:
             of the currently committed offsets.
 
         Raises:
-            IllegalStateError: If any partition is not currently assigned
+            IllegalStateError: If any partition is not currently assigned, or
+                no partitions are assigned at all
             IllegalOperation: If used with ``group_id == None``
+            TypeError: If partitions are not instances of :class:`.TopicPartition`
 
         .. versionchanged:: 0.3.0
 
             Changed :exc:`AssertionError` to
             :exc:`~aiokafka.errors.IllegalStateError` in case of unassigned
             partition
+
+        .. versionchanged:: 0.16.0
+
+            Changed :exc:`AssertionError` to
+            :exc:`~aiokafka.errors.IllegalStateError` in case no partitions
+            are assigned
         """
         if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError("partitions must be TopicPartition instances")
 
         if not partitions:
             partitions = self._subscription.assigned_partitions()
-            assert partitions, "No partitions are currently assigned"
+            if not partitions:
+                raise IllegalStateError("No partitions are currently assigned")
         else:
             not_assigned = set(partitions) - self._subscription.assigned_partitions()
             if not_assigned:
@@ -1122,6 +1177,14 @@ class AIOKafkaConsumer:
         Returns:
             ~aiokafka.structs.ConsumerRecord: the message
 
+        Raises:
+            TypeError: If partitions are not instances of :class:`.TopicPartition`
+
+        .. versionchanged:: 0.16.0
+
+            Changed :exc:`AssertionError` to :exc:`TypeError` in case of
+            invalid ``partitions``
+
         Will return instance of
 
         .. code:: python
@@ -1142,7 +1205,8 @@ class AIOKafkaConsumer:
                 print(message.offset, message.key, message.value)
 
         """
-        assert all(isinstance(k, TopicPartition) for k in partitions)
+        if not all(isinstance(k, TopicPartition) for k in partitions):
+            raise TypeError("partitions must be TopicPartition instances")
         if self._closed:
             raise ConsumerStoppedError()
 
@@ -1175,6 +1239,15 @@ class AIOKafkaConsumer:
             records since the last fetch for the subscribed list of topics and
             partitions
 
+        Raises:
+            TypeError: If partitions are not instances of :class:`.TopicPartition`
+            ValueError: If ``max_records`` is not a positive integer
+
+        .. versionchanged:: 0.16.0
+
+            Changed :exc:`AssertionError` to :exc:`TypeError` in case of
+            invalid ``partitions``
+
         Example usage:
 
 
@@ -1189,7 +1262,8 @@ class AIOKafkaConsumer:
                     print(message.offset, message.key, message.value)
 
         """
-        assert all(isinstance(k, TopicPartition) for k in partitions)
+        if not all(isinstance(k, TopicPartition) for k in partitions):
+            raise TypeError("partitions must be TopicPartition instances")
         if self._closed:
             raise ConsumerStoppedError()
 
