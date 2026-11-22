@@ -26,12 +26,7 @@ from aiokafka.errors import (
 from aiokafka.protocol.coordination import FindCoordinatorRequest
 from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.protocol.produce import ProduceRequest
-from aiokafka.util import (
-    cancel_and_wait,
-    create_future,
-    create_task,
-    get_running_loop,
-)
+from aiokafka.util import cancel_and_wait
 
 __all__ = ["AIOKafkaClient"]
 
@@ -109,7 +104,7 @@ class AIOKafkaClient:
         receive_message_max_bytes=DEFAULT_RECEIVE_MESSAGE_MAX_BYTES,
     ):
         if loop is None:
-            loop = get_running_loop()
+            loop = asyncio.get_running_loop()
 
         _validate_receive_message_max_bytes(receive_message_max_bytes)
 
@@ -201,7 +196,7 @@ class AIOKafkaClient:
 
     async def bootstrap(self):
         """Try to to bootstrap initial cluster metadata"""
-        assert self._loop is get_running_loop(), (
+        assert self._loop is asyncio.get_running_loop(), (
             "Please create objects with the same loop as running with"
         )
 
@@ -256,7 +251,7 @@ class AIOKafkaClient:
 
         if self._sync_task is None:
             # starting metadata synchronizer task
-            self._sync_task = create_task(self._md_synchronizer())
+            self._sync_task = asyncio.create_task(self._md_synchronizer())
 
     async def _md_synchronizer(self):
         """routine (async task) for synchronize cluster metadata every
@@ -269,7 +264,7 @@ class AIOKafkaClient:
 
             topics = self._topics
             if self._md_update_fut is None:
-                self._md_update_fut = create_future()
+                self._md_update_fut = asyncio.get_running_loop().create_future()
             ret = await self._metadata_update(self.cluster, topics)
             # If list of topics changed during metadata update we must update
             # it again right away.
@@ -278,7 +273,7 @@ class AIOKafkaClient:
             # Earlier this waiter was set before sending metadata_request,
             # but that was to avoid topic list changes being unnoticed, which
             # is handled explicitly now.
-            self._md_update_waiter = create_future()
+            self._md_update_waiter = asyncio.get_running_loop().create_future()
 
             self._md_update_fut.set_result(ret)
             self._md_update_fut = None

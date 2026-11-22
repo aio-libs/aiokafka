@@ -1,3 +1,4 @@
+import asyncio
 from unittest import mock
 
 from aiokafka.client import AIOKafkaClient, ConnectionGroup, CoordinationType
@@ -49,7 +50,6 @@ from aiokafka.protocol.transaction import (
     TxnOffsetCommitResponse_v0,
 )
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from aiokafka.util import get_running_loop
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -211,7 +211,7 @@ class TestSender(KafkaIntegrationTestCase):
         success = await mock_handler.do(node_id=0)
         self.assertTrue(success)
 
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
         time = loop.time()
         sender.client.send = mock.Mock(side_effect=NodeNotReadyError())
         success = await mock_handler.do(node_id=0)

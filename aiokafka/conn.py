@@ -25,7 +25,7 @@ from aiokafka.protocol.admin import (
     SaslHandShakeRequest,
 )
 from aiokafka.protocol.coordination import FindCoordinatorResponse_v0
-from aiokafka.util import create_future, create_task, get_running_loop, wait_for
+from aiokafka.util import wait_for
 
 try:
     import gssapi
@@ -138,7 +138,7 @@ class AIOKafkaConnection:
         sasl_oauth_token_provider=None,
         receive_message_max_bytes=DEFAULT_RECEIVE_MESSAGE_MAX_BYTES,
     ):
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
 
         _validate_receive_message_max_bytes(receive_message_max_bytes)
 
@@ -218,7 +218,7 @@ class AIOKafkaConnection:
 
     async def connect(self):
         loop = self._loop
-        self._closed_fut = create_future()
+        self._closed_fut = asyncio.get_running_loop().create_future()
         if self._security_protocol in ["PLAINTEXT", "SASL_PLAINTEXT"]:
             ssl = None
         else:
@@ -515,7 +515,7 @@ class AIOKafkaConnection:
 
     def _create_reader_task(self):
         self_ref = weakref.ref(self)
-        read_task = create_task(self._read(self_ref))
+        read_task = asyncio.create_task(self._read(self_ref))
         read_task.add_done_callback(
             functools.partial(self._on_read_task_error, self_ref)
         )

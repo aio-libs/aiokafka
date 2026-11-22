@@ -33,7 +33,7 @@ class Benchmark:
         self._stats = [Counter()]
 
     async def _stats_report(self, start):
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         interval = self._stats_interval
         i = 1
         try:
@@ -63,7 +63,7 @@ class Benchmark:
         payload = bytearray(b"m" * self._size)
         topic = self._topic
         partition = self._partition
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         producer = AIOKafkaProducer(**self._producer_kwargs)
         await producer.start()

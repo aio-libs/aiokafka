@@ -354,10 +354,7 @@ class KafkaIntegrationTestCase(unittest.TestCase):
 
     @contextmanager
     def silence_loop_exception_handler(self):
-        if hasattr(self.loop, "get_exception_handler"):
-            orig_handler = self.loop.get_exception_handler()
-        else:
-            orig_handler = None  # Will set default handler
+        orig_handler = self.loop.get_exception_handler()
         self.loop.set_exception_handler(lambda loop, ctx: None)
         yield
         self.loop.set_exception_handler(orig_handler)
@@ -475,7 +472,7 @@ def wait_kafka(kafka_host, kafka_port, timeout=120):
 
 async def _wait_kafka(kafka_host, kafka_port, timeout):  # noqa: ASYNC109
     hosts = [f"{kafka_host}:{kafka_port}"]
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # Reconnecting until Kafka in docker becomes available
     start = loop.time()

@@ -10,7 +10,6 @@ from aiokafka.errors import (
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.producer.transaction_manager import TransactionState
 from aiokafka.structs import TopicPartition
-from aiokafka.util import create_task
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -383,14 +382,14 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
                 await task
 
         # test cancel begin_transaction.
-        task = create_task(producer.begin_transaction())
+        task = asyncio.create_task(producer.begin_transaction())
         await cancel(task)
         self.assertEqual(txn_manager.state, TransactionState.READY)
 
         # test cancel commit_transaction. Commit should not be cancelled.
         await producer.begin_transaction()
         self.assertEqual(txn_manager.state, TransactionState.IN_TRANSACTION)
-        task = create_task(producer.commit_transaction())
+        task = asyncio.create_task(producer.commit_transaction())
         await cancel(task)
         self.assertEqual(txn_manager.state, TransactionState.COMMITTING_TRANSACTION)
         await asyncio.sleep(0.1)
@@ -399,7 +398,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # test cancel abort_transaction. Abort should also not be cancelled.
         await producer.begin_transaction()
         self.assertEqual(txn_manager.state, TransactionState.IN_TRANSACTION)
-        task = create_task(producer.abort_transaction())
+        task = asyncio.create_task(producer.abort_transaction())
         await cancel(task)
         self.assertEqual(txn_manager.state, TransactionState.ABORTING_TRANSACTION)
         await asyncio.sleep(0.1)
@@ -439,7 +438,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         await producer.begin_transaction()
         await producer.send(self.topic, value=b"1", partition=0)
-        commit_task = create_task(producer.commit_transaction())
+        commit_task = asyncio.create_task(producer.commit_transaction())
         await asyncio.sleep(0.0001)
         self.assertFalse(commit_task.done())
 
@@ -472,7 +471,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
 
         await producer.begin_transaction()
         await producer.send(self.topic, value=b"1", partition=0)
-        commit_task = create_task(producer.commit_transaction())
+        commit_task = asyncio.create_task(producer.commit_transaction())
         await asyncio.sleep(0.001)
         self.assertFalse(commit_task.done())
 

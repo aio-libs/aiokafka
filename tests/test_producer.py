@@ -22,7 +22,6 @@ from aiokafka.errors import (
 )
 from aiokafka.producer import AIOKafkaProducer
 from aiokafka.protocol.produce import ProduceResponse_v0, ProduceResponse_v2
-from aiokafka.util import create_future
 
 from ._testutil import (
     KafkaIntegrationTestCase,
@@ -526,7 +525,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         # 1st step is to force an error in produce sequense and force a
         # reenqueue on 1 batch.
         with mock.patch.object(producer.client, "send") as mocked:
-            send_fut = create_future()
+            send_fut = asyncio.get_running_loop().create_future()
 
             async def mocked_func(node_id, request):
                 if not send_fut.done():
@@ -630,7 +629,7 @@ class TestKafkaProducerIntegration(KafkaIntegrationTestCase):
         self.assertEqual(msg.value, b"hello, Kafka!")
         self.assertEqual(msg.key, None)
 
-        with self.assertRaises(asyncio.TimeoutError):
+        with self.assertRaises(TimeoutError):
             await asyncio.wait_for(consumer.getone(), timeout=0.5)
 
     @run_until_complete

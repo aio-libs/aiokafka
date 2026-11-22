@@ -22,8 +22,6 @@ from aiokafka.structs import TopicPartition
 from aiokafka.util import (
     INTEGER_MAX_VALUE,
     commit_structure_validate,
-    create_task,
-    get_running_loop,
 )
 
 from .message_accumulator import MessageAccumulator
@@ -235,7 +233,7 @@ class AIOKafkaProducer:
         receive_message_max_bytes=DEFAULT_RECEIVE_MESSAGE_MAX_BYTES,
     ):
         if loop is None:
-            loop = get_running_loop()
+            loop = asyncio.get_running_loop()
         else:
             warnings.warn(
                 "The `loop` parameter has been deprecated since 0.7.1 "
@@ -364,7 +362,7 @@ class AIOKafkaProducer:
 
     async def start(self):
         """Connect to Kafka cluster and check server version"""
-        assert self._loop is get_running_loop(), (
+        assert self._loop is asyncio.get_running_loop(), (
             "Please create objects with the same loop as running with"
         )
         log.debug("Starting the Kafka producer")  # trace
@@ -386,7 +384,7 @@ class AIOKafkaProducer:
         if self._sender is not None and self._sender.sender_task is not None:
             await asyncio.wait(
                 [
-                    create_task(self._message_accumulator.close()),
+                    asyncio.create_task(self._message_accumulator.close()),
                     self._sender.sender_task,
                 ],
                 return_when=asyncio.FIRST_COMPLETED,

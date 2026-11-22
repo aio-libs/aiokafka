@@ -34,7 +34,6 @@ from aiokafka.record.default_records import (
 )
 from aiokafka.record.memory_records import MemoryRecords
 from aiokafka.structs import OffsetAndMetadata, OffsetAndTimestamp, TopicPartition
-from aiokafka.util import create_future, create_task, get_running_loop
 
 from ._testutil import run_until_complete
 
@@ -91,7 +90,7 @@ class TestFetcher(unittest.TestCase):
         fetcher._fetch_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await fetcher._fetch_task
-        fetcher._fetch_task = create_task(asyncio.sleep(1000000))
+        fetcher._fetch_task = asyncio.create_task(asyncio.sleep(1000000))
 
         partition = TopicPartition("test", 0)
         offsets = {partition: OffsetAndTimestamp(12, -1)}
@@ -114,7 +113,7 @@ class TestFetcher(unittest.TestCase):
 
         # CASE: reset from committed
         # In basic case we will need to wait for committed
-        update_task = create_task(
+        update_task = asyncio.create_task(
             fetcher._update_fetch_positions(assignment, 0, [partition]),
         )
         await asyncio.sleep(0.1)
@@ -140,7 +139,7 @@ class TestFetcher(unittest.TestCase):
 
         # CASE: seeked while waiting for committed to be resolved
         assignment, tp_state = reset_assignment()
-        update_task = create_task(
+        update_task = asyncio.create_task(
             fetcher._update_fetch_positions(assignment, 0, [partition]),
         )
         await asyncio.sleep(0.1)
@@ -154,7 +153,7 @@ class TestFetcher(unittest.TestCase):
 
         # CASE: awaiting_reset during waiting for committed
         assignment, tp_state = reset_assignment()
-        update_task = create_task(
+        update_task = asyncio.create_task(
             fetcher._update_fetch_positions(assignment, 0, [partition]),
         )
         await asyncio.sleep(0.1)
@@ -168,7 +167,7 @@ class TestFetcher(unittest.TestCase):
 
         # CASE: reset using default strategy if committed offset undefined
         assignment, tp_state = reset_assignment()
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
         loop.call_later(0.01, tp_state.update_committed, OffsetAndMetadata(-1, ""))
         await fetcher._update_fetch_positions(assignment, 0, [partition])
         self.assertEqual(tp_state._position, 12)
@@ -225,7 +224,7 @@ class TestFetcher(unittest.TestCase):
             return True
 
         def force_metadata_update():
-            fut = create_future()
+            fut = asyncio.get_running_loop().create_future()
             fut.set_result(False)
             return fut
 
@@ -397,7 +396,7 @@ class TestFetcher(unittest.TestCase):
         with self.assertRaises(OffsetOutOfRangeError):
             msg = await fetcher.next_record([])
 
-        with self.assertRaises(asyncio.TimeoutError):
+        with self.assertRaises(TimeoutError):
             await asyncio.wait_for(fetcher.next_record([]), timeout=0.1)
 
     @run_until_complete
@@ -409,7 +408,7 @@ class TestFetcher(unittest.TestCase):
             return True
 
         def force_metadata_update():
-            fut = create_future()
+            fut = asyncio.get_running_loop().create_future()
             fut.set_result(True)
             return fut
 
@@ -506,7 +505,7 @@ class TestFetcher(unittest.TestCase):
 
         # Timeouting will result in KafkaTimeoutError
         with mock.patch.object(fetcher, "_proc_offset_requests") as mocked:
-            mocked.side_effect = asyncio.TimeoutError
+            mocked.side_effect = TimeoutError
 
             with self.assertRaises(KafkaTimeoutError):
                 await fetcher.get_offsets_by_times({tp0: 0}, 1000)

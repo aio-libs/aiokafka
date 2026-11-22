@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from asyncio import AbstractEventLoop
-from collections.abc import Awaitable, Coroutine
+from collections.abc import Awaitable
 from typing import Any, TypeVar
 
 from .structs import OffsetAndMetadata, TopicPartition
@@ -12,23 +11,10 @@ __all__ = [
     "INTEGER_MAX_VALUE",
     "INTEGER_MIN_VALUE",
     "NO_EXTENSIONS",
-    "create_future",
-    "create_task",
 ]
 
 
 T = TypeVar("T")
-
-
-def create_task(coro: Coroutine[Any, Any, T]) -> asyncio.Task[T]:
-    loop = get_running_loop()
-    return loop.create_task(coro)
-
-
-def create_future(loop: AbstractEventLoop | None = None) -> asyncio.Future[T]:
-    if loop is None:
-        loop = get_running_loop()
-    return loop.create_future()
 
 
 async def cancel_and_wait(fut: asyncio.Future[Any]) -> None:
@@ -83,16 +69,6 @@ def commit_structure_validate(
 
         formatted_offsets[tp] = OffsetAndMetadata(offset, metadata)
     return formatted_offsets
-
-
-def get_running_loop() -> asyncio.AbstractEventLoop:
-    loop = asyncio.get_event_loop()
-    if not loop.is_running():
-        raise RuntimeError(
-            "The object should be created within an async function or "
-            "provide loop directly."
-        )
-    return loop
 
 
 NO_EXTENSIONS = bool(os.environ.get("AIOKAFKA_NO_EXTENSIONS"))

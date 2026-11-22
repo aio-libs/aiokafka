@@ -16,7 +16,6 @@ from aiokafka.errors import (
 from aiokafka.protocol.fetch import FetchRequest
 from aiokafka.protocol.metadata import MetadataRequest
 from aiokafka.protocol.metadata import MetadataResponse_v0 as MetadataResponse
-from aiokafka.util import create_task, get_running_loop
 
 from ._testutil import KafkaIntegrationTestCase, run_until_complete
 
@@ -113,7 +112,7 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         mocked_conns = {(0, 0): mock.MagicMock()}
         mocked_conns[(0, 0)].send.side_effect = send
         client = AIOKafkaClient(bootstrap_servers=["broker_1:4567"])
-        task = create_task(client._md_synchronizer())
+        task = asyncio.create_task(client._md_synchronizer())
         client._conns = mocked_conns
         client.cluster.update_metadata(MetadataResponse(brokers[:1], []))
 
@@ -437,9 +436,9 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         )
         vanila_request = MetadataRequest([])
 
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
         send_time = loop.time()
-        long_task = create_task(client.send(node_id, wait_request))
+        long_task = asyncio.create_task(client.send(node_id, wait_request))
         await asyncio.sleep(0.0001)
         self.assertFalse(long_task.done())
 
@@ -485,9 +484,9 @@ class TestKafkaClientIntegration(KafkaIntegrationTestCase):
         )
         vanila_request = MetadataRequest([])
 
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
         send_time = loop.time()
-        long_task = create_task(client.send(node_id, wait_request))
+        long_task = asyncio.create_task(client.send(node_id, wait_request))
         await asyncio.sleep(0.0001)
         self.assertFalse(long_task.done())
 

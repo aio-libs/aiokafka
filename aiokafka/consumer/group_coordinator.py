@@ -17,7 +17,7 @@ from aiokafka.protocol.group import (
     SyncGroupRequest,
 )
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from aiokafka.util import cancel_and_wait, create_future, create_task
+from aiokafka.util import cancel_and_wait
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +99,9 @@ class NoGroupCoordinator(BaseCoordinator):
     def __init__(self, *args, **kw):
         super().__init__(*args, **kw)
         # Reset all committed points, as the GroupCoordinator would
-        self._reset_committed_task = create_task(self._reset_committed_routine())
+        self._reset_committed_task = asyncio.create_task(
+            self._reset_committed_routine()
+        )
 
     def _on_metadata_change(self):
         self.assign_all_partitions()
@@ -151,7 +153,7 @@ class NoGroupCoordinator(BaseCoordinator):
                     tp_state = assignment.state_value(tp)
                     tp_state.update_committed(OffsetAndMetadata(UNKNOWN_OFFSET, ""))
 
-                event_waiter = create_task(commit_refresh_needed.wait())
+                event_waiter = asyncio.create_task(commit_refresh_needed.wait())
 
                 await asyncio.wait(
                     [assignment.unassign_future, event_waiter],
@@ -265,10 +267,10 @@ class GroupCoordinator(BaseCoordinator):
 
         # Coordination flags and futures
         self._performed_join_prepare = False
-        self._rejoin_needed_fut = create_future()
-        self._coordinator_dead_fut = create_future()
+        self._rejoin_needed_fut = asyncio.get_running_loop().create_future()
+        self._coordinator_dead_fut = asyncio.get_running_loop().create_future()
 
-        self._coordination_task = create_task(self._coordination_routine())
+        self._coordination_task = asyncio.create_task(self._coordination_routine())
 
         # Will be started/stopped by coordination task
         self._heartbeat_task = None
@@ -290,7 +292,7 @@ class GroupCoordinator(BaseCoordinator):
         )
 
         # Will be set on close
-        self._closing = create_future()
+        self._closing = asyncio.get_running_loop().create_future()
 
     def _on_metadata_change(self):
         self.request_rejoin()
@@ -345,7 +347,7 @@ class GroupCoordinator(BaseCoordinator):
         exc = copy.copy(exc)
         self._subscription.abort_waiters(exc)
         self._pending_exception = exc
-        self._error_consumed_fut = create_future()
+        self._error_consumed_fut = asyncio.get_running_loop().create_future()
         return asyncio.wait(
             [self._error_consumed_fut, self._closing],
             return_when=asyncio.FIRST_COMPLETED,
@@ -367,7 +369,7 @@ class GroupCoordinator(BaseCoordinator):
         await self._maybe_leave_group()
 
     def maybe_leave_group(self):
-        task = create_task(self._maybe_leave_group())
+        task = asyncio.create_task(self._maybe_leave_group())
         return task
 
     async def _maybe_leave_group(self):
@@ -580,7 +582,7 @@ class GroupCoordinator(BaseCoordinator):
                     continue
 
                 self.coordinator_id = coordinator_id
-                self._coordinator_dead_fut = create_future()
+                self._coordinator_dead_fut = asyncio.get_running_loop().create_future()
                 log.info(
                     "Discovered coordinator %s for group %s",
                     self.coordinator_id,
@@ -740,7 +742,7 @@ class GroupCoordinator(BaseCoordinator):
 
     def _start_heartbeat_task(self):
         if self._heartbeat_task is None:
-            self._heartbeat_task = create_task(self._heartbeat_routine())
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_routine())
 
     async def _stop_heartbeat_task(self):
         if self._heartbeat_task is not None:
@@ -872,7 +874,7 @@ class GroupCoordinator(BaseCoordinator):
     def start_commit_offsets_refresh_task(self, assignment):
         if self._commit_refresh_task is not None:
             self._commit_refresh_task.cancel()
-        self._commit_refresh_task = create_task(
+        self._commit_refresh_task = asyncio.create_task(
             self._commit_refresh_routine(assignment)
         )
 
@@ -900,7 +902,7 @@ class GroupCoordinator(BaseCoordinator):
                     timeout = retry_backoff_ms
                 else:
                     timeout = None
-                    event_waiter = create_task(commit_refresh_needed.wait())
+                    event_waiter = asyncio.create_task(commit_refresh_needed.wait())
                     wait_futures.append(event_waiter)
 
                 await asyncio.wait(
@@ -1461,7 +1463,9 @@ class CoordinatorGroupRebalance:
         # capture metadata changes after join group was performed. We do not
         # set it directly after JoinGroup to avoid a false rejoin in case
         # ``_perform_assignment()`` does a metadata update.
-        self._coordinator._rejoin_needed_fut = create_future()
+        self._coordinator._rejoin_needed_fut = (
+            asyncio.get_running_loop().create_future()
+        )
         req_generation = self._coordinator.generation
         req_member_id = self._coordinator.member_id
 
