@@ -74,6 +74,12 @@ class optional_build_ext(build_ext):
 
 
 setup(
-    ext_modules=cythonize(extensions),
+    ext_modules=cythonize(
+        extensions,
+        # The extensions keep no mutable module-level state, and the methods
+        # that use a record object's buffer hold a per-object mutex, so they
+        # do not need the GIL on free-threaded Python.
+        compiler_directives={"freethreading_compatible": True},
+    ),
     cmdclass={"build_ext": optional_build_ext},
 )

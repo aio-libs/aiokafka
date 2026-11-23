@@ -63,7 +63,7 @@ jobs:
       - name: Build wheels
         env:
           CIBW_ARCHS_LINUX: ${{matrix.arch}}
-          CIBW_BUILD: cp311-* cp312-* cp313-* cp314-* cp315-*
+          CIBW_BUILD: cp311-* cp312-* cp313-* cp314-* cp314t-* cp315-* cp315t-*
           CIBW_SKIP: '*-musllinux*'
           CIBW_BEFORE_BUILD_LINUX: yum install -y zlib-devel
           CIBW_BUILD_VERBOSITY: 2
@@ -272,6 +272,10 @@ jobs:
             aiokafka_whl: dist/aiokafka-*-cp314-cp314-manylinux*_x86_64.whl
           - python: "3.15"
             aiokafka_whl: dist/aiokafka-*-cp315-cp315-manylinux*_x86_64.whl
+          - python: "3.14t"
+            aiokafka_whl: dist/aiokafka-*-cp314-cp314t-manylinux*_x86_64.whl
+          - python: "3.15t"
+            aiokafka_whl: dist/aiokafka-*-cp315-cp315t-manylinux*_x86_64.whl
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0

@@ -116,15 +116,16 @@ cdef class LegacyRecordBatch:
             unsigned long crc = 0
             char * buf
 
-        buf = <char*> self._buffer.buf
-        cutil.calc_crc32(
-            0,
-            <unsigned char*> &buf[MAGIC_OFFSET],
-            <size_t> self._buffer.len - MAGIC_OFFSET,
-            &crc
-        )
+        with self._lock:
+            buf = <char*> self._buffer.buf
+            cutil.calc_crc32(
+                0,
+                <unsigned char*> &buf[MAGIC_OFFSET],
+                <size_t> self._buffer.len - MAGIC_OFFSET,
+                &crc
+            )
 
-        return self._main_record.crc == <uint32_t> crc
+            return self._main_record.crc == <uint32_t> crc
 
     cdef int _decompress(self, char compression_type) except -1:
         cdef:
@@ -247,9 +248,12 @@ cdef class LegacyRecordBatch:
         compression = self._main_record.attributes & _ATTR_CODEC_MASK
         if compression:
             # In case we will call iter again
-            if not self._decompressed:
-                self._decompress(compression)
-                self._decompressed = True
+            # The decompressed buffer replaces the original one exactly once;
+            # after that, concurrent iterators only read it.
+            with self._lock:
+                if not self._decompressed:
+                    self._decompress(compression)
+                    self._decompressed = True
 
             # If relative offset is used, we need to decompress the entire
             # message first to compute the absolute offset.
@@ -352,6 +356,10 @@ cdef class LegacyRecord:
 cdef class LegacyRecordBatchBuilder:
 
     cdef:
+        # Serializes the methods that use this object's buffer: a critical
+        # section would not do, because it is released whenever the thread
+        # detaches (``with nogil``, codecs, buffer exporters).
+        cython.pymutex _lock
         char _magic
         char _compression_type
         Py_ssize_t _batch_size
@@ -379,32 +387,54 @@ cdef class LegacyRecordBatchBuilder:
             int64_t ts
             LegacyRecordMetadata metadata
             uint32_t crc
+            Py_buffer key_buf
+            Py_buffer value_buf
+            Py_buffer* key_ptr = NULL
+            Py_buffer* value_ptr = NULL
 
-        if self._magic == 0:
-            ts = -1
-        elif timestamp is None:
-            ts = cutil.get_time_as_unix_ms()
-        else:
-            ts = timestamp
+        with self._lock:
+            if self._magic == 0:
+                ts = -1
+            elif timestamp is None:
+                ts = cutil.get_time_as_unix_ms()
+            else:
+                ts = timestamp
 
-        # Check if we have room for another message
-        pos = PyByteArray_GET_SIZE(self._buffer)
-        size = _size_in_bytes(self._magic, key, value)
-        # We always allow at least one record to be appended
-        if offset != 0 and pos + size >= self._batch_size:
-            return None
+            # Measure and copy the same data: hold the key's and value's
+            # buffers until they are copied, so that another thread can't
+            # resize a mutable one (e.g. a bytearray) in between.
+            if key is not None:
+                PyObject_GetBuffer(key, &key_buf, PyBUF_SIMPLE)
+                key_ptr = &key_buf
+            try:
+                if value is not None:
+                    PyObject_GetBuffer(value, &value_buf, PyBUF_SIMPLE)
+                    value_ptr = &value_buf
 
-        # Allocate proper buffer length
-        PyByteArray_Resize(self._buffer, pos + size)
+                # Check if we have room for another message
+                pos = PyByteArray_GET_SIZE(self._buffer)
+                size = _size_from_lens(
+                    self._magic, _buffer_len(key_ptr), _buffer_len(value_ptr))
+                # We always allow at least one record to be appended
+                if offset != 0 and pos + size >= self._batch_size:
+                    return None
 
-        # Encode message
-        buf = PyByteArray_AS_STRING(self._buffer)
-        _encode_msg(
-            self._magic, pos, buf,
-            offset, ts, key, value, 0, &crc)
+                # Allocate proper buffer length
+                PyByteArray_Resize(self._buffer, pos + size)
 
-        metadata = LegacyRecordMetadata.new(offset, crc, size, ts)
-        return metadata
+                # Encode message
+                buf = PyByteArray_AS_STRING(self._buffer)
+                _encode_msg(
+                    self._magic, pos, buf,
+                    offset, ts, key_ptr, value_ptr, 0, &crc)
+            finally:
+                if value_ptr != NULL:
+                    PyBuffer_Release(value_ptr)
+                if key_ptr != NULL:
+                    PyBuffer_Release(key_ptr)
+
+            metadata = LegacyRecordMetadata.new(offset, crc, size, ts)
+            return metadata
 
     def size(self):
         """ Return current size of data written to buffer
@@ -431,6 +461,7 @@ cdef class LegacyRecordBatchBuilder:
             char *buf
             Py_ssize_t size
             uint32_t crc
+            Py_buffer compressed_buf
 
         if self._compression_type != 0:
             _assert_has_codec(self._compression_type)
@@ -448,22 +479,33 @@ cdef class LegacyRecordBatchBuilder:
                     compressed = lz4_encode(bytes(self._buffer))
             else:
                 return 0
-            size = _size_in_bytes(self._magic, key=None, value=compressed)
-            # We will just write the result into the same memory space.
-            PyByteArray_Resize(self._buffer, size)
+            PyObject_GetBuffer(compressed, &compressed_buf, PyBUF_SIMPLE)
+            try:
+                size = _size_from_lens(self._magic, -1, compressed_buf.len)
+                # We will just write the result into the same memory space.
+                PyByteArray_Resize(self._buffer, size)
 
-            buf = PyByteArray_AS_STRING(self._buffer)
-            _encode_msg(
-                self._magic, start_pos=0, buf=buf,
-                offset=0, timestamp=0, key=None, value=compressed,
-                attributes=self._compression_type, crc_out=&crc)
+                buf = PyByteArray_AS_STRING(self._buffer)
+                _encode_msg(
+                    self._magic, start_pos=0, buf=buf,
+                    offset=0, timestamp=0, key_buf=NULL,
+                    value_buf=&compressed_buf,
+                    attributes=self._compression_type, crc_out=&crc)
+            finally:
+                PyBuffer_Release(&compressed_buf)
             return 1
         return 0
 
     def build(self):
         """Compress batch to be ready for send"""
-        self._maybe_compress()
-        return self._buffer
+        with self._lock:
+            self._maybe_compress()
+            return self._buffer
+
+
+cdef inline Py_ssize_t _buffer_len(Py_buffer* buf):
+    """ Length of a held buffer, or -1 for None (NULL) """
+    return -1 if buf == NULL else buf.len
 
 
 cdef Py_ssize_t _size_in_bytes(char magic, object key, object value) except -1:
@@ -475,19 +517,30 @@ cdef Py_ssize_t _size_in_bytes(char magic, object key, object value) except -1:
         Py_ssize_t value_len
 
     if key is None:
-        key_len = 0
+        key_len = -1
     else:
         PyObject_GetBuffer(key, &buf, PyBUF_SIMPLE)
         key_len = buf.len
         PyBuffer_Release(&buf)
 
     if value is None:
-        value_len = 0
+        value_len = -1
     else:
         PyObject_GetBuffer(value, &buf, PyBUF_SIMPLE)
         value_len = buf.len
         PyBuffer_Release(&buf)
 
+    return _size_from_lens(magic, key_len, value_len)
+
+
+cdef inline Py_ssize_t _size_from_lens(
+        char magic, Py_ssize_t key_len, Py_ssize_t value_len):
+    """ Size of a message with key and value of these lengths (-1 for None)
+    """
+    if key_len < 0:
+        key_len = 0
+    if value_len < 0:
+        value_len = 0
     if magic == 0:
         return LOG_OVERHEAD + RECORD_OVERHEAD_V0_DEF + key_len + value_len
     else:
@@ -496,13 +549,13 @@ cdef Py_ssize_t _size_in_bytes(char magic, object key, object value) except -1:
 
 cdef int _encode_msg(
         char magic, Py_ssize_t start_pos, char *buf,
-        int64_t offset, int64_t timestamp, object key, object value,
-        char attributes, uint32_t* crc_out) except -1:
+        int64_t offset, int64_t timestamp, Py_buffer* key_buf,
+        Py_buffer* value_buf, char attributes, uint32_t* crc_out) except -1:
     """ Encode msg data into the `msg_buffer`, which should be allocated
-        to at least the size of this message.
+        to at least the size of this message. A NULL key or value buffer
+        stands for None.
     """
     cdef:
-        Py_buffer key_val_buf
         Py_ssize_t pos = start_pos
         int32_t length
         unsigned long crc = 0
@@ -510,27 +563,23 @@ cdef int _encode_msg(
     # Write key and value
     pos += KEY_OFFSET_V0 if magic == 0 else KEY_OFFSET_V1
 
-    if key is None:
+    if key_buf == NULL:
         hton.pack_int32(&buf[pos], -1)
         pos += KEY_LENGTH
     else:
-        PyObject_GetBuffer(key, &key_val_buf, PyBUF_SIMPLE)
-        hton.pack_int32(&buf[pos], <int32_t>key_val_buf.len)
+        hton.pack_int32(&buf[pos], <int32_t>key_buf.len)
         pos += KEY_LENGTH
-        memcpy(&buf[pos], <char*>key_val_buf.buf, <size_t>key_val_buf.len)
-        pos += key_val_buf.len
-        PyBuffer_Release(&key_val_buf)
+        memcpy(&buf[pos], <char*>key_buf.buf, <size_t>key_buf.len)
+        pos += key_buf.len
 
-    if value is None:
+    if value_buf == NULL:
         hton.pack_int32(&buf[pos], -1)
         pos += VALUE_LENGTH
     else:
-        PyObject_GetBuffer(value, &key_val_buf, PyBUF_SIMPLE)
-        hton.pack_int32(&buf[pos], <int32_t>key_val_buf.len)
+        hton.pack_int32(&buf[pos], <int32_t>value_buf.len)
         pos += VALUE_LENGTH
-        memcpy(&buf[pos], <char*>key_val_buf.buf, <size_t>key_val_buf.len)
-        pos += key_val_buf.len
-        PyBuffer_Release(&key_val_buf)
+        memcpy(&buf[pos], <char*>value_buf.buf, <size_t>value_buf.len)
+        pos += value_buf.len
     length = <int32_t> ((pos - start_pos) - LOG_OVERHEAD)
 
     # Write msg header. Note, that Crc should be updated last

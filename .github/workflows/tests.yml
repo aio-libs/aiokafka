@@ -204,6 +204,14 @@ jobs:
             kafka: "2.8.1"
             scala: "2.13"
 
+          # Free-threaded builds.
+          - python: "3.14t"
+            kafka: "2.8.1"
+            scala: "2.13"
+          - python: "3.15t"
+            kafka: "2.8.1"
+            scala: "2.13"
+
           # Older brokers against latest python version.
           - python: "3.15"
             kafka: "1.1.1"
