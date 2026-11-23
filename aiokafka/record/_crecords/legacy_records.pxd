@@ -1,10 +1,15 @@
 #cython: language_level=3
+cimport cython
 from libc.stdint cimport int64_t, uint32_t
 
 
 cdef class LegacyRecordBatch:
 
     cdef:
+        # Serializes the methods that use this object's buffer: a critical
+        # section would not do, because it is released whenever the thread
+        # detaches (``with nogil``, codecs, buffer exporters).
+        cython.pymutex _lock
         Py_buffer _buffer
         char _magic
         int _decompressed

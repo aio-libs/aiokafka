@@ -373,22 +373,24 @@ cdef class DefaultRecordBatch:
             offset, timestamp, self.timestamp_type, key, value, headers)
 
     def __iter__(self):
-        assert self._next_record_index == 0
-        self._maybe_uncompress()
-        return self
+        with self._lock:
+            assert self._next_record_index == 0
+            self._maybe_uncompress()
+            return self
 
     def __next__(self):
-        if self._next_record_index >= self.num_records:
-            if self._pos != self._buffer.len:
-                raise CorruptRecordException(
-                    "{} unconsumed bytes after all records consumed".format(
-                        self._buffer.len - self._pos))
-            self._next_record_index = 0
-            raise StopIteration
+        with self._lock:
+            if self._next_record_index >= self.num_records:
+                if self._pos != self._buffer.len:
+                    raise CorruptRecordException(
+                        "{} unconsumed bytes after all records consumed".format(
+                            self._buffer.len - self._pos))
+                self._next_record_index = 0
+                raise StopIteration
 
-        msg = self._read_msg()
-        self._next_record_index += 1
-        return msg
+            msg = self._read_msg()
+            self._next_record_index += 1
+            return msg
 
     # NOTE from CYTHON docs:
     # ```
@@ -397,22 +399,22 @@ cdef class DefaultRecordBatch:
     # ```
 
     def validate_crc(self):
-        assert self._decompressed == 0, \
-            "Validate should be called before iteration"
-
         cdef:
             uint32_t verify_crc = 0
             char* buf
 
-        crc = self.crc
-        buf = <char*> self._buffer.buf
-        cutil.calc_crc32c(
-            0,
-            &buf[ATTRIBUTES_OFFSET],
-            <size_t> self._buffer.len - ATTRIBUTES_OFFSET,
-            &verify_crc
-        )
-        return crc == verify_crc
+        with self._lock:
+            assert self._decompressed == 0, \
+                "Validate should be called before iteration"
+            crc = self.crc
+            buf = <char*> self._buffer.buf
+            cutil.calc_crc32c(
+                0,
+                &buf[ATTRIBUTES_OFFSET],
+                <size_t> self._buffer.len - ATTRIBUTES_OFFSET,
+                &verify_crc
+            )
+            return crc == verify_crc
 
 
 @cython.no_gc_clear
@@ -460,6 +462,10 @@ cdef class DefaultRecord:
 cdef class DefaultRecordBatchBuilder:
 
     cdef:
+        # Serializes the methods that use this object's buffer: a critical
+        # section would not do, because it is released whenever the thread
+        # detaches (``with nogil``, codecs, buffer exporters).
+        cython.pymutex _lock
         char _magic
         char _compression_type
         Py_ssize_t _batch_size
@@ -503,9 +509,10 @@ cdef class DefaultRecordBatchBuilder:
     def set_producer_state(
             self, int64_t producer_id, int16_t producer_epoch,
             int32_t base_sequence):
-        self.producer_id = producer_id
-        self.producer_epoch = producer_epoch
-        self.base_sequence = base_sequence
+        with self._lock:
+            self.producer_id = producer_id
+            self.producer_epoch = producer_epoch
+            self.base_sequence = base_sequence
 
     cdef int16_t _get_attributes(self, int include_compression_type):
         cdef:
@@ -528,53 +535,77 @@ cdef class DefaultRecordBatchBuilder:
             Py_ssize_t msg_size
             char *buf
             int64_t ts
+            Py_buffer key_buf
+            Py_buffer value_buf
+            Py_buffer* key_ptr = NULL
+            Py_buffer* value_ptr = NULL
 
-        # Check types
-        if timestamp is None:
-            ts = cutil.get_time_as_unix_ms()
-        else:
-            ts = timestamp
+        with self._lock:
+            # Check types
+            if timestamp is None:
+                ts = cutil.get_time_as_unix_ms()
+            else:
+                ts = timestamp
 
-        # Check if we have room for another message
-        pos = self._pos
-        msg_size = self._size_of_body(offset, ts, key, value, headers)
-        size = msg_size + cutil.size_of_varint(msg_size)
-        # We always allow at least one record to be appended
-        if offset != 0 and pos + size >= self._batch_size:
-            return None
+            # Measure and copy the same data: copy the caller's list of
+            # (immutable) headers, and hold the key's and value's buffers
+            # until they are copied, so that another thread can't resize a
+            # mutable one (e.g. a bytearray) in between.
+            headers = headers[:]
+            if key is not None:
+                PyObject_GetBuffer(key, &key_buf, PyBUF_SIMPLE)
+                key_ptr = &key_buf
+            try:
+                if value is not None:
+                    PyObject_GetBuffer(value, &value_buf, PyBUF_SIMPLE)
+                    value_ptr = &value_buf
 
-        # Allocate proper buffer length
-        PyByteArray_Resize(self._buffer, pos + size)
+                # Check if we have room for another message
+                pos = self._pos
+                msg_size = self._size_of_body(
+                    offset, ts, _buffer_len(key_ptr), _buffer_len(value_ptr),
+                    headers)
+                size = msg_size + cutil.size_of_varint(msg_size)
+                # We always allow at least one record to be appended
+                if offset != 0 and pos + size >= self._batch_size:
+                    return None
 
-        # Encode message
-        buf = PyByteArray_AS_STRING(self._buffer)
-        self._encode_msg(pos, buf, offset, ts, msg_size, key, value, headers)
-        self._pos = pos + size
+                # Allocate proper buffer length
+                PyByteArray_Resize(self._buffer, pos + size)
 
-        return DefaultRecordMetadata.new(offset, size, ts)
+                # Encode message
+                buf = PyByteArray_AS_STRING(self._buffer)
+                self._encode_msg(
+                    pos, buf, offset, ts, msg_size, key_ptr, value_ptr, headers)
+                self._pos = pos + size
+            finally:
+                if value_ptr != NULL:
+                    PyBuffer_Release(value_ptr)
+                if key_ptr != NULL:
+                    PyBuffer_Release(key_ptr)
+
+            return DefaultRecordMetadata.new(offset, size, ts)
 
     cdef int _encode_msg(
             self, Py_ssize_t pos, char* buf, int64_t offset, int64_t timestamp,
-            Py_ssize_t msg_size, object key, object value, list headers
+            Py_ssize_t msg_size, Py_buffer* key_buf, Py_buffer* value_buf,
+            list headers
             ) except -1:
         cdef:
+            int64_t first_timestamp
             int64_t timestamp_delta
-            char first_message
             Py_buffer tmp_buf
             Py_ssize_t header_count
             tuple header
             str h_key
             bytes h_value
 
-        # We will always add the first message, so those will be set
+        # We will always add the first message, so this will be set
         if self._first_timestamp == -1:
-            self._first_timestamp = timestamp
-            self._max_timestamp = timestamp
-            timestamp_delta = 0
-            first_message = 1
+            first_timestamp = timestamp
         else:
-            timestamp_delta = timestamp - self._first_timestamp
-            first_message = 0
+            first_timestamp = self._first_timestamp
+        timestamp_delta = timestamp - first_timestamp
 
         cutil.encode_varint(buf, &pos, msg_size)  #   Length => Varint
 
@@ -585,23 +616,8 @@ cdef class DefaultRecordBatchBuilder:
         # Base offset is always 0 on Produce
         cutil.encode_varint64(buf, &pos, offset)
 
-        if key is None:
-            cutil.encode_varint64(buf, &pos, -1)
-        else:
-            PyObject_GetBuffer(key, &tmp_buf, PyBUF_SIMPLE)
-            cutil.encode_varint(buf, &pos, tmp_buf.len)
-            memcpy(&buf[pos], <char*>tmp_buf.buf, <size_t>tmp_buf.len)
-            pos += tmp_buf.len
-            PyBuffer_Release(&tmp_buf)
-
-        if value is None:
-            cutil.encode_varint64(buf, &pos, -1)
-        else:
-            PyObject_GetBuffer(value, &tmp_buf, PyBUF_SIMPLE)
-            cutil.encode_varint(buf, &pos, tmp_buf.len)
-            memcpy(&buf[pos], <char*>tmp_buf.buf, <size_t>tmp_buf.len)
-            pos += tmp_buf.len
-            PyBuffer_Release(&tmp_buf)
+        _encode_buffer(buf, &pos, key_buf)
+        _encode_buffer(buf, &pos, value_buf)
 
         header_count = len(headers)
         cutil.encode_varint(buf, &pos, header_count)
@@ -623,8 +639,11 @@ cdef class DefaultRecordBatchBuilder:
                 pos += tmp_buf.len
                 PyBuffer_Release(&tmp_buf)
 
-        # Those should be updated after the length check
-        if self._max_timestamp < timestamp:
+        # Those should be updated after the record is encoded
+        if self._first_timestamp == -1:
+            self._first_timestamp = timestamp
+            self._max_timestamp = timestamp
+        elif self._max_timestamp < timestamp:
             self._max_timestamp = timestamp
         self._num_records += 1
         # Offset is counted from 0, so no loss should be here
@@ -699,10 +718,11 @@ cdef class DefaultRecordBatchBuilder:
     def build(self):
         cdef:
             int send_compressed
-        send_compressed = self._maybe_compress()
-        self._write_header(send_compressed)
-        PyByteArray_Resize(self._buffer, self._pos)
-        return self._buffer
+        with self._lock:
+            send_compressed = self._maybe_compress()
+            self._write_header(send_compressed)
+            PyByteArray_Resize(self._buffer, self._pos)
+            return self._buffer
 
     def size(self):
         """ Return current size of data written to buffer
@@ -710,8 +730,8 @@ cdef class DefaultRecordBatchBuilder:
         return self._pos
 
     cdef Py_ssize_t _size_of_body(
-            self, int64_t offset, int64_t timestamp, object key, object value,
-            list headers
+            self, int64_t offset, int64_t timestamp, Py_ssize_t key_len,
+            Py_ssize_t value_len, list headers
             ) except -1:
         cdef:
             Py_ssize_t size_of_body
@@ -725,14 +745,16 @@ cdef class DefaultRecordBatchBuilder:
             1 +  # Attrs
             cutil.size_of_varint64(offset) +
             cutil.size_of_varint64(timestamp_delta) +
-            _size_of(key, value, headers)
+            _size_of_lens(key_len, value_len, headers)
         )
         return size_of_body
 
     def size_in_bytes(self, offset, timestamp, key, value, headers):
         cdef:
             Py_ssize_t size
-        size = self._size_of_body(offset, timestamp, key, value, headers)
+        size = self._size_of_body(
+            offset, timestamp, _bytelike_len(key), _bytelike_len(value),
+            headers)
         return size + cutil.size_of_varint(size)
 
     @classmethod
@@ -747,6 +769,23 @@ cdef class DefaultRecordBatchBuilder:
             FIRST_RECORD_OFFSET + MAX_RECORD_OVERHEAD +
             _size_of(key, value, headers)
         )
+
+
+cdef inline Py_ssize_t _buffer_len(Py_buffer* buf):
+    """ Length of a held buffer, or -1 for None (NULL) """
+    return -1 if buf == NULL else buf.len
+
+
+cdef inline int _encode_buffer(
+        char* buf, Py_ssize_t* pos, Py_buffer* obj) except -1:
+    """ Write a held buffer as Varint length + bytes, or -1 for None (NULL) """
+    if obj == NULL:
+        cutil.encode_varint64(buf, pos, -1)
+    else:
+        cutil.encode_varint(buf, pos, obj.len)
+        memcpy(&buf[pos[0]], <char*>obj.buf, <size_t>obj.len)
+        pos[0] += obj.len
+    return 0
 
 
 cdef inline Py_ssize_t _bytelike_len(object obj) except -2:
@@ -764,26 +803,27 @@ cdef inline Py_ssize_t _bytelike_len(object obj) except -2:
 
 
 cdef Py_ssize_t _size_of(object key, object value, list headers) except -1:
+    return _size_of_lens(_bytelike_len(key), _bytelike_len(value), headers)
+
+
+cdef Py_ssize_t _size_of_lens(
+        Py_ssize_t key_len, Py_ssize_t value_len, list headers) except -1:
+    """ Size of key, value (-1 for None) and headers in a record """
     cdef:
-        Py_ssize_t key_len
-        Py_ssize_t value_len
         Py_ssize_t size = 0
         Py_ssize_t header_count
-        Py_ssize_t i
         tuple header
         str h_key
         bytes h_value
 
-    if key is None:
+    if key_len < 0:
         size += 1
     else:
-        key_len = _bytelike_len(key)
         size += cutil.size_of_varint(key_len) + key_len
     # Value size
-    if value is None:
+    if value_len < 0:
         size += 1
     else:
-        value_len = _bytelike_len(value)
         size += cutil.size_of_varint(value_len) + value_len
     # Header size
     header_count = len(headers)

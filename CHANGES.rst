@@ -7,6 +7,9 @@ Changelog
 
 New features:
 
+* Support free-threaded Python: the C extensions no longer re-enable the GIL
+  on import, record builders and batches lock themselves when shared between
+  threads, and binary packages are built for Python 3.14t and 3.15t
 * Introduce ``ProducerListener`` in ``aiokafka.listeners`` and allow multiple
   producer event listeners through ``listeners=[...]``. Preserve batch callback
   arguments and synchronous delivery (pr #1213 by @Gleb-Shipilov).

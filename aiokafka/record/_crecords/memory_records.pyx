@@ -20,6 +20,8 @@
 # So we can iterate over batches just by knowing offsets of Length. Magic is
 # used to construct the correct class for Batch itself.
 
+cimport cython
+
 from aiokafka.errors import CorruptRecordException
 
 from .default_records cimport DefaultRecordBatch
@@ -42,6 +44,10 @@ DEF RECORD_OVERHEAD_V0 = 14
 cdef class MemoryRecords:
 
     cdef:
+        # Serializes the methods that use this object's buffer: a critical
+        # section would not do, because it is released whenever the thread
+        # detaches (``with nogil``, codecs, buffer exporters).
+        cython.pymutex _lock
         bytes _buffer
         Py_ssize_t _pos
 
@@ -93,17 +99,19 @@ cdef class MemoryRecords:
             Py_ssize_t buffer_len
             Py_ssize_t length
 
-        buffer_len = PyBytes_GET_SIZE(self._buffer)
-        if buffer_len - self._pos < LOG_OVERHEAD:
-            return False
+        with self._lock:
+            buffer_len = PyBytes_GET_SIZE(self._buffer)
+            if buffer_len - self._pos < LOG_OVERHEAD:
+                return False
 
-        buf = PyBytes_AS_STRING(self._buffer)
-        length = <Py_ssize_t> hton.unpack_int32(
-            &buf[self._pos + LENGTH_OFFSET])
-        if buffer_len - self._pos < LOG_OVERHEAD + length:
-            return False
+            buf = PyBytes_AS_STRING(self._buffer)
+            length = <Py_ssize_t> hton.unpack_int32(
+                &buf[self._pos + LENGTH_OFFSET])
+            if buffer_len - self._pos < LOG_OVERHEAD + length:
+                return False
 
-        return True
+            return True
 
     def next_batch(self):
-        return self._get_next()
+        with self._lock:
+            return self._get_next()
