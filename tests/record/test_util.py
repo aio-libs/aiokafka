@@ -1,8 +1,13 @@
+import os
 import struct
+import subprocess
+import sys
+import sysconfig
 
 import pytest
 
 from aiokafka.record import util
+from aiokafka.util import NO_EXTENSIONS
 
 varint_data: list[tuple[bytes, int]] = [
     (b"\x00", 0),
@@ -94,3 +99,27 @@ def test_crc32c() -> None:
      misrepresented as being the original software.
   3. This notice may not be removed or altered from any source distribution."""
     assert make_crc(long_text) == b"\x7d\xcd\xe1\x13"
+
+
+@pytest.mark.skipif(
+    not sysconfig.get_config_var("Py_GIL_DISABLED"),
+    reason="Requires a free-threaded build of Python",
+)
+@pytest.mark.skipif(NO_EXTENSIONS, reason="C extensions are disabled")
+def test_c_extensions_keep_gil_disabled() -> None:
+    # Importing a C extension that does not declare free-threading support
+    # re-enables the GIL for the whole process, so check in a fresh one.
+    code = (
+        "import sys\n"
+        "import aiokafka.record._crecords.cutil\n"
+        "import aiokafka.record._crecords.default_records\n"
+        "import aiokafka.record._crecords.legacy_records\n"
+        "import aiokafka.record._crecords.memory_records\n"
+        "assert not sys._is_gil_enabled()\n"
+    )
+    env = {k: v for k, v in os.environ.items() if k != "PYTHON_GIL"}
+    subprocess.run(
+        [sys.executable, "-W", "error::RuntimeWarning", "-c", code],
+        check=True,
+        env=env,
+    )
