@@ -186,3 +186,11 @@ async def test_begin_reassignment(subscription_state):
 
     # After unsubscribe we should not fail begin_reassignment, just ignore it
     subscription_state.begin_reassignment()
+
+
+async def test_reset_fetcher_idle_time(subscription_state):
+    subscription_state._last_fetch_ended -= 100
+    assert subscription_state.fetcher_idle_time >= 100
+
+    subscription_state.reset_fetcher_idle_time()
+    assert subscription_state.fetcher_idle_time < 1
