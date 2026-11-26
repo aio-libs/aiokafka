@@ -613,6 +613,11 @@ class StickyAssignmentExecutor:
         partition_to_be_moved = self.partition_movements.get_partition_to_be_moved(
             partition, consumer, new_consumer
         )
+        substitute_owner = self.current_partition_consumer[partition_to_be_moved]
+        if substitute_owner != consumer:
+            # `partition` and the substitute both moved earlier in this rebalance.
+            # Undo both moves, otherwise `consumer` stays overloaded forever.
+            self._move_partition(partition, substitute_owner)
         self._move_partition(partition_to_be_moved, new_consumer)
 
     def _move_partition(self, partition: TopicPartition, new_consumer: str) -> None:
