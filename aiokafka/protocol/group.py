@@ -1,5 +1,7 @@
 from typing import TypeAlias
 
+from aiokafka.errors import IncompatibleBrokerVersion
+
 from .api import Request, RequestStruct, Response
 from .struct import Struct
 from .types import Array, Bytes, Int16, Int32, Schema, String
@@ -356,6 +358,29 @@ class LeaveGroupResponse_v1(Response):
     SCHEMA = Schema(("throttle_time_ms", Int32), ("error_code", Int16))
 
 
+class LeaveGroupResponse_v2(Response):
+    API_KEY = 13
+    API_VERSION = 2
+    SCHEMA = LeaveGroupResponse_v1.SCHEMA
+
+
+class LeaveGroupResponse_v3(Response):
+    API_KEY = 13
+    API_VERSION = 3
+    SCHEMA = Schema(
+        ("throttle_time_ms", Int32),
+        ("error_code", Int16),
+        (
+            "members",
+            Array(
+                ("member_id", String("utf-8")),
+                ("group_instance_id", String("utf-8")),
+                ("error_code", Int16),
+            ),
+        ),
+    )
+
+
 class LeaveGroupRequest_v0(RequestStruct):
     API_KEY = 13
     API_VERSION = 0
@@ -370,20 +395,62 @@ class LeaveGroupRequest_v1(RequestStruct):
     SCHEMA = LeaveGroupRequest_v0.SCHEMA
 
 
-LeaveGroupRequestStruct: TypeAlias = LeaveGroupRequest_v0 | LeaveGroupRequest_v1
+class LeaveGroupRequest_v2(RequestStruct):
+    API_KEY = 13
+    API_VERSION = 2
+    RESPONSE_TYPE = LeaveGroupResponse_v2
+    SCHEMA = LeaveGroupRequest_v0.SCHEMA
+
+
+class LeaveGroupRequest_v3(RequestStruct):
+    API_KEY = 13
+    API_VERSION = 3
+    RESPONSE_TYPE = LeaveGroupResponse_v3
+    SCHEMA = Schema(
+        ("group", String("utf-8")),
+        (
+            "members",
+            Array(
+                ("member_id", String("utf-8")),
+                ("group_instance_id", String("utf-8")),
+            ),
+        ),
+    )
+
+
+LeaveGroupRequestStruct: TypeAlias = (
+    LeaveGroupRequest_v0
+    | LeaveGroupRequest_v1
+    | LeaveGroupRequest_v2
+    | LeaveGroupRequest_v3
+)
 
 
 class LeaveGroupRequest(Request[LeaveGroupRequestStruct]):
     API_KEY = 13
 
-    def __init__(self, group: str, member_id: str):
+    def __init__(
+        self, group: str, member_id: str, group_instance_id: str | None = None
+    ):
         self._group = group
         self._member_id = member_id
+        self._group_instance_id = group_instance_id
 
     def build(
         self, request_struct_class: type[LeaveGroupRequestStruct]
     ) -> LeaveGroupRequestStruct:
+        if request_struct_class.API_VERSION < 3:
+            if self._group_instance_id is not None:
+                raise IncompatibleBrokerVersion(
+                    "LeaveGroupRequest < v3 can't name a member by its "
+                    "group_instance_id. Leaving as a static member is only "
+                    "supported on >= v3"
+                )
+            return request_struct_class(
+                self._group,
+                self._member_id,
+            )
         return request_struct_class(
             self._group,
-            self._member_id,
+            [(self._member_id, self._group_instance_id)],
         )
