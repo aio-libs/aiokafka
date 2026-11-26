@@ -10,6 +10,7 @@ from aiokafka.coordinator.assignors.range import RangePartitionAssignor
 from aiokafka.coordinator.assignors.roundrobin import RoundRobinPartitionAssignor
 from aiokafka.coordinator.assignors.sticky.sticky_assignor import (
     StickyPartitionAssignor,
+    StickyAssignorUserDataV1,
 )
 from aiokafka.coordinator.protocol import (
     ConsumerProtocolMemberAssignment,
@@ -1075,3 +1076,58 @@ def group_partitions_by_topic(
     for p in partitions:
         result[p.topic].add(p.partition)
     return result
+
+
+def test_sticky_assignor_on_generation_assignment() -> None:
+    assignor = StickyPartitionAssignor
+    assert assignor.generation == -1
+
+    assignor.on_generation_assignment(42)
+    assert assignor.generation == 42
+
+    metadata = assignor._metadata(
+        ["topic-a"],
+        [TopicPartition("topic-a", 0)],
+        generation=assignor.generation,
+    )
+    decoded = StickyAssignorUserDataV1.decode(metadata.user_data)
+    assert decoded.generation == 42
+
+
+def test_abstract_assignor_default_on_generation_assignment() -> None:
+    assert hasattr(RoundRobinPartitionAssignor, "on_generation_assignment")
+    RoundRobinPartitionAssignor.on_generation_assignment(100)
+
+
+@pytest.mark.asyncio
+async def test_group_coordinator_calls_on_generation_assignment(mocker: MockerFixture) -> None:
+    mocker.patch("aiokafka.consumer.group_coordinator.BaseCoordinator.__init__", return_value=None)
+    from aiokafka.consumer.group_coordinator import GroupCoordinator
+
+    coordinator = GroupCoordinator.__new__(GroupCoordinator)
+    coordinator._subscription = mocker.MagicMock()
+    coordinator._subscription.subscription = mocker.MagicMock()
+    coordinator._subscription.assigned_partitions.return_value = []
+    coordinator._subscription.listener = None
+    coordinator.group_id = "test-group"
+    coordinator._stop_commit_offsets_refresh_task = mocker.AsyncMock()
+    coordinator.start_commit_offsets_refresh_task = mocker.MagicMock()
+
+    mock_assignor = mocker.MagicMock()
+    mock_assignor.name = "mock_protocol"
+    coordinator._assignors = [mock_assignor]
+
+    assignment = ConsumerProtocolMemberAssignment(0, [("t0", [0])], b"")
+    assignment_bytes = assignment.encode()
+
+    await coordinator._on_join_complete(
+        generation=77,
+        member_id="member-1",
+        protocol="mock_protocol",
+        member_assignment_bytes=assignment_bytes,
+    )
+
+    mock_assignor.on_assignment.assert_called_once()
+    mock_assignor.on_generation_assignment.assert_called_once_with(77)
+
+
